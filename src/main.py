@@ -24,6 +24,9 @@ def main():
         return
     #run pipeline
 
+    #create/connect to vector database for storage
+    
+
 
 
 if __name__ == "__main__":

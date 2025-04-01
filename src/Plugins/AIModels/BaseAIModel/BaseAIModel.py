@@ -1,12 +1,14 @@
+# src/Plugins/AIModels/OpenRouter/OpenRouter.py
 import requests
 import os
 from dotenv import load_dotenv
+from Plugins.AIModels.BaseAIModel import BaseAIModel
 
 
-class OpenRouterLLMClient:
+class OpenRouter(BaseAIModel):
     def __init__(self, base_url="https://openrouter.ai/api/v1"):
         """
-        Initialize the OpenRouter LLM client.
+        Initialize the OpenRouter LLM plugin with BaseAIModel interface.
         
         :param base_url: Base URL for the OpenRouter API.
         """
@@ -17,7 +19,27 @@ class OpenRouterLLMClient:
         
         self.base_url = base_url
 
-    def query_chat_model(self, model, messages, max_tokens=1000, temperature=0.7, referer=None, title=None):
+    def get_name(self) -> str:
+        """
+        Return the name of the plugin.
+        """
+        return "OpenRouter"
+
+    def generate_response(self, prompt: str) -> str:
+        """
+        Generate a response from the LLM plugin using a single user prompt.
+
+        :param prompt: User input prompt.
+        :return: The response content from the model.
+        """
+        # For consistency with more advanced models, wrap the prompt in a "user" role message.
+        messages = [{"role": "user", "content": prompt}]
+        return self.query_chat_model(
+            model="meta-llama/llama-3-8b-instruct:free",  # Default model, you can dynamically pass this as needed.
+            messages=messages
+        )
+
+    def query_chat_model(self, model, messages, max_tokens=1000, temperature=0.7, referer=None, title=None) -> str:
         """
         Send a query to the specified chat-based model.
 
@@ -64,16 +86,3 @@ class OpenRouterLLMClient:
         except requests.exceptions.RequestException as err:
             print("API Error:", err)
         return None
-
-
-if __name__ == "__main__":
-    client = OpenRouterLLMClient()
-
-    # Query a chat-based model with a conversation
-    model_name = "meta-llama/llama-3-8b-instruct:free"  # Replace with the desired model name
-    messages = [
-        {"role": "user", "content": "What are the key benefits of modular plugin architectures?"}
-    ]
-    response = client.query_chat_model(model_name, messages, referer="https://mimir-aip.com", title="Mimir-AIP")
-
-    print("Model Response:", response)

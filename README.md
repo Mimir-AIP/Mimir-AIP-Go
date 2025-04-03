@@ -1,4 +1,5 @@
-# Mimir-AIP
+<img src="Docs/Assets/mimir-aip-svg-banners.svg" alt="Mimir AIP- Building the future of intelligent data pipelines"/>
+
 Overview
 ---
 The MIMIR Artificial Intelligence Platform is an open-source framework designed to connect inputs and outputs to AI systems with integrated storage capabilities. The platform is built to provide a modular and flexible architecture, allowing users to easily integrate various components and customize the system to suit their specific needs.

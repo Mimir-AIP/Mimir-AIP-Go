@@ -13,7 +13,7 @@ import requests
 import json
 import re
 
-class FeedPlugin:
+class rss_feed:
     """
     RSS, Atom and JSON feed parser
     """
@@ -68,64 +68,81 @@ class FeedPlugin:
             self.data = self.parse_atom(content)
         elif self.feed_type == 'json':
             self.data = self.parse_json(content)
+        else:
+            raise ValueError("Unsupported feed type")
 
     def parse_rss(self, content):
         """
         Parse an RSS feed
         """
-        items = re.findall(r'<item>(.*?)</item>', content, re.DOTALL)
-        feed = []
-        for item in items:
-            title = re.search(r'<title>(.*?)</title>', item).group(1)
-            link = re.search(r'<link>(.*?)</link>', item).group(1)
-            description = re.search(r'<description>(.*?)</description>', item).group(1)
-            feed.append({
-                'title': title,
-                'link': link,
-                'description': description
-            })
-        return feed
+        try:
+            items = re.findall(r'<item>(.*?)</item>', content, re.DOTALL)
+            feed = []
+            for item in items:
+                title = re.search(r'<title>(.*?)</title>', item)
+                link = re.search(r'<link>(.*?)</link>', item)
+                description = re.search(r'<description>(.*?)</description>', item)
+                if title and link:
+                    title = title.group(1)
+                    link = link.group(1)
+                    description = description.group(1) if description else ""
+    
+                    feed.append({
+                        'title': title,
+                        'link': link,
+                        'description': description
+                    })
+            return feed
+        except Exception as e:
+            raise ValueError("Error parsing RSS feed: " + str(e))
 
     def parse_atom(self, content):
         """
         Parse an Atom feed
         """
-        items = re.findall(r'<entry>(.*?)</entry>', content, re.DOTALL)
-        feed = []
-        for item in items:
-            title = re.search(r'<title>(.*?)</title>', item).group(1)
-            link = re.search(r'<link href="(.*?)"', item).group(1)
-            summary = re.search(r'<summary>(.*?)</summary>', item) or re.search(r'<content>(.*?)</content>', item)
-            if summary:
-                summary = summary.group(1)
-            else:
-                summary = ""
-            feed.append({
-                'title': title,
-                'link': link,
-                'summary': summary
-            })
-        return feed
+        try:
+            items = re.findall(r'<entry>(.*?)</entry>', content, re.DOTALL)
+            feed = []
+            for item in items:
+                title = re.search(r'<title>(.*?)</title>', item).group(1)
+                link = re.search(r'<link href="(.*?)"', item).group(1)
+                summary = re.search(r'<summary>(.*?)</summary>', item) or re.search(r'<content>(.*?)</content>', item)
+                if summary:
+                    summary = summary.group(1)
+                else:
+                    summary = ""
+                feed.append({
+                    'title': title,
+                    'link': link,
+                    'summary': summary
+                })
+            return feed
+        except Exception as e:
+            raise ValueError("Error parsing Atom feed: " + str(e))
 
     def parse_json(self, content):
         """
         Parse a JSON feed
         """
-        return json.loads(content)
+        try:
+            return json.loads(content)
+        except Exception as e:
+            raise ValueError("Error parsing JSON feed: " + str(e))
 
     def get_feed(self):
         """
         Get the feed
         """
         self.fetch_feed()
+        if self.data is None:
+            raise ValueError("Error fetching feed")
         return json.dumps(self.data, indent=2)
 
 # Example usage
 if __name__ == "__main__":
     # Example with URL
-    url = "http://feeds.bbci.co.uk/news/world/rss.xml"  # Example RSS feed URL
-    #url = "https://oleb.net/blog/atom.xml"  # Example Atom feed URL   
-    plugin = FeedPlugin(url)
+    url = "http://feeds.bbci.co.uk/news/world/rss.xml"
+    plugin = rss_feed(url)
     feed_data = plugin.get_feed()
     print(feed_data)
 
@@ -144,7 +161,7 @@ if __name__ == "__main__":
         </entry>
     </feed>
     """
-    plugin = FeedPlugin(direct_feed_content, is_url=False)
+    plugin = rss_feed(direct_feed_content, is_url=False)
     feed_data = plugin.get_feed()
     print(feed_data)
 

@@ -1,5 +1,5 @@
 from Plugins.PluginManager import PluginManager
-import yaml
+#import yaml #used to load pipelines
 
 
 def main():
@@ -129,13 +129,18 @@ def main():
                     results = ""
                     for query in response["search_queries"]:
                         results += WebSearch.search(query)
+                    #use the webScraping plugin to scrape the search results
+                    WebScraping = PluginManager().get_plugin("WebScraping")
+                    WebScrapingInstance = WebScraping()
+                    #feed results to webScraping plugin
+                    scraping_results = WebScrapingInstance.scrape(results)
                     #use LLMFunction plugin to generate report from search results
                     LLMFunction = PluginManager().get_plugin("LLMFunction")
                     plugin = "OpenRouter"
                     model = "meta-llama/llama-3-8b-instruct:free"
                     function = "You are a program block that generates a report from search results"
                     format = "return report in the format {'report': 'report text'}"
-                    data = results
+                    data = scraping_results
                     try: 
                         response = LLMFunction.LLMFunction(plugin, model, function, format, data)
                         print(response)

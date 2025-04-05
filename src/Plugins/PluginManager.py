@@ -34,3 +34,7 @@ class PluginManager:
     def get_all_plugins(self):
         """Return all loaded plugins."""
         return self.plugins
+
+if __name__ == "__main__":
+    manager = PluginManager()
+    print(manager.get_all_plugins())

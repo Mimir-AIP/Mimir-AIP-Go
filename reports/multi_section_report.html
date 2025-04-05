@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sample HTML Report with Multiple Sections</title>
+    <link rel="stylesheet" href="leaflet.css" />
+    <script src="leaflet.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -81,6 +83,21 @@
                 document.getElementById('counter').textContent = count;
             }
             
+                </script>
+            </div>
+            
+            <div class="section">
+                <h2>Map example</h2>
+                <div class="text-content">
+                    <div id="map" style="width: 600px; height: 400px;"></div>
+                </div>
+                <script>
+                    
+            var map = L.map('map').setView([51.5074, -0.1278], 2);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
                 </script>
             </div>
             

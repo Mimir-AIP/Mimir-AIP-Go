@@ -50,5 +50,8 @@ pipelines:
         output: "report"
 
       - name: "Output Report"
-        action: "print"#just printing to terminal for now, will add html report generation in the future
+        plugin: "HTMLReport"
+        config:
+          title: "BBC News Report"
         input: "report"
+        output: "report.html"

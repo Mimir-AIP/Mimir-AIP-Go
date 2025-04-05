@@ -141,8 +141,21 @@ def main():
                         print(response)
                     except ValueError as e:
                         print(e)
-                    #output report
-                    print("Report: " + topic_to_search + "\n" + response["report"])
+                    #output report using HTMLReport plugin
+                    HTMLReport = PluginManager().get_plugin("HTMLReport")
+                    HTMLReportGenerator = HTMLReport.HTMLReportGenerator()
+                    sections = [
+                        {
+                            "heading": "BBC News Story: " + story["title"],
+                            "text": story["description"]
+                        },
+                        {
+                            "heading": "Report",
+                            "text": response["report"]
+                        }
+                    ]
+                    HTMLReportGenerator.generate_report("BBC News Story Report", sections, "report.html")
+                    print("Report generated and saved to output directory")
 
 
 

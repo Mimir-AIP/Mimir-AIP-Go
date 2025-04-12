@@ -13,14 +13,28 @@ import requests
 import json
 import re
 
-class rss_feed:
+class RssFeed:
     """
     RSS, Atom and JSON feed parser
     """
 
-    def __init__(self, input_data, is_url=True):
+    plugin_type = "Input"
+
+    def __init__(self, input_data=None, is_url=True):
         """
         Initialize the plugin
+
+        :param input_data: The URL or the direct feed content. If None, must be set later via set_input
+        :param is_url: If True, input_data is a URL, otherwise it is the direct feed content
+        """
+        self.input_data = input_data
+        self.is_url = is_url
+        self.feed_type = None
+        self.data = None
+
+    def set_input(self, input_data, is_url=True):
+        """
+        Set the input data after initialization
 
         :param input_data: The URL or the direct feed content
         :param is_url: If True, input_data is a URL, otherwise it is the direct feed content
@@ -34,6 +48,9 @@ class rss_feed:
         """
         Detect the type of feed
         """
+        if self.input_data is None:
+            raise ValueError("Input data must be set before detecting feed type")
+
         if self.is_url:
             response = requests.get(self.input_data)
             content = response.text
@@ -53,6 +70,9 @@ class rss_feed:
         """
         Fetch the feed
         """
+        if self.input_data is None:
+            raise ValueError("Input data must be set before fetching feed")
+
         if not self.feed_type:
             self.detect_feed_type()
 
@@ -133,6 +153,9 @@ class rss_feed:
         """
         Get the feed
         """
+        if self.input_data is None:
+            raise ValueError("Input data must be set before getting feed")
+
         self.fetch_feed()
         if self.data is None:
             raise ValueError("Error fetching feed")
@@ -142,7 +165,8 @@ class rss_feed:
 if __name__ == "__main__":
     # Example with URL
     url = "http://feeds.bbci.co.uk/news/world/rss.xml"
-    plugin = rss_feed(url)
+    plugin = RssFeed()
+    plugin.set_input(url)
     feed_data = plugin.get_feed()
     print(feed_data)
 
@@ -161,7 +185,7 @@ if __name__ == "__main__":
         </entry>
     </feed>
     """
-    plugin = rss_feed(direct_feed_content, is_url=False)
+    plugin = RssFeed()
+    plugin.set_input(direct_feed_content, is_url=False)
     feed_data = plugin.get_feed()
     print(feed_data)
-

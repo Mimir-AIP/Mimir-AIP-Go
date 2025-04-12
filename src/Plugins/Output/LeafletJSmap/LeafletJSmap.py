@@ -1,85 +1,96 @@
-def generate_leaflet_map(coordinates, marker_texts, output_file=None, return_js=False):
+class LeafletJSmap:
     """
-    Generate a Leaflet map with markers at specified coordinates.
-
-    Args:
-        coordinates (list): List of tuples containing latitude and longitude coordinates.
-        marker_texts (list): List of strings to be used as marker labels.
-        output_file (str, optional): Path to output HTML file. Defaults to None.
-        return_js (bool, optional): Return the JavaScript code block instead of writing to file. Defaults to False.
-
-    Returns:
-        str: JavaScript code block if return_js is True, otherwise None.
+    Plugin for generating Leaflet.js maps
     """
 
-    # Calculate the initial view center (average of all coordinates)
-    initial_lat = sum(coord[0] for coord in coordinates) / len(coordinates)
-    initial_lon = sum(coord[1] for coord in coordinates) / len(coordinates)
+    plugin_type = "Output"
 
-    # Generate the marker JavaScript code
-    markers = ""
-    for coord, text in zip(coordinates, marker_texts):
-        markers += f"L.marker([{coord[0]}, {coord[1]}]).addTo(map).bindPopup('{text}').openPopup();\n"
+    def __init__(self):
+        pass
 
-    # Render the template with the provided data
-    js_code = f"""
-    var map = L.map('map').setView([{initial_lat}, {initial_lon}], 13);
+    def generate_map(self, coordinates, marker_texts, output_file=None, return_js=False):
+        """
+        Generate a Leaflet map with markers at specified coordinates.
 
-    L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }}).addTo(map);
+        Args:
+            coordinates (list): List of tuples containing latitude and longitude coordinates.
+            marker_texts (list): List of strings to be used as marker labels.
+            output_file (str, optional): Path to output HTML file. Defaults to None.
+            return_js (bool, optional): Return the JavaScript code block instead of writing to file. Defaults to False.
 
-    {markers}
-    """
+        Returns:
+            str: HTML content if output_file is None, JavaScript code block if return_js is True, None otherwise.
+        """
+        if not coordinates or not marker_texts or len(coordinates) != len(marker_texts):
+            raise ValueError("Coordinates and marker_texts must be non-empty lists of equal length")
 
-    if return_js:
-        return js_code
-    elif output_file:
-        # Define the HTML template as a string
-        html_template = """
+        # Calculate map center
+        center_lat = sum(lat for lat, _ in coordinates) / len(coordinates)
+        center_lon = sum(lon for _, lon in coordinates) / len(coordinates)
+
+        # Generate HTML template
+        html_content = f'''
         <!DOCTYPE html>
         <html>
         <head>
             <title>Leaflet Map</title>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+            <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
             <style>
-                #map {{ height: 100vh; }}
+                #map {{ height: 600px; width: 100%; }}
             </style>
         </head>
         <body>
             <div id="map"></div>
-            <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
             <script>
-                {js_code}
+                var map = L.map('map').setView([{center_lat}, {center_lon}], 10);
+                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                    attribution: '© OpenStreetMap contributors'
+                }}).addTo(map);
+        '''
+
+        # Add markers
+        for (lat, lon), text in zip(coordinates, marker_texts):
+            html_content += f'''
+                L.marker([{lat}, {lon}])
+                    .bindPopup("{text}")
+                    .addTo(map);
+            '''
+
+        html_content += '''
             </script>
         </body>
         </html>
-        """
+        '''
 
-        # Write the HTML content to the output file
-        with open(output_file, 'w') as f:
-            f.write(html_template.format(js_code=js_code))
+        if return_js:
+            # Extract only the JavaScript code block
+            js_start = html_content.find('<script>') + 8
+            js_end = html_content.find('</script>')
+            return html_content[js_start:js_end].strip()
 
-        print(f"Map generated and saved to {output_file}")
-    else:
-        raise ValueError("Either output_file or return_js must be specified")
+        if output_file:
+            with open(output_file, 'w') as f:
+                f.write(html_content)
+            return None
+
+        return html_content
 
 if __name__ == "__main__":
     # Example usage
     coordinates = [
         (51.5, -0.09),  # London
-        (40.7128, -74.0060),  # New York
-        (35.6895, 139.6917)  # Tokyo
+        (48.8566, 2.3522),  # Paris
+        (40.7128, -74.0060)  # New York
     ]
     marker_texts = [
-        "London",
-        "New York",
-        "Tokyo"
+        "London: The capital of England",
+        "Paris: The city of lights",
+        "New York: The big apple"
     ]
-    # Generate the Leaflet map and save it to a file
-    generate_leaflet_map(coordinates, marker_texts, output_file='map.html')
-    #return javascript code
-    js_code = generate_leaflet_map(coordinates, marker_texts, return_js=True)
-    print(js_code)
+
+    plugin = LeafletJSmap()
+    
+    # Generate map and save to file
+    plugin.generate_map(coordinates, marker_texts, output_file="map.html")
+    print("Map saved to map.html")

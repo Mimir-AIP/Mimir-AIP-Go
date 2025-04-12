@@ -2,12 +2,25 @@ import requests
 import json
 import datetime
 
-class bloomberg:
+class Bloomberg:
+    """
+    Bloomberg News API plugin that fetches and formats data into RSSGuard-compatible JSON
+    """
+    
+    plugin_type = "Input"
+    
     def __init__(self):
         pass
-    def bloomberg(self, api_url):
+
+    def get_feed(self, api_url):
         """
         Fetches data from the Bloomberg API and converts it to an RSSGuard-compatible JSON format.
+        
+        Args:
+            api_url (str): The Bloomberg API URL to fetch data from
+            
+        Returns:
+            dict: RSSGuard-compatible JSON feed data or None if there was an error
         """
         try:
             response = requests.get(api_url)
@@ -41,8 +54,8 @@ class bloomberg:
 if __name__ == "__main__":
     api_url = "https://feeds.bloomberg.com/news.json?ageHours=120&token=glassdoor:gd4bloomberg&tickers=NTRS:US"
 
-    bloomberg = bloomberg()
-    rssguard_feed = bloomberg.bloomberg(api_url)
+    plugin = Bloomberg()
+    rssguard_feed = plugin.get_feed(api_url)
 
     if rssguard_feed:
         print(json.dumps(rssguard_feed, indent=4)) # Output JSON to console

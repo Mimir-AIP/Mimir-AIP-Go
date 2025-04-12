@@ -2,7 +2,11 @@ import json
 import re
 import requests
 
-class GazaMapsPlugin:
+class GazaMaps:
+    """
+    Plugin for scraping Gaza Maps website
+    """
+
     plugin_type = "Input"
 
     def __init__(self):
@@ -71,7 +75,7 @@ class GazaMapsPlugin:
 
 if __name__ == "__main__":
     # Test the plugin
-    plugin = GazaMapsPlugin()
+    plugin = GazaMaps()
     data = plugin.get_gaza_maps_data()
     if data and data['items']:  # Check also if the list contains something
         print(json.dumps(data, indent=2, ensure_ascii=False))

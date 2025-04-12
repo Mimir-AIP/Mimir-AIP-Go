@@ -7,7 +7,11 @@ You can provide the latitude, longitude, and radius to query the aircraft within
 
 import requests
 
-class ADSBdataPlugin:
+class ADSBdata:
+    """
+    Plugin for fetching aircraft data from ADSB sources
+    """
+
     plugin_type = "Input"
 
     def __init__(self):
@@ -80,7 +84,7 @@ if __name__ == "__main__":
     lat = 51.5074 #London
     lon = -0.1278 #London
     radius = 100
-    plugin = ADSBdataPlugin()
+    plugin = ADSBdata()
     data = plugin.get_aircraft_data(lat, lon, radius)
     print("Flights over London:")
     for aircraft in data:

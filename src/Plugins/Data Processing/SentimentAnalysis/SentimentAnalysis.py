@@ -1,1 +1,0 @@
-# TODO Sentiment Analysis plugin which in the POC we will use to determine if the articles from RSS feed are important

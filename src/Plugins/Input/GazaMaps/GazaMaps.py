@@ -2,73 +2,80 @@ import json
 import re
 import requests
 
-BASE_URL = "https://gazamaps.com"
+class GazaMapsPlugin:
+    plugin_type = "Input"
 
-def scrape_gaza_maps():
-    items = []
-    page_number = 1
+    def __init__(self):
+        self.base_url = "https://gazamaps.com"
 
-    while True:
-        response = requests.get(f"{BASE_URL}?page={page_number}")
-        if response.status_code != 200:
-            print("Failed to fetch the website content.")
-            break
+    def scrape_gaza_maps(self):
+        """
+        Scrapes Gaza Maps and returns a list of items.
+        """
+        items = []
+        page_number = 1
 
-        html_content = response.text
+        while True:
+            response = requests.get(f"{self.base_url}?page={page_number}")
+            if response.status_code != 200:
+                print("Failed to fetch the website content.")
+                break
 
-        # Regex to find the date, image source, and alt text
-        regex = re.compile(
-            r"<h2>(.*?)<\/h2>\s*<a href=\"(.*?)\">\s*<img.*?src=\"(.*?)\".*?alt=\"(.*?)\".*?>\s*<\/a>",
-            re.DOTALL
-        )
+            html_content = response.text
 
-        matches = regex.findall(html_content)
+            # Regex to find the date, image source, and alt text
+            regex = re.compile(
+                r"<h2>(.*?)<\/h2>\s*<a href=\"(.*?)\">\s*<img.*?src=\"(.*?)\".*?alt=\"(.*?)\".*?>\s*<\/a>",
+                re.DOTALL
+            )
 
-        if not matches:
-            print("No matches found using the regex.")
-            break
+            matches = regex.findall(html_content)
 
-        for match in matches:
-            date = match[0].strip()
-            displacement_url = match[1]
-            image_url = BASE_URL + match[2]  # Correctly construct the absolute URL
-            alt_text = match[3]
-            link_url = displacement_url  # No need to add the base URL again since it is already absolute
+            if not matches:
+                print("No matches found using the regex.")
+                break
 
-            item = {
-                "id": link_url,
-                "url": link_url,
-                "title": alt_text,
-                "content_text": alt_text,
-                "image": image_url,
-                "date_published": date,
-            }
-            items.append(item)
+            for match in matches:
+                date = match[0].strip()
+                displacement_url = match[1]
+                image_url = self.base_url + match[2]  # Correctly construct the absolute URL
+                alt_text = match[3]
+                link_url = displacement_url  # No need to add the base URL again since it is already absolute
 
-        # Check for the next page
-        next_page_regex = re.compile(r'<a.*?href="([^"]*?page=(\d+))".*?>Next</a>', re.IGNORECASE)
-        next_page_match = next_page_regex.search(html_content)
-        if not next_page_match:
-            break
+                item = {
+                    "id": link_url,
+                    "url": link_url,
+                    "title": alt_text,
+                    "content_text": alt_text,
+                    "image": image_url,
+                    "date_published": date,
+                }
+                items.append(item)
 
-        page_number += 1
+            # Check for the next page
+            next_page_regex = re.compile(r'<a.*?href="([^"]*?page=(\d+))".*?>Next</a>', re.IGNORECASE)
+            next_page_match = next_page_regex.search(html_content)
+            if not next_page_match:
+                break
 
-    # Generate JSON feed compatible with RSSGuard
-    feed = {
-        "version": "https://jsonfeed.org/version/1",
-        "title": "Gaza Maps Feed",
-        "home_page_url": BASE_URL,
-        "feed_url": BASE_URL,
-        "items": items,
-    }
+            page_number += 1
 
-    return feed
+        return items
+
+    def get_gaza_maps_data(self):
+        """
+        Returns a JSON feed compatible with RSSGuard.
+        """
+        items = self.scrape_gaza_maps()
+        return {"items": items}
 
 if __name__ == "__main__":
-    result = scrape_gaza_maps()
-    if result and result['items']:  # Check also if the list contains something
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+    # Test the plugin
+    plugin = GazaMapsPlugin()
+    data = plugin.get_gaza_maps_data()
+    if data and data['items']:  # Check also if the list contains something
+        print(json.dumps(data, indent=2, ensure_ascii=False))
     else:
         print("No items found or an error occurred.")
-        if result is not None:
+        if data is not None:
             print("The regex likely failed to match any content.")

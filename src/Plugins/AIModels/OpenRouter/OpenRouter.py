@@ -1,80 +1,125 @@
-from Plugins.AIModels.BaseAIModel import BaseAIModel
-import requests
+"""
+OpenRouter AI model plugin for accessing various LLM APIs
+"""
+
 import os
+import requests
 from dotenv import load_dotenv
+from ..BaseAIModel import BaseAIModel
 
+class OpenRouter(BaseAIModel):
+    """
+    Plugin for accessing various LLM APIs through OpenRouter
+    """
 
-class OpenRouterLLMClient:
     def __init__(self, base_url="https://openrouter.ai/api/v1"):
         """
-        Initialize the OpenRouter LLM client.
-        
-        :param base_url: Base URL for the OpenRouter API.
+        Initialize the OpenRouter plugin
+
+        Args:
+            base_url (str): Base URL for the OpenRouter API
         """
+        super().__init__()
+        self.base_url = base_url
         load_dotenv()
         self.api_key = os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY environment variable not set")
-        
-        self.base_url = base_url
 
-    def query_chat_model(self, model, messages, max_tokens=1000, temperature=0.7, referer=None, title=None):
+    def chat_completion(self, model, messages):
         """
-        Send a query to the specified chat-based model.
+        Generate a chat completion using the specified model
 
-        :param model: The model name to query (e.g., "openai/gpt-4", "anthropic/claude-v1").
-        :param messages: A list of message dictionaries in the format [{"role": "user", "content": "your message"}].
-        :param max_tokens: Maximum number of tokens to generate.
-        :param temperature: Sampling temperature for randomness.
-        :param referer: (Optional) URL of your site for OpenRouter rankings.
-        :param title: (Optional) Title of your site for OpenRouter rankings.
-        :return: The response content from the model.
+        Args:
+            model (str): Model identifier to use for completion
+            messages (list): List of message dicts with 'role' and 'content' keys
+                           Example: [{"role": "user", "content": "Hello!"}]
+
+        Returns:
+            str: Generated response text
         """
-        url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/CiaranMcAleer/Mimir-AIP",
+            "Content-Type": "application/json"
         }
 
-        # Add optional headers if provided
-        if referer:
-            headers["HTTP-Referer"] = referer
-        if title:
-            headers["X-Title"] = title
-
-        payload = {
+        data = {
             "model": model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+            "messages": messages
         }
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=data
+            )
             response.raise_for_status()
-            data = response.json()
-
-            # Return the generated content
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        except requests.exceptions.HTTPError as errh:
-            print("HTTP Error:", errh)
-        except requests.exceptions.ConnectionError as errc:
-            print("Error Connecting:", errc)
-        except requests.exceptions.Timeout as errt:
-            print("Timeout Error:", errt)
+            result = response.json()
+            return result["choices"][0]["message"]["content"]
         except requests.exceptions.RequestException as err:
-            print("API Error:", err)
-        return None
+            print(f"API Error: {err}")
+            return None
 
+    def text_completion(self, model, prompt):
+        """
+        Generate a text completion using the specified model
+
+        Args:
+            model (str): Model identifier to use for completion
+            prompt (str): Text prompt to complete
+
+        Returns:
+            str: Generated completion text
+        """
+        messages = [{"role": "user", "content": prompt}]
+        return self.chat_completion(model, messages)
+
+    def get_available_models(self):
+        """
+        Get list of available models
+
+        Returns:
+            list: List of model identifiers that can be used with this plugin
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": "https://github.com/CiaranMcAleer/Mimir-AIP"
+        }
+
+        try:
+            response = requests.get(
+                f"{self.base_url}/models",
+                headers=headers
+            )
+            response.raise_for_status()
+            result = response.json()
+            return [model["id"] for model in result["data"]]
+        except requests.exceptions.RequestException as err:
+            print(f"API Error: {err}")
+            return []
 
 if __name__ == "__main__":
-    client = OpenRouterLLMClient()
-
-    # Query a chat-based model with a conversation
-    model_name = "meta-llama/llama-3-8b-instruct:free"  # Replace with the desired model name
-    messages = [
-        {"role": "user", "content": "What are the key benefits of modular plugin architectures?"}
-    ]
-    response = client.query_chat_model(model_name, messages, referer="https://mimir-aip.com", title="Mimir-AIP")
-
-    print("Model Response:", response)
+    # Example usage
+    plugin = OpenRouter()
+    
+    try:
+        # Get available models
+        models = plugin.get_available_models()
+        print("Available models:", models)
+        
+        if models:
+            # Test chat completion
+            messages = [
+                {"role": "user", "content": "What is the capital of France?"}
+            ]
+            response = plugin.chat_completion(models[0], messages)
+            print("\nChat completion response:", response)
+            
+            # Test text completion
+            prompt = "Complete this sentence: The Eiffel Tower is located in"
+            response = plugin.text_completion(models[0], prompt)
+            print("\nText completion response:", response)
+    except Exception as e:
+        print(f"Error: {str(e)}")

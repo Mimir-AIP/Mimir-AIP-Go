@@ -2,7 +2,13 @@ import re
 import requests
 import html
 
-class WebScraperPlugin:
+class WebScraping:
+    """
+    Plugin for web scraping with configurable user agent, timeout, and proxy
+    """
+
+    plugin_type = "Input"
+
     def __init__(self, user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3", timeout=10, proxy=None):
         self.user_agent = user_agent
         self.timeout = timeout
@@ -67,7 +73,7 @@ if __name__ == "__main__":
     # Example usage
     print("WebScraping Plugin")
     url = "https://books.toscrape.com/catalogue/the-project_856/index.html"
-    plugin = WebScraperPlugin()
+    plugin = WebScraping()
 
     # Scrape the page title
     title = plugin.scrape(url, scrape_type="title")

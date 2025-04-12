@@ -1,14 +1,29 @@
+"""
+Plugin for scraping White House press pool reports
+"""
+
 import requests
 import json
 from datetime import datetime
 
 class WhiteHousePressPoolScraper:
+    """
+    Plugin for scraping White House press pool reports from forth.news
+    """
+    plugin_type = "Input"
+
     def __init__(self):
+        """
+        Initialize the scraper with the API endpoint and request parameters
+        """
         self.url = 'https://www.forth.news/api/graphql'
         self.headers = self._get_headers()
         self.payload = self._get_payload()
 
     def _get_headers(self):
+        """
+        Get headers for the API request
+        """
         return {
             'accept': '*/*',
             'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
@@ -29,6 +44,9 @@ class WhiteHousePressPoolScraper:
         }
 
     def _get_payload(self):
+        """
+        Get GraphQL query payload for the API request
+        """
         return {
             "operationName": "getList",
             "variables": {"shortName": "whpool"},
@@ -36,6 +54,12 @@ class WhiteHousePressPoolScraper:
         }
 
     def fetch_data(self):
+        """
+        Fetch the latest press pool reports
+
+        Returns:
+            dict: JSON response containing press pool reports
+        """
         response = requests.post(self.url, headers=self.headers, json=self.payload)
         if response.status_code == 200:
             data = response.json()
@@ -44,6 +68,9 @@ class WhiteHousePressPoolScraper:
             return None
 
     def _parse_data(self, data):
+        """
+        Parse the JSON response into a JSON feed format
+        """
         json_feed = {
             "version": "https://jsonfeed.org/version/1",
             "title": "Forth News - White House Pool",

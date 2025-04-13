@@ -1,7 +1,31 @@
+"""
+Plugin for generating HTML reports with sections and styling
+
+Example usage:
+    plugin = HTMLReport()
+    result = plugin.execute_pipeline_step({
+        "config": {
+            "title": "Report Title",
+            "sections": [
+                {
+                    "heading": "Section 1",
+                    "text": "Some content",
+                    "javascript": "console.log('Hello');"
+                }
+            ],
+            "output_dir": "reports",
+            "filename": "report.html"
+        },
+        "output": "report_path"
+    }, {})
+"""
+
 import os
+import logging
+from Plugins.BasePlugin import BasePlugin
 
 
-class HTMLReport:
+class HTMLReport(BasePlugin):
     """
     Plugin for generating HTML reports with sections and styling
     """
@@ -13,6 +37,55 @@ class HTMLReport:
         # Create the output directory if it doesn't exist
         os.makedirs(self.output_directory, exist_ok=True)
 
+    def execute_pipeline_step(self, step_config, context):
+        """Execute a pipeline step for this plugin
+        
+        Expected step_config format:
+        {
+            "plugin": "HTMLReport",
+            "config": {
+                "title": "Report Title",
+                "sections": [
+                    {
+                        "heading": "Section 1",
+                        "text": "Some content",
+                        "javascript": "console.log('Hello');"
+                    }
+                ],
+                "output_dir": "reports",  # Optional
+                "filename": "report.html"  # Optional
+            },
+            "output": "report_path"
+        }
+        """
+        config = step_config["config"]
+        logger = logging.getLogger(__name__)
+        
+        # Update output directory if specified
+        if "output_dir" in config:
+            self.output_directory = config["output_dir"]
+            os.makedirs(self.output_directory, exist_ok=True)
+        
+        # Evaluate sections expression
+        try:
+            sections = eval(config["sections"], {"__builtins__": {}}, {"context": context})
+            logger.debug(f"Evaluated sections: {sections}")
+        except Exception as e:
+            logger.error(f"Error evaluating sections: {e}")
+            raise
+        
+        # Generate report
+        try:
+            report_path = self.generate_report(
+                title=config["title"],
+                sections=sections,
+                filename=config.get("filename", "report.html")
+            )
+            logger.debug(f"Generated report at: {report_path}")
+            return {step_config["output"]: report_path}
+        except Exception as e:
+            logger.error(f"Error generating report: {e}")
+            raise
 
     def generate_report(self, title, sections, filename="report.html"):
         """
@@ -20,75 +93,61 @@ class HTMLReport:
 
         :param title: Title of the HTML document
         :param sections: List of sections, where each section is a dictionary with:
-                         - "heading": Heading for the section
-                         - "text": Text content for the section (HTML allowed)
-                         - "javascript": JavaScript code for the section
+                     - "heading": Heading for the section
+                     - "text": Text content for the section (HTML allowed)
+                     - "javascript": JavaScript code for the section
         :param filename: Name of the output HTML file
         """
         # Generate HTML content for all text and JavaScript sections
         section_html = ""
-        for i, section in enumerate(sections):
-            heading = section.get("heading", f"Section {i + 1}")
-            text = section.get("text", "")
-            javascript = section.get("javascript", "")
-
-            # Add section content to the report
+        for section in sections:
             section_html += f"""
             <div class="section">
-                <h2>{heading}</h2>
-                <div class="text-content">
-                    {text}
+                <h2>{section.get('heading', '')}</h2>
+                <div class="content">
+                    {section.get('text', '')}
                 </div>
-                <script>
-                    {javascript}
-                </script>
+                {f'<script>{section["javascript"]}</script>' if section.get('javascript') else ''}
             </div>
             """
 
-        # Full HTML template
-        html_template = f"""<!DOCTYPE html>
-<html lang="en">
+        # HTML template with styling
+        html_template = f"""
+<!DOCTYPE html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title}</title>
-    <link rel="stylesheet" href="leaflet.css" />
-    <script src="leaflet.js"></script>
     <style>
         body {{
             font-family: Arial, sans-serif;
             line-height: 1.6;
-            margin: 2em;
             color: #333;
-            background-color: #f5f5f5;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
         }}
         h1 {{
+            color: #2c3e50;
             text-align: center;
-            color: #444;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }}
+        h2 {{
+            color: #34495e;
+            margin-top: 30px;
         }}
         .section {{
-            margin-bottom: 20px;
-            padding: 15px;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            background-color: #fff;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }}
-        .section h2 {{
-            color: #555;
-            border-bottom: 2px solid #007BFF;
-            margin-bottom: 15px;
-            padding-bottom: 5px;
-        }}
-        .text-content {{
-            padding: 10px;
-            background-color: #fcfcfc;
-            border: 1px solid #eee;
+            background: #fff;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
             border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }}
-        pre {{
-            background-color: #f4f4f4;
+        .content {{
+            margin: 15px 0;
             padding: 10px;
+            background: #f9f9f9;
             border-radius: 5px;
             overflow-x: auto;
         }}
@@ -120,53 +179,32 @@ class HTMLReport:
         return report_path
 
 
-# Usage Example
 if __name__ == "__main__":
-    generator = HTMLReport()
-
-    # Define sections with headings, text, and JavaScript
-    sections = [
-        {
-            "heading": "Introduction",
-            "text": "<p>Welcome to the sample report. This is the introduction.</p>",
-            "javascript": "console.log('Intro section loaded!');"
+    # Test the plugin
+    plugin = HTMLReport()
+    
+    # Test configuration
+    test_config = {
+        "plugin": "HTMLReport",
+        "config": {
+            "title": "Test Report",
+            "sections": [
+                {
+                    "heading": "Section 1",
+                    "text": "<p>This is a test section with some <b>formatted</b> content.</p>",
+                    "javascript": "console.log('Section 1 loaded');"
+                },
+                {
+                    "heading": "Section 2",
+                    "text": "<p>Another section with a list:</p><ul><li>Item 1</li><li>Item 2</li></ul>"
+                }
+            ],
+            "output_dir": "test_reports",
+            "filename": "test_report.html"
         },
-        {
-            "heading": "Dynamic Content",
-            "text": """
-            <p>This section demonstrates the inclusion of <b>dynamic content</b>.</p>
-            <p>Below is a counter that updates when you click the button:</p>
-            <button onclick="incrementCounter()">Click Me</button>
-            <p>Count: <span id="counter">0</span></p>
-            """,
-            "javascript": """
-            let count = 0;
-            function incrementCounter() {
-                count++;
-                document.getElementById('counter').textContent = count;
-            }
-            """
-        },
-        {
-            "heading": "Map example",
-            "text": '<div id="map" style="width: 600px; height: 400px;"></div>',
-            "javascript": """
-            var map = L.map('map').setView([51.5074, -0.1278], 2);
-
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            }).addTo(map);"""
-        },
-        {
-            "heading": "Conclusion",
-            "text": "<p>This is the conclusion of the report. Thank you for reading!</p>",
-            "javascript": "console.log('Conclusion section loaded!');"
-        }
-    ]
-
-    # Generate the report
-    generator.generate_report(
-        title="Sample HTML Report with Multiple Sections",
-        sections=sections,
-        filename="multi_section_report.html"
-    )
+        "output": "report_path"
+    }
+    
+    # Generate test report
+    result = plugin.execute_pipeline_step(test_config, {})
+    print(f"Test report generated at: {result['report_path']}")

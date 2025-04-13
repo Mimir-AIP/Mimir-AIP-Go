@@ -4,33 +4,71 @@ RSS, Atom and JSON feed parser
 This plugin can be used to fetch and parse RSS, Atom and JSON feeds.
 
 Example usage:
-    plugin = FeedPlugin(url)
-    feed_data = plugin.get_feed()
+    plugin = RssFeed()
+    feed_data = plugin.execute_pipeline_step({
+        "config": {
+            "url": "http://example.com/feed.xml",
+            "feed_name": "Example"
+        },
+        "output": "feed_data"
+    }, {})
     print(feed_data)
 """
 
 import requests
 import json
 import re
+import logging
+from Plugins.BasePlugin import BasePlugin
 
-class RssFeed:
+
+class RssFeed(BasePlugin):
     """
     RSS, Atom and JSON feed parser
     """
 
     plugin_type = "Input"
 
-    def __init__(self, input_data=None, is_url=True):
-        """
-        Initialize the plugin
-
-        :param input_data: The URL or the direct feed content. If None, must be set later via set_input
-        :param is_url: If True, input_data is a URL, otherwise it is the direct feed content
-        """
-        self.input_data = input_data
-        self.is_url = is_url
+    def __init__(self):
+        """Initialize the plugin"""
+        self.input_data = None
+        self.is_url = True
         self.feed_type = None
         self.data = None
+
+    def execute_pipeline_step(self, step_config, context):
+        """Execute a pipeline step for this plugin
+        
+        Expected step_config format:
+        {
+            "plugin": "RSS-Feed",
+            "config": {
+                "url": "http://example.com/feed.xml",
+                "feed_name": "Example Feed"
+            },
+            "output": "feed_data"  # Optional, defaults to feed_{feed_name}
+        }
+        """
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Executing pipeline step with config: {step_config}")
+        config = step_config["config"]
+        logger.debug(f"Setting input data: {config['url']}")
+        self.set_input(config["url"])
+        logger.debug(f"Fetching feed...")
+        try:
+            self.fetch_feed()
+        except Exception as e:
+            logger.error(f"Error fetching feed: {e}")
+            raise
+        
+        # Store result in context
+        output_key = step_config.get("output", f"feed_{config['feed_name']}")
+        logger.debug(f"RSS feed plugin output key: {output_key}")
+        logger.debug(f"RSS feed plugin data: {self.data}")
+        context[output_key] = self.data
+        logger.debug(f"RSS feed plugin context after update: {context}")
+        logger.debug(f"Pipeline step execution complete")
+        return context
 
     def set_input(self, input_data, is_url=True):
         """
@@ -70,26 +108,42 @@ class RssFeed:
         """
         Fetch the feed
         """
-        if self.input_data is None:
-            raise ValueError("Input data must be set before fetching feed")
+        logger = logging.getLogger(__name__)
+        try:
+            if self.input_data is None:
+                raise ValueError("Input data must be set before fetching feed")
 
-        if not self.feed_type:
-            self.detect_feed_type()
+            if not self.feed_type:
+                self.detect_feed_type()
 
-        if self.is_url:
-            response = requests.get(self.input_data)
-            content = response.text
-        else:
-            content = self.input_data
+            if self.is_url:
+                response = requests.get(self.input_data)
+                response.raise_for_status()  # Raise an exception for HTTP errors
+                content = response.text
+            else:
+                content = self.input_data
 
-        if self.feed_type == 'rss':
-            self.data = self.parse_rss(content)
-        elif self.feed_type == 'atom':
-            self.data = self.parse_atom(content)
-        elif self.feed_type == 'json':
-            self.data = self.parse_json(content)
-        else:
-            raise ValueError("Unsupported feed type")
+            if self.feed_type == 'rss':
+                self.data = self.parse_rss(content)
+            elif self.feed_type == 'atom':
+                self.data = self.parse_atom(content)
+            elif self.feed_type == 'json':
+                self.data = self.parse_json(content)
+            else:
+                raise ValueError("Unsupported feed type")
+
+            logger.debug(f"Successfully fetched feed with {len(self.data)} items")
+            return self.data
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP error occurred while fetching feed: {e}")
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request error occurred while fetching feed: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching feed: {e}")
+            raise
 
     def parse_rss(self, content):
         """
@@ -149,25 +203,18 @@ class RssFeed:
         except Exception as e:
             raise ValueError("Error parsing JSON feed: " + str(e))
 
-    def get_feed(self):
-        """
-        Get the feed
-        """
-        if self.input_data is None:
-            raise ValueError("Input data must be set before getting feed")
-
-        self.fetch_feed()
-        if self.data is None:
-            raise ValueError("Error fetching feed")
-        return json.dumps(self.data, indent=2)
-
 # Example usage
 if __name__ == "__main__":
     # Example with URL
     url = "http://feeds.bbci.co.uk/news/world/rss.xml"
     plugin = RssFeed()
-    plugin.set_input(url)
-    feed_data = plugin.get_feed()
+    feed_data = plugin.execute_pipeline_step({
+        "config": {
+            "url": url,
+            "feed_name": "BBC News"
+        },
+        "output": "feed_data"
+    }, {})
     print(feed_data)
 
     # Example with direct feed content
@@ -186,6 +233,11 @@ if __name__ == "__main__":
     </feed>
     """
     plugin = RssFeed()
-    plugin.set_input(direct_feed_content, is_url=False)
-    feed_data = plugin.get_feed()
+    feed_data = plugin.execute_pipeline_step({
+        "config": {
+            "url": direct_feed_content,
+            "feed_name": "Example Feed"
+        },
+        "output": "feed_data"
+    }, {})
     print(feed_data)

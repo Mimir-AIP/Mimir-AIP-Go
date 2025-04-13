@@ -1,96 +1,201 @@
-class LeafletJSmap:
-    """
-    Plugin for generating Leaflet.js maps
-    """
+"""
+Plugin for generating interactive maps using Leaflet.js
+
+Example usage:
+    plugin = LeafletJSmap()
+    result = plugin.execute_pipeline_step({
+        "config": {
+            "title": "My Map",
+            "center": [51.5074, -0.1278],  # London
+            "zoom": 10,
+            "markers": [
+                {
+                    "lat": 51.5074,
+                    "lon": -0.1278,
+                    "popup": "London"
+                }
+            ],
+            "output_dir": "maps",
+            "filename": "map.html"
+        },
+        "output": "map_path"
+    }, {})
+"""
+
+import os
+import json
+from Plugins.BasePlugin import BasePlugin
+
+
+class LeafletJSmap(BasePlugin):
+    """Plugin for generating interactive maps using Leaflet.js"""
 
     plugin_type = "Output"
 
-    def __init__(self):
-        pass
+    def __init__(self, output_directory="maps"):
+        """Initialize the LeafletJSmap plugin"""
+        self.output_directory = output_directory
+        os.makedirs(self.output_directory, exist_ok=True)
 
-    def generate_map(self, coordinates, marker_texts, output_file=None, return_js=False):
+    def execute_pipeline_step(self, step_config, context):
+        """Execute a pipeline step for this plugin
+        
+        Expected step_config format:
+        {
+            "plugin": "LeafletJSmap",
+            "config": {
+                "title": "Map Title",
+                "center": [lat, lon],
+                "zoom": zoom_level,
+                "markers": [
+                    {
+                        "lat": latitude,
+                        "lon": longitude,
+                        "popup": "Marker text"
+                    }
+                ],
+                "output_dir": "maps",  # Optional
+                "filename": "map.html"  # Optional
+            },
+            "output": "map_path"
+        }
         """
-        Generate a Leaflet map with markers at specified coordinates.
+        config = step_config["config"]
+        
+        # Update output directory if specified
+        if "output_dir" in config:
+            self.output_directory = config["output_dir"]
+            os.makedirs(self.output_directory, exist_ok=True)
+        
+        # Generate map
+        map_path = self.generate_map(
+            title=config["title"],
+            center=config["center"],
+            zoom=config.get("zoom", 10),
+            markers=config.get("markers", []),
+            filename=config.get("filename", "map.html")
+        )
+        
+        return {step_config["output"]: map_path}
 
+    def generate_map(self, title, center, zoom=10, markers=None, filename="map.html"):
+        """
+        Generate an interactive map using Leaflet.js
+        
         Args:
-            coordinates (list): List of tuples containing latitude and longitude coordinates.
-            marker_texts (list): List of strings to be used as marker labels.
-            output_file (str, optional): Path to output HTML file. Defaults to None.
-            return_js (bool, optional): Return the JavaScript code block instead of writing to file. Defaults to False.
-
+            title (str): Map title
+            center (list): [lat, lon] coordinates for map center
+            zoom (int): Initial zoom level
+            markers (list): List of marker dictionaries with lat, lon, and popup
+            filename (str): Output filename
+            
         Returns:
-            str: HTML content if output_file is None, JavaScript code block if return_js is True, None otherwise.
+            str: Path to generated map file
         """
-        if not coordinates or not marker_texts or len(coordinates) != len(marker_texts):
-            raise ValueError("Coordinates and marker_texts must be non-empty lists of equal length")
+        if markers is None:
+            markers = []
+            
+        # Convert markers to JavaScript
+        markers_js = ""
+        for marker in markers:
+            markers_js += f"""
+            L.marker([{marker['lat']}, {marker['lon']}])
+                .addTo(map)
+                .bindPopup("{marker['popup']}");
+            """
+            
+        # HTML template with Leaflet.js
+        html_template = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{title}</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body {{
+            padding: 0;
+            margin: 0;
+        }}
+        #map {{
+            height: 100vh;
+            width: 100vw;
+        }}
+        .title {{
+            position: absolute;
+            top: 10px;
+            left: 50px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }}
+    </style>
+</head>
+<body>
+    <div class="title">{title}</div>
+    <div id="map"></div>
+    <script>
+        var map = L.map('map').setView([{center[0]}, {center[1]}], {zoom});
+        
+        L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }}).addTo(map);
+        
+        {markers_js}
+    </script>
+</body>
+</html>
+"""
+        # Save map to file
+        map_path = os.path.join(self.output_directory, filename)
+        with open(map_path, "w", encoding="utf-8") as f:
+            f.write(html_template)
+            
+        print(f"Map generated: {map_path}")
+        return map_path
 
-        # Calculate map center
-        center_lat = sum(lat for lat, _ in coordinates) / len(coordinates)
-        center_lon = sum(lon for _, lon in coordinates) / len(coordinates)
-
-        # Generate HTML template
-        html_content = f'''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Leaflet Map</title>
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-            <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-            <style>
-                #map {{ height: 600px; width: 100%; }}
-            </style>
-        </head>
-        <body>
-            <div id="map"></div>
-            <script>
-                var map = L.map('map').setView([{center_lat}, {center_lon}], 10);
-                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                    attribution: '© OpenStreetMap contributors'
-                }}).addTo(map);
-        '''
-
-        # Add markers
-        for (lat, lon), text in zip(coordinates, marker_texts):
-            html_content += f'''
-                L.marker([{lat}, {lon}])
-                    .bindPopup("{text}")
-                    .addTo(map);
-            '''
-
-        html_content += '''
-            </script>
-        </body>
-        </html>
-        '''
-
-        if return_js:
-            # Extract only the JavaScript code block
-            js_start = html_content.find('<script>') + 8
-            js_end = html_content.find('</script>')
-            return html_content[js_start:js_end].strip()
-
-        if output_file:
-            with open(output_file, 'w') as f:
-                f.write(html_content)
-            return None
-
-        return html_content
 
 if __name__ == "__main__":
-    # Example usage
-    coordinates = [
-        (51.5, -0.09),  # London
-        (48.8566, 2.3522),  # Paris
-        (40.7128, -74.0060)  # New York
-    ]
-    marker_texts = [
-        "London: The capital of England",
-        "Paris: The city of lights",
-        "New York: The big apple"
-    ]
-
+    # Test the plugin
     plugin = LeafletJSmap()
     
-    # Generate map and save to file
-    plugin.generate_map(coordinates, marker_texts, output_file="map.html")
-    print("Map saved to map.html")
+    # Test configuration
+    test_config = {
+        "plugin": "LeafletJSmap",
+        "config": {
+            "title": "London Points of Interest",
+            "center": [51.5074, -0.1278],  # London
+            "zoom": 13,
+            "markers": [
+                {
+                    "lat": 51.5074,
+                    "lon": -0.1278,
+                    "popup": "Center of London"
+                },
+                {
+                    "lat": 51.5007,
+                    "lon": -0.1246,
+                    "popup": "London Eye"
+                },
+                {
+                    "lat": 51.5014,
+                    "lon": -0.1419,
+                    "popup": "Buckingham Palace"
+                }
+            ],
+            "output_dir": "test_maps",
+            "filename": "london_poi.html"
+        },
+        "output": "map_path"
+    }
+    
+    # Generate test map
+    try:
+        result = plugin.execute_pipeline_step(test_config, {})
+        print(f"Test map generated at: {result['map_path']}")
+    except Exception as e:
+        print(f"Error: {e}")

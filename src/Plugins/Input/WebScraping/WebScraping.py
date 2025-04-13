@@ -1,92 +1,174 @@
-import re
-import requests
-import html
+"""
+Plugin for web scraping using BeautifulSoup4
 
-class WebScraping:
-    """
-    Plugin for web scraping with configurable user agent, timeout, and proxy
-    """
+Example usage:
+    plugin = WebScraping()
+    result = plugin.execute_pipeline_step({
+        "config": {
+            "url": "https://example.com",
+            "selectors": {
+                "title": "h1",
+                "content": "article p",
+                "links": "a.external"
+            },
+            "headers": {  # Optional
+                "User-Agent": "Custom User Agent"
+            }
+        },
+        "output": "scraped_data"
+    }, {})
+"""
+
+import requests
+from bs4 import BeautifulSoup
+from Plugins.BasePlugin import BasePlugin
+
+
+class WebScraping(BasePlugin):
+    """Plugin for web scraping using BeautifulSoup4"""
 
     plugin_type = "Input"
 
-    def __init__(self, user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3", timeout=10, proxy=None):
-        self.user_agent = user_agent
-        self.timeout = timeout
-        self.proxy = proxy
+    def __init__(self):
+        """Initialize the WebScraping plugin"""
+        self.default_headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        }
 
-    def _clean_text(self, text):
-        """Helper method to clean and normalize text content"""
-        # First decode HTML entities
-        text = html.unescape(text)
-        # Replace newlines, tabs, etc. with spaces
-        text = re.sub(r'[\n\r\t]', ' ', text)
-        # Replace multiple spaces with a single space
-        text = re.sub(r'\s+', ' ', text)
-        # Remove special control characters
-        text = re.sub(r'-->', '', text)
-        # Strip leading/trailing whitespace
-        return text.strip()
+    def execute_pipeline_step(self, step_config, context):
+        """Execute a pipeline step for this plugin
+        
+        Expected step_config format:
+        {
+            "plugin": "WebScraping",
+            "config": {
+                "url": "https://example.com",
+                "selectors": {
+                    "title": "h1",
+                    "content": "article p",
+                    "links": "a.external"
+                },
+                "headers": {  # Optional
+                    "User-Agent": "Custom User Agent"
+                }
+            },
+            "output": "scraped_data"
+        }
+        
+        If url is a variable from context, it will be evaluated.
+        """
+        config = step_config["config"]
+        url = config["url"]
+        
+        # If url is a variable reference, evaluate it
+        if isinstance(url, str) and url in context:
+            url = context[url]
+        
+        # Get headers
+        headers = {**self.default_headers, **(config.get("headers", {}))}
+        
+        # Scrape data
+        data = self.scrape_url(
+            url=url,
+            selectors=config["selectors"],
+            headers=headers
+        )
+        
+        return {step_config["output"]: data}
 
-    def scrape(self, url, css_selector=None, scrape_type="text"):
-        headers = {'User-Agent': self.user_agent}
-        proxies = {'http': self.proxy, 'https': self.proxy} if self.proxy else None
-
-        # Request the webpage
-        response = requests.get(url, headers=headers, timeout=self.timeout, proxies=proxies)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        html_content = response.text
-
-        if scrape_type == "text":
-            # Remove all HTML tags to get the raw text content
-            text = re.sub(r"<[^>]*>", "", html_content)
-            return self._clean_text(text)
+    def scrape_url(self, url, selectors, headers=None):
+        """
+        Scrape data from a URL using BeautifulSoup4
+        
+        Args:
+            url (str): URL to scrape
+            selectors (dict): Dictionary mapping names to CSS selectors
+            headers (dict): Optional request headers
             
-        elif scrape_type == "title":
-            # Extract the content of the <title> tag
-            match = re.search(r"<title>(.*?)</title>", html_content, re.IGNORECASE | re.DOTALL)
-            if match:
-                return self._clean_text(match.group(1))
-            return None
+        Returns:
+            dict: Scraped data
+        """
+        if headers is None:
+            headers = self.default_headers
             
-        elif css_selector:
-            # Support basic CSS selectors (only tag-based, no attributes/classes)
-            # Find the matching tag's content
-            tag_pattern = f"<{css_selector}[^>]*>(.*?)</{css_selector}>"
-            tag_matches = re.findall(tag_pattern, html_content, re.IGNORECASE | re.DOTALL)
+        try:
+            # Fetch page
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            
+            # Parse HTML
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Extract data using selectors
+            data = {}
+            for name, selector in selectors.items():
+                elements = soup.select(selector)
+                if len(elements) == 1:
+                    data[name] = elements[0].get_text(strip=True)
+                else:
+                    data[name] = [el.get_text(strip=True) for el in elements]
+                    
+            return data
+            
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"Error scraping URL: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Error parsing HTML: {str(e)}")
 
-            # Clean the inner HTML (remove nested tags) for each match
-            cleaned_matches = []
-            for match in tag_matches:
-                # Remove HTML tags
-                clean_text = re.sub(r"<[^>]*>", "", match)
-                # Clean up the text
-                clean_text = self._clean_text(clean_text)
-                # Filter out empty or whitespace-only strings
-                if clean_text and not clean_text.isspace():
-                    cleaned_matches.append(clean_text)
-            
-            return cleaned_matches
-        else:
-            return None
 
 if __name__ == "__main__":
-    # Example usage
-    print("WebScraping Plugin")
-    url = "https://books.toscrape.com/catalogue/the-project_856/index.html"
+    # Test the plugin
     plugin = WebScraping()
-
-    # Scrape the page title
-    title = plugin.scrape(url, scrape_type="title")
-    print("Scraped title:", title)
-
-    # Scrape all text of elements matching <h1> tags
-    h1_text = plugin.scrape(url, css_selector="h1")
-    print("Scraped text for h1 elements:", h1_text)
-
-    # Scrape all text of elements matching <p> tags
-    p_text = plugin.scrape(url, css_selector="p")
-    print("Scraped text for p elements:", p_text)
-
-    # Scrape all text
-    all_text = plugin.scrape(url)
-    print("Scraped all text:", all_text)
+    
+    # Test with direct URL
+    test_config = {
+        "plugin": "WebScraping",
+        "config": {
+            "url": "https://example.com",
+            "selectors": {
+                "title": "h1",
+                "description": "p",
+                "links": "a"
+            }
+        },
+        "output": "data"
+    }
+    
+    try:
+        result = plugin.execute_pipeline_step(test_config, {})
+        print("Scraped data:")
+        for key, value in result["data"].items():
+            if isinstance(value, list):
+                print(f"\n{key}:")
+                for item in value[:3]:  # Show first 3 items
+                    print(f"  - {item}")
+            else:
+                print(f"\n{key}: {value}")
+    except ValueError as e:
+        print(f"Error: {e}")
+        
+    # Test with URL from context
+    test_context = {
+        "target_url": "https://news.ycombinator.com"
+    }
+    
+    test_config["config"].update({
+        "url": "target_url",
+        "selectors": {
+            "titles": ".title a",
+            "scores": ".score",
+            "authors": ".hnuser"
+        }
+    })
+    
+    try:
+        result = plugin.execute_pipeline_step(test_config, test_context)
+        print("\nHacker News Top Stories:")
+        for i, title in enumerate(result["data"]["titles"][:5]):
+            print(f"\n{i+1}. {title}")
+            if i < len(result["data"].get("scores", [])):
+                print(f"   Score: {result['data']['scores'][i]}")
+            if i < len(result["data"].get("authors", [])):
+                print(f"   Author: {result['data']['authors'][i]}")
+    except ValueError as e:
+        print(f"Error: {e}")

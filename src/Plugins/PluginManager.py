@@ -87,6 +87,7 @@ class PluginManager:
                                     plugin_instance = plugin_class()
                                 
                                 self.plugins.setdefault(plugin_type, {})[folder] = plugin_instance
+                                print(f"Successfully loaded plugin: {folder}")  # Debug print
                             except Exception as e:
                                 self.warnings.add(f"Error instantiating plugin {folder}: {str(e)}")
                         else:
@@ -98,13 +99,42 @@ class PluginManager:
                 except Exception as e:
                     self.warnings.add(f"Error loading plugin {folder}: {str(e)}")
 
-    def get_plugin(self, plugin_type, name):
-        return self.plugins.get(plugin_type, {}).get(name)
-
     def get_plugins(self, plugin_type=None):
+        """
+        Get all plugins or plugins of a specific type
+
+        Args:
+            plugin_type (str): Type of plugin to get. If None, returns all plugins
+
+        Returns:
+            dict: Dictionary of plugins, where keys are plugin names and values are plugin instances
+        """
         if plugin_type:
             return self.plugins.get(plugin_type, {})
         return self.plugins
+
+    def get_plugin(self, plugin_type, name):
+        """
+        Get a specific plugin instance
+
+        Args:
+            plugin_type (str): Type of plugin (e.g., 'Input', 'Output', 'Data Processing')
+            name (str): Name of the plugin (e.g., 'rss_feed', 'HTMLReport')
+
+        Returns:
+            object: Plugin instance if found, None otherwise
+        """
+        if plugin_type not in self.plugins:
+            return None
+        
+        if name not in self.plugins[plugin_type]:
+            return None
+        
+        return self.plugins[plugin_type][name]
+
+    def get_all_plugins(self):
+        """Get all loaded plugins"""
+        return self.get_plugins()
 
 if __name__ == "__main__":
     manager = PluginManager()

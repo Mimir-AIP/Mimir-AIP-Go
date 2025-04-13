@@ -1,7 +1,7 @@
 """
-White House Press Pool scraper plugin
+WhiteHousePressPool plugin for fetching White House press pool reports
 """
 
-from .WhiteHousePressPool import WhiteHousePressPoolScraper
+from .WhiteHousePressPool import WhiteHousePressPool
 
-__all__ = ['WhiteHousePressPoolScraper']
+__all__ = ['WhiteHousePressPool']

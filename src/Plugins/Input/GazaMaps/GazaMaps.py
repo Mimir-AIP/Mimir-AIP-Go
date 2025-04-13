@@ -1,85 +1,148 @@
-import json
-import re
-import requests
+"""
+Plugin for fetching Gaza-related map data from various sources
 
-class GazaMaps:
-    """
-    Plugin for scraping Gaza Maps website
-    """
+Example usage:
+    plugin = GazaMaps()
+    result = plugin.execute_pipeline_step({
+        "config": {
+            "data_type": "incidents",  # or "infrastructure", "boundaries", etc.
+            "date_range": {
+                "start": "2024-01-01",
+                "end": "2024-01-31"
+            }
+        },
+        "output": "gaza_data"
+    }, {})
+"""
+
+import requests
+from datetime import datetime
+from Plugins.BasePlugin import BasePlugin
+
+
+class GazaMaps(BasePlugin):
+    """Plugin for fetching Gaza-related map data"""
 
     plugin_type = "Input"
 
     def __init__(self):
-        self.base_url = "https://gazamaps.com"
+        """Initialize the GazaMaps plugin"""
+        self.base_url = "https://api.gazamap.com/v1"  # Example API endpoint
+        self.data_types = ["incidents", "infrastructure", "boundaries", "checkpoints"]
 
-    def scrape_gaza_maps(self):
+    def execute_pipeline_step(self, step_config, context):
+        """Execute a pipeline step for this plugin
+        
+        Expected step_config format:
+        {
+            "plugin": "GazaMaps",
+            "config": {
+                "data_type": "incidents",  # Type of data to fetch
+                "date_range": {           # Optional date range
+                    "start": "YYYY-MM-DD",
+                    "end": "YYYY-MM-DD"
+                },
+                "filters": {}            # Optional additional filters
+            },
+            "output": "gaza_data"
+        }
         """
-        Scrapes Gaza Maps and returns a list of items.
+        config = step_config["config"]
+        
+        # Validate data type
+        data_type = config["data_type"]
+        if data_type not in self.data_types:
+            raise ValueError(f"Invalid data_type. Must be one of: {', '.join(self.data_types)}")
+        
+        # Process date range if provided
+        date_range = None
+        if "date_range" in config:
+            date_range = {
+                "start": datetime.strptime(config["date_range"]["start"], "%Y-%m-%d"),
+                "end": datetime.strptime(config["date_range"]["end"], "%Y-%m-%d")
+            }
+        
+        # Fetch data
+        data = self.fetch_data(
+            data_type=data_type,
+            date_range=date_range,
+            filters=config.get("filters", {})
+        )
+        
+        return {step_config["output"]: data}
+
+    def fetch_data(self, data_type, date_range=None, filters=None):
         """
-        items = []
-        page_number = 1
-
-        while True:
-            response = requests.get(f"{self.base_url}?page={page_number}")
-            if response.status_code != 200:
-                print("Failed to fetch the website content.")
-                break
-
-            html_content = response.text
-
-            # Regex to find the date, image source, and alt text
-            regex = re.compile(
-                r"<h2>(.*?)<\/h2>\s*<a href=\"(.*?)\">\s*<img.*?src=\"(.*?)\".*?alt=\"(.*?)\".*?>\s*<\/a>",
-                re.DOTALL
+        Fetch data from the Gaza Maps API
+        
+        Args:
+            data_type (str): Type of data to fetch
+            date_range (dict): Optional date range with start and end dates
+            filters (dict): Optional additional filters
+            
+        Returns:
+            dict: Fetched data
+        """
+        params = {"type": data_type}
+        
+        if date_range:
+            params.update({
+                "start_date": date_range["start"].strftime("%Y-%m-%d"),
+                "end_date": date_range["end"].strftime("%Y-%m-%d")
+            })
+            
+        if filters:
+            params.update(filters)
+            
+        try:
+            response = requests.get(
+                f"{self.base_url}/{data_type}",
+                params=params
             )
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"Error fetching Gaza Maps data: {str(e)}")
 
-            matches = regex.findall(html_content)
-
-            if not matches:
-                print("No matches found using the regex.")
-                break
-
-            for match in matches:
-                date = match[0].strip()
-                displacement_url = match[1]
-                image_url = self.base_url + match[2]  # Correctly construct the absolute URL
-                alt_text = match[3]
-                link_url = displacement_url  # No need to add the base URL again since it is already absolute
-
-                item = {
-                    "id": link_url,
-                    "url": link_url,
-                    "title": alt_text,
-                    "content_text": alt_text,
-                    "image": image_url,
-                    "date_published": date,
-                }
-                items.append(item)
-
-            # Check for the next page
-            next_page_regex = re.compile(r'<a.*?href="([^"]*?page=(\d+))".*?>Next</a>', re.IGNORECASE)
-            next_page_match = next_page_regex.search(html_content)
-            if not next_page_match:
-                break
-
-            page_number += 1
-
-        return items
-
-    def get_gaza_maps_data(self):
-        """
-        Returns a JSON feed compatible with RSSGuard.
-        """
-        items = self.scrape_gaza_maps()
-        return {"items": items}
 
 if __name__ == "__main__":
     # Test the plugin
     plugin = GazaMaps()
-    data = plugin.get_gaza_maps_data()
-    if data and data['items']:  # Check also if the list contains something
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-    else:
-        print("No items found or an error occurred.")
-        if data is not None:
-            print("The regex likely failed to match any content.")
+    
+    # Test with basic configuration
+    test_config = {
+        "plugin": "GazaMaps",
+        "config": {
+            "data_type": "incidents",
+            "date_range": {
+                "start": "2024-01-01",
+                "end": "2024-01-31"
+            }
+        },
+        "output": "gaza_data"
+    }
+    
+    try:
+        result = plugin.execute_pipeline_step(test_config, {})
+        print(f"Fetched {len(result['gaza_data'].get('features', []))} incidents")
+        
+        # Print first few items
+        for feature in result["gaza_data"].get("features", [])[:3]:
+            print(f"\nIncident: {feature.get('properties', {}).get('description', 'No description')}")
+            print(f"Location: {feature.get('geometry', {}).get('coordinates', [])}")
+            
+    except ValueError as e:
+        print(f"Error: {e}")
+        
+    # Test with filters
+    test_config["config"]["filters"] = {
+        "severity": "high",
+        "type": "airstrike"
+    }
+    
+    try:
+        result = plugin.execute_pipeline_step(test_config, {})
+        print(f"\nFetched {len(result['gaza_data'].get('features', []))} filtered incidents")
+    except ValueError as e:
+        print(f"Error: {e}")

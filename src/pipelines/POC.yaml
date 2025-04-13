@@ -1,0 +1,74 @@
+pipelines:
+  - name: "BBC News Report Generator"
+    description: "Generates reports for important news stories from BBC News RSS feed"
+    steps:
+      - name: "Fetch BBC News RSS Feed"
+        plugin: "rss_feed"
+        config:
+          url: "http://feeds.bbci.co.uk/news/world/rss.xml"
+          feed_name: "BBC_News"
+        output: "feed_BBC_News"
+
+      - name: "Process Stories"
+        iterate: "context.get('feed_BBC_News', [])"
+        steps:
+          - name: "Determine Importance"
+            plugin: "LLMFunction"
+            config:
+              plugin: "OpenRouter"
+              model: "meta-llama/llama-4-maverick:free"
+              function: "You are a program block that takes RSS feed items and determines importance on a scale of 1-10"
+              format: "return score in the format {'score': 10}"
+            input: "item.title"
+            output: "importance_score"
+
+          - name: "Process Important Story"
+            condition: "importance_score.score > 1"  # Lowered threshold to include all stories
+            steps:
+              - name: "Generate Search Queries"
+                plugin: "LLMFunction"
+                config:
+                  plugin: "OpenRouter"
+                  model: "meta-llama/llama-4-maverick:free"
+                  function: "You are a program block that generates search queries for a given topic"
+                  format: "return search queries in the format {'search_queries': ['query1', 'query2', 'query3']}"
+                input: "item.title"
+                output: "search_queries"
+
+              - name: "Fetch Search Results"
+                plugin: "web_search"
+                config:
+                  queries: "search_queries.search_queries"
+                output: "search_results"
+
+              - name: "Scrape Web Results"
+                plugin: "WebScraping"
+                input: "search_results"
+                output: "scraped_results"
+
+              - name: "Generate Report"
+                plugin: "LLMFunction"
+                config:
+                  plugin: "OpenRouter"
+                  model: "meta-llama/llama-4-maverick:free"
+                  function: "You are a program block that generates a concise report about a news story"
+                  format: "return report in the format {'report': 'Your concise report here'}"
+                input: "item.title"
+                output: "report"
+
+      - name: "Combine Reports"
+        plugin: "LLMFunction"
+        config:
+          plugin: "OpenRouter"
+          model: "meta-llama/llama-4-maverick:free"
+          function: "You are a program block that combines multiple reports into a single report"
+          format: "return combined report in markdown format"
+        input: "context.get('report', '')"
+        output: "combined_report"
+
+      - name: "Generate HTML Report"
+        plugin: "HTMLReport"
+        config:
+          title: "BBC News Report"
+          sections: "[{'heading': 'News Stories', 'text': context.get('report', '')}]"
+        output: "report.html"

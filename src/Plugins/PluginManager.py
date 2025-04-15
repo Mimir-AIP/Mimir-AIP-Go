@@ -19,6 +19,12 @@ class PluginManager:
         # Load plugins in the correct order
         self._load_plugins_by_type()
         
+        # Print loaded AIModel plugins after initial load
+        ai_models = self.get_plugins("AIModels")
+        if ai_models:
+            print(f"Loaded AIModel plugins: {list(ai_models.keys())}")
+        else:
+            print("Warning: No AIModel plugins loaded!")
         # Print warnings
         for warning in sorted(self.warnings):
             print(warning)
@@ -61,15 +67,22 @@ class PluginManager:
                             ''.join(word.capitalize() for word in base_name.split('_')) + 'Plugin',  # PascalCasePlugin
                         ]
 
+                        print(f"[DEBUG] Inspecting module: {module_name}, looking for classes: {class_names}")
+                        print(f"[DEBUG] Module attributes: {dir(module)}")
+
                         plugin_class = None
                         for class_name in class_names:
                             if hasattr(module, class_name):
                                 attr = getattr(module, class_name)
+                                print(f"[DEBUG] Found attribute {class_name}: {attr}")
                                 if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
                                     # Skip abstract base classes
                                     if inspect.isclass(attr) and not inspect.isabstract(attr):
                                         plugin_class = attr
+                                        print(f"[DEBUG] Selected plugin class: {plugin_class}")
                                         break
+                        if not plugin_class:
+                            print(f"[DEBUG] No plugin class found in {module_name} for names {class_names}")
 
                         if plugin_class:
                             try:

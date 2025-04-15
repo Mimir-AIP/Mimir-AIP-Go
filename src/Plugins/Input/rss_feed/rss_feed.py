@@ -59,16 +59,16 @@ class RssFeed(BasePlugin):
             self.fetch_feed()
         except Exception as e:
             logger.error(f"Error fetching feed: {e}")
-            raise
-        
-        # Store result in context
-        output_key = step_config.get("output", f"feed_{config['feed_name']}")
-        logger.debug(f"RSS feed plugin output key: {output_key}")
-        logger.debug(f"RSS feed plugin data: {self.data}")
-        context[output_key] = self.data
-        logger.debug(f"RSS feed plugin context after update: {context}")
-        logger.debug(f"Pipeline step execution complete")
-        return context
+            logger.error("If you are fetching an HTTP feed, try using the HTTPS version of the URL.")
+            return {step_config.get("output", f"feed_{config.get('feed_name', 'data')}"): None}
+        logger.debug(f"Fetched feed type: {self.feed_type}")
+        logger.debug(f"Fetched feed data: {self.data}")
+        if not self.data:
+            logger.warning("Fetched feed is empty or could not be parsed.")
+            return {step_config.get("output", f"feed_{config.get('feed_name', 'data')}"): None}
+        output_key = step_config.get("output", f"feed_{config.get('feed_name', 'data')}")
+        print(f"execute_pipeline_step: returning {output_key}: {self.data}")
+        return {output_key: self.data}
 
     def set_input(self, input_data, is_url=True):
         """
@@ -86,12 +86,23 @@ class RssFeed(BasePlugin):
         """
         Detect the type of feed
         """
+        logger = logging.getLogger(__name__)
         if self.input_data is None:
+            logger.error("Input data must be set before detecting feed type")
             raise ValueError("Input data must be set before detecting feed type")
 
         if self.is_url:
             response = requests.get(self.input_data)
+            logger.debug(f"detect_feed_type: HTTP status {response.status_code}")
+            logger.debug(f"detect_feed_type: Response content (truncated): {response.text[:500]}")
             content = response.text
+            # Save the raw content to a file for inspection
+            try:
+                with open("rss_feed_raw.xml", "w", encoding="utf-8") as f:
+                    f.write(content)
+                logger.info("Raw RSS feed content saved to rss_feed_raw.xml")
+            except Exception as e:
+                logger.error(f"Failed to save raw RSS feed content: {e}")
         else:
             content = self.input_data
 
@@ -102,6 +113,7 @@ class RssFeed(BasePlugin):
         elif re.search(r'^\s*\{', content):
             self.feed_type = 'json'
         else:
+            logger.error("detect_feed_type: Unsupported feed type. Content snippet: " + content[:500])
             raise ValueError("Unsupported feed type")
 
     def fetch_feed(self):
@@ -111,18 +123,32 @@ class RssFeed(BasePlugin):
         logger = logging.getLogger(__name__)
         try:
             if self.input_data is None:
+                logger.error("fetch_feed: Input data must be set before fetching feed")
                 raise ValueError("Input data must be set before fetching feed")
 
             if not self.feed_type:
+                logger.debug("fetch_feed: Detecting feed type...")
                 self.detect_feed_type()
+            else:
+                logger.debug(f"fetch_feed: Using existing feed_type {self.feed_type}")
 
             if self.is_url:
                 response = requests.get(self.input_data)
+                logger.debug(f"fetch_feed: HTTP status {response.status_code}")
+                logger.debug(f"fetch_feed: Response content (truncated): {response.text[:500]}")
                 response.raise_for_status()  # Raise an exception for HTTP errors
                 content = response.text
+                # Save the raw content to a file for inspection
+                try:
+                    with open("rss_feed_raw.xml", "w", encoding="utf-8") as f:
+                        f.write(content)
+                    logger.info("Raw RSS feed content saved to rss_feed_raw.xml")
+                except Exception as e:
+                    logger.error(f"Failed to save raw RSS feed content: {e}")
             else:
                 content = self.input_data
 
+            logger.debug(f"fetch_feed: Parsing as {self.feed_type}")
             if self.feed_type == 'rss':
                 self.data = self.parse_rss(content)
             elif self.feed_type == 'atom':
@@ -130,6 +156,7 @@ class RssFeed(BasePlugin):
             elif self.feed_type == 'json':
                 self.data = self.parse_json(content)
             else:
+                logger.error("fetch_feed: Unsupported feed type after detection")
                 raise ValueError("Unsupported feed type")
 
             logger.debug(f"Successfully fetched feed with {len(self.data)} items")
@@ -142,25 +169,32 @@ class RssFeed(BasePlugin):
             logger.error(f"Request error occurred while fetching feed: {e}")
             raise
         except Exception as e:
-            logger.error(f"Error fetching feed: {e}")
+            logger.error(f"Error fetching feed: {e}", exc_info=True)
             raise
 
     def parse_rss(self, content):
         """
         Parse an RSS feed
         """
+        def strip_cdata(text):
+            if text is None:
+                return ""
+            # Remove CDATA if present
+            if text.startswith('<![CDATA[') and text.endswith(']]>'):
+                return text[9:-3]
+            return text
+
         try:
             items = re.findall(r'<item>(.*?)</item>', content, re.DOTALL)
             feed = []
-            for item in items:
-                title = re.search(r'<title>(.*?)</title>', item)
-                link = re.search(r'<link>(.*?)</link>', item)
-                description = re.search(r'<description>(.*?)</description>', item)
-                if title and link:
-                    title = title.group(1)
-                    link = link.group(1)
-                    description = description.group(1) if description else ""
-    
+            for idx, item in enumerate(items):
+                title_match = re.search(r'<title>(.*?)</title>', item, re.DOTALL)
+                link_match = re.search(r'<link>(.*?)</link>', item, re.DOTALL)
+                description_match = re.search(r'<description>(.*?)</description>', item, re.DOTALL)
+                if title_match and link_match:
+                    title = strip_cdata(title_match.group(1).strip())
+                    link = link_match.group(1).strip()
+                    description = strip_cdata(description_match.group(1).strip()) if description_match else ""
                     feed.append({
                         'title': title,
                         'link': link,

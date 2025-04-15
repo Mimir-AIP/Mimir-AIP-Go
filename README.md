@@ -16,7 +16,7 @@ MIMIR features a modular plugin system that enables users to extend the platform
 
 - Inputs: Plugins can be created to connect to various data sources, such as databases, APIs, or file systems, allowing users to ingest data from multiple sources.
 - Outputs: Output plugins enable the platform to send processed data to different destinations, including databases, messaging systems, or file systems.
-- Data Processing: Data processing plugins can be used to perform tasks such as data transformation, filtering, and analysis, allowing users to customize the data processing pipeline.
+- Data_Processing: Data processing plugins can be used to perform tasks such as data transformation, filtering, and analysis, allowing users to customize the data processing pipeline.
 
 Support for Large Language Models (LLMs)
 ---
@@ -34,7 +34,7 @@ flowchart TD
  subgraph subGraph1["Output Plugins"]
         E["Output plugins for  graphs & visuals"]
   end
-    A -->D["Data Processing Plugins"]
+    A -->D["Data_Processing Plugins"]
     D-->B["LLM and other AI models"]
     B --> C["Storage"] & E
     C --> B

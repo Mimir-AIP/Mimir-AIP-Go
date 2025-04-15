@@ -18,7 +18,7 @@ from Plugins.BasePlugin import BasePlugin
 class PostcodeGeocoding(BasePlugin):
     """Plugin for geocoding UK postcodes"""
 
-    plugin_type = "Data Processing"
+    plugin_type = "Data_Processing"
 
     def __init__(self):
         """Initialize the PostcodeGeocoding plugin"""

@@ -27,18 +27,20 @@ class LLMFunction(BasePlugin):
     Plugin for using LLM models as functions
     """
 
-    plugin_type = "Data Processing"
+    plugin_type = "Data_Processing"
 
-    def __init__(self, llm_plugin=None):
+    def __init__(self, llm_plugin=None, plugin_manager=None, logger=None):
         """
         Initialize the LLMFunction plugin
         
         Args:
             llm_plugin (BaseAIModel, optional): LLM plugin instance to use. Defaults to None.
+            plugin_manager (PluginManager, optional): PluginManager instance. Defaults to real PluginManager.
+            logger (logging.Logger, optional): Logger instance. Defaults to real logger.
         """
         self.llm_plugin = llm_plugin
-        self.plugin_manager = PluginManager()
-        self.logger = logging.getLogger(__name__)
+        self.plugin_manager = plugin_manager if plugin_manager is not None else PluginManager()
+        self.logger = logger if logger is not None else logging.getLogger(__name__)
 
     def set_llm_plugin(self, plugin_name):
         """

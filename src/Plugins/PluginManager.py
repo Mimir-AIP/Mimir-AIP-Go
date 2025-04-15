@@ -74,7 +74,7 @@ class PluginManager:
                         if plugin_class:
                             try:
                                 # Handle plugins that need dependencies
-                                if plugin_type == "Data Processing" and folder == "LLMFunction":
+                                if plugin_type == "Data_Processing" and folder == "LLMFunction":
                                     # Get the first available AI Model plugin
                                     ai_plugins = self.get_plugins("AIModels")
                                     if ai_plugins:
@@ -118,7 +118,7 @@ class PluginManager:
         Get a specific plugin instance
 
         Args:
-            plugin_type (str): Type of plugin (e.g., 'Input', 'Output', 'Data Processing')
+            plugin_type (str): Type of plugin (e.g., 'Input', 'Output', 'Data_Processing')
             name (str): Name of the plugin (e.g., 'rss_feed', 'HTMLReport')
 
         Returns:

@@ -1,170 +1,179 @@
 from Plugins.PluginManager import PluginManager
-#import yaml #used to load pipelines
+import yaml #used to load pipelines
+import os
+import logging
+
 
 
 def main():
     """Main entry point of the application"""
-    # Step 1: Initialize the PluginManager
+    # Step 1: Load main configuration
+    try:
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        print("Error: config.yaml not found. Please ensure the configuration file exists.")
+        return
+    except yaml.YAMLError as e:
+        print(f"Error parsing config.yaml: {e}")
+        return
+    except Exception as e:
+        print(f"An unexpected error occurred while loading config.yaml: {e}")
+        return
+
+    # Setup based on configuration
+    pipeline_dir = config.get("settings", {}).get("pipeline_directory", "pipelines")
+    output_dir = config.get("settings", {}).get("output_directory", "output")
+    log_level = config.get("settings", {}).get("log_level", "INFO")
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Configure logging
+    logging.basicConfig(
+        level=getattr(logging, log_level),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+
+    # Step 2: Initialize the PluginManager
     plugin_manager = PluginManager()
     
-    # Step 2: Load all plugins
+    # Step 3: Load all plugins
     try:
         plugins = plugin_manager.get_all_plugins()
         if not plugins:
-            print("No plugins found. Please ensure there are plugins available in the Plugins folder.")
+            logger.error("No plugins found. Please ensure there are plugins available in the Plugins folder.")
             return
     except Exception as e:
-        print(f"Failed to load plugins: {e}")
+        logger.error(f"Failed to load plugins: {e}")
         return
 
-    print(f"Loaded plugins: {', '.join(plugins.keys())}")
+    logger.info(f"Loaded plugins: {', '.join(plugins.keys())}")
 
-    """
-    # Step 3: Load the pipeline configuration
-    pipeline_config = None
-    try:
-        # Load pipeline.yaml file that contains pipeline actions or configuration
-        with open("pipeline.yaml", "r") as f:
-            pipeline_config = yaml.safe_load(f)
-    except FileNotFoundError:
-        print("Error: pipeline.yaml file not found. Please provide a configuration file.")
-        return
-    except yaml.YAMLError as e:
-        print(f"Error parsing pipeline.yaml: {e}")
-        return
-    except Exception as e:
-        print(f"An unexpected error occurred while loading pipeline.yaml: {e}")
+    # Step 4: Load and execute enabled pipelines
+    pipelines = config.get("pipelines", [])
+    if not pipelines:
+        logger.warning("No pipelines defined in configuration.")
         return
 
-    # Step 4: Validate the pipeline configuration
-    if pipeline_config is None or not isinstance(pipeline_config, dict):
-        print("Invalid pipeline configuration. Please check your pipeline.yaml file.")
-        return
-
-    
-    # Example pipeline structure:
-    # pipeline.yaml sample:
-    # tasks:
-    #   - name: "Generate LLM Response"
-    #     model: "OpenRouter"
-    #     prompt: "Explain the importance of AI in modern software development."
-    print("Pipeline configuration loaded successfully.")
-
-    # Step 5: Execute the pipeline based on configuration
-    tasks = pipeline_config.get("tasks", [])
-    if not tasks:
-        print("No tasks defined in the pipeline. Exiting.")
-        return
-
-    for task in tasks:
-        task_name = task.get("name")
-        model_name = task.get("model")
-        prompt = task.get("prompt")
-
-        if not task_name or not model_name or not prompt:
-            print(f"Skipping incomplete task configuration: {task}")
+    for pipeline_config in pipelines:
+        if not pipeline_config.get("enabled", False):
+            logger.info(f"Skipping disabled pipeline: {pipeline_config.get('name', 'Unnamed')}")
             continue
 
-        print(f"Executing task: {task_name} using model: {model_name}")
-
-        # Retrieve the plugin
-        plugin = plugin_manager.get_plugin(model_name)
-        if plugin is None:
-            print(f"Error: Model '{model_name}' is not available or not loaded as a plugin.")
+        pipeline_file = pipeline_config.get("file")
+        if not pipeline_file:
+            logger.error(f"No file specified for pipeline: {pipeline_config.get('name', 'Unnamed')}")
             continue
 
+        # Load pipeline definition
         try:
-            # Generate response using the plugin
-            response = plugin.generate_response(prompt)
-            print(f"Task '{task_name}' completed. Response:\n{response}")
+            with open(pipeline_file, "r") as f:
+                pipeline_def = yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.error(f"Pipeline file not found: {pipeline_file}")
+            continue
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing pipeline file {pipeline_file}: {e}")
+            continue
         except Exception as e:
-            print(f"An error occurred while executing task '{task_name}': {e}")
+            logger.error(f"An unexpected error occurred while loading {pipeline_file}: {e}")
+            continue
 
-    # Step 6: Connect to or create a vector database for storage (optional for your exact use case)
-    print("Pipeline execution completed.")"
-    """
-
-    #POC implementation harcoded for now
-    print("Starting POC pipeline to generate reports for important news stories")
-    while True:
-        #Get BBC news RSS feed
-        url = "http://feeds.bbci.co.uk/news/world/rss.xml"
-        RSSFeed = PluginManager().get_plugin("RSS-Feed").get_feed(url, "BBC-News")
-        RSSFeed.fetch_feed()
-        print(RSSFeed.data)
-
-        #for story in feed
-        for story in RSSFeed.data["items"]:
-            #Check if story is important using LLMFunction plugin
-            LLMFunction = PluginManager().get_plugin("LLMFunction")
-            plugin = "OpenRouter"
-            model = "meta-llama/llama-3-8b-instruct:free"
-            function = "You are a program block that takes RSS feeed items and determines importance on a scale of 1-10"
-            format = "return score in the format {'score': 10}"
-            article_to_score = story["title"]
-            try: 
-                response = LLMFunction.LLMFunction(plugin, model, function, format, article_to_score)
-                print(response)
-            except ValueError as e:
-                print(e)
-            #if LLMFunction determines story is important carry out research and generate report
-            #parse response e.g. {"score": 10}
-            if "score" in response:
-                if response["score"] > 7:
-                    #carry out research and generate report
-                    #use LLMFunction plugin to generate search queries
-                    LLMFunction = PluginManager().get_plugin("LLMFunction")
-                    plugin = "OpenRouter"
-                    model = "meta-llama/llama-3-8b-instruct:free"
-                    function = "You are a program block that generates search queries for a given topic"
-                    format = "return search queries in the format {'search_queries': ['query1', 'query2', 'query3']}"
-                    topic_to_search = story["title"]
-                    try: 
-                        response = LLMFunction.LLMFunction(plugin, model, function, format, topic_to_search)
-                        print(response)
-                    except ValueError as e:
-                        print(e)
-                    #use websearch plugin to generate search results
-                    WebSearch = PluginManager().get_plugin("WebSearch")
-                    results = ""
-                    for query in response["search_queries"]:
-                        results += WebSearch.search(query)
-                    #use the webScraping plugin to scrape the search results
-                    WebScraping = PluginManager().get_plugin("WebScraping")
-                    WebScrapingInstance = WebScraping()
-                    #feed results to webScraping plugin
-                    scraping_results = WebScrapingInstance.scrape(results)
-                    #use LLMFunction plugin to generate report from search results
-                    LLMFunction = PluginManager().get_plugin("LLMFunction")
-                    plugin = "OpenRouter"
-                    model = "meta-llama/llama-3-8b-instruct:free"
-                    function = "You are a program block that generates a report from search results"
-                    format = "return report in the format {'report': 'report text'}"
-                    data = scraping_results
-                    try: 
-                        response = LLMFunction.LLMFunction(plugin, model, function, format, data)
-                        print(response)
-                    except ValueError as e:
-                        print(e)
-                    #output report using HTMLReport plugin
-                    HTMLReport = PluginManager().get_plugin("HTMLReport")
-                    HTMLReportGenerator = HTMLReport.HTMLReportGenerator()
-                    sections = [
-                        {
-                            "heading": "BBC News Story: " + story["title"],
-                            "text": story["description"]
-                        },
-                        {
-                            "heading": "Report",
-                            "text": response["report"]
-                        }
-                    ]
-                    HTMLReportGenerator.generate_report("BBC News Story Report", sections, "report.html")
-                    print("Report generated and saved to output directory")
+        logger.info(f"Executing pipeline: {pipeline_config.get('name', 'Unnamed Pipeline')}")
+        
+        # Execute each pipeline
+        for pipeline in pipeline_def.get("pipelines", []):
+            try:
+                execute_pipeline(pipeline, plugin_manager, output_dir)
+            except Exception as e:
+                logger.error(f"Error executing pipeline {pipeline.get('name', 'Unnamed')}: {e}")
 
 
+def execute_pipeline(pipeline, plugin_manager, output_dir):
+    """Execute a single pipeline definition"""
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting pipeline: {pipeline.get('name', 'Unnamed Pipeline')}")
+    
+    # Initialize pipeline context
+    context = {}
+    
+    for step in pipeline["steps"]:
+        if step.get("iterate"):
+            # Handle iteration over items
+            try:
+                # Get the data to iterate over from context
+                logger.debug(f"Current context: {context}")
+                logger.debug(f"Evaluating iterate expression: {step['iterate']}")
+                # Pass the context dictionary to eval
+                data = eval(step["iterate"], {"__builtins__": {}}, {"context": context})
+                logger.debug(f"Data to iterate over: {data}")
+                for item in data:
+                    # Create a new context for each iteration that includes both the item and the pipeline context
+                    iteration_context = {"item": item, "output_dir": output_dir, **context}
+                    logger.debug(f"Starting iteration with context: {iteration_context}")
+                    for substep in step["steps"]:
+                        logger.debug(f"Executing step: {substep.get('name', 'unnamed')}")
+                        logger.debug(f"Step input: {iteration_context}")
+                        updated_context = execute_step(substep, iteration_context, plugin_manager)
+                        logger.debug(f"Step output: {updated_context}")
+                        # Update the pipeline context with any changes from the iteration
+                        context.update({k: v for k, v in iteration_context.items() if k != "item"})
+                        logger.debug(f"Updated context after step {substep.get('name', 'unnamed')}: {context}")
+            except Exception as e:
+                logger.error(f"Error in iteration step: {e}")
+                raise
+        else:
+            try:
+                logger.debug(f"Executing step: {step.get('name', 'unnamed')}")
+                logger.debug(f"Step input: {context}")
+                updated_context = execute_step(step, {"output_dir": output_dir, **context}, plugin_manager)
+                logger.debug(f"Step output: {updated_context}")
+                if updated_context:
+                    context.update(updated_context)
+                    logger.debug(f"Updated context: {context}")
+            except Exception as e:
+                logger.error(f"Error in step: {e}")
+                raise
 
 
+def execute_step(step, context, plugin_manager):
+    """Execute a single pipeline step"""
+    logger = logging.getLogger(__name__)
+    try:
+        # Get plugin instance
+        plugin_name = step["plugin"]
+        
+        # Try to find the plugin in each type
+        plugin_instance = None
+        for plugin_type in ["Input", "Output", "Data_Processing", "AIModels"]:
+            plugin_instance = plugin_manager.get_plugin(plugin_type, plugin_name)
+            if plugin_instance:
+                break
+                
+        if not plugin_instance:
+            logger.error(f"Plugin {plugin_name} not found in any plugin type")
+            return
+
+        logger.info(f"Executing step: {step.get('name', 'unnamed')}")
+
+        # Let the plugin handle its own step execution
+        updated_context = plugin_instance.execute_pipeline_step(step, context)
+        if updated_context:
+            logger.debug(f"Updated context: {updated_context}")
+            context.update(updated_context)
+
+        # Handle conditional execution
+        if "condition" in step:
+            condition_result = eval(step["condition"], context)
+            if condition_result and "steps" in step:
+                for substep in step["steps"]:
+                    execute_step(substep, context, plugin_manager)
+
+    except Exception as e:
+        logger.error(f"Error executing step {step.get('name', 'unnamed')}: {e}")
+        raise  # Re-raise to handle in caller
 
 
 if __name__ == "__main__":

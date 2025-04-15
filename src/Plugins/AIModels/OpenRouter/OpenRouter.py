@@ -23,7 +23,7 @@ import dotenv
 class OpenRouter(BaseAIModel):
     """OpenRouter plugin for accessing various LLM models"""
 
-    plugin_type = "AIModel"
+    plugin_type = "AIModels"
 
     def __init__(self):
         """Initialize the OpenRouter plugin"""

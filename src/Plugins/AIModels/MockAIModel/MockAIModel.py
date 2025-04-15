@@ -10,7 +10,7 @@ from Plugins.BasePlugin import BasePlugin
 class MockAIModel(BaseAIModel, BasePlugin):
     """Mock AI model plugin for testing"""
 
-    plugin_type = "AIModel"
+    plugin_type = "AIModels"
 
     def __init__(self):
         """Initialize the mock AI model"""

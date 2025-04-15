@@ -1,5 +1,5 @@
 """
-Plugin for fetching aircraft data from the ADS-B Exchange API
+Plugin for fetching aircraft data from ADS-B Exchange API
 
 Example usage:
     plugin = ADSBdata()
@@ -13,22 +13,63 @@ Example usage:
     }, {})
 """
 
-import os
 import requests
+import time
 from Plugins.BasePlugin import BasePlugin
 
-
 class ADSBdata(BasePlugin):
-    """Plugin for fetching aircraft data from ADS-B Exchange"""
+    """
+    Plugin for fetching aircraft data from ADSB sources
+    """
 
     plugin_type = "Input"
 
     def __init__(self):
-        """Initialize the ADSBdata plugin"""
-        self.api_key = os.getenv("ADSB_API_KEY")
-        if not self.api_key:
-            raise ValueError("ADSB_API_KEY environment variable not set")
-        self.base_url = "https://adsbexchange-com1.p.rapidapi.com/v2"
+        pass
+
+    def query_adsb_lol(self, lat, lon, radius):
+        url = f"https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"
+        print(f"Querying adsb.lol: {url}")
+        response = requests.get(url)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Error querying adsb.lol: {response.status_code}")
+            return {}
+
+    def query_adsb_fi(self, lat, lon, radius):
+        url = f"https://opendata.adsb.fi/api/v2/lat/{lat}/lon/{lon}/dist/{radius}"
+        print(f"Querying adsb.fi: {url}")
+        time.sleep(2)  # Slow down to avoid rate limiting
+        response = requests.get(url)
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 404:
+            print(f"404 Error querying adsb.fi: {url}")
+            return {}
+        else:
+            print(f"Error querying adsb.fi: {response.status_code}")
+            return {}
+
+    def combine_aircraft_data(self, adsb_lol_data, adsb_fi_data):
+        combined_data = {}
+        if 'ac' in adsb_lol_data:
+            for aircraft in adsb_lol_data['ac']:
+                icao = aircraft.get('hex')
+                if icao:
+                    combined_data[icao] = aircraft
+        if 'aircraft' in adsb_fi_data:
+            for aircraft in adsb_fi_data['aircraft']:
+                icao = aircraft.get('hex')
+                if icao:
+                    combined_data[icao] = aircraft
+        return list(combined_data.values())
+
+    def get_aircraft_data(self, lat, lon, radius):
+        adsb_lol_data = self.query_adsb_lol(lat, lon, radius)
+        adsb_fi_data = self.query_adsb_fi(lat, lon, radius)
+        combined_data = self.combine_aircraft_data(adsb_lol_data, adsb_fi_data)
+        return combined_data
 
     def execute_pipeline_step(self, step_config, context):
         """Execute a pipeline step for this plugin
@@ -57,42 +98,6 @@ class ADSBdata(BasePlugin):
         aircraft_data = self.get_aircraft_data(lat, lon, radius)
         return {step_config["output"]: aircraft_data}
 
-    def get_aircraft_data(self, lat, lon, radius=25):
-        """
-        Get aircraft data for a specific location
-        
-        Args:
-            lat (float): Latitude
-            lon (float): Longitude
-            radius (int): Search radius in nautical miles
-            
-        Returns:
-            dict: Aircraft data from ADS-B Exchange
-        """
-        headers = {
-            "X-RapidAPI-Key": self.api_key,
-            "X-RapidAPI-Host": "adsbexchange-com1.p.rapidapi.com"
-        }
-        
-        params = {
-            "lat": lat,
-            "lon": lon,
-            "radius": radius
-        }
-        
-        try:
-            response = requests.get(
-                f"{self.base_url}/lat/lon/dist",
-                headers=headers,
-                params=params
-            )
-            response.raise_for_status()
-            return response.json()
-            
-        except requests.exceptions.RequestException as e:
-            raise ValueError(f"Error fetching aircraft data: {str(e)}")
-
-
 if __name__ == "__main__":
     # Test the plugin
     plugin = ADSBdata()
@@ -111,8 +116,16 @@ if __name__ == "__main__":
     try:
         result = plugin.execute_pipeline_step(test_config, {})
         print("Aircraft near London:")
-        for ac in result["aircraft"].get("ac", []):
-            print(f"  {ac.get('t', 'Unknown')} at {ac.get('alt', 'Unknown')} ft")
+        for ac in result["aircraft"]:
+            alt = ac.get('alt')
+            if alt is None:
+                alt = ac.get('alt_baro') or ac.get('alt_geom') or 'Unknown'
+            desc = ac.get('desc') or ac.get('t', 'Unknown')
+            flight = ac.get('flight', 'Unknown').strip()
+            reg = ac.get('r', 'Unknown')
+            rssi = ac.get('rssi', 'Unknown')
+            last_seen = ac.get('seen', 'Unknown')
+            print(f"  {desc} | Callsign: {flight} | Reg: {reg} | Alt: {alt} ft | RSSI: {rssi} | Last seen: {last_seen}s ago")
     except ValueError as e:
         print(f"Error: {e}")
         
@@ -132,7 +145,33 @@ if __name__ == "__main__":
     try:
         result = plugin.execute_pipeline_step(test_config, test_context)
         print("\nAircraft near New York:")
-        for ac in result["aircraft"].get("ac", []):
-            print(f"  {ac.get('t', 'Unknown')} at {ac.get('alt', 'Unknown')} ft")
+        for ac in result["aircraft"]:
+            alt = ac.get('alt')
+            if alt is None:
+                alt = ac.get('alt_baro') or ac.get('alt_geom') or 'Unknown'
+            desc = ac.get('desc') or ac.get('t', 'Unknown')
+            flight = ac.get('flight', 'Unknown').strip()
+            reg = ac.get('r', 'Unknown')
+            rssi = ac.get('rssi', 'Unknown')
+            last_seen = ac.get('seen', 'Unknown')
+            print(f"  {desc} | Callsign: {flight} | Reg: {reg} | Alt: {alt} ft | RSSI: {rssi} | Last seen: {last_seen}s ago")
     except ValueError as e:
         print(f"Error: {e}")
+        
+    # Second test with delay to avoid rate limiting
+    time.sleep(3)
+    lat2 = 40.7128 # New York
+    lon2 = -74.006
+    radius2 = 100
+    data2 = plugin.get_aircraft_data(lat2, lon2, radius2)
+    print("Flights over New York:")
+    for aircraft in data2:
+        alt = aircraft.get('alt')
+        if alt is None:
+            alt = aircraft.get('alt_baro') or aircraft.get('alt_geom') or 'Unknown'
+        desc = aircraft.get('desc') or aircraft.get('t', 'Unknown')
+        flight = aircraft.get('flight', 'Unknown').strip()
+        reg = aircraft.get('r', 'Unknown')
+        rssi = aircraft.get('rssi', 'Unknown')
+        last_seen = aircraft.get('seen', 'Unknown')
+        print(f"  {desc} | Callsign: {flight} | Reg: {reg} | Alt: {alt} ft | RSSI: {rssi} | Last seen: {last_seen}s ago")

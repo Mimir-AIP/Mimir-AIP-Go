@@ -23,6 +23,31 @@ class WebSearchPlugin(BasePlugin):
     def __init__(self):
         self.base_url = "https://api.duckduckgo.com/"
 
+    @staticmethod
+    def extract_urls_from_response(response):
+        """
+        Given a DuckDuckGo API response (dict or list of dicts), extract all 'FirstURL' values from 'RelatedTopics' and 'Results'.
+        Returns a list of URLs (strings).
+        """
+        def extract_from_single(resp):
+            urls = []
+            if not isinstance(resp, dict):
+                return urls
+            for k in ["RelatedTopics", "Results"]:
+                if k in resp and isinstance(resp[k], list):
+                    for entry in resp[k]:
+                        if isinstance(entry, dict) and "FirstURL" in entry:
+                            urls.append(entry["FirstURL"])
+            return urls
+
+        if isinstance(response, list):
+            all_urls = []
+            for resp in response:
+                all_urls.extend(extract_from_single(resp))
+            return all_urls
+        else:
+            return extract_from_single(response)
+
     def execute_pipeline_step(self, step_config, context):
         """Execute a pipeline step for this plugin
         
@@ -31,7 +56,8 @@ class WebSearchPlugin(BasePlugin):
             "plugin": "WebSearch",
             "config": {
                 "query": "search query",
-                "format": "json"  # or "text"
+                "format": "json",  # or "text"
+                "extract_urls": true  # (optional) if true, output a list of URLs instead of raw search results
             },
             "output": "search_results"
         }
@@ -40,21 +66,26 @@ class WebSearchPlugin(BasePlugin):
         """
         config = step_config["config"]
         query = config["query"]
+        extract_urls = config.get("extract_urls", False)
         
         # If query is a variable reference, evaluate it
         if isinstance(query, str) and query in context:
             query = context[query]
         elif isinstance(query, list):
             # Handle list of queries (as used in the POC pipeline)
-            results = ""
-            for q in query:
-                if isinstance(q, str) and q in context:
-                    q = context[q]
-                results += self.search(q)
-            return {step_config["output"]: results}
+            results = [self.search(q if not (isinstance(q, str) and q in context) else context[q]) for q in query]
+            if extract_urls:
+                urls = self.extract_urls_from_response(results)
+                return {step_config["output"]: urls}
+            else:
+                return {step_config["output"]: results}
         
         result = self.search(query)
-        return {step_config["output"]: result}
+        if extract_urls:
+            urls = self.extract_urls_from_response(result)
+            return {step_config["output"]: urls}
+        else:
+            return {step_config["output"]: result}
 
     def search(self, query):
         """

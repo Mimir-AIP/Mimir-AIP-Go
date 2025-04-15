@@ -17,6 +17,7 @@ Example usage:
 """
 
 import logging
+import ast
 
 from Plugins.AIModels.BaseAIModel.BaseAIModel import BaseAIModel
 from Plugins.BasePlugin import BasePlugin
@@ -96,13 +97,22 @@ class LLMFunction(BasePlugin):
         )
         
         self.logger.debug(f"Response from LLM plugin: {response}")
+        print(f"LLMFunction: Raw response from LLM: {response}")
         
         # Format the response based on the format string
         if "format" in config and config["format"]:
             try:
-                formatted_response = eval(config["format"], {"response": response})
+                # Try to parse the response as a Python literal if possible
+                parsed_response = None
+                try:
+                    parsed_response = ast.literal_eval(response)
+                    self.logger.debug(f"Parsed LLM response as literal: {parsed_response}")
+                except Exception:
+                    parsed_response = response
+                formatted_response = eval(config["format"], {"response": parsed_response})
             except Exception as e:
-                raise ValueError(f"Error formatting response: {e}")
+                print(f"LLMFunction: Error formatting response: {e}\nRaw response: {response}")
+                raise ValueError(f"Error formatting response: {e}\nRaw response: {response}")
         else:
             formatted_response = response
         

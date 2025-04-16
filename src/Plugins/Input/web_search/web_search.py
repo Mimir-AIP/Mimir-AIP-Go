@@ -14,6 +14,7 @@ Example usage:
 
 import requests
 import json
+import logging
 from Plugins.BasePlugin import BasePlugin
 
 
@@ -91,12 +92,29 @@ class WebSearchPlugin(BasePlugin):
         """
         Searches the web using DuckDuckGo.
         """
+        logger = logging.getLogger("Plugins.Input.web_search.web_search")
+        logger.setLevel(logging.INFO)
         url = f"{self.base_url}?q={query}&format=json"
+        logger.info(f"[WebSearchPlugin] Sending query: {query}")
+        logger.info(f"[WebSearchPlugin] Request URL: {url}")
+        print(f"[WebSearchPlugin][PRINT] Query: {query}")
+        print(f"[WebSearchPlugin][PRINT] Request URL: {url}")
         response = requests.get(url)
+        logger.info(f"[WebSearchPlugin] Response status: {response.status_code}")
+        print(f"[WebSearchPlugin][PRINT] Response status: {response.status_code}")
         if response.status_code in [200, 202]:
-            return response.json()
+            try:
+                resp_json = response.json()
+                logger.info(f"[WebSearchPlugin] Response JSON keys: {list(resp_json.keys())}")
+                print(f"[WebSearchPlugin][PRINT] Response JSON keys: {list(resp_json.keys())}")
+                return resp_json
+            except Exception as e:
+                logger.error(f"[WebSearchPlugin] Error decoding JSON: {e}")
+                print(f"[WebSearchPlugin][PRINT] Error decoding JSON: {e}")
+                return None
         else:
-            print(f"Error: {response.status_code}")
+            logger.error(f"Error: {response.status_code}")
+            print(f"[WebSearchPlugin][PRINT] Error: {response.status_code}")
             return None
 
 

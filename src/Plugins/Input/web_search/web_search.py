@@ -13,7 +13,7 @@ Example usage:
 """
 
 import requests
-import json
+import re
 import logging
 from Plugins.BasePlugin import BasePlugin
 
@@ -22,100 +22,51 @@ class WebSearchPlugin(BasePlugin):
     plugin_type = "Input"
 
     def __init__(self):
-        self.base_url = "https://api.duckduckgo.com/"
+        # WARNING: DuckDuckGo aggressively blocks automated scraping. This plugin is likely to fail.
+        # Use a third-party search API or a headless browser for reliable results.
+        self.base_url = "https://html.duckduckgo.com/html/"
 
     @staticmethod
-    def extract_urls_from_response(response):
+    def extract_results_from_html(html):
         """
-        Given a DuckDuckGo API response (dict or list of dicts), extract all 'FirstURL' values from 'RelatedTopics' and 'Results'.
-        Returns a list of URLs (strings).
+        Extract search result URLs and descriptions from DuckDuckGo HTML page using regex.
+        Returns a list of dicts: {"url": ..., "description": ...}
         """
-        def extract_from_single(resp):
-            urls = []
-            if not isinstance(resp, dict):
-                return urls
-            for k in ["RelatedTopics", "Results"]:
-                if k in resp and isinstance(resp[k], list):
-                    for entry in resp[k]:
-                        if isinstance(entry, dict) and "FirstURL" in entry:
-                            urls.append(entry["FirstURL"])
-            return urls
-
-        if isinstance(response, list):
-            all_urls = []
-            for resp in response:
-                all_urls.extend(extract_from_single(resp))
-            return all_urls
-        else:
-            return extract_from_single(response)
+        results = []
+        # Each result is in a <div class="result__body"> ... <a class="result__a" href="...">title</a> ... <a ...> ... </a> <div class="result__snippet">desc</div>
+        pattern = re.compile(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>[\s\S]*?<div class="result__snippet">(.*?)</div>', re.IGNORECASE)
+        for match in pattern.finditer(html):
+            url = match.group(1)
+            # Remove HTML tags from description
+            desc = re.sub(r'<.*?>', '', match.group(3)).strip()
+            results.append({"url": url, "description": desc})
+        return results
 
     def execute_pipeline_step(self, step_config, context):
-        """Execute a pipeline step for this plugin
-        
-        Expected step_config format:
-        {
-            "plugin": "WebSearch",
-            "config": {
-                "query": "search query",
-                "format": "json",  # or "text"
-                "extract_urls": true  # (optional) if true, output a list of URLs instead of raw search results
-            },
-            "output": "search_results"
+        """Execute a pipeline step for this plugin using DuckDuckGo HTML scraping
+        WARNING: This approach is likely to fail due to bot detection and is not recommended for production use.
+        """
+        config = step_config.get("config", {})
+        query = config.get("query")
+        if not query:
+            raise ValueError("No query provided for web search")
+        if isinstance(query, list):
+            query = ' '.join(query)
+        params = {"q": query}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5"
         }
-        
-        If config.query is a variable from context, it will be evaluated.
-        """
-        config = step_config["config"]
-        query = config["query"]
-        extract_urls = config.get("extract_urls", False)
-        
-        # If query is a variable reference, evaluate it
-        if isinstance(query, str) and query in context:
-            query = context[query]
-        elif isinstance(query, list):
-            # Handle list of queries (as used in the POC pipeline)
-            results = [self.search(q if not (isinstance(q, str) and q in context) else context[q]) for q in query]
-            if extract_urls:
-                urls = self.extract_urls_from_response(results)
-                return {step_config["output"]: urls}
-            else:
-                return {step_config["output"]: results}
-        
-        result = self.search(query)
-        if extract_urls:
-            urls = self.extract_urls_from_response(result)
-            return {step_config["output"]: urls}
-        else:
-            return {step_config["output"]: result}
-
-    def search(self, query):
-        """
-        Searches the web using DuckDuckGo.
-        """
-        logger = logging.getLogger("Plugins.Input.web_search.web_search")
-        logger.setLevel(logging.INFO)
-        url = f"{self.base_url}?q={query}&format=json"
-        logger.info(f"[WebSearchPlugin] Sending query: {query}")
-        logger.info(f"[WebSearchPlugin] Request URL: {url}")
-        print(f"[WebSearchPlugin][PRINT] Query: {query}")
-        print(f"[WebSearchPlugin][PRINT] Request URL: {url}")
-        response = requests.get(url)
-        logger.info(f"[WebSearchPlugin] Response status: {response.status_code}")
-        print(f"[WebSearchPlugin][PRINT] Response status: {response.status_code}")
-        if response.status_code in [200, 202]:
-            try:
-                resp_json = response.json()
-                logger.info(f"[WebSearchPlugin] Response JSON keys: {list(resp_json.keys())}")
-                print(f"[WebSearchPlugin][PRINT] Response JSON keys: {list(resp_json.keys())}")
-                return resp_json
-            except Exception as e:
-                logger.error(f"[WebSearchPlugin] Error decoding JSON: {e}")
-                print(f"[WebSearchPlugin][PRINT] Error decoding JSON: {e}")
-                return None
-        else:
-            logger.error(f"Error: {response.status_code}")
-            print(f"[WebSearchPlugin][PRINT] Error: {response.status_code}")
-            return None
+        response = requests.get(self.base_url, params=params, headers=headers, timeout=10)
+        if response.status_code != 200:
+            raise RuntimeError(f"DuckDuckGo HTML returned status {response.status_code}")
+        html = response.text
+        results = self.extract_results_from_html(html)
+        if config.get("extract_urls"):
+            urls = [r["url"] for r in results]
+            return {step_config.get("output", "search_results"): urls}
+        return {step_config.get("output", "search_results"): results}
 
 
 if __name__ == "__main__":
@@ -134,7 +85,7 @@ if __name__ == "__main__":
     
     result = plugin.execute_pipeline_step(test_config, {})
     if result["results"]:
-        print(json.dumps(result["results"], indent=2))
+        print(result["results"])
     else:
         print("No results found or an error occurred.")
         
@@ -145,6 +96,6 @@ if __name__ == "__main__":
     result = plugin.execute_pipeline_step(test_config, test_context)
     if result["results"]:
         print("\nResults from context query:")
-        print(json.dumps(result["results"], indent=2))
+        print(result["results"])
     else:
         print("No results found or an error occurred.")

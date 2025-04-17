@@ -4,6 +4,7 @@ import sys
 import inspect
 from abc import ABC
 from typing import Dict, Set
+import logging
 
 class PluginManager:
     def __init__(self, plugins_path="Plugins"):
@@ -19,15 +20,19 @@ class PluginManager:
         # Load plugins in the correct order
         self._load_plugins_by_type()
         
-        # Print loaded AIModel plugins after initial load
+        # Print loaded plugin summary at info level
+        loaded_plugins = {ptype: list(pdict.keys()) for ptype, pdict in self.plugins.items() if pdict}
+        logging.getLogger(__name__).info(f"Loaded plugins: {loaded_plugins}")
+        
+        # Print loaded AIModel plugins after initial load (optional)
         ai_models = self.get_plugins("AIModels")
         if ai_models:
-            print(f"Loaded AIModel plugins: {list(ai_models.keys())}")
+            logging.getLogger(__name__).info(f"Loaded AIModel plugins: {list(ai_models.keys())}")
         else:
-            print("Warning: No AIModel plugins loaded!")
+            logging.getLogger(__name__).warning("No AIModel plugins loaded!")
         # Print warnings
         for warning in sorted(self.warnings):
-            print(warning)
+            logging.getLogger(__name__).warning(warning)
 
     def _load_plugins_by_type(self):
         """Load plugins in a specific order to handle dependencies"""
@@ -67,22 +72,17 @@ class PluginManager:
                             ''.join(word.capitalize() for word in base_name.split('_')) + 'Plugin',  # PascalCasePlugin
                         ]
 
-                        print(f"[DEBUG] Inspecting module: {module_name}, looking for classes: {class_names}")
-                        print(f"[DEBUG] Module attributes: {dir(module)}")
-
                         plugin_class = None
                         for class_name in class_names:
                             if hasattr(module, class_name):
                                 attr = getattr(module, class_name)
-                                print(f"[DEBUG] Found attribute {class_name}: {attr}")
                                 if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
                                     # Skip abstract base classes
                                     if inspect.isclass(attr) and not inspect.isabstract(attr):
                                         plugin_class = attr
-                                        print(f"[DEBUG] Selected plugin class: {plugin_class}")
                                         break
                         if not plugin_class:
-                            print(f"[DEBUG] No plugin class found in {module_name} for names {class_names}")
+                            logging.getLogger(__name__).warning(f"No plugin class found in {module_name} for names {class_names}")
 
                         if plugin_class:
                             try:
@@ -100,7 +100,7 @@ class PluginManager:
                                     plugin_instance = plugin_class()
                                 
                                 self.plugins.setdefault(plugin_type, {})[folder] = plugin_instance
-                                print(f"Successfully loaded plugin: {folder}")  # Debug print
+                                logging.getLogger(__name__).info(f"Successfully loaded plugin: {folder}")  
                             except Exception as e:
                                 self.warnings.add(f"Error instantiating plugin {folder}: {str(e)}")
                         else:
@@ -151,4 +151,4 @@ class PluginManager:
 
 if __name__ == "__main__":
     manager = PluginManager()
-    print(manager.get_plugins())
+    logging.getLogger(__name__).info(manager.get_plugins())

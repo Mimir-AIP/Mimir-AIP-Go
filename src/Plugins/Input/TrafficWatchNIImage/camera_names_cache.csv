@@ -1,139 +1,139 @@
-camera_id,camera_name,last_updated
-1,Chichester Street,2025-04-18T20:37:19.717633
-2,Howard Street,2025-04-18T20:37:20.859050
-3,Shaftesbury Square,2025-04-18T20:37:21.970706
-4,M1 Sprucefield,2025-04-18T20:37:23.085435
-5,M2 Duncrue Street,2025-04-18T20:37:24.186937
-6,M2 Sandyknowes,2025-04-18T20:37:25.296312
-7,M3 Lagan Bridge,2025-04-18T20:37:26.411578
-9,A12 Clifton Street,2025-04-18T20:37:28.637154
-10,A12 Roden Street,2025-04-18T20:37:29.797413
-11,M1 Broadway,2025-04-18T20:37:30.922813
-12,M1 Stockmans Lane,2025-04-18T20:37:32.027476
-13,M1 Tamnamore,2025-04-18T20:37:33.147516
-14,"A2 Rathgael, Bangor",2025-04-18T20:37:34.277871
-15,A1 Banbridge,2025-04-18T20:37:35.377519
-17,M2 Templepatrick,2025-04-18T20:37:37.590724
-18,A1 Newry,2025-04-18T20:37:38.699290
-19,A24 Carryduff,2025-04-18T20:37:39.798245
-20,Foyle Bridge,2025-04-18T20:37:40.905281
-21,A28 Markethill,2025-04-18T20:37:42.005431
-22,A6 Glenshane Pass,2025-04-18T20:37:43.115511
-23,A37 Coleraine Mountain,2025-04-18T20:37:44.239204
-24,Albertbridge Road - Woodstock Link,2025-04-18T20:37:45.340153
-25,Upper Newtownards Rd - Eastlink,2025-04-18T20:37:46.462208
-26,Upper Newtownards Rd - Dunlady Rd,2025-04-18T20:37:47.565592
-27,Castlereagh Rd - Grand Parade/ Ladas Dr,2025-04-18T20:37:48.673078
-28,Falls Road - Donegall Road,2025-04-18T20:37:49.792333
-29,Andersonstown Road / Kennedy Way,2025-04-18T20:37:50.892025
-30,A2 Beeches Road,2025-04-18T20:37:52.005711
-31,A2 Station Road,2025-04-18T20:37:53.116145
-32,Prince William Rd - Lisburn North Feeder Rd,2025-04-18T20:37:54.233277
-33,M1 - Blacks Rd - Jct 3,2025-04-18T20:37:55.345278
-34,Saintfield Rd Roundabout Lisburn,2025-04-18T20:37:56.449444
-35,M1 - Blaris - Jct 8,2025-04-18T20:37:57.548072
-36,M2 - Greencastle - Jct 2,2025-04-18T20:37:58.653603
-37,Scullions Rd,2025-04-18T20:37:59.761450
-38,M2 - Browns Rd,2025-04-18T20:38:00.876234
-39,A6 Randalstown,2025-04-18T20:38:01.978568
-40,A6 Toome,2025-04-18T20:38:03.098201
-41,Donegall Square South-Adelaide Street,2025-04-18T20:38:04.208735
-42,Ormeau Road - Annadale Embankment,2025-04-18T20:38:05.319261
-43,Saintfield Road - Primrose Hill,2025-04-18T20:38:06.431376
-44,A2 - Tillysburn,2025-04-18T20:38:07.532911
-45,A2 - Holywood Esplanade,2025-04-18T20:38:08.631289
-46,A2 - Bangor Rd - Old Station Rd,2025-04-18T20:38:09.731682
-47,A2 - Ballyrobert,2025-04-18T20:38:10.849623
-48,Knock Road - Upper Newtownards Road,2025-04-18T20:38:11.960077
-49,Upper Knockbreda Rd - Upper Galwally,2025-04-18T20:38:13.098760
-50,Belvoir C&#39;way - Newtownbreda Rd - Tesco&#39;s,2025-04-18T20:38:14.208151
-51,Malone Road - Old Stranmillis Road,2025-04-18T20:38:15.318672
-52,Malone Road - Balmoral Avenue,2025-04-18T20:38:16.423384
-53,Finaghy Crossroads,2025-04-18T20:38:17.524616
-54,Boucher Road - Tates Avenue,2025-04-18T20:38:18.642171
-55,Westlink - York Street,2025-04-18T20:38:19.759562
-56,A1 - Blaris,2025-04-18T20:38:20.875435
-57,A1 - Hillsborough Road Roundabout,2025-04-18T20:38:21.992172
-58,A1 - B10 Overbridge Junction,2025-04-18T20:38:23.105520
-59,A1 - Cloghoge - Newry,2025-04-18T20:38:24.208448
-60,Lodge Rd R&#39;bout Newbridge Coleraine,2025-04-18T20:38:25.297172
-62,Lodge Rd R&#39;bout Lodge Coleraine,2025-04-18T20:38:27.526716
-64,Strand Rd Coleraine,2025-04-18T20:38:29.741555
-65,Greenmount Coleraine,2025-04-18T20:38:30.853981
-66,Old Bridge Coleraine,2025-04-18T20:38:31.952844
-67,Kilowen St Coleraine,2025-04-18T20:38:33.064218
-68,Ballykelly,2025-04-18T20:38:34.168695
-69,Belt Road,2025-04-18T20:38:35.271679
-70,Buncrana Road,2025-04-18T20:38:36.375162
-71,Caw Roundabout,2025-04-18T20:38:37.501348
-72,Craigavon Bridge,2025-04-18T20:38:38.605491
-73,Culmore Roundabout,2025-04-18T20:38:39.715039
-74,Dales Corner/A6 Glendermott Rd - A2 ColumbraTerrace,2025-04-18T20:38:40.824218
-76,Great James Street,2025-04-18T20:38:43.044225
-77,Greenhaw,2025-04-18T20:38:44.152580
-78,Rossdowney Road,2025-04-18T20:38:45.278358
-79,Strand Road,2025-04-18T20:38:46.387355
-151,Oxford Street - Ann Street,2025-04-18T20:40:07.588667
-152,Oxford Street - Lanyon Place,2025-04-18T20:40:08.696529
-153,Victoria Street - High Street,2025-04-18T20:40:09.803693
-154,Dock Street - Garmoyle Street,2025-04-18T20:40:10.913418
-155,Peters Hill - Millfield,2025-04-18T20:40:12.022841
-156,East Bridge Street - Central Station,2025-04-18T20:40:13.139153
-157,Beersbridge Road - Castlereagh Street,2025-04-18T20:40:14.246215
-158,Upper Newtownards Rd - Stoney Rd,2025-04-18T20:40:15.344234
-159,Dublin Rd - Bruce Street,2025-04-18T20:40:16.448749
-160,University Road - Stranmillis Road,2025-04-18T20:40:17.561575
-161,Lisburn Road - Eglantine Avenue,2025-04-18T20:40:18.731332
-162,Falls Road - Grosvenor Road,2025-04-18T20:40:19.839120
-163,Andersonstown Rd - Finaghy Rd Nth,2025-04-18T20:40:20.950766
-164,Stewartstown Road / Michael Ferguson Roundabout,2025-04-18T20:40:22.055059
-165,"A2 Shore Rd - Trooperslane, Carrick",2025-04-18T20:40:23.165510
-166,Belsize Rd - North Feeder Rd,2025-04-18T20:40:24.276651
-167,A1 Hillborough Road - Blaris Road,2025-04-18T20:40:25.388722
-168,A3 Moira Road - Halftown Road,2025-04-18T20:40:26.492565
-169,M1 - 00A27 South Gantry,2025-04-18T20:40:27.606894
-170,M1 - Kennedy Way - Jct 2,2025-04-18T20:40:28.708236
-171,M1 - Stockmans Lane,2025-04-18T20:40:29.823688
-172,M1 - Lisburn Services (5A03),2025-04-18T20:40:30.927260
-173,M1 - Saintfield Rd (Lisburn) - Jct 6,2025-04-18T20:40:32.039580
-174,M1-  Blaris West - J9,2025-04-18T20:40:33.149340
-175,M1 - Moira (City Side) - Jct 9,2025-04-18T20:40:34.260588
-176,M1 - Lough Rd (Lurgan) - Jct 10,2025-04-18T20:40:35.367082
-177,M1 - M12 Ballynacor - Jct 11,2025-04-18T20:40:36.471370
-178,M1 - Birches - Jct 12,2025-04-18T20:40:37.583180
-179,M2 - Seaview (0B35),2025-04-18T20:40:38.689873
-180,M2 - Bellevue,2025-04-18T20:40:39.799663
-181,M2 - Sandyknowes Roundabout - Jct 4,2025-04-18T20:40:40.909279
-182,A6 Castledawson,2025-04-18T20:40:42.013003
-183,Ormeau Road - Ravenhill Road,2025-04-18T20:40:43.121847
-184,Saintfield Road - Upper Galwally,2025-04-18T20:40:44.231171
-185,Saintfield Road - School Rd,2025-04-18T20:40:45.330332
-186,Ballynahinch Road - Carryduff,2025-04-18T20:40:46.433491
-187,M3 - Lagan Bridge East,2025-04-18T20:40:47.533407
-188,M3 - Dee Street,2025-04-18T20:40:48.647981
-189,A2 - Holywood Exchange,2025-04-18T20:40:49.765440
-190,Ballygowan Road - Knock Road,2025-04-18T20:40:50.874444
-191,Upper Knockbreda Rd - Cregagh Rd,2025-04-18T20:40:51.983115
-192,A1 - Fiveways,2025-04-18T20:40:53.092724
-193,"Dublin Road, Antrim",2025-04-18T20:40:54.201495
-194,"Dublin Road at Great Northern Road, Omagh",2025-04-18T20:40:55.314880
-195,"Dromore Road at Asda, Omagh",2025-04-18T20:40:56.428485
-196,"Great Northern Road , Tamlaght Road (Homebase), Omagh",2025-04-18T20:40:57.540480
-197,"Gortmerron Link Road, Dungannon",2025-04-18T20:40:58.648330
-198,"Market Square, Dungannon",2025-04-18T20:40:59.757614
-199,"Orritor Street/William Street, Cookstown",2025-04-18T20:41:00.870639
-200,"Gaol Square, Enniskillen",2025-04-18T20:41:01.978362
-201,Durham St - College Sq Nth,2025-04-18T20:41:03.090769
-202,Sandy Row - Hope Street,2025-04-18T20:41:04.202947
-203,N&#39;ards RD - Albertbridge RD,2025-04-18T20:41:05.325707
-204,Ormeau AV - Linehall ST,2025-04-18T20:41:06.434411
-205,M1 - Finaghy Road,2025-04-18T20:41:07.539238
-206,M1 - Moira East Bound JCT9,2025-04-18T20:41:08.648145
-207,M2 - Duncrue St North (0B14),2025-04-18T20:41:09.755971
-208,M2 - Fortwilliam North (1B16),2025-04-18T20:41:10.867529
-209,M2 - Antrim Hospital,2025-04-18T20:41:11.976764
-210,M22 - Dunsilly Roundabout,2025-04-18T20:41:13.091142
-211,Upp K&#39;Breda - Milltown Rd,2025-04-18T20:41:14.198899
-212,Milltown - Hospital Rd,2025-04-18T20:41:15.313771
-213,Westlink - Divis,2025-04-18T20:41:16.429288
-214,Westlink - Hospital,2025-04-18T20:41:17.544899
+camera_id,camera_name,last_updated,image_url
+1,Chichester Street,2025-04-21T18:26:46.596292,https://cctv.trafficwatchni.com/5.jpg?cache=1745260000000
+2,Howard Street,2025-04-21T18:26:47.104994,https://cctv.trafficwatchni.com/14.jpg?cache=1745260000000
+3,Shaftesbury Square,2025-04-21T18:26:47.414698,https://cctv.trafficwatchni.com/16.jpg?cache=1745260000000
+4,M1 Sprucefield,2025-04-21T18:26:47.723943,https://cctv.trafficwatchni.com/6.jpg?cache=1745260000000
+5,M2 Duncrue Street,2025-04-21T18:26:48.048656,https://cctv.trafficwatchni.com/7.jpg?cache=1745260000000
+6,M2 Sandyknowes,2025-04-21T18:26:48.361848,https://cctv.trafficwatchni.com/13.jpg?cache=1745260000000
+7,M3 Lagan Bridge,2025-04-21T18:26:48.676437,https://cctv.trafficwatchni.com/9.jpg?cache=1745260000000
+9,A12 Clifton Street,2025-04-21T18:26:49.303467,https://cctv.trafficwatchni.com/8.jpg?cache=1745260000000
+10,A12 Roden Street,2025-04-21T18:26:49.604319,https://cctv.trafficwatchni.com/4.jpg?cache=1745260000000
+11,M1 Broadway,2025-04-21T18:26:49.906187,https://cctv.trafficwatchni.com/3.jpg?cache=1745260010000
+12,M1 Stockmans Lane,2025-04-21T18:26:50.207162,https://cctv.trafficwatchni.com/12.jpg?cache=1745260010000
+13,M1 Tamnamore,2025-04-21T18:26:50.851380,https://cctv.trafficwatchni.com/17.jpg?cache=1745260010000
+14,"A2 Rathgael, Bangor",2025-04-21T18:26:51.164471,https://cctv.trafficwatchni.com/0.jpg?cache=1745260010000
+15,A1 Banbridge,2025-04-21T18:26:51.489475,https://cctv.trafficwatchni.com/2.jpg?cache=1745260010000
+17,M2 Templepatrick,2025-04-21T18:26:52.118052,https://cctv.trafficwatchni.com/15.jpg?cache=1745260010000
+18,A1 Newry,2025-04-21T18:26:52.431297,https://cctv.trafficwatchni.com/1.jpg?cache=1745260010000
+19,A24 Carryduff,2025-04-21T18:26:52.745277,https://cctv.trafficwatchni.com/2239-1.jpg?cache=1745260010000
+20,Foyle Bridge,2025-04-21T18:26:53.051745,https://cctv.trafficwatchni.com/832-1.jpg?cache=1745260010000
+21,A28 Markethill,2025-04-21T18:26:53.359317,https://cctv.trafficwatchni.com/823-1.jpg?cache=1745260010000
+22,A6 Glenshane Pass,2025-04-21T18:26:53.664273,https://cctv.trafficwatchni.com/821-1.jpg?cache=1745260010000
+23,A37 Coleraine Mountain,2025-04-21T18:26:53.972009,https://cctv.trafficwatchni.com/3239-1.jpg?cache=1745260010000
+24,Albertbridge Road - Woodstock Link,2025-04-21T18:26:54.284622,https://cctv.trafficwatchni.com/3240.jpg?cache=1745260010000
+25,Upper Newtownards Rd - Eastlink,2025-04-21T18:26:54.602805,https://cctv.trafficwatchni.com/3241.jpg?cache=1745260010000
+26,Upper Newtownards Rd - Dunlady Rd,2025-04-21T18:26:54.910598,https://cctv.trafficwatchni.com/3242.jpg?cache=1745260010000
+27,Castlereagh Rd - Grand Parade/ Ladas Dr,2025-04-21T18:26:55.220262,https://cctv.trafficwatchni.com/3243.jpg?cache=1745260010000
+28,Falls Road - Donegall Road,2025-04-21T18:26:55.552007,https://cctv.trafficwatchni.com/3244.jpg?cache=1745260010000
+29,Andersonstown Road / Kennedy Way,2025-04-21T18:26:55.861699,https://cctv.trafficwatchni.com/3245.jpg?cache=1745260010000
+30,A2 Beeches Road,2025-04-21T18:26:56.160336,https://cctv.trafficwatchni.com/3246.jpg?cache=1745260010000
+31,A2 Station Road,2025-04-21T18:26:56.467579,https://cctv.trafficwatchni.com/3247.jpg?cache=1745260010000
+32,Prince William Rd - Lisburn North Feeder Rd,2025-04-21T18:26:56.774331,https://cctv.trafficwatchni.com/3248.jpg?cache=1745260010000
+33,M1 - Blacks Rd - Jct 3,2025-04-21T18:26:57.077354,https://cctv.trafficwatchni.com/3249.jpg?cache=1745260010000
+34,Saintfield Rd Roundabout Lisburn,2025-04-21T18:26:57.377373,https://cctv.trafficwatchni.com/3250.jpg?cache=1745260010000
+35,M1 - Blaris - Jct 8,2025-04-21T18:26:57.677581,https://cctv.trafficwatchni.com/3251.jpg?cache=1745260010000
+36,M2 - Greencastle - Jct 2,2025-04-21T18:26:57.981399,https://cctv.trafficwatchni.com/3252.jpg?cache=1745260010000
+37,Scullions Rd,2025-04-21T18:26:58.294048,https://cctv.trafficwatchni.com/3253.jpg?cache=1745260010000
+38,M2 - Browns Rd,2025-04-21T18:26:58.602077,https://cctv.trafficwatchni.com/3254.jpg?cache=1745260010000
+39,A6 Randalstown,2025-04-21T18:26:58.910461,https://cctv.trafficwatchni.com/3255.jpg?cache=1745260010000
+40,A6 Toome,2025-04-21T18:26:59.224569,https://cctv.trafficwatchni.com/3256.jpg?cache=1745260010000
+41,Donegall Square South-Adelaide Street,2025-04-21T18:26:59.527305,https://cctv.trafficwatchni.com/3257.jpg?cache=1745260010000
+42,Ormeau Road - Annadale Embankment,2025-04-21T18:26:59.833789,https://cctv.trafficwatchni.com/3258.jpg?cache=1745260010000
+43,Saintfield Road - Primrose Hill,2025-04-21T18:27:00.145308,https://cctv.trafficwatchni.com/3259.jpg?cache=1745260020000
+44,A2 - Tillysburn,2025-04-21T18:27:00.452539,https://cctv.trafficwatchni.com/3260.jpg?cache=1745260020000
+45,A2 - Holywood Esplanade,2025-04-21T18:27:00.767211,https://cctv.trafficwatchni.com/3261.jpg?cache=1745260020000
+46,A2 - Bangor Rd - Old Station Rd,2025-04-21T18:27:01.073898,https://cctv.trafficwatchni.com/3262.jpg?cache=1745260020000
+47,A2 - Ballyrobert,2025-04-21T18:27:01.376608,https://cctv.trafficwatchni.com/3263.jpg?cache=1745260020000
+48,Knock Road - Upper Newtownards Road,2025-04-21T18:27:01.676990,https://cctv.trafficwatchni.com/3264.jpg?cache=1745260020000
+49,Upper Knockbreda Rd - Upper Galwally,2025-04-21T18:27:01.972947,https://cctv.trafficwatchni.com/3265.jpg?cache=1745260020000
+50,Belvoir C&#39;way - Newtownbreda Rd - Tesco&#39;s,2025-04-21T18:27:02.275458,https://cctv.trafficwatchni.com/3266.jpg?cache=1745260020000
+51,Malone Road - Old Stranmillis Road,2025-04-21T18:27:02.581623,https://cctv.trafficwatchni.com/3267.jpg?cache=1745260020000
+52,Malone Road - Balmoral Avenue,2025-04-21T18:27:02.889842,https://cctv.trafficwatchni.com/3268.jpg?cache=1745260020000
+53,Finaghy Crossroads,2025-04-21T18:27:03.202371,https://cctv.trafficwatchni.com/3269.jpg?cache=1745260020000
+54,Boucher Road - Tates Avenue,2025-04-21T18:27:03.508174,https://cctv.trafficwatchni.com/3270.jpg?cache=1745260020000
+55,Westlink - York Street,2025-04-21T18:27:03.817380,https://cctv.trafficwatchni.com/3271.jpg?cache=1745260020000
+56,A1 - Blaris,2025-04-21T18:27:04.172360,https://cctv.trafficwatchni.com/3272.jpg?cache=1745260020000
+57,A1 - Hillsborough Road Roundabout,2025-04-21T18:27:04.493286,https://cctv.trafficwatchni.com/3273.jpg?cache=1745260020000
+58,A1 - B10 Overbridge Junction,2025-04-21T18:27:04.808937,https://cctv.trafficwatchni.com/3274.jpg?cache=1745260020000
+59,A1 - Cloghoge - Newry,2025-04-21T18:27:05.117468,https://cctv.trafficwatchni.com/3275.jpg?cache=1745260020000
+60,Lodge Rd R&#39;bout Newbridge Coleraine,2025-04-21T18:27:05.424977,https://cctv.trafficwatchni.com/3276.jpg?cache=1745260020000
+62,Lodge Rd R&#39;bout Lodge Coleraine,2025-04-21T18:27:06.045586,https://cctv.trafficwatchni.com/3278.jpg?cache=1745260020000
+64,Strand Rd Coleraine,2025-04-21T18:27:06.659980,https://cctv.trafficwatchni.com/3280.jpg?cache=1745260020000
+65,Greenmount Coleraine,2025-04-21T18:27:06.975675,https://cctv.trafficwatchni.com/3281.jpg?cache=1745260020000
+66,Old Bridge Coleraine,2025-04-21T18:27:07.282061,https://cctv.trafficwatchni.com/3282.jpg?cache=1745260020000
+67,Kilowen St Coleraine,2025-04-21T18:27:07.587474,https://cctv.trafficwatchni.com/3283.jpg?cache=1745260020000
+68,Ballykelly,2025-04-21T18:27:07.889993,https://cctv.trafficwatchni.com/3284.jpg?cache=1745260020000
+69,Belt Road,2025-04-21T18:27:08.202174,https://cctv.trafficwatchni.com/3285.jpg?cache=1745260020000
+70,Buncrana Road,2025-04-21T18:27:08.509563,https://cctv.trafficwatchni.com/3286.jpg?cache=1745260020000
+71,Caw Roundabout,2025-04-21T18:27:08.823400,https://cctv.trafficwatchni.com/3287.jpg?cache=1745260020000
+72,Craigavon Bridge,2025-04-21T18:27:09.388793,https://cctv.trafficwatchni.com/3288.jpg?cache=1745260020000
+73,Culmore Roundabout,2025-04-21T18:27:09.774063,https://cctv.trafficwatchni.com/3289.jpg?cache=1745260030000
+74,Dales Corner/A6 Glendermott Rd - A2 ColumbraTerrace,2025-04-21T18:27:10.224502,https://cctv.trafficwatchni.com/3290.jpg?cache=1745260030000
+76,Great James Street,2025-04-21T18:27:10.853152,https://cctv.trafficwatchni.com/3292.jpg?cache=1745260030000
+77,Greenhaw,2025-04-21T18:27:11.158896,https://cctv.trafficwatchni.com/3293.jpg?cache=1745260030000
+78,Rossdowney Road,2025-04-21T18:27:11.587741,https://cctv.trafficwatchni.com/3294.jpg?cache=1745260030000
+79,Strand Road,2025-04-21T18:27:11.935479,https://cctv.trafficwatchni.com/3295.jpg?cache=1745260030000
+151,Oxford Street - Ann Street,2025-04-21T18:27:34.596385,https://cctv.trafficwatchni.com/2_1.jpg?cache=1745260050000
+152,Oxford Street - Lanyon Place,2025-04-21T18:27:34.907554,https://cctv.trafficwatchni.com/3_1.jpg?cache=1745260050000
+153,Victoria Street - High Street,2025-04-21T18:27:35.211393,https://cctv.trafficwatchni.com/5_1.jpg?cache=1745260050000
+154,Dock Street - Garmoyle Street,2025-04-21T18:27:35.513058,https://cctv.trafficwatchni.com/7_1.jpg?cache=1745260050000
+155,Peters Hill - Millfield,2025-04-21T18:27:35.832921,https://cctv.trafficwatchni.com/8_1.jpg?cache=1745260050000
+156,East Bridge Street - Central Station,2025-04-21T18:27:36.146893,https://cctv.trafficwatchni.com/21.jpg?cache=1745260050000
+157,Beersbridge Road - Castlereagh Street,2025-04-21T18:27:36.446905,https://cctv.trafficwatchni.com/23.jpg?cache=1745260050000
+158,Upper Newtownards Rd - Stoney Rd,2025-04-21T18:27:36.761360,https://cctv.trafficwatchni.com/26.jpg?cache=1745260050000
+159,Dublin Rd - Bruce Street,2025-04-21T18:27:37.068634,https://cctv.trafficwatchni.com/31_1.jpg?cache=1745260050000
+160,University Road - Stranmillis Road,2025-04-21T18:27:37.377782,https://cctv.trafficwatchni.com/33.jpg?cache=1745260050000
+161,Lisburn Road - Eglantine Avenue,2025-04-21T18:27:37.676269,https://cctv.trafficwatchni.com/35.jpg?cache=1745260050000
+162,Falls Road - Grosvenor Road,2025-04-21T18:27:38.035571,https://cctv.trafficwatchni.com/40_1.jpg?cache=1745260050000
+163,Andersonstown Rd - Finaghy Rd Nth,2025-04-21T18:27:38.340834,https://cctv.trafficwatchni.com/43.jpg?cache=1745260050000
+164,Stewartstown Road / Michael Ferguson Roundabout,2025-04-21T18:27:38.653743,https://cctv.trafficwatchni.com/44_1.jpg?cache=1745260050000
+165,"A2 Shore Rd - Trooperslane, Carrick",2025-04-21T18:27:38.953909,https://cctv.trafficwatchni.com/55.jpg?cache=1745260050000
+166,Belsize Rd - North Feeder Rd,2025-04-21T18:27:39.268648,https://cctv.trafficwatchni.com/61.jpg?cache=1745260050000
+167,A1 Hillborough Road - Blaris Road,2025-04-21T18:27:39.583063,https://cctv.trafficwatchni.com/65.jpg?cache=1745260050000
+168,A3 Moira Road - Halftown Road,2025-04-21T18:27:39.903367,https://cctv.trafficwatchni.com/66.jpg?cache=1745260060000
+169,M1 - 00A27 South Gantry,2025-04-21T18:27:40.197052,https://cctv.trafficwatchni.com/104.jpg?cache=1745260060000
+170,M1 - Kennedy Way - Jct 2,2025-04-21T18:27:40.500172,https://cctv.trafficwatchni.com/105.jpg?cache=1745260060000
+171,M1 - Stockmans Lane,2025-04-21T18:27:40.799970,https://cctv.trafficwatchni.com/106.jpg?cache=1745260060000
+172,M1 - Lisburn Services (5A03),2025-04-21T18:27:41.112225,https://cctv.trafficwatchni.com/115.jpg?cache=1745260060000
+173,M1 - Saintfield Rd (Lisburn) - Jct 6,2025-04-21T18:27:41.423877,https://cctv.trafficwatchni.com/120_1.jpg?cache=1745260060000
+174,M1-  Blaris West - J9,2025-04-21T18:27:41.729205,https://cctv.trafficwatchni.com/125.jpg?cache=1745260060000
+175,M1 - Moira (City Side) - Jct 9,2025-04-21T18:27:42.045796,https://cctv.trafficwatchni.com/127.jpg?cache=1745260060000
+176,M1 - Lough Rd (Lurgan) - Jct 10,2025-04-21T18:27:42.349553,https://cctv.trafficwatchni.com/129.jpg?cache=1745260060000
+177,M1 - M12 Ballynacor - Jct 11,2025-04-21T18:27:42.647079,https://cctv.trafficwatchni.com/130.jpg?cache=1745260060000
+178,M1 - Birches - Jct 12,2025-04-21T18:27:42.966470,https://cctv.trafficwatchni.com/131.jpg?cache=1745260060000
+179,M2 - Seaview (0B35),2025-04-21T18:27:43.273893,https://cctv.trafficwatchni.com/204.jpg?cache=1745260060000
+180,M2 - Bellevue,2025-04-21T18:27:43.576714,https://cctv.trafficwatchni.com/212.jpg?cache=1745260060000
+181,M2 - Sandyknowes Roundabout - Jct 4,2025-04-21T18:27:43.883274,https://cctv.trafficwatchni.com/215.jpg?cache=1745260060000
+182,A6 Castledawson,2025-04-21T18:27:44.191474,https://cctv.trafficwatchni.com/232.jpg?cache=1745260060000
+183,Ormeau Road - Ravenhill Road,2025-04-21T18:27:44.491462,https://cctv.trafficwatchni.com/244.jpg?cache=1745260060000
+184,Saintfield Road - Upper Galwally,2025-04-21T18:27:44.800315,https://cctv.trafficwatchni.com/245.jpg?cache=1745260060000
+185,Saintfield Road - School Rd,2025-04-21T18:27:45.116589,https://cctv.trafficwatchni.com/246.jpg?cache=1745260060000
+186,Ballynahinch Road - Carryduff,2025-04-21T18:27:45.427345,https://cctv.trafficwatchni.com/249.jpg?cache=1745260060000
+187,M3 - Lagan Bridge East,2025-04-21T18:27:45.729390,https://cctv.trafficwatchni.com/301.jpg?cache=1745260060000
+188,M3 - Dee Street,2025-04-21T18:27:46.041692,https://cctv.trafficwatchni.com/303.jpg?cache=1745260060000
+189,A2 - Holywood Exchange,2025-04-21T18:27:46.341531,https://cctv.trafficwatchni.com/308.jpg?cache=1745260060000
+190,Ballygowan Road - Knock Road,2025-04-21T18:27:46.650491,https://cctv.trafficwatchni.com/402_1.jpg?cache=1745260060000
+191,Upper Knockbreda Rd - Cregagh Rd,2025-04-21T18:27:46.956916,https://cctv.trafficwatchni.com/404.jpg?cache=1745260060000
+192,A1 - Fiveways,2025-04-21T18:27:47.263840,https://cctv.trafficwatchni.com/615.jpg?cache=1745260060000
+193,"Dublin Road, Antrim",2025-04-21T18:27:47.572622,https://cctv.trafficwatchni.com/824.jpg?cache=1745260060000
+194,"Dublin Road at Great Northern Road, Omagh",2025-04-21T18:27:47.877042,https://cctv.trafficwatchni.com/781.jpg?cache=1745260060000
+195,"Dromore Road at Asda, Omagh",2025-04-21T18:27:48.183562,https://cctv.trafficwatchni.com/782.jpg?cache=1745260060000
+196,"Great Northern Road , Tamlaght Road (Homebase), Omagh",2025-04-21T18:27:48.483642,https://cctv.trafficwatchni.com/783.jpg?cache=1745260060000
+197,"Gortmerron Link Road, Dungannon",2025-04-21T18:27:48.783649,https://cctv.trafficwatchni.com/784.jpg?cache=1745260060000
+198,"Market Square, Dungannon",2025-04-21T18:27:49.096900,https://cctv.trafficwatchni.com/785.jpg?cache=1745260060000
+199,"Orritor Street/William Street, Cookstown",2025-04-21T18:27:49.406810,https://cctv.trafficwatchni.com/786.jpg?cache=1745260060000
+200,"Gaol Square, Enniskillen",2025-04-21T18:27:49.712725,https://cctv.trafficwatchni.com/787.jpg?cache=1745260060000
+201,Durham St - College Sq Nth,2025-04-21T18:27:50.018988,https://cctv.trafficwatchni.com/10_1.jpg?cache=1745260070000
+202,Sandy Row - Hope Street,2025-04-21T18:27:50.323493,https://cctv.trafficwatchni.com/11.jpg?cache=1745260070000
+203,N&#39;ards RD - Albertbridge RD,2025-04-21T18:27:50.627535,https://cctv.trafficwatchni.com/24.jpg?cache=1745260070000
+204,Ormeau AV - Linehall ST,2025-04-21T18:27:50.939819,https://cctv.trafficwatchni.com/30.jpg?cache=1745260070000
+205,M1 - Finaghy Road,2025-04-21T18:27:51.492386,https://cctv.trafficwatchni.com/108.jpg?cache=1745260070000
+206,M1 - Moira East Bound JCT9,2025-04-21T18:27:51.832441,https://cctv.trafficwatchni.com/128.jpg?cache=1745260070000
+207,M2 - Duncrue St North (0B14),2025-04-21T18:27:52.142308,https://cctv.trafficwatchni.com/202.jpg?cache=1745260070000
+208,M2 - Fortwilliam North (1B16),2025-04-21T18:27:52.453724,https://cctv.trafficwatchni.com/207.jpg?cache=1745260070000
+209,M2 - Antrim Hospital,2025-04-21T18:27:52.757142,https://cctv.trafficwatchni.com/225.jpg?cache=1745260070000
+210,M22 - Dunsilly Roundabout,2025-04-21T18:27:53.056821,https://cctv.trafficwatchni.com/226.jpg?cache=1745260070000
+211,Upp K&#39;Breda - Milltown Rd,2025-04-21T18:27:53.390401,https://cctv.trafficwatchni.com/407.jpg?cache=1745260070000
+212,Milltown - Hospital Rd,2025-04-21T18:27:53.697511,https://cctv.trafficwatchni.com/408.jpg?cache=1745260070000
+213,Westlink - Divis,2025-04-21T18:27:54.000816,https://cctv.trafficwatchni.com/505.jpg?cache=1745260070000
+214,Westlink - Hospital,2025-04-21T18:27:54.317094,https://cctv.trafficwatchni.com/590.jpg?cache=1745260070000

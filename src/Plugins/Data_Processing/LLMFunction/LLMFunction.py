@@ -66,6 +66,29 @@ class LLMFunction(BasePlugin):
         Returns:
             dict: Updated context with step output
         """
+        # Check for test mode
+        test_mode = False
+        if "test_mode" in context:
+            test_mode = context["test_mode"]
+        elif "test_mode" in step_config:
+            test_mode = step_config["test_mode"]
+        if test_mode:
+            # Prefer mock_response in step_config, then in step_config['config'] if present
+            mock_response = None
+            if "mock_response" in step_config:
+                mock_response = step_config["mock_response"]
+            elif "config" in step_config and isinstance(step_config["config"], dict) and "mock_response" in step_config["config"]:
+                mock_response = step_config["config"]["mock_response"]
+            if mock_response is not None:
+                self.logger.info(f"[LLMFunction] Test mode enabled: using mock_response: {mock_response}")
+                return {step_config.get("output", "llm_output"): mock_response}
+            # No mock_response found: error in test mode
+            error_msg = (
+                f"[LLMFunction] Test mode is enabled but no mock_response is provided for step: {step_config.get('name', 'UNKNOWN')}. "
+                "Please add a mock_response to your pipeline YAML."
+            )
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
         if not self.llm_plugin:
             raise ValueError("LLM plugin not set. Please call set_llm_plugin() first.")
             
@@ -91,30 +114,45 @@ class LLMFunction(BasePlugin):
         self.logger.debug(f"Request to LLM plugin: {messages}")
         
         # Get the response from the LLM plugin
-        response = self.llm_plugin.chat_completion(
-            model=config["model"],
-            messages=messages
-        )
-        
-        self.logger.debug(f"Response from LLM plugin: {response}")
-        print(f"LLMFunction: Raw response from LLM: {response}")
-        
+        # Try to get the full response if possible, fallback to string
+        try:
+            response = self.llm_plugin.chat_completion(
+                model=config["model"],
+                messages=messages,
+                return_full_response=True
+            )
+            self.logger.debug(f"[DEBUG] Full LLM response: {response}")
+            # If 'choices' in response, extract content
+            if isinstance(response, dict) and "choices" in response:
+                llm_content = response["choices"][0]["message"]["content"]
+            else:
+                llm_content = response
+        except TypeError:
+            # Backward compatibility: plugin does not support return_full_response
+            response = self.llm_plugin.chat_completion(
+                model=config["model"],
+                messages=messages
+            )
+            llm_content = response
+        self.logger.debug(f"Response from LLM plugin: {llm_content}")
+        print(f"LLMFunction: Raw response from LLM: {llm_content}")
+
         # Format the response based on the format string
         if "format" in config and config["format"]:
             try:
                 # Try to parse the response as a Python literal if possible
                 parsed_response = None
                 try:
-                    parsed_response = ast.literal_eval(response)
+                    parsed_response = ast.literal_eval(llm_content)
                     self.logger.debug(f"Parsed LLM response as literal: {parsed_response}")
                 except Exception:
-                    parsed_response = response
+                    parsed_response = llm_content
                 formatted_response = eval(config["format"], {"response": parsed_response})
             except Exception as e:
-                print(f"LLMFunction: Error formatting response: {e}\nRaw response: {response}")
-                raise ValueError(f"Error formatting response: {e}\nRaw response: {response}")
+                print(f"LLMFunction: Error formatting response: {e}\nRaw response: {llm_content}")
+                raise ValueError(f"Error formatting response: {e}\nRaw response: {llm_content}")
         else:
-            formatted_response = response
+            formatted_response = llm_content
         
         return {step_config["output"]: formatted_response}
 

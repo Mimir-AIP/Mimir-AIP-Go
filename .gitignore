@@ -174,3 +174,11 @@ cython_debug/
 .pypirc
 /.idea
 .DS_Store
+.windsurfrules
+rss_feed_raw.xml
+
+# Debug output files (do not ignore during debugging)
+# debug_raw_search_results.json
+# debug_scrape_input_type.json
+# debug_search_queries.json
+# debug_search_urls.json

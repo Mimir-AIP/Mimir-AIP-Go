@@ -77,16 +77,17 @@ class OpenRouter(BaseAIModel):
             "meta-llama/llama-3.1-8b-instruct:free"
         ]
 
-    def chat_completion(self, model, messages):
+    def chat_completion(self, model, messages, return_full_response=False):
         """
         Send a chat completion request to OpenRouter
         
         Args:
             model (str): Model identifier (e.g., 'meta-llama/llama-3-8b-instruct:free')
             messages (list): List of message dictionaries with 'role' and 'content'
+            return_full_response (bool): If True, return the full API response JSON
         
         Returns:
-            str: Model response text
+            str or dict: Model response text or full response
         """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -116,9 +117,16 @@ class OpenRouter(BaseAIModel):
         self.logger.debug(f"Response text: {response.text}")
 
         if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
+            json_response = response.json()
+            if isinstance(json_response, dict) and 'error' in json_response:
+                self.logger.error(f"OpenRouter API error: {json_response['error']}")
+                return None
+            if return_full_response:
+                return json_response
+            return json_response["choices"][0]["message"]["content"]
         else:
-            raise ValueError(f"Error from OpenRouter API: {response.text}")
+            self.logger.error(f"Error from OpenRouter API: {response.text}")
+            return None
 
     def text_completion(self, model, prompt):
         """

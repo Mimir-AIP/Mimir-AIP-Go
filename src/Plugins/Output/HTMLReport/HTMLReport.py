@@ -68,20 +68,27 @@ class HTMLReport(BasePlugin):
         
         # Evaluate sections expression
         try:
-            sections = eval(config["sections"], {"__builtins__": {}}, {"context": context})
-            logger.debug(f"Evaluated sections: {sections}")
+            logger.info(f"[HTMLReport] Output directory: {self.output_directory}")
+            logger.info(f"[HTMLReport] Step config: {step_config}")
+            logger.info(f"[HTMLReport] Context keys: {list(context.keys())}")
+            logger.info(f"[HTMLReport] Evaluating sections from config: {config.get('sections')}")
+            sections = eval(config["sections"], {"context": context, **context}) if isinstance(config["sections"], str) else config["sections"]
+            logger.info(f"[HTMLReport] Number of sections to write: {len(sections)}")
+            logger.info(f"[HTMLReport] Sample section: {sections[0] if sections else 'None'}")
         except Exception as e:
             logger.error(f"Error evaluating sections: {e}")
             raise
         
         # Generate report
         try:
+            filename = config.get("filename", "report.html")
+            logger.info(f"[HTMLReport] Writing report to: {os.path.join(self.output_directory, filename)}")
             report_path = self.generate_report(
                 title=config["title"],
                 sections=sections,
-                filename=config.get("filename", "report.html")
+                filename=filename
             )
-            logger.debug(f"Generated report at: {report_path}")
+            logger.info(f"[HTMLReport] Generated report at: {report_path}")
             return {step_config["output"]: report_path}
         except Exception as e:
             logger.error(f"Error generating report: {e}")
@@ -98,6 +105,9 @@ class HTMLReport(BasePlugin):
                      - "javascript": JavaScript code for the section
         :param filename: Name of the output HTML file
         """
+        import os
+        import logging
+        logger = logging.getLogger(__name__)
         # Generate HTML content for all text and JavaScript sections
         section_html = ""
         for section in sections:
@@ -169,11 +179,23 @@ class HTMLReport(BasePlugin):
 </html>
 """
         # Full path for the output file
-        report_path = os.path.join(self.output_directory, filename)
+        report_path = os.path.abspath(os.path.join(self.output_directory, filename))
+        logger.info(f"[HTMLReport] Absolute report path: {report_path}")
 
         # Write the HTML content to the file
-        with open(report_path, "w", encoding="utf-8") as file:
-            file.write(html_template)
+        try:
+            with open(report_path, "w", encoding="utf-8") as file:
+                file.write(html_template)
+            logger.info(f"[HTMLReport] Successfully wrote HTML to {report_path}")
+        except Exception as e:
+            logger.error(f"[HTMLReport] ERROR writing HTML to {report_path}: {e}")
+            raise
+
+        # Check existence immediately after writing
+        if os.path.exists(report_path):
+            logger.info(f"[HTMLReport] File confirmed present after write: {report_path}")
+        else:
+            logger.error(f"[HTMLReport] File missing after write: {report_path}")
 
         print(f"Report generated: {report_path}")
         return report_path

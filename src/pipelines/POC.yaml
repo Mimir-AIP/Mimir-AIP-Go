@@ -5,70 +5,109 @@ pipelines:
       - name: "Fetch BBC News RSS Feed"
         plugin: "rss_feed"
         config:
-          url: "http://feeds.bbci.co.uk/news/world/rss.xml"
+          url: "https://feeds.bbci.co.uk/news/world/rss.xml?edition=uk"
           feed_name: "BBC_News"
         output: "feed_BBC_News"
 
       - name: "Process Stories"
         iterate: "context.get('feed_BBC_News', [])"
         steps:
+          - name: "Delay Before Importance"
+            plugin: "Delay"
+            config:
+              seconds: 10
+            output: "delay_before_importance"
+
           - name: "Determine Importance"
             plugin: "LLMFunction"
             config:
               plugin: "OpenRouter"
               model: "meta-llama/llama-4-maverick:free"
-              function: "You are a program block that takes RSS feed items and determines importance on a scale of 1-10"
-              format: "return score in the format {'score': 10}"
-            input: "item.title"
+              function: |
+                You are a program block that takes RSS feed items and determines importance on a scale of 1-10.
+                Your ONLY output should be a single valid Python dictionary in the format {'score': <number>} (e.g., {'score': 7}).
+                Do not include any explanation, commentary, or extra text. Only output the dictionary.
+              format: "response"
+              mock_response: {"score": 8}
+            input: "item['title']"
             output: "importance_score"
 
           - name: "Process Important Story"
-            condition: "importance_score.score > 1"  # Lowered threshold to include all stories
+            condition: "importance_score['score'] > 7"
             steps:
-              - name: "Generate Search Queries"
+              - name: "Delay Before Section Prompt"
+                plugin: "Delay"
+                config:
+                  seconds: 10
+                output: "delay_before_section_prompt"
+
+              - name: "Generate Section Prompt"
                 plugin: "LLMFunction"
                 config:
                   plugin: "OpenRouter"
                   model: "meta-llama/llama-4-maverick:free"
-                  function: "You are a program block that generates search queries for a given topic"
-                  format: "return search queries in the format {'search_queries': ['query1', 'query2', 'query3']}"
-                input: "item.title"
-                output: "search_queries"
+                  function: |
+                    You are a program block that generates a single, strong prompt for summarizing a news story. Your ONLY output should be a single valid Python dictionary in the format {'section_prompt': <prompt_string>}.
+                    Do not include any explanation, commentary, or extra text. Only output the dictionary.
+                    The prompt should instruct an LLM to write a concise, well-structured summary section for a news report, including all available details (title, description, link), and enforce output as a Python dict with a 'section_summary' key.
+                  format: "response"
+                  mock_response: {"section_prompt": "Write a summary for this news item."}
+                input: "item"
+                output: "section_prompt"
 
-              - name: "Fetch Search Results"
-                plugin: "web_search"
-                config:
-                  queries: "search_queries.search_queries"
-                output: "search_results"
-
-              - name: "Scrape Web Results"
-                plugin: "WebScraping"
-                input: "search_results"
-                output: "scraped_results"
-
-              - name: "Generate Report"
+              - name: "Generate Section Summary"
                 plugin: "LLMFunction"
                 config:
                   plugin: "OpenRouter"
                   model: "meta-llama/llama-4-maverick:free"
-                  function: "You are a program block that generates a concise report about a news story"
-                  format: "return report in the format {'report': 'Your concise report here'}"
-                input: "item.title"
-                output: "report"
+                  function: |
+                    You are a program block that generates a concise, informative section summary for a news story. Use the following details:
+                    - Title: {title}
+                    - Description: {description}
+                    - Link: {link}
+                    Use the provided prompt for additional guidance: {section_prompt.section_prompt}
+                    Output ONLY a valid Python dictionary in the format: {'section_summary': <summary text>}.
+                    Do not add any explanation or commentary. Your output MUST be a Python dict with a single key 'section_summary'.
+                  format: "response"
+                  mock_response: {"section_summary": "This is a mock section summary for testing."}
+                input: "{'title': item['title'], 'description': item.get('description', ''), 'link': item.get('link', ''), 'section_prompt': section_prompt}"
+                output: "section_summary"
 
-      - name: "Combine Reports"
+              - name: "Collect Section Summary"
+                plugin: "ContextAggregator"
+                key: "section_summaries"
+                value: "section_summary"
+                output: "section_summaries"
+
+              - name: "Write Section Summary to File"
+                condition: "section_summary is not None"
+                plugin: "ContextToFile"
+                variable: "section_summary"
+                filename: "section_summaries.json"
+                append: true
+                output: "written_section_summary"
+
+      - name: "Load Section Summaries"
+        plugin: "FileToContext"
+        filename: "section_summaries.json"
+        variable: "section_summaries"
+        output: "section_summaries"
+
+      - name: "Combine Section Summaries"
         plugin: "LLMFunction"
         config:
           plugin: "OpenRouter"
           model: "meta-llama/llama-4-maverick:free"
-          function: "You are a program block that combines multiple reports into a single report"
-          format: "return combined report in markdown format"
-        input: "context.get('report', '')"
+          function: |
+            You are a program block that receives a list of news story section summaries and concatenates them into a single string, separated by two newlines. Only output the concatenated string, no extra text.
+          format: "response"
+          mock_response: "Section 1 summary.\n\nSection 2 summary."
+        input: "section_summaries"
         output: "combined_report"
 
       - name: "Generate HTML Report"
         plugin: "HTMLReport"
         config:
           title: "BBC News Report"
-          sections: "[{'heading': 'News Stories', 'text': context.get('report', '')}]"
+          sections: "[{'heading': 'News Stories', 'text': context.get('combined_report', '')}]"
         output: "report.html"

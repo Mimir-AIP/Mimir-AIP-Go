@@ -1,13 +1,13 @@
 # Main configuration file for Mimir-AIP, you can define pipelines to run here (and schedule them in future versions)
 pipelines:
   - name: "BBC News Pipeline"
-    file: "src/pipelines/POC.yaml"
+    file: "pipelines/POC.yaml"
     enabled: true
     # schedule: "*/30 * * * *"  # Uncomment to run every 30 minutes (future feature)
     
   # Example of another pipeline
   # - name: "Twitter Analysis Pipeline"
-  #   file: "src/pipelines/twitter_analysis.yaml"
+  #   file: "pipelines/twitter_analysis.yaml"
   #   enabled: false
   #   schedule: "0 */6 * * *"  # Run every 6 hours
 
@@ -15,3 +15,4 @@ settings:
   pipeline_directory: "src/pipelines"
   output_directory: "output"
   log_level: "INFO"
+  test_mode: true

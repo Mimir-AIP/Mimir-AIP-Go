@@ -40,14 +40,17 @@ class PluginManager:
         self._load_plugins_of_type("AIModels")
         
         # Then load everything else
-        plugin_base_path = os.path.join("src", self.plugins_path)
+        # Use absolute path relative to project root, not current working directory
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        plugin_base_path = os.path.join(project_root, self.plugins_path)
         for plugin_type in os.listdir(plugin_base_path):
             if plugin_type != "AIModels" and os.path.isdir(os.path.join(plugin_base_path, plugin_type)):
                 self._load_plugins_of_type(plugin_type)
 
     def _load_plugins_of_type(self, plugin_type: str):
         """Load all plugins of a specific type"""
-        plugin_type_path = os.path.join("src", self.plugins_path, plugin_type)
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        plugin_type_path = os.path.join(project_root, self.plugins_path, plugin_type)
         if not os.path.isdir(plugin_type_path):
             return
 

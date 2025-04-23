@@ -14,7 +14,8 @@ Example usage:
                 }
             ],
             "output_dir": "reports",
-            "filename": "report.html"
+            "filename": "report.html",
+            "css": "..."  # Optional, custom CSS string to override default styling
         },
         "output": "report_path"
     }, {})
@@ -54,9 +55,11 @@ class HTMLReport(BasePlugin):
                 ],
                 "output_dir": "reports",  # Optional
                 "filename": "report.html"  # Optional
+                "css": "..."  # Optional, custom CSS string to override default styling
             },
             "output": "report_path"
         }
+        If 'css' is omitted, the default theme is used for backward compatibility.
         """
         config = step_config["config"]
         logger = logging.getLogger(__name__)
@@ -79,6 +82,9 @@ class HTMLReport(BasePlugin):
             logger.error(f"Error evaluating sections: {e}")
             raise
         
+        # Handle custom CSS (theme)
+        css = config.get("css", None)
+        
         # Generate report
         try:
             filename = config.get("filename", "report.html")
@@ -86,7 +92,8 @@ class HTMLReport(BasePlugin):
             report_path = self.generate_report(
                 title=config["title"],
                 sections=sections,
-                filename=filename
+                filename=filename,
+                css=css
             )
             logger.info(f"[HTMLReport] Generated report at: {report_path}")
             return {step_config["output"]: report_path}
@@ -94,9 +101,9 @@ class HTMLReport(BasePlugin):
             logger.error(f"Error generating report: {e}")
             raise
 
-    def generate_report(self, title, sections, filename="report.html"):
+    def generate_report(self, title, sections, filename="report.html", css=None):
         """
-        Generate an HTML report with multiple text and JavaScript sections.
+        Generate an HTML report with multiple text and JavaScript sections, supporting custom theming.
 
         :param title: Title of the HTML document
         :param sections: List of sections, where each section is a dictionary with:
@@ -104,6 +111,8 @@ class HTMLReport(BasePlugin):
                      - "text": Text content for the section (HTML allowed)
                      - "javascript": JavaScript code for the section
         :param filename: Name of the output HTML file
+        :param css: Optional custom CSS string to override the default styling
+        :return: Absolute path to the generated HTML file
         """
         import os
         import logging
@@ -121,6 +130,109 @@ class HTMLReport(BasePlugin):
             </div>
             """
 
+        # Default CSS (Mimir-AIP GitHub Pages inspired)
+        default_css = '''
+html {
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+  -ms-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #24292e;
+  background-color: #fff;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 32px 16px 32px 16px;
+}
+h1 {
+  font-size: 2em;
+  font-weight: 600;
+  color: #2c3e50;
+  text-align: center;
+  margin-top: 0.67em;
+  margin-bottom: 0.67em;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #eee;
+}
+h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  color: #34495e;
+  margin-top: 30px;
+  margin-bottom: 0.5em;
+}
+p {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+a {
+  color: #0366d6;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+.section {
+  background: #fff;
+  padding: 24px 20px;
+  margin: 24px 0;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  box-shadow: 0 1px 5px rgba(27,31,35,0.07);
+}
+.content {
+  margin: 15px 0;
+  padding: 10px;
+  background: #f6f8fa;
+  border-radius: 5px;
+  overflow-x: auto;
+}
+footer {
+  text-align: center;
+  margin-top: 32px;
+  font-size: 0.95em;
+  color: #888;
+}
+code, pre {
+  font-family: "SFMono-Regular",Consolas,"Liberation Mono",Menlo,Courier,monospace;
+  font-size: 13px;
+  background: #f6f8fa;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+th, td {
+  border: 1px solid #e1e4e8;
+  padding: 8px 12px;
+  text-align: left;
+}
+th {
+  background: #f6f8fa;
+}
+blockquote {
+  margin: 0 0 16px 0;
+  padding-left: 1em;
+  color: #6a737d;
+  border-left: 4px solid #dfe2e5;
+  background: #f6f8fa;
+}
+hr {
+  border: 0;
+  border-bottom: 1px solid #e1e4e8;
+  margin: 24px 0;
+}
+'''
+        style_block = css if css else default_css
+
         # HTML template with styling
         html_template = f"""
 <!DOCTYPE html>
@@ -128,45 +240,7 @@ class HTMLReport(BasePlugin):
 <head>
     <title>{title}</title>
     <style>
-        body {{
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        h1 {{
-            color: #2c3e50;
-            text-align: center;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #eee;
-        }}
-        h2 {{
-            color: #34495e;
-            margin-top: 30px;
-        }}
-        .section {{
-            background: #fff;
-            padding: 20px;
-            margin: 20px 0;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .content {{
-            margin: 15px 0;
-            padding: 10px;
-            background: #f9f9f9;
-            border-radius: 5px;
-            overflow-x: auto;
-        }}
-        footer {{
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.9em;
-            color: #888;
-        }}
+{style_block}
     </style>
 </head>
 <body>

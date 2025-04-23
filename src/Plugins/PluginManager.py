@@ -79,9 +79,9 @@ class PluginManager:
                         for class_name in class_names:
                             if hasattr(module, class_name):
                                 attr = getattr(module, class_name)
-                                if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
-                                    # Skip abstract base classes
-                                    if inspect.isclass(attr) and not inspect.isabstract(attr):
+                                # Skip abstract base classes (ABC) and classes with abstract methods
+                                if inspect.isclass(attr) and not inspect.isabstract(attr):
+                                    if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
                                         plugin_class = attr
                                         break
                         if not plugin_class:

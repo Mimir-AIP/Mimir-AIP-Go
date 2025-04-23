@@ -15,7 +15,7 @@ pipelines:
           - name: "Delay Before Importance"
             plugin: "Delay"
             config:
-              seconds: 10
+              seconds: 30
             output: "delay_before_importance"
 
           - name: "Determine Importance"
@@ -38,7 +38,7 @@ pipelines:
               - name: "Delay Before Section Prompt"
                 plugin: "Delay"
                 config:
-                  seconds: 10
+                  seconds: 30
                 output: "delay_before_section_prompt"
 
               - name: "Generate Section Prompt"
@@ -73,18 +73,39 @@ pipelines:
                 input: "{'title': item['title'], 'description': item.get('description', ''), 'link': item.get('link', ''), 'section_prompt': section_prompt}"
                 output: "section_summary"
 
-              - name: "Collect Section Summary"
+              - name: "Build Section Data"
+                plugin: "ContextPromoter"
+                source: "item"
+                target: "section_data"
+
+              - name: "Add Importance and Summary to Section Data"
+                plugin: "ContextPromoter"
+                source: "importance_score['score']"
+                target: "section_data['importance']"
+
+              - name: "Add Section Summary to Section Data"
+                plugin: "ContextPromoter"
+                source: "section_summary"
+                target: "section_data['section_summary']"
+
+              - name: "Collect Section Data"
                 plugin: "ContextAggregator"
                 key: "section_summaries"
-                value: "section_summary"
+                value: "section_data"
+                required_keys:
+                  - title
+                  - importance
+                  - description
+                  - link
+                  - section_summary
                 output: "section_summaries"
 
               - name: "Write Section Summary to File"
                 condition: "section_summary is not None"
                 plugin: "ContextToFile"
-                variable: "section_summary"
+                variable: "section_summaries"
                 filename: "section_summaries.json"
-                append: true
+                append: false
                 output: "written_section_summary"
 
       - name: "Load Section Summaries"
@@ -93,21 +114,21 @@ pipelines:
         variable: "section_summaries"
         output: "section_summaries"
 
-      - name: "Combine Section Summaries"
-        plugin: "LLMFunction"
-        config:
-          plugin: "OpenRouter"
-          model: "meta-llama/llama-4-maverick:free"
-          function: |
-            You are a program block that receives a list of news story section summaries and concatenates them into a single string, separated by two newlines. Only output the concatenated string, no extra text.
-          format: "response"
-          mock_response: "Section 1 summary.\n\nSection 2 summary."
-        input: "section_summaries"
-        output: "combined_report"
-
       - name: "Generate HTML Report"
         plugin: "HTMLReport"
         config:
           title: "BBC News Report"
-          sections: "[{'heading': 'News Stories', 'text': context.get('combined_report', '')}]"
+          sections: |
+            [
+              {
+                'heading': s['title'],
+                'text': (
+                  '<b>Importance:</b> ' + str(s['importance']) +
+                  '<br><b>Description:</b> ' + s['description'] +
+                  '<br><b>Link:</b> <a href="' + s['link'] + '">' + s['link'] + '</a>' +
+                  '<br><b>Summary:</b> ' + s['section_summary']
+                )
+              }
+              for s in context.get('section_summaries', [])
+            ]
         output: "report.html"

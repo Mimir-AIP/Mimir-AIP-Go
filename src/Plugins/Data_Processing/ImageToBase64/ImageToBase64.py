@@ -19,7 +19,7 @@ class ImageToBase64(BasePlugin):
     plugin_type = "Data_Processing"
 
     def __init__(self, plugin_manager=None, logger=None):
-        self.plugin_manager = plugin_manager if plugin_manager is not None else PluginManager()
+        self.plugin_manager = plugin_manager
         self.logger = logger if logger is not None else logging.getLogger(__name__)
 
     def execute_pipeline_step(self, step_config: dict, context: dict) -> dict:

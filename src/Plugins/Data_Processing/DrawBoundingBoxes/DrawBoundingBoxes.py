@@ -1,0 +1,51 @@
+import os
+from PIL import Image, ImageDraw
+from Plugins.BasePlugin import BasePlugin
+
+class DrawBoundingBoxes(BasePlugin):
+    """
+    Plugin to draw bounding boxes on an image given detection results.
+    Expects a list of bounding boxes with normalized coordinates (0-1).
+    """
+    def __init__(self, plugin_manager=None, logger=None):
+        self.plugin_manager = plugin_manager
+        self.logger = logger
+
+    def execute_pipeline_step(self, step_config: dict, context: dict) -> dict:
+        """
+        Draw bounding boxes on an image and save the result.
+        Args:
+            step_config (dict): Should contain:
+                - input_image_path_key: key for image path in context (default 'image_path')
+                - input_boxes_key: key for boxes list in context (default 'boxes')
+                - output_path: where to save the result (default 'output_with_boxes.jpg')
+                - color: box color (default 'red')
+                - width: box line width (default 3)
+            context (dict): Pipeline context.
+        Returns:
+            dict: Updated context (with output_path under 'output_image_path' or specified output key)
+        """
+        image_path = context.get(step_config.get('input_image_path_key', 'image_path'))
+        boxes = context.get(step_config.get('input_boxes_key', 'boxes'))
+        output_path = step_config.get('output_path', 'output_with_boxes.jpg')
+        color = step_config.get('color', 'red')
+        width = step_config.get('width', 3)
+        if not image_path or not os.path.isfile(image_path):
+            raise ValueError(f"Image file not found: {image_path}")
+        if not boxes or not isinstance(boxes, list):
+            raise ValueError("No bounding boxes provided or wrong format.")
+        image = Image.open(image_path).convert("RGB")
+        draw = ImageDraw.Draw(image)
+        w, h = image.size
+        for obj in boxes:
+            x0 = int(obj['x_min'] * w)
+            y0 = int(obj['y_min'] * h)
+            x1 = int(obj['x_max'] * w)
+            y1 = int(obj['y_max'] * h)
+            draw.rectangle([x0, y0, x1, y1], outline=color, width=width)
+        image.save(output_path)
+        if self.logger:
+            self.logger.info(f"Saved image with bounding boxes to {output_path}")
+        output_key = step_config.get('output_image_path_key', 'output_image_path')
+        context[output_key] = output_path
+        return context

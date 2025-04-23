@@ -19,7 +19,13 @@ class Delay(BasePlugin):
           seconds: number of seconds to sleep (default: 1)
           output: name of the output context key (default: 'delay_done')
         """
-        seconds = step_config.get("seconds", 1)
+        # Robustly support both legacy and new step_config structures
+        if 'config' in step_config and isinstance(step_config['config'], dict):
+            seconds = step_config['config'].get('seconds', 1)
+            output_key = step_config.get('output', step_config['config'].get('output', 'delay_done'))
+        else:
+            seconds = step_config.get('seconds', 1)
+            output_key = step_config.get('output', 'delay_done')
         self.logger.info(f"[Delay] Sleeping for {seconds} seconds...")
         time.sleep(seconds)
-        return {step_config.get("output", "delay_done"): True}
+        return {output_key: True}

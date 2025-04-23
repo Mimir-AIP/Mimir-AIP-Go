@@ -85,7 +85,7 @@ pipelines:
 
               - name: "Add Section Summary to Section Data"
                 plugin: "ContextPromoter"
-                source: "section_summary"
+                source: "section_summary['section_summary']"
                 target: "section_data['section_summary']"
 
               - name: "Collect Section Data"

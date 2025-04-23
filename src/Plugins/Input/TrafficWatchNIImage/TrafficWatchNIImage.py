@@ -19,45 +19,61 @@ class TrafficWatchNIImage(BasePlugin):
     CACHE_FILE = os.path.join(os.path.dirname(__file__), "camera_names_cache.csv")
     CACHE_EXPIRY_DAYS = 31
 
-    def __init__(self, *args, logger=None, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, plugin_manager=None, logger=None):
+        self.plugin_manager = plugin_manager
         import logging
         self.logger = logger or logging.getLogger(__name__)
 
     def execute_pipeline_step(self, step_config, context):
         """
-        Downloads the image for the given camera_id from TrafficWatchNI and saves it locally.
+        Downloads the image for the given camera_id from TrafficWatchNI.
+        By default, returns the image as base64 in memory. Optionally saves to disk if 'save_to_disk' is True in step_config.
         Args:
-            step_config (dict): Should contain 'camera_id' and optionally 'output_dir' and 'output'.
+            step_config (dict): Should contain 'camera_id'. Options:
+                - save_to_disk (bool): If True, also saves image to disk (default False)
+                - output_dir (str): Directory for saving images (default 'traffic_images')
+                - output (str): Key for image path in result (default 'traffic_image_path')
+                - b64_key (str): Key for b64 output (default 'traffic_image_b64')
             context (dict): Pipeline context (unused).
         Returns:
-            dict: {output_key: image_path} if successful, else {output_key: None}
+            dict: {b64_key: image_b64, output_key: image_path (if saved)}
         """
+        import base64
         camera_id = step_config.get("camera_id")
+        save_to_disk = step_config.get("save_to_disk", False)
         output_key = step_config.get("output", "traffic_image_path")
         output_dir = step_config.get("output_dir", "traffic_images")
+        b64_key = step_config.get("b64_key", "traffic_image_b64")
         if camera_id is None:
-            self.logger.error("No camera_id provided to TrafficWatchNIImage plugin.")
-            return {output_key: None}
+            self.logger.error("No camera_id provided in step_config.")
+            return {b64_key: None}
         name, image_url = self.get_camera_metadata(camera_id)
         if not image_url:
             self.logger.error(f"No image URL found for camera {camera_id}.")
-            return {output_key: None}
-        os.makedirs(output_dir, exist_ok=True)
-        image_path = os.path.join(output_dir, f"{camera_id}.jpg")
+            return {b64_key: None}
         try:
             resp = requests.get(image_url, timeout=10)
             if resp.status_code == 200:
-                with open(image_path, 'wb') as f:
-                    f.write(resp.content)
-                self.logger.info(f"Downloaded image for camera {camera_id} to {image_path}")
-                return {output_key: image_path}
+                result = {}
+                encoded = base64.b64encode(resp.content).decode("utf-8")
+                encoded = f"data:image/jpeg;base64,{encoded}"
+                result[b64_key] = encoded
+                if save_to_disk:
+                    os.makedirs(output_dir, exist_ok=True)
+                    from datetime import datetime
+                    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    image_path = os.path.join(output_dir, f"{camera_id}_{timestamp}.jpg")
+                    with open(image_path, 'wb') as f:
+                        f.write(resp.content)
+                    self.logger.info(f"Downloaded image for camera {camera_id} to {image_path}")
+                    result[output_key] = image_path
+                return result
             else:
                 self.logger.error(f"Failed to fetch image for camera {camera_id}: HTTP {resp.status_code}")
-                return {output_key: None}
+                return {b64_key: None}
         except Exception as e:
             self.logger.error(f"Exception fetching image for camera {camera_id}: {e}")
-            return {output_key: None}
+            return {b64_key: None}
 
     def get_camera_metadata(self, camera_id):
         """

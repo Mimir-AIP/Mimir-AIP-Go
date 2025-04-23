@@ -4,12 +4,6 @@ Overview
 ---
 The MIMIR Artificial Intelligence Platform is an open-source framework designed to connect inputs and outputs to AI systems with integrated storage capabilities. The platform is built to provide a modular and flexible architecture, allowing users to easily integrate various components and customize the system to suit their specific needs.
 
-<mark>Warning</mark>
----
-<mark>As of April 9, 2025, this repository has been made public. I am currently working on final changes and hope to have a Proof of Concept (POC) together in the coming months. In its current state, the platform is not functional, but it should provide an understanding of the intended goals of the project</mark>
-
-If you're interested in this project, I encourage you to watch and star the repository to stay updated on progress and contribute to the development! Feel free to reach out if you have any questions or suggestions!
-
 Modular Plugin System
 ---
 MIMIR features a modular plugin system that enables users to extend the platform's functionality through the use of plugins. This system allows for the easy addition of new inputs, outputs, and data processing modules, making it simple to integrate with a wide range of data sources and AI systems.

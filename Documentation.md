@@ -85,7 +85,7 @@ class MyPlugin(BasePlugin):
 
 ## How to Use Test Mode
 
-- Enable test mode in `src/config.yaml`:
+- Enable test mode in `config.yaml`:
 ```yaml
 settings:
   test_mode: true
@@ -93,6 +93,26 @@ settings:
 - In test mode, LLMFunction and similar plugins will use `mock_response` from the pipeline YAML and avoid real API calls.
 - All steps requiring external APIs should have explicit `mock_response` fields for predictable tests.
 - Output files are automatically cleaned up at the start of each test-mode run.
+
+---
+
+## Generalization & Flexibility
+
+Mimir-AIP is designed for maximum generalization and flexibility:
+- **Plugin-driven:** All processing is handled by modular plugins, which are auto-discovered by the PluginManager. New plugins can be added without modifying core code.
+- **Declarative pipelines:** Pipelines are defined in YAML, allowing you to add, remove, or reorder steps and plugins without code changes.
+- **Generic context propagation:** The context is a flexible dictionary passed through all steps, supporting any data structure required by future pipelines.
+- **Config extraction best practice:** Plugins must always extract their configuration from `step_config['config']` for maximum robustness and compatibility with future pipeline designs.
+- **No hardcoded logic:** There are no assumptions about pipeline names, step types, or data shapes in the core runner.
+
+---
+
+## Best Practices for Plugin Development
+
+- **Error handling:** All plugins should use robust error handling and log meaningful messages for easier debugging and maintenance.
+- **Docstrings:** Public classes and methods must have clear, PEP 257-style docstrings, including descriptions of expected input, output, and any assumptions.
+- **Input/output documentation:** Each plugin should document the expected input context keys and output structure in its docstring.
+- **Extensibility:** When adding new plugins, ensure they do not assume fixed context keys or data shapes unless clearly documented.
 
 ---
 
@@ -112,6 +132,15 @@ A: By default, in the `src/reports/` and `src/output/` directories. Paths can be
 
 **Q: How do I ensure clean test runs?**
 A: Use test mode and let the framework handle output cleanup automatically.
+
+**Q: How do I ensure my plugin is general and future-proof?**
+A: Always extract configuration from `step_config['config']`, avoid hardcoded context keys, and clearly document input/output in the docstring.
+
+**Q: Can I add new pipeline steps or plugins without changing the core code?**
+A: Yes. The system is fully plugin-driven and declarative. Just add your plugin and reference it in the YAML pipeline.
+
+**Q: How is context handled across steps?**
+A: The context is a generic dictionary, propagated through all steps. Plugins should only expect what is specified in the pipeline YAML or their docstring.
 
 ---
 

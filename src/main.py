@@ -2,8 +2,7 @@ from Plugins.PluginManager import PluginManager
 import yaml #used to load pipelines
 import os
 import logging
-
-
+from PipelineVisualizer.AsciiTree import PipelineAsciiTreeVisualizer
 
 def main():
     """Main entry point of the application"""
@@ -101,7 +100,7 @@ def main():
 
 
 def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
-    """Execute a single pipeline definition"""
+    """Execute a single pipeline definition with ASCII tree visualization"""
     logger = logging.getLogger(__name__)
     logger.info(f"Starting pipeline: {pipeline.get('name', 'Unnamed Pipeline')}")
     
@@ -117,78 +116,62 @@ def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
             except Exception as e:
                 logger.warning(f"[CLEANUP] Could not remove {fpath}: {e}")
 
-    # Initialize pipeline context
+    # Initialize pipeline context and status tracking
     context = {"output_dir": output_dir, "test_mode": test_mode}
-    
-    for step in pipeline["steps"]:
-        if step.get("iterate"):
-            # Evaluate condition if present BEFORE evaluating iterate expression
-            if "condition" in step:
+    step_statuses = {step.get('name', f'step_{i}'): 'pending' for i, step in enumerate(pipeline["steps"])}
+
+    def render_tree(highlight_idx=None, runtime_info=None):
+        tree = PipelineAsciiTreeVisualizer.build_tree_from_pipeline(pipeline, step_statuses, runtime_info=runtime_info)
+        PipelineAsciiTreeVisualizer.render(tree, highlight_path=[highlight_idx] if highlight_idx is not None else None)
+
+    iteration_tracking = {}
+    for idx, step in enumerate(pipeline["steps"]):
+        step_name = step.get('name', f'step_{idx}')
+        try:
+            step_statuses[step_name] = 'running'
+            # For iterative steps, track iteration count, statuses, and labels
+            if step.get("iterate"):
+                data = []
+                labels = []
                 try:
-                    condition_result = eval(step["condition"], {"__builtins__": {}}, context)
-                    if not condition_result:
-                        logger.info(f"[EARLY GUARD] Skipping iteration for step {step.get('name', 'unnamed')} due to failing condition.")
-                        continue
-                except Exception as e:
-                    logger.error(f"Error evaluating condition for step {step.get('name', 'unnamed')}: {e}")
-                    continue
-            # Handle iteration over items
-            try:
-                # Get the data to iterate over from context
-                logger.debug(f"Current context: {context}")
-                logger.debug(f"Evaluating iterate expression: {step['iterate']}")
-                data = eval(step["iterate"], {"__builtins__": {}}, {"context": context})
-                logger.debug(f"Data to iterate over: {data}")
-                logger.info(f"[DEBUG] Number of items to iterate: {len(data)}")
-                # Universal type check and logging
-                step_name = step.get("name", "").lower()
-                data_type = type(data)
-                first_item_type = type(data[0]) if isinstance(data, list) and data else None
-                logger.info(f"[UNIVERSAL DEBUG] Step: {step.get('name', 'unnamed')}, Data type: {data_type}, First item type: {first_item_type}")
-                if isinstance(data, list) and data:
-                    logger.info(f"[UNIVERSAL DEBUG] First item value: {data[0]}")
-                # For scraping steps, enforce list of URLs
-                if any(x in step_name for x in ["search result url", "manual search result url", "scrape"]):
-                    if not (isinstance(data, list) and all(isinstance(x, str) and x.startswith("http") for x in data)):
-                        logger.warning(f"[UNIVERSAL GUARD] Skipping iteration for step {step.get('name', 'unnamed')}: data is not a list of URLs.")
-                        continue
-                # For RSS processing steps, enforce list of dicts
-                if "process stories" in step_name or "rss" in step_name:
-                    if not (isinstance(data, list) and all(isinstance(x, dict) for x in data)):
-                        logger.warning(f"[UNIVERSAL GUARD] Skipping iteration for step {step.get('name', 'unnamed')}: data is not a list of dicts (RSS items).")
-                        continue
-                for item in data:
-                    # Create a new context for each iteration that includes both the item and the pipeline context
-                    iteration_context = {"item": item, "output_dir": output_dir, **context}
-                    logger.debug(f"Starting iteration with context: {iteration_context}")
-                    for substep in step["steps"]:
-                        logger.debug(f"Executing step: {substep.get('name', 'unnamed')}")
-                        logger.debug(f"Step input: {iteration_context}")
-                        updated_context = execute_step(substep, iteration_context, plugin_manager)
-                        logger.debug(f"Step output: {updated_context}")
-                        # Update the pipeline context with any changes from the iteration
-                        context.update({k: v for k, v in iteration_context.items() if k != "item"})
-                        logger.debug(f"Updated context after step {substep.get('name', 'unnamed')}: {context}")
-            except Exception as e:
-                logger.error(f"Error in iteration step: {e}")
-                raise
-        else:
-            try:
-                logger.debug(f"Executing step: {step.get('name', 'unnamed')}")
-                logger.debug(f"Step input: {context}")
-                context["output_dir"] = output_dir
-                updated_context = execute_step(step, context, plugin_manager)
-                logger.debug(f"Step output: {updated_context}")
-                if updated_context:
-                    context.update(updated_context)
-                # Debug log for Fetch BBC News RSS Feed output
-                if step.get("name") == "Fetch BBC News RSS Feed":
-                    logger.info(f"[DEBUG] Output of Fetch BBC News RSS Feed: {context.get('feed_BBC_News')}")
-                    if isinstance(context.get('feed_BBC_News'), list):
-                        logger.info(f"[DEBUG] Number of fetched items: {len(context.get('feed_BBC_News'))}")
-            except Exception as e:
-                logger.error(f"Error in step: {e}")
-                raise
+                    data = eval(step["iterate"], {"__builtins__": {}}, {"context": context})
+                    # Try to extract a label for each item if possible (e.g., title, name, id, str(item))
+                    for item in data:
+                        label = None
+                        if isinstance(item, dict):
+                            for key in ["title", "name", "id"]:
+                                if key in item and isinstance(item[key], str):
+                                    label = item[key][:40]  # Truncate for display
+                                    break
+                        if not label:
+                            label = str(item)[:40]
+                        labels.append(label)
+                except Exception:
+                    pass
+                iter_count = len(data) if isinstance(data, list) else 0
+                iteration_tracking[step_name] = {'count': iter_count, 'statuses': ['pending'] * iter_count, 'labels': labels}
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                if iter_count > 0:
+                    for i, item in enumerate(data):
+                        iteration_context = {"item": item, "output_dir": output_dir, **context}
+                        for substep in step["steps"]:
+                            execute_step(substep, iteration_context, plugin_manager)
+                        if "section_summaries" in iteration_context:
+                            context["section_summaries"] = iteration_context["section_summaries"]
+                        iteration_tracking[step_name]['statuses'][i] = 'completed'
+                        render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                step_statuses[step_name] = 'completed'
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+            else:
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                execute_step(step, context, plugin_manager)
+                step_statuses[step_name] = 'completed'
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+        except Exception as e:
+            logger.error(f"Error in step: {e}")
+            step_statuses[step_name] = 'failed'
+            render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+            raise
 
 
 def execute_step(step, context, plugin_manager):

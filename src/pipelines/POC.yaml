@@ -15,7 +15,7 @@ pipelines:
           - name: "Delay Before Importance"
             plugin: "Delay"
             config:
-              seconds: 30
+              seconds: 5
             output: "delay_before_importance"
 
           - name: "Determine Importance"
@@ -38,7 +38,7 @@ pipelines:
               - name: "Delay Before Section Prompt"
                 plugin: "Delay"
                 config:
-                  seconds: 30
+                  seconds: 5
                 output: "delay_before_section_prompt"
 
               - name: "Generate Section Prompt"
@@ -100,13 +100,12 @@ pipelines:
                   - section_summary
                 output: "section_summaries"
 
-              - name: "Write Section Summary to File"
-                condition: "section_summary is not None"
-                plugin: "ContextToFile"
-                variable: "section_summaries"
-                filename: "section_summaries.json"
-                append: false
-                output: "written_section_summary"
+      - name: "Write All Section Summaries to File"
+        plugin: "ContextToFile"
+        variable: "section_summaries"
+        filename: "section_summaries.json"
+        append: false
+        output: "written_section_summaries"
 
       - name: "Load Section Summaries"
         plugin: "FileToContext"

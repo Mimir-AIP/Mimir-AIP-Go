@@ -36,11 +36,11 @@ class LLMFunction(BasePlugin):
         
         Args:
             llm_plugin (BaseAIModel, optional): LLM plugin instance to use. Defaults to None.
-            plugin_manager (PluginManager, optional): PluginManager instance. Defaults to real PluginManager.
+            plugin_manager (PluginManager, optional): PluginManager instance. If None, must be set explicitly before use.
             logger (logging.Logger, optional): Logger instance. Defaults to real logger.
         """
         self.llm_plugin = llm_plugin
-        self.plugin_manager = plugin_manager if plugin_manager is not None else PluginManager()
+        self.plugin_manager = plugin_manager  # Do NOT instantiate PluginManager by default to avoid recursion
         self.logger = logger if logger is not None else logging.getLogger(__name__)
 
     def set_llm_plugin(self, plugin_name):
@@ -50,6 +50,8 @@ class LLMFunction(BasePlugin):
         Args:
             plugin_name (str): Name of the LLM plugin to use
         """
+        if not self.plugin_manager:
+            raise RuntimeError("LLMFunction: plugin_manager must be set before calling set_llm_plugin(). Avoid recursive PluginManager instantiation.")
         self.llm_plugin = self.plugin_manager.get_plugin("AIModel", plugin_name)
         if not self.llm_plugin:
             raise ValueError(f"LLM plugin {plugin_name} not found")

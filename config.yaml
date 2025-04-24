@@ -14,5 +14,5 @@ pipelines:
 settings:
   pipeline_directory: "src/pipelines"
   output_directory: "output"
-  log_level: "INFO"
-  test_mode: false
+  log_level: "WARNING"
+  test_mode: true

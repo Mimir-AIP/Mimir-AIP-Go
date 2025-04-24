@@ -66,16 +66,28 @@ class OpenRouter(BaseAIModel):
 
     def get_available_models(self):
         """
-        Get list of available models
-        
+        Dynamically fetch the list of available models from the OpenRouter API endpoint.
+
         Returns:
-            list: List of available model identifiers
+            list: List of available model identifiers (str)
+        Raises:
+            RuntimeError: If the API call fails or returns an invalid response.
         """
-        return [
-            "agentica-org/deepcoder-14b-preview:free",
-            "meta-llama/llama-4-maverick:free",
-            "meta-llama/llama-3.1-8b-instruct:free"
-        ]
+        import requests
+        try:
+            response = requests.get(f"{self.base_url}/models", headers={"Authorization": f"Bearer {self.api_key}"})
+            if response.status_code != 200:
+                self.logger.error(f"Failed to fetch models: {response.status_code} {response.text}")
+                raise RuntimeError(f"OpenRouter API error: {response.status_code}")
+            data = response.json()
+            if not isinstance(data, dict) or "data" not in data:
+                self.logger.error(f"Unexpected response format: {data}")
+                raise RuntimeError("Invalid response format from OpenRouter API")
+            # Documenting: Returns only model IDs for compatibility with previous usage.
+            return [model["id"] for model in data["data"] if "id" in model]
+        except Exception as e:
+            self.logger.error(f"Error fetching available models: {e}")
+            raise RuntimeError(f"Could not fetch models from OpenRouter: {e}")
 
     def chat_completion(self, model, messages, return_full_response=False):
         """

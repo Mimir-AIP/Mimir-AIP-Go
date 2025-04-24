@@ -5,6 +5,8 @@ Test suite for the OpenRouter plugin
 import os
 import pytest
 from Plugins.AIModels.OpenRouter.OpenRouter import OpenRouter
+from unittest.mock import patch, MagicMock
+import time
 
 def test_openrouter_initialization():
     """Test OpenRouter plugin initialization"""
@@ -55,3 +57,107 @@ def test_openrouter_chat_completion():
                 continue
     except Exception as e:
         pytest.fail(f"Test failed: {str(e)}")
+
+def test_get_available_models_success():
+    """Test get_available_models returns correct IDs on valid API response."""
+    plugin = OpenRouter()
+    fake_response = {
+        "data": [
+            {"id": "model-a", "name": "Model A"},
+            {"id": "model-b", "name": "Model B"}
+        ]
+    }
+    with patch("requests.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = fake_response
+        mock_get.return_value = mock_resp
+        result = plugin.get_available_models()
+        assert result == ["model-a", "model-b"]
+
+
+def test_get_available_models_api_error():
+    """Test get_available_models raises RuntimeError on HTTP error."""
+    plugin = OpenRouter()
+    with patch("requests.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_resp.text = "Internal Server Error"
+        mock_get.return_value = mock_resp
+        try:
+            plugin.get_available_models()
+        except RuntimeError as e:
+            assert "OpenRouter API error" in str(e)
+        else:
+            assert False, "Expected RuntimeError"
+
+
+def test_get_available_models_invalid_json():
+    """Test get_available_models raises RuntimeError on invalid JSON structure."""
+    plugin = OpenRouter()
+    with patch("requests.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"unexpected": []}
+        mock_get.return_value = mock_resp
+        try:
+            plugin.get_available_models()
+        except RuntimeError as e:
+            assert "Invalid response format" in str(e)
+        else:
+            assert False, "Expected RuntimeError"
+
+
+def test_get_available_models_network_error():
+    """Test get_available_models raises RuntimeError on network error."""
+    plugin = OpenRouter()
+    with patch("requests.get", side_effect=Exception("Network down")):
+        try:
+            plugin.get_available_models()
+        except RuntimeError as e:
+            assert "Could not fetch models from OpenRouter" in str(e)
+        else:
+            assert False, "Expected RuntimeError"
+
+def test_live_get_available_models():
+    """
+    Integration test: Make a real API call to OpenRouter to fetch available models.
+    Skips if OPENROUTER_API_KEY is not set.
+    """
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("OPENROUTER_API_KEY not set; skipping live API test.")
+    plugin = OpenRouter()
+    models = plugin.get_available_models()
+    print(f"Live models returned: {models}")
+    assert isinstance(models, list)
+    assert len(models) > 0
+    assert all(isinstance(mid, str) and mid for mid in models)
+
+
+def test_live_chat_completion():
+    """
+    Integration test: Make a real chat completion call to OpenRouter using a free model.
+    Skips if OPENROUTER_API_KEY is not set.
+    """
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("OPENROUTER_API_KEY not set; skipping live API test.")
+    plugin = OpenRouter()
+    # Use a simple, free model and prompt
+    models = plugin.get_available_models()
+    free_model = None
+    for mid in models:
+        if ":free" in mid:
+            free_model = mid
+            break
+    if not free_model:
+        pytest.skip("No free model found in live model list.")
+    prompt = "What is the capital of France?"
+    messages = [{"role": "user", "content": prompt}]
+    response = plugin.chat_completion(model=free_model, messages=messages)
+    print(f"Live chat completion response: {response}")
+    assert isinstance(response, str)
+    assert "Paris".lower() in response.lower()
+    #(avoid rate limits)
+    time.sleep(1)

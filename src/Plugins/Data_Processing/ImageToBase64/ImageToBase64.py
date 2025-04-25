@@ -31,16 +31,37 @@ class ImageToBase64(BasePlugin):
         Returns:
             dict: Updated context with base64 string under output_key.
         """
-        input_key = step_config.get('input_image_path_key', 'image_path')
-        output_key = step_config.get('output_key', 'image_base64')
-        image_path = context.get(input_key) or step_config.get('image_path')
-        if not image_path or not os.path.isfile(image_path):
-            raise ValueError(f"Image file not found: {image_path}")
-        with open(image_path, 'rb') as f:
-            image_bytes = f.read()
-        base64_str = base64.b64encode(image_bytes).decode('utf-8')
-        # Default to jpeg, can be customized via step_config
-        mime_type = step_config.get('mime_type', 'image/jpeg')
-        data_url = f"data:{mime_type};base64,{base64_str}"
-        context[output_key] = data_url
-        return context
+        # Always extract config from step_config['config'] for robustness
+        config = step_config.get('config', {})
+        input_key = config.get('input_key') or config.get('input_image_path_key') or 'image_path'
+        output_key = config.get('output_key', 'image_base64')
+        image_path = context.get(input_key) or config.get('image_path')
+        logger = self.logger if hasattr(self, 'logger') else logging.getLogger(__name__)
+        logger.info(f"[ImageToBase64] Using input_key: '{input_key}', resolved image_path: '{image_path}'")
+        try:
+            if not image_path:
+                logger.error(f"Image path is None or empty: {image_path}")
+                context[output_key] = "No data available"
+                return context
+            file_exists = os.path.isfile(image_path)
+            logger.info(f"[ImageToBase64] File exists: {file_exists}")
+            if file_exists:
+                file_size = os.path.getsize(image_path)
+                logger.info(f"[ImageToBase64] File size: {file_size} bytes")
+            else:
+                logger.error(f"Image file not found: {image_path}")
+                context[output_key] = "No data available"
+                return context
+            with open(image_path, 'rb') as f:
+                image_bytes = f.read()
+            base64_str = base64.b64encode(image_bytes).decode('utf-8')
+            # Default to jpeg, can be customized via config
+            mime_type = config.get('mime_type', 'image/jpeg')
+            # Only store the raw base64 string in the context; the HTML template should add the data URL prefix
+            context[output_key] = base64_str
+            logger.info(f"[ImageToBase64] Successfully encoded image to base64 (raw, no prefix) and set context['{output_key}'].")
+            return context
+        except Exception as e:
+            logger.error(f"ImageToBase64: Error encoding image: {e}")
+            context[output_key] = "No data available"
+            return context

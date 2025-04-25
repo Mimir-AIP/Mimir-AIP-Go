@@ -6,6 +6,9 @@ from abc import ABC
 from typing import Dict, Set
 import logging
 
+logging.basicConfig(level=logging.INFO)
+logging.getLogger(__name__).info(f"[PluginManager:Startup] CWD: {os.getcwd()}, Python exec: {sys.executable}")
+
 class PluginManager:
     def __init__(self, plugins_path="Plugins"):
         self.plugins_path = plugins_path
@@ -63,10 +66,10 @@ class PluginManager:
                 try:
                     # Load module using importlib
                     module_name = f"Plugins.{plugin_type}.{folder}.{folder}"
-                    
+                    logging.getLogger(__name__).info(f"[PluginManager] Attempting to import {module_name} from {plugin_file}")
                     try:
                         module = importlib.import_module(module_name)
-
+                        logging.getLogger(__name__).info(f"[PluginManager] Imported module {module_name} from {module.__file__}")
                         # Debug: print out module namespace for diagnosis
                         logging.getLogger(__name__).debug(f"dir({module_name}): {dir(module)}")
                         # Try different class name formats
@@ -111,7 +114,7 @@ class PluginManager:
                                         continue
                                 else:
                                     plugin_instance = plugin_class()
-                                
+                                logging.getLogger(__name__).info(f"[PluginManager] Instantiated {plugin_class} from {plugin_file}")
                                 self.plugins.setdefault(plugin_type, {})[folder] = plugin_instance
                                 logging.getLogger(__name__).info(f"Successfully loaded plugin: {folder}")  
                             except Exception as e:

@@ -1,7 +1,24 @@
+import os
+import sys
+import logging
+
+# Configure logging BEFORE any other imports that might log
+logging.basicConfig(
+    level=logging.INFO,  # Default to INFO; can be overridden in main()
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("mimir.log", mode="w"),
+        logging.StreamHandler()
+    ],
+    force=True
+)
+logger = logging.getLogger(__name__)
+logger.info("[Test] Logging to file and console should work now.")
+
 from Plugins.PluginManager import PluginManager
 import yaml #used to load pipelines
-import os
-import logging
+import datetime  # Added for scheduler loop
+import time      # Added for scheduler loop sleep
 from PipelineVisualizer.AsciiTree import PipelineAsciiTreeVisualizer
 import threading
 import signal
@@ -31,16 +48,9 @@ def main():
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    # Configure logging
-    logging.basicConfig(
-        level=getattr(logging, log_level),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("mimir.log", mode="w"),
-            logging.StreamHandler()
-        ]
-    )
-    logger = logging.getLogger(__name__)
+    # (Optional) Adjust log level based on config
+    logging.getLogger().setLevel(getattr(logging, log_level))
+    logger.info(f"[Startup] CWD: {os.getcwd()}, Python exec: {sys.executable}")
 
     # Step 2: Initialize the PluginManager
     plugin_manager = PluginManager()
@@ -213,7 +223,10 @@ def execute_step(step, context, plugin_manager):
     # Execute the pipeline step
     try:
         result = plugin_instance.execute_pipeline_step(step, context)
+        # Defensive logging: log type and sample of every value added to context
         if result:
+            for k, v in result.items():
+                logger.info(f"[ContextUpdate] Key: {k}, Type: {type(v)}, Sample: {str(v)[:300]}")
             context.update(result)
     except Exception as e:
         logger.error(f"Error executing step {step.get('name', 'Unnamed')}: {e}")
@@ -324,13 +337,5 @@ if __name__ == "__main__":
     output_dir = config.get("settings", {}).get("output_directory", "output")
     log_level = config.get("settings", {}).get("log_level", "INFO")
     os.makedirs(output_dir, exist_ok=True)
-    logging.basicConfig(
-        level=getattr(logging, log_level),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("mimir.log", mode="w"),
-            logging.StreamHandler()
-        ]
-    )
     plugin_manager = PluginManager()
     run_scheduled_pipelines(config, plugin_manager, output_dir)

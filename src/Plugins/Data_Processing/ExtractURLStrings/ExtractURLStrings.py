@@ -29,12 +29,18 @@ class ExtractURLStrings(BasePlugin):
         logger = logging.getLogger(__name__)
         logger.info(f"[ExtractURLStrings] Received input: {data}")
         url_list = []
-        if isinstance(data, list):
-            for item in data:
-                if isinstance(item, dict):
-                    if 'link' in item:
-                        url_list.append(item['link'])
-                    elif 'FirstURL' in item:
-                        url_list.append(item['FirstURL'])
-        logger.info(f"[ExtractURLStrings] Output url_list: {url_list}")
-        return {step_config["output"]: url_list}
+        try:
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        if 'link' in item:
+                            url_list.append(item['link'])
+                        elif 'FirstURL' in item:
+                            url_list.append(item['FirstURL'])
+            logger.info(f"[ExtractURLStrings] Output url_list: {url_list}")
+            if not url_list:
+                logger.warning("[ExtractURLStrings] No URLs extracted; returning empty list.")
+            return {step_config["output"]: url_list}
+        except Exception as e:
+            logger.error(f"ExtractURLStrings: Error extracting URLs: {e}")
+            return {step_config["output"]: []}

@@ -16,9 +16,11 @@ Example usage:
                 }
             ],
             "output_dir": "maps",
-            "filename": "map.html"
+            "filename": "map.html",
+            "export_mode": "file"  # or "embed"
         },
-        "output": "map_path"
+        "output": "map_path",
+        "output_html": "map_html"  # Optional, only used in embed mode
     }, {})
 """
 
@@ -56,27 +58,35 @@ class LeafletJSmap(BasePlugin):
                 ],
                 "output_dir": "maps",  # Optional
                 "filename": "map.html"  # Optional
+                "export_mode": "file" or "embed"  # Optional, default is "file"
             },
-            "output": "map_path"
+            "output": "map_path",
+            "output_html": "map_html"  # Optional, only used in embed mode
         }
         """
         config = step_config["config"]
-        
-        # Update output directory if specified
+        export_mode = config.get("export_mode", "file")
         if "output_dir" in config:
             self.output_directory = config["output_dir"]
             os.makedirs(self.output_directory, exist_ok=True)
-        
-        # Generate map
-        map_path = self.generate_map(
-            title=config["title"],
-            center=config["center"],
-            zoom=config.get("zoom", 10),
-            markers=config.get("markers", []),
-            filename=config.get("filename", "map.html")
-        )
-        
-        return {step_config["output"]: map_path}
+        if export_mode == "embed":
+            map_html = self.generate_map_html(
+                title=config["title"],
+                center=config["center"],
+                zoom=config.get("zoom", 10),
+                markers=config.get("markers", [])
+            )
+            output_html_key = step_config.get("output_html", "map_html")
+            return {output_html_key: map_html}
+        else:
+            map_path = self.generate_map(
+                title=config["title"],
+                center=config["center"],
+                zoom=config.get("zoom", 10),
+                markers=config.get("markers", []),
+                filename=config.get("filename", "map.html")
+            )
+            return {step_config["output"]: map_path}
 
     def generate_map(self, title, center, zoom=10, markers=None, filename="map.html"):
         """
@@ -158,6 +168,41 @@ class LeafletJSmap(BasePlugin):
         print(f"Map generated: {map_path}")
         return map_path
 
+    def generate_map_html(self, title, center, zoom=10, markers=None):
+        """
+        Generate embeddable HTML/JS block for a Leaflet.js map (for report embedding).
+        Args:
+            title (str): Map title
+            center (list): [lat, lon] coordinates for map center
+            zoom (int): Initial zoom level
+            markers (list): List of marker dictionaries with lat, lon, and popup
+        Returns:
+            str: Embeddable HTML/JS block (no <html>, <body>, or <head>)
+        """
+        if markers is None:
+            markers = []
+        markers_js = ""
+        for marker in markers:
+            markers_js += f"""
+            L.marker([{marker['lat']}, {marker['lon']}])
+                .addTo(map)
+                .bindPopup(\"{marker['popup']}\");
+            """
+        # Embeddable HTML/JS (no <html> or <body>)
+        html_block = f"""
+        <link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />
+        <div id=\"map\" style=\"height:400px;width:100%;margin:20px 0;\"></div>
+        <script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>
+        <script>
+            var map = L.map('map').setView([{center[0]}, {center[1]}], {zoom});
+            L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                attribution: '\u0026copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors'
+            }}).addTo(map);
+            {markers_js}
+        </script>
+        """
+        return html_block
+
 
 if __name__ == "__main__":
     # Test the plugin
@@ -188,9 +233,11 @@ if __name__ == "__main__":
                 }
             ],
             "output_dir": "test_maps",
-            "filename": "london_poi.html"
+            "filename": "london_poi.html",
+            "export_mode": "file"  # or "embed"
         },
-        "output": "map_path"
+        "output": "map_path",
+        "output_html": "map_html"  # Optional, only used in embed mode
     }
     
     # Generate test map

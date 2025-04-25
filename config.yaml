@@ -1,15 +1,9 @@
 # Main configuration file for Mimir-AIP, you can define pipelines to run here (and schedule them in future versions)
 pipelines:
-  - name: "Test All Functions Pipeline"
-    file: "pipelines/TestAllFunctions.yaml"
+  - name: "Custom Report Pipeline"
+    file: "pipelines/CustomReportPipeline.yaml"
     enabled: true
-    schedule: "*/5 * * * *"  # Run every 5 minutes
-    
-  # Example of another pipeline
-  # - name: "Twitter Analysis Pipeline"
-  #   file: "pipelines/twitter_analysis.yaml"
-  #   enabled: false
-  #   schedule: "0 */6 * * *"  # Run every 6 hours
+    # No schedule: run-once pipeline
 
 settings:
   pipeline_directory: "src/pipelines"

@@ -83,11 +83,11 @@ class LLMFunction(BasePlugin):
                 if not mock_response and "config" in step_config:
                     mock_response = step_config["config"].get("mock_response")
                 logger.info(f"[LLMFunction] Test mode active. Using mock_response: {mock_response}")
-                result = mock_response if mock_response is not None else "No data available"
+                result = mock_response if mock_response is not None else "No headline generated."
             else:
                 if not self.llm_plugin:
                     logger.error("LLM plugin not set. Please call set_llm_plugin() first.")
-                    result = "No data available"
+                    result = "No headline generated."
                 else:
                     config = step_config["config"]
                     try:
@@ -99,51 +99,20 @@ class LLMFunction(BasePlugin):
                                     "content": f"{config['function']}\n\n{input_data}"
                                 }
                             ]
-                        else:
-                            messages = [
-                                {
-                                    "role": "user",
-                                    "content": input_data
-                                }
-                            ]
-                        logger.debug(f"Request to LLM plugin: {messages}")
-                        try:
                             response = self.llm_plugin.chat_completion(
-                                model=config["model"],
-                                messages=messages,
-                                return_full_response=True
-                            )
-                            logger.debug(f"[DEBUG] Full LLM response: {response}")
-                            if isinstance(response, dict) and "choices" in response:
-                                llm_content = response["choices"][0]["message"]["content"]
-                            else:
-                                llm_content = response
-                        except TypeError:
-                            response = self.llm_plugin.chat_completion(
-                                model=config["model"],
+                                model=config.get("model", ""),
                                 messages=messages
                             )
-                            llm_content = response
-                        logger.debug(f"Response from LLM plugin: {llm_content}")
-                        logger.info(f"LLMFunction: Raw response from LLM: {llm_content}")
-                        if "format" in config and config["format"]:
-                            try:
-                                parsed_response = None
-                                try:
-                                    parsed_response = ast.literal_eval(llm_content)
-                                    logger.debug(f"Parsed LLM response as literal: {parsed_response}")
-                                except Exception:
-                                    parsed_response = llm_content
-                                formatted_response = eval(config["format"], {"response": parsed_response})
-                            except Exception as e:
-                                logger.error(f"LLMFunction: Error formatting response: {e}\nRaw response: {llm_content}")
-                                formatted_response = llm_content
+                            if isinstance(response, dict) and 'content' in response:
+                                result = response['content']
+                            else:
+                                result = response if response else "No headline generated."
                         else:
-                            formatted_response = llm_content
-                        result = formatted_response
+                            result = "No headline generated."
                     except Exception as e:
-                        logger.error(f"LLMFunction: Error during LLM execution: {e}")
-                        result = "No data available"
+                        logger.error(f"LLMFunction: Error during LLM call: {e}")
+                        result = "No headline generated."
+            logger.info(f"[LLMFunction] Output: {result}")
             output_key = step_config["output"]
             context[output_key] = result
             logger.info(f"[LLMFunction] Step output_key: {output_key}, result: {result}")
@@ -152,8 +121,8 @@ class LLMFunction(BasePlugin):
         except Exception as top_level_e:
             logger.error(f"LLMFunction: Top-level error: {top_level_e}")
             output_key = step_config.get("output", "llm_result")
-            context[output_key] = "No data available"
-            return {output_key: "No data available"}
+            context[output_key] = "No headline generated."
+            return {output_key: "No headline generated."}
 
 if __name__ == "__main__":
     # Example usage

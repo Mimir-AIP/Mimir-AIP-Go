@@ -89,11 +89,18 @@ class HTMLReport(BasePlugin):
                     if isinstance(value, str):
                         matches = placeholder_pattern.findall(value)
                         for match in matches:
-                            replacement = context.get(match, "No data available")
-                            if replacement == "No data available":
-                                logger.warning(f"[HTMLReport] Placeholder {{{match}}} not found in context; substituting default.")
-                            # Replace all occurrences of the placeholder
-                            section[key] = section[key].replace(f"{{{match}}}", str(replacement))
+                            replacement = context.get(match, None)
+                            if replacement is None or (isinstance(replacement, (list, dict)) and not replacement):
+                                # Hide section if critical data is missing or empty
+                                if key == 'text':
+                                    section[key] = ''
+                                else:
+                                    section[key] = section[key].replace(f"{{{match}}}", "")
+                                logger.warning(f"[HTMLReport] Placeholder {{{match}}} not found or empty in context; hiding section or substituting blank.")
+                            else:
+                                section[key] = section[key].replace(f"{{{match}}}", str(replacement))
+            # Remove sections with empty 'text' or all empty fields
+            sections = [s for s in sections if any(str(v).strip() for k, v in s.items() if k != 'javascript')]
         except Exception as e:
             logger.error(f"Error evaluating sections: {e}")
             raise

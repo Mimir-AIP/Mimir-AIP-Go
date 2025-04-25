@@ -29,7 +29,7 @@ class TrafficWatchNIImage(BasePlugin):
         Downloads the image for the given camera_id from TrafficWatchNI.
         By default, returns the image as base64 in memory. Optionally saves to disk if 'save_to_disk' is True in step_config.
         Args:
-            step_config (dict): Should contain 'camera_id'. Options:
+            step_config (dict): Should contain 'config' with 'camera_id'. Options:
                 - save_to_disk (bool): If True, also saves image to disk (default False)
                 - output_dir (str): Directory for saving images (default 'traffic_images')
                 - output (str): Key for image path in result (default 'traffic_image_path')
@@ -39,25 +39,32 @@ class TrafficWatchNIImage(BasePlugin):
             dict: {b64_key: image_b64, output_key: image_path (if saved)}
         """
         import base64
-        camera_id = step_config.get("camera_id")
-        save_to_disk = step_config.get("save_to_disk", False)
-        output_key = step_config.get("output", "traffic_image_path")
-        output_dir = step_config.get("output_dir", "traffic_images")
-        b64_key = step_config.get("b64_key", "traffic_image_b64")
+        config = step_config.get("config", {})
+        camera_id = config.get("camera_id")
+        save_to_disk = config.get("save_to_disk", False)
+        output_key = config.get("output", "traffic_image_path")
+        output_dir = config.get("output_dir", "traffic_images")
+        b64_key = config.get("b64_key", "traffic_image_b64")
         if camera_id is None:
             self.logger.error("No camera_id provided in step_config.")
-            return {b64_key: None}
+            # Always return both keys for context consistency
+            return {b64_key: None, output_key: None}
+        self.logger.info(f"[FetchTrafficCamera] Using camera_id: {camera_id}")
         name, image_url = self.get_camera_metadata(camera_id)
+        self.logger.info(f"[FetchTrafficCamera] Camera metadata - Name: {name}, URL: {image_url}")
         if not image_url:
             self.logger.error(f"No image URL found for camera {camera_id}.")
-            return {b64_key: None}
+            return {b64_key: None, output_key: None}
         try:
+            self.logger.info(f"[FetchTrafficCamera] Fetching image from URL: {image_url}")
             resp = requests.get(image_url, timeout=10)
+            self.logger.info(f"[FetchTrafficCamera] HTTP status code: {resp.status_code}")
             if resp.status_code == 200:
                 result = {}
                 encoded = base64.b64encode(resp.content).decode("utf-8")
                 encoded = f"data:image/jpeg;base64,{encoded}"
                 result[b64_key] = encoded
+                image_path = None
                 if save_to_disk:
                     os.makedirs(output_dir, exist_ok=True)
                     from datetime import datetime
@@ -65,15 +72,20 @@ class TrafficWatchNIImage(BasePlugin):
                     image_path = os.path.join(output_dir, f"{camera_id}_{timestamp}.jpg")
                     with open(image_path, 'wb') as f:
                         f.write(resp.content)
-                    self.logger.info(f"Downloaded image for camera {camera_id} to {image_path}")
-                    result[output_key] = image_path
+                    abs_image_path = os.path.abspath(image_path)
+                    self.logger.info(f"Downloaded image for camera {camera_id} to {abs_image_path}")
+                    result[output_key] = abs_image_path
+                else:
+                    self.logger.info(f"[FetchTrafficCamera] Not saving image to disk (save_to_disk is False)")
+                    result[output_key] = None
+                self.logger.info(f"[FetchTrafficCamera] Returning result keys: {list(result.keys())}, values: {result}")
                 return result
             else:
                 self.logger.error(f"Failed to fetch image for camera {camera_id}: HTTP {resp.status_code}")
-                return {b64_key: None}
+                return {b64_key: None, output_key: None}
         except Exception as e:
             self.logger.error(f"Exception fetching image for camera {camera_id}: {e}")
-            return {b64_key: None}
+            return {b64_key: None, output_key: None}
 
     def get_camera_metadata(self, camera_id):
         """

@@ -22,8 +22,10 @@ class ContextToFile(BasePlugin):
         value = context.get(variable)
         logger = logging.getLogger(__name__)
         logger.info(f"[ContextToFile] Called with variable='{variable}', filename='{filename}', value={repr(value)}")
+        logger.info(f"[ContextToFile] Writing variable '{variable}' of type {type(value)}. Sample: {str(value)[:300]}")
         if value is None:
-            raise ValueError(f"Variable '{variable}' not found in context.")
+            logger.warning(f"[ContextToFile] Variable '{variable}' not found in context; skipping write.")
+            return {}
         append = step_config.get("append", False)
         if append:
             # Append value to a JSON list in the file

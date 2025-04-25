@@ -1,0 +1,217 @@
+pipelines:
+  - name: Custom Report Pipeline
+    enabled: true
+    # No schedule field: run-once pipeline
+    steps:
+      # --- Aircraft Data Section ---
+      - name: FetchAircraftData
+        plugin: Input.ADSBdata
+        config:
+          lat: 54.6079
+          lon: -5.9264
+          radius: 25
+          limit: 10
+        output: aircraft_data
+      - name: FormatAircraftData
+        plugin: Data_Processing.AircraftDataFormatter
+        config:
+          input_key: aircraft_data
+          output_key: aircraft_data_html
+        output: aircraft_data_html
+
+      # --- Traffic Camera Section ---
+      - name: FetchTrafficCamera
+        plugin: Input.TrafficWatchNIImage
+        config:
+          camera_id: 1  # Chichester Street, known-good from cache
+          save_to_disk: true
+        output: traffic_image_path
+      - name: ImageToBase64
+        plugin: Data_Processing.ImageToBase64
+        config:
+          input_key: traffic_image_path
+          output_key: image_base64
+        output: image_base64
+
+      # --- Map Section ---
+      - name: GenerateMap
+        plugin: Output.LeafletJSmap
+        config:
+          title: "Custom Report Map"
+          center: [54.6079, -5.9264]
+          zoom: 6
+          markers:
+            - lat: 54.6079
+              lon: -5.9264
+              popup: "Belfast (Aircraft)"
+            - lat: 54.6082
+              lon: -5.9264
+              popup: "Traffic Camera"
+          export_mode: embed
+        output: map_html
+
+      # --- Bloomberg Section ---
+      - name: FetchBloombergNews
+        plugin: Input.bloomberg
+        config:
+          params:
+            token: "glassdoor:gd4bloomberg"
+            ageHours: 120
+            limit: 3
+        output: bloomberg
+      - name: ExtractBloombergItems
+        plugin: Data_Processing.ExtractDictKey
+        config:
+          input_key: bloomberg
+          extract_key: items
+          output_key: bloomberg_items
+        output: bloomberg_items
+      - name: LogBloombergItems
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_values: true
+        output: null
+      - name: FormatBloombergNews
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: bloomberg_items
+          output_key: bloomberg_html
+          format: html_list
+          title_key: title
+          link_key: link
+          body_key: description
+          max_items: 5
+        output: bloomberg_html
+
+      # --- RSS Section (BBC News World) ---
+      - name: FetchRSSFeed
+        plugin: Input.rss_feed
+        config:
+          url: "http://feeds.bbci.co.uk/news/world/rss.xml"
+          limit: 5
+        output: rss_feed
+      - name: FormatRSSFeed
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: rss_feed
+          output_key: rss_feed_html
+          format: html_list
+          title_key: title
+          link_key: link
+          max_items: 5
+        output: rss_feed_html
+
+      # --- WhiteHousePressPool Section ---
+      - name: FetchWhiteHouseReport
+        plugin: Input.WhiteHousePressPool
+        config:
+          limit: 3
+        output: wh_report
+      - name: ExtractWhiteHouseItems
+        plugin: Data_Processing.ExtractDictKey
+        config:
+          input_key: wh_report
+          extract_key: items
+          output_key: wh_items
+        output: wh_items
+      - name: FormatWhiteHouseReport
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: wh_items
+          output_key: wh_report_html
+          format: html_list
+          title_key: title
+          link_key: url
+          body_key: content_text
+          max_items: 5
+        output: wh_report_html
+
+      # --- AI Model Demo Section: OpenRouter ---
+      - name: AskOpenRouter
+        plugin: AIModels.OpenRouter
+        config:
+          model: thudm/glm-z1-9b:free
+          messages:
+            - role: user
+              content: "What is the capital of France?"
+        output: openrouter_answer
+      - name: LogOpenRouterAnswer
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_values: true
+        output: null
+      - name: FormatOpenRouterAnswer
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: openrouter_answer
+          output_key: openrouter_html
+          format: html_block
+          title_key: null
+          body_key: null
+        output: openrouter_html
+
+      # --- AI Model Demo Section: GitHubModels ---
+      - name: AskGitHubModels
+        plugin: AIModels.GitHubModels
+        config:
+          model: openai/gpt-4.1
+          messages:
+            - role: user
+              content: "What is the capital of France?"
+        output: githubmodels_answer
+      - name: FormatGitHubModelsAnswer
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: githubmodels_answer
+          output_key: githubmodels_html
+          format: html_block
+          title_key: null
+          body_key: null
+        output: githubmodels_html
+
+      # --- AI Model Demo Section: MockAIModel ---
+      - name: AskMockAIModel
+        plugin: AIModels.MockAIModel
+        config:
+          model: mock-model-1
+          messages:
+            - role: user
+              content: "What is the capital of France?"
+        output: mockai_answer
+      - name: FormatMockAIAnswer
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: mockai_answer
+          output_key: mockai_html
+          format: html_block
+          title_key: null
+          body_key: null
+        output: mockai_html
+
+      # --- HTML Report Generation ---
+      - name: GenerateHTMLReport
+        plugin: Output.HTMLReport
+        config:
+          title: "Custom Mimir-AIP Report"
+          output_dir: "reports"
+          filename: "custom_report.html"
+          sections:
+            - heading: "Aircraft Data"
+              text: "{aircraft_data_html}"
+            - heading: "Traffic Camera Image"
+              text: "<img src='data:image/jpeg;base64,{image_base64}' />"
+            - heading: "Map"
+              text: "{map_html}"
+            - heading: "Bloomberg News"
+              text: "{bloomberg_html}"
+            - heading: "BBC World RSS Headlines"
+              text: "{rss_feed_html}"
+            - heading: "White House Press Pool"
+              text: "{wh_report_html}"
+            - heading: "OpenRouter AI Model Demo"
+              text: "{openrouter_html}"
+            - heading: "GitHubModels AI Model Demo"
+              text: "{githubmodels_html}"
+            - heading: "MockAIModel Demo"
+              text: "{mockai_html}"
+        output: html_report_path

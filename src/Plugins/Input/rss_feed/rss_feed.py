@@ -56,19 +56,25 @@ class RssFeed(BasePlugin):
         self.set_input(config["url"])
         logger.debug(f"Fetching feed...")
         try:
-            self.fetch_feed()
+            feed_data = self.fetch_feed()
+            # Defensive patch: ensure output is always a native Python object, never a string
+            import ast
+            def parse_if_str(val):
+                if isinstance(val, str):
+                    try:
+                        parsed = ast.literal_eval(val)
+                        if isinstance(parsed, (list, dict)):
+                            return parsed
+                    except Exception:
+                        pass
+                return val
+            feed_data = parse_if_str(feed_data)
+            logger.info(f"[RSSFeed:execute_pipeline_step] Returning type: {type(feed_data)}, sample: {str(feed_data)[:300]}")
+            output_key = step_config.get("output") or f"feed_{config.get('feed_name', 'data')}"
+            return {output_key: feed_data}
         except Exception as e:
             logger.error(f"Error fetching feed: {e}")
-            logger.error("If you are fetching an HTTP feed, try using the HTTPS version of the URL.")
-            return {step_config.get("output", f"feed_{config.get('feed_name', 'data')}"): None}
-        logger.debug(f"Fetched feed type: {self.feed_type}")
-        logger.debug(f"Fetched feed data: {self.data}")
-        if not self.data:
-            logger.warning("Fetched feed is empty or could not be parsed.")
-            return {step_config.get("output", f"feed_{config.get('feed_name', 'data')}"): None}
-        output_key = step_config.get("output", f"feed_{config.get('feed_name', 'data')}")
-        print(f"execute_pipeline_step: returning {output_key}: {self.data}")
-        return {output_key: self.data}
+            return {}
 
     def set_input(self, input_data, is_url=True):
         """
@@ -159,6 +165,7 @@ class RssFeed(BasePlugin):
                 logger.error("fetch_feed: Unsupported feed type after detection")
                 raise ValueError("Unsupported feed type")
 
+            logger.info(f"[RSSFeed:fetch_feed] Returning type: {type(self.data)}, sample: {str(self.data)[:300]}")
             logger.debug(f"Successfully fetched feed with {len(self.data)} items")
             return self.data
 

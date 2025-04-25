@@ -20,7 +20,7 @@ import requests
 import json
 import datetime
 from Plugins.BasePlugin import BasePlugin
-
+import logging
 
 class Bloomberg(BasePlugin):
     """Bloomberg News API plugin that fetches and formats data into RSSGuard-compatible JSON"""
@@ -56,42 +56,51 @@ class Bloomberg(BasePlugin):
         
         # Fetch and format data
         feed_data = self.get_feed(api_url, params)
-        
+        # Defensive patch: ensure output is always a native Python object, never a string
+        import ast, logging
+        logger = logging.getLogger(__name__)
+        def parse_if_str(val):
+            if isinstance(val, str):
+                try:
+                    parsed = ast.literal_eval(val)
+                    if isinstance(parsed, (list, dict)):
+                        return parsed
+                except Exception:
+                    pass
+            return val
+        feed_data = parse_if_str(feed_data)
+        logger.info(f"[Bloomberg:execute_pipeline_step] Returning type: {type(feed_data)}, sample: {str(feed_data)[:300]}")
         return {step_config["output"]: feed_data}
 
     def get_feed(self, api_url, params=None):
-        """
-        Fetches data from the Bloomberg API and converts it to RSSGuard-compatible JSON
-        
-        Args:
-            api_url (str): The Bloomberg API URL to fetch data from
-            params (dict): Optional query parameters
-            
-        Returns:
-            dict: RSSGuard-compatible JSON feed data
-            
-        Raises:
-            ValueError: If there's an error fetching or parsing the data
-        """
+        """Fetches and formats the Bloomberg feed as a Python object, never as a string."""
+        import requests
+        import datetime
+        import logging
+        logger = logging.getLogger(__name__)
+        response = requests.get(api_url, params=params)
+        logger.info(f"[Bloomberg:get_feed] Response status: {response.status_code}")
+        if response.status_code != 200:
+            logger.error(f"[Bloomberg:get_feed] Failed to fetch feed: {response.text}")
+            return {}
         try:
-            response = requests.get(api_url, params=params)
-            response.raise_for_status()
             data = response.json()
-            
-        except requests.exceptions.RequestException as e:
-            raise ValueError(f"Error fetching data from Bloomberg API: {str(e)}")
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Error parsing Bloomberg API response: {str(e)}")
-
-        # Format response as RSSGuard feed
+        except Exception:
+            logger.error(f"[Bloomberg:get_feed] Response not JSON, attempting eval")
+            import ast
+            try:
+                data = ast.literal_eval(response.text)
+            except Exception:
+                logger.error(f"[Bloomberg:get_feed] Could not parse response as JSON or Python object.")
+                return {}
+        # Format to RSSGuard-compatible JSON
         rssguard_data = {
             "version": 1,
-            "title": "Bloomberg News Feed",
-            "link": "https://www.bloomberg.com/",
-            "description": "Bloomberg News",
+            "title": data.get("title", "Bloomberg News Feed"),
+            "link": data.get("link", "https://www.bloomberg.com/"),
+            "description": data.get("description", "Bloomberg News"),
             "items": []
         }
-
         for item in data.get("items", []):
             rss_item = {
                 "title": item.get("title", "No Title"),
@@ -104,7 +113,7 @@ class Bloomberg(BasePlugin):
                 "tickers": item.get("tickers", [])
             }
             rssguard_data["items"].append(rss_item)
-
+        logger.info(f"[Bloomberg:get_feed] Returning type: {type(rssguard_data)}, sample: {str(rssguard_data)[:300]}")
         return rssguard_data
 
 

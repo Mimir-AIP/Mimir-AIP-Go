@@ -33,10 +33,10 @@ class OpenRouter(BaseAIModel):
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY environment variable not set")
         self.base_url = "https://openrouter.ai/api/v1"
-        
-        # Add debug logging
-        logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger(__name__)
+        # Use a hierarchical logger and ensure DEBUG level
+        self.logger = logging.getLogger("Plugins.AIModels.OpenRouter")
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.propagate = True
         self.logger.debug(f"OpenRouter initialized with API key: {'*' * 20}")
         self.logger.debug(f"Base URL: {self.base_url}")
 
@@ -55,14 +55,19 @@ class OpenRouter(BaseAIModel):
             "output": "response"
         }
         """
-        config = step_config["config"]
-        self.logger.debug(f"Executing pipeline step with config: {config}")
-        response = self.chat_completion(
-            model=config["model"],
-            messages=config["messages"]
-        )
-        self.logger.debug(f"Pipeline step response: {response}")
-        return {step_config["output"]: response}
+        try:
+            config = step_config["config"]
+            self.logger.debug(f"Executing pipeline step with config: {config}")
+            response = self.chat_completion(
+                model=config["model"],
+                messages=config["messages"]
+            )
+            self.logger.debug(f"Pipeline step response: {response}")
+            return {step_config["output"]: response}
+        except Exception as e:
+            self.logger.error(f"Exception in execute_pipeline_step: {e}", exc_info=True)
+            # Return the error message as the output for visibility in the report
+            return {step_config.get("output", "openrouter_answer"): f"OpenRouter ERROR: {e}"}
 
     def get_available_models(self):
         """

@@ -6,6 +6,9 @@ from abc import ABC
 from typing import Dict, Set
 import logging
 
+logging.basicConfig(level=logging.INFO)
+logging.getLogger(__name__).info(f"[PluginManager:Startup] CWD: {os.getcwd()}, Python exec: {sys.executable}")
+
 class PluginManager:
     def __init__(self, plugins_path="Plugins"):
         self.plugins_path = plugins_path
@@ -63,22 +66,32 @@ class PluginManager:
                 try:
                     # Load module using importlib
                     module_name = f"Plugins.{plugin_type}.{folder}.{folder}"
-                    
+                    logging.getLogger(__name__).info(f"[PluginManager] Attempting to import {module_name} from {plugin_file}")
                     try:
                         module = importlib.import_module(module_name)
-
+                        logging.getLogger(__name__).info(f"[PluginManager] Imported module {module_name} from {module.__file__}")
+                        # Debug: print out module namespace for diagnosis
+                        logging.getLogger(__name__).debug(f"dir({module_name}): {dir(module)}")
                         # Try different class name formats
                         base_name = folder.replace('-', '_')
                         class_names = [
                             base_name,  # snake_case
                             ''.join(word.capitalize() for word in base_name.split('_')),  # PascalCase
                             ''.join(word.capitalize() for word in base_name.split('_')) + 'Plugin',  # PascalCasePlugin
+                            folder,  # Original folder name (preserves case)
+                            folder + 'Plugin',  # Original folder name + 'Plugin'
                         ]
 
                         plugin_class = None
                         for class_name in class_names:
                             if hasattr(module, class_name):
                                 attr = getattr(module, class_name)
+                                # Debug: log plugin_type and abstract status
+                                plugin_type_val = getattr(attr, 'plugin_type', None)
+                                is_abstract = inspect.isclass(attr) and inspect.isabstract(attr)
+                                logging.getLogger(__name__).debug(
+                                    f"Checking class '{class_name}': plugin_type={plugin_type_val}, is_abstract={is_abstract}"
+                                )
                                 # Skip abstract base classes (ABC) and classes with abstract methods
                                 if inspect.isclass(attr) and not inspect.isabstract(attr):
                                     if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
@@ -101,7 +114,7 @@ class PluginManager:
                                         continue
                                 else:
                                     plugin_instance = plugin_class()
-                                
+                                logging.getLogger(__name__).info(f"[PluginManager] Instantiated {plugin_class} from {plugin_file}")
                                 self.plugins.setdefault(plugin_type, {})[folder] = plugin_instance
                                 logging.getLogger(__name__).info(f"Successfully loaded plugin: {folder}")  
                             except Exception as e:

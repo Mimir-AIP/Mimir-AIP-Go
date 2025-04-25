@@ -78,6 +78,29 @@ class HTMLReport(BasePlugin):
             sections = eval(config["sections"], {"context": context, **context}) if isinstance(config["sections"], str) else config["sections"]
             logger.info(f"[HTMLReport] Number of sections to write: {len(sections)}")
             logger.info(f"[HTMLReport] Sample section: {sections[0] if sections else 'None'}")
+
+            # Robust placeholder substitution for each section
+            import re
+            placeholder_pattern = re.compile(r'\{([a-zA-Z0-9_]+)\}')
+            for section in sections:
+                # Check all text fields for placeholders
+                for key in list(section.keys()):
+                    value = section[key]
+                    if isinstance(value, str):
+                        matches = placeholder_pattern.findall(value)
+                        for match in matches:
+                            replacement = context.get(match, None)
+                            if replacement is None or (isinstance(replacement, (list, dict)) and not replacement):
+                                # Hide section if critical data is missing or empty
+                                if key == 'text':
+                                    section[key] = ''
+                                else:
+                                    section[key] = section[key].replace(f"{{{match}}}", "")
+                                logger.warning(f"[HTMLReport] Placeholder {{{match}}} not found or empty in context; hiding section or substituting blank.")
+                            else:
+                                section[key] = section[key].replace(f"{{{match}}}", str(replacement))
+            # Remove sections with empty 'text' or all empty fields
+            sections = [s for s in sections if any(str(v).strip() for k, v in s.items() if k != 'javascript')]
         except Exception as e:
             logger.error(f"Error evaluating sections: {e}")
             raise
@@ -108,7 +131,7 @@ class HTMLReport(BasePlugin):
         :param title: Title of the HTML document
         :param sections: List of sections, where each section is a dictionary with:
                      - "heading": Heading for the section
-                     - "text": Text content for the section (HTML allowed)
+                     - "text": Text content for the section (HTML allowed, supports {var} interpolation)
                      - "javascript": JavaScript code for the section
         :param filename: Name of the output HTML file
         :param css: Optional custom CSS string to override the default styling
@@ -119,17 +142,34 @@ class HTMLReport(BasePlugin):
         logger = logging.getLogger(__name__)
         # Generate HTML content for all text and JavaScript sections
         section_html = ""
+        # Variable interpolation: use context if available
+        import inspect
+        # Find the context from the caller's stack if passed
+        frame = inspect.currentframe()
+        context = {}
+        try:
+            outer = frame.f_back.f_back
+            if 'context' in outer.f_locals:
+                context = outer.f_locals['context']
+        except Exception:
+            pass
         for section in sections:
+            # Interpolate variables in text using context
+            text = section.get('text', '')
+            if context:
+                try:
+                    text = text.format(**context)
+                except Exception:
+                    pass  # fallback to raw text if formatting fails
             section_html += f"""
             <div class="section">
                 <h2>{section.get('heading', '')}</h2>
                 <div class="content">
-                    {section.get('text', '')}
+                    {text}
                 </div>
                 {f'<script>{section["javascript"]}</script>' if section.get('javascript') else ''}
             </div>
             """
-
         # Default CSS (Mimir-AIP GitHub Pages inspired)
         default_css = '''
 html {
@@ -231,16 +271,13 @@ hr {
   margin: 24px 0;
 }
 '''
-        style_block = css if css else default_css
-
-        # HTML template with styling
         html_template = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <title>{title}</title>
     <style>
-{style_block}
+    {css or default_css}
     </style>
 </head>
 <body>
@@ -252,11 +289,8 @@ hr {
 </body>
 </html>
 """
-        # Full path for the output file
-        report_path = os.path.abspath(os.path.join(self.output_directory, filename))
-        logger.info(f"[HTMLReport] Absolute report path: {report_path}")
-
-        # Write the HTML content to the file
+        # Write to file
+        report_path = os.path.join(self.output_directory, filename)
         try:
             with open(report_path, "w", encoding="utf-8") as file:
                 file.write(html_template)
@@ -264,13 +298,11 @@ hr {
         except Exception as e:
             logger.error(f"[HTMLReport] ERROR writing HTML to {report_path}: {e}")
             raise
-
         # Check existence immediately after writing
         if os.path.exists(report_path):
             logger.info(f"[HTMLReport] File confirmed present after write: {report_path}")
         else:
             logger.error(f"[HTMLReport] File missing after write: {report_path}")
-
         print(f"Report generated: {report_path}")
         return report_path
 

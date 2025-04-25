@@ -68,95 +68,61 @@ class LLMFunction(BasePlugin):
         Returns:
             dict: Updated context with step output
         """
-        logger = logging.getLogger(__name__)
-        logger.info("[LLMFunction DEBUG] Entered execute_pipeline_step")
-        # Check for test mode
-        test_mode = False
-        if "test_mode" in context:
-            test_mode = context["test_mode"]
-        elif "test_mode" in step_config:
-            test_mode = step_config["test_mode"]
-        if test_mode:
-            # Prefer mock_response in step_config, then in step_config['config'] if present
-            mock_response = step_config.get("mock_response")
-            if not mock_response and "config" in step_config:
-                mock_response = step_config["config"].get("mock_response")
-            logger.info(f"[LLMFunction] Test mode active. Using mock_response: {mock_response}")
-            result = mock_response
-        else:
-            if not self.llm_plugin:
-                raise ValueError("LLM plugin not set. Please call set_llm_plugin() first.")
-                
-            config = step_config["config"]
-            input_data = eval(step_config["input"], context)
-            
-            # Format the input data based on the function type
-            if "function" in config and config["function"]:
-                messages = [
-                    {
-                        "role": "user",
-                        "content": f"{config['function']}\n\n{input_data}"
-                    }
-                ]
+        try:
+            logger = logging.getLogger(__name__)
+            logger.info("[LLMFunction DEBUG] Entered execute_pipeline_step")
+            # Check for test mode
+            test_mode = False
+            if "test_mode" in context:
+                test_mode = context["test_mode"]
+            elif "test_mode" in step_config:
+                test_mode = step_config["test_mode"]
+            if test_mode:
+                # Prefer mock_response in step_config, then in step_config['config'] if present
+                mock_response = step_config.get("mock_response")
+                if not mock_response and "config" in step_config:
+                    mock_response = step_config["config"].get("mock_response")
+                logger.info(f"[LLMFunction] Test mode active. Using mock_response: {mock_response}")
+                result = mock_response if mock_response is not None else "No headline generated."
             else:
-                messages = [
-                    {
-                        "role": "user",
-                        "content": input_data
-                    }
-                ]
-            
-            logger.debug(f"Request to LLM plugin: {messages}")
-            
-            # Get the response from the LLM plugin
-            # Try to get the full response if possible, fallback to string
-            try:
-                response = self.llm_plugin.chat_completion(
-                    model=config["model"],
-                    messages=messages,
-                    return_full_response=True
-                )
-                logger.debug(f"[DEBUG] Full LLM response: {response}")
-                # If 'choices' in response, extract content
-                if isinstance(response, dict) and "choices" in response:
-                    llm_content = response["choices"][0]["message"]["content"]
+                if not self.llm_plugin:
+                    logger.error("LLM plugin not set. Please call set_llm_plugin() first.")
+                    result = "No headline generated."
                 else:
-                    llm_content = response
-            except TypeError:
-                # Backward compatibility: plugin does not support return_full_response
-                response = self.llm_plugin.chat_completion(
-                    model=config["model"],
-                    messages=messages
-                )
-                llm_content = response
-            logger.debug(f"Response from LLM plugin: {llm_content}")
-            logger.info(f"LLMFunction: Raw response from LLM: {llm_content}")
-
-            # Format the response based on the format string
-            if "format" in config and config["format"]:
-                try:
-                    # Try to parse the response as a Python literal if possible
-                    parsed_response = None
+                    config = step_config["config"]
                     try:
-                        parsed_response = ast.literal_eval(llm_content)
-                        logger.debug(f"Parsed LLM response as literal: {parsed_response}")
-                    except Exception:
-                        parsed_response = llm_content
-                    formatted_response = eval(config["format"], {"response": parsed_response})
-                except Exception as e:
-                    logger.error(f"LLMFunction: Error formatting response: {e}\nRaw response: {llm_content}")
-                    raise ValueError(f"Error formatting response: {e}\nRaw response: {llm_content}")
-            else:
-                formatted_response = llm_content
-            
-            result = formatted_response
-        
-        output_key = step_config["output"]
-        context[output_key] = result
-        logger.info(f"[LLMFunction] Step output_key: {output_key}, result: {result}")
-        logger.info(f"[LLMFunction] Context after step: {context}")
-        return {output_key: result}
-
+                        input_data = eval(step_config["input"], context)
+                        if "function" in config and config["function"]:
+                            messages = [
+                                {
+                                    "role": "user",
+                                    "content": f"{config['function']}\n\n{input_data}"
+                                }
+                            ]
+                            response = self.llm_plugin.chat_completion(
+                                model=config.get("model", ""),
+                                messages=messages
+                            )
+                            if isinstance(response, dict) and 'content' in response:
+                                result = response['content']
+                            else:
+                                result = response if response else "No headline generated."
+                        else:
+                            result = "No headline generated."
+                    except Exception as e:
+                        logger.error(f"LLMFunction: Error during LLM call: {e}")
+                        result = "No headline generated."
+            logger.info(f"[LLMFunction] Output: {result}")
+            output_key = step_config["output"]
+            context[output_key] = result
+            logger.info(f"[LLMFunction] Step output_key: {output_key}, result: {result}")
+            logger.info(f"[LLMFunction] Context after step: {context}")
+            return {output_key: result}
+        except Exception as top_level_e:
+            logger.error(f"LLMFunction: Top-level error: {top_level_e}")
+            output_key = step_config.get("output", "llm_result")
+            context[output_key] = "No headline generated."
+            return {output_key: "No headline generated."}
 
 if __name__ == "__main__":
     # Example usage

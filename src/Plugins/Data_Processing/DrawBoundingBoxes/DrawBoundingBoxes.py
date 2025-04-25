@@ -7,6 +7,8 @@ class DrawBoundingBoxes(BasePlugin):
     Plugin to draw bounding boxes on an image given detection results.
     Expects a list of bounding boxes with normalized coordinates (0-1).
     """
+    plugin_type = "Data_Processing"
+
     def __init__(self, plugin_manager=None, logger=None):
         self.plugin_manager = plugin_manager
         self.logger = logger

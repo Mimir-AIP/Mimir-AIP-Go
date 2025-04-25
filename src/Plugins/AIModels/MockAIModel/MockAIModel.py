@@ -14,6 +14,10 @@ class MockAIModel(BaseAIModel, BasePlugin):
     # Explicitly declare for plugin discovery
     pass
 
+    def execute_pipeline_step(self, step_config: dict, context: dict) -> dict:
+        """Stub implementation to satisfy BasePlugin ABC"""
+        return context
+
     def __init__(self):
         """Initialize the mock AI model"""
         self.name = "MockAIModel"

@@ -44,7 +44,7 @@ pipelines:
             - lat: 54.6079
               lon: -5.9264
               popup: "Belfast (Aircraft)"
-            - lat: 54.6079
+            - lat: 54.6082
               lon: -5.9264
               popup: "Traffic Camera"
           export_mode: embed
@@ -59,15 +59,27 @@ pipelines:
             ageHours: 120
             limit: 3
         output: bloomberg
+      - name: ExtractBloombergItems
+        plugin: Data_Processing.ExtractDictKey
+        config:
+          input_key: bloomberg
+          extract_key: items
+          output_key: bloomberg_items
+        output: bloomberg_items
+      - name: LogBloombergItems
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_values: true
+        output: null
       - name: FormatBloombergNews
         plugin: Data_Processing.GeneralFormatter
         config:
-          input_key: bloomberg
+          input_key: bloomberg_items
           output_key: bloomberg_html
           format: html_list
           title_key: title
           link_key: link
-          body_key: summary
+          body_key: description
           max_items: 5
         output: bloomberg_html
 
@@ -95,14 +107,22 @@ pipelines:
         config:
           limit: 3
         output: wh_report
+      - name: ExtractWhiteHouseItems
+        plugin: Data_Processing.ExtractDictKey
+        config:
+          input_key: wh_report
+          extract_key: items
+          output_key: wh_items
+        output: wh_items
       - name: FormatWhiteHouseReport
         plugin: Data_Processing.GeneralFormatter
         config:
-          input_key: wh_report
+          input_key: wh_items
           output_key: wh_report_html
           format: html_list
-          title_key: headline
-          body_key: body
+          title_key: title
+          link_key: url
+          body_key: content_text
           max_items: 5
         output: wh_report_html
 

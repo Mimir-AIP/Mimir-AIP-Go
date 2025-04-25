@@ -1,6 +1,6 @@
 # Main configuration file for Mimir-AIP, you can define pipelines to run here (and schedule them in future versions)
 pipelines:
-  - name: "Custom Report Pipeline"
+  - name: CustomReportPipeline
     file: "pipelines/CustomReportPipeline.yaml"
     enabled: true
     # No schedule: run-once pipeline

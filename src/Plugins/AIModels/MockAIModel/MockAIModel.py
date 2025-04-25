@@ -11,6 +11,8 @@ class MockAIModel(BaseAIModel, BasePlugin):
     """Mock AI model plugin for testing"""
 
     plugin_type = "AIModels"
+    # Explicitly declare for plugin discovery
+    pass
 
     def __init__(self):
         """Initialize the mock AI model"""
@@ -57,3 +59,7 @@ class MockAIModel(BaseAIModel, BasePlugin):
             list: List of mock model identifiers
         """
         return ["mock-model-1", "mock-model-2"]
+
+# Aliases for PluginManager compatibility
+Mockaimodel = MockAIModel
+MockaimodelPlugin = MockAIModel

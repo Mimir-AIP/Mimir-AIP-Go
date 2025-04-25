@@ -67,12 +67,16 @@ class PluginManager:
                     try:
                         module = importlib.import_module(module_name)
 
+                        # Debug: print out module namespace for diagnosis
+                        logging.getLogger(__name__).debug(f"dir({module_name}): {dir(module)}")
                         # Try different class name formats
                         base_name = folder.replace('-', '_')
                         class_names = [
                             base_name,  # snake_case
                             ''.join(word.capitalize() for word in base_name.split('_')),  # PascalCase
                             ''.join(word.capitalize() for word in base_name.split('_')) + 'Plugin',  # PascalCasePlugin
+                            folder,  # Original folder name (preserves case)
+                            folder + 'Plugin',  # Original folder name + 'Plugin'
                         ]
 
                         plugin_class = None

@@ -1,0 +1,185 @@
+# Pipeline: TestAllFunctions
+# This pipeline exercises all major plugins with real APIs and data (except WebScraping and SentimentAnalysis).
+# Each step is documented and chained for meaningful integration testing.
+pipelines:
+  - name: Test All Functions Pipeline
+    enabled: true
+    schedule: "*/10 * * * *"  # Every 10 minutes for scheduler test
+    steps:
+      # --- Input Plugins ---
+      - name: FetchAircraftData
+        plugin: Input.ADSBdata
+        config:
+          lat: 54.6079  # Belfast
+          lon: -5.9264
+          radius: 50
+        output: aircraft_data
+      - name: FetchTrafficCamera
+        plugin: Input.TrafficWatchNIImage
+        config:
+          camera_id: 1  # Use a known camera ID
+        output: traffic_image_path
+      - name: FetchWhiteHouseReport
+        plugin: Input.WhiteHousePressPool
+        config:
+          limit: 1
+        output: wh_report
+      - name: FetchGazaIncidents
+        plugin: Input.GazaMaps
+        config:
+          data_type: incidents
+          limit: 3
+        output: gaza_data
+      - name: FetchBloombergNews
+        plugin: Input.bloomberg
+        config:
+          limit: 3
+        output: bloomberg
+      - name: FetchRSSFeed
+        plugin: Input.rss_feed
+        config:
+          url: "http://feeds.bbci.co.uk/news/world/rss.xml"
+          limit: 3
+        output: rss_feed
+      - name: ArchiveSearch
+        plugin: Input.archive_web_search
+        config:
+          query: "bbc.com"
+          limit: 2
+        output: archive_web_search
+      # Note: api plugin not loaded, so this step is commented out
+      #- name: PublicAPIQuery
+      #  plugin: Input.api
+      #  config:
+      #    url: "https://jsonplaceholder.typicode.com/posts"
+      #    params:
+      #      _limit: 2
+      #  output: api_data
+      - name: GeocodePostcodes
+        plugin: Data_Processing.PostcodeGeocoding
+        config:
+          postcodes: ["SW1A 1AA", "EC1A 1BB"]
+        output: postcode_geocoding
+
+      # --- Data Processing Plugins ---
+      - name: AggregateNews
+        plugin: Data_Processing.ContextAggregator
+        config:
+          key: all_news
+          value: bloomberg
+        output: all_news
+      - name: AggregateRSS
+        plugin: Data_Processing.ContextAggregator
+        config:
+          key: all_news
+          value: rss_feed
+        output: all_news
+      - name: AggregateArchive
+        plugin: Data_Processing.ContextAggregator
+        config:
+          key: all_news
+          value: archive_web_search
+        output: all_news
+      - name: PromoteHeadline
+        plugin: Data_Processing.ContextPromoter
+        config:
+          source: all_news[0]['title']
+          target: main_headline
+        output: main_headline
+      - name: DelayStep
+        plugin: Data_Processing.Delay
+        config:
+          seconds: 0.2
+        output: delay_done
+      # DrawBoundingBoxes requires Pillow (PIL). Uncomment after installing Pillow.
+      #- name: DrawBoxesOnImage
+      #  plugin: Data_Processing.DrawBoundingBoxes
+      #  config:
+      #    image_path: traffic_image_path
+      #    boxes:
+      #      - x_min: 0.2
+      #        y_min: 0.2
+      #        x_max: 0.4
+      #        y_max: 0.4
+      #    color: "red"
+      #    width: 3
+      #    output_image_path_key: boxed_image_path
+      #  output: boxed_image_path
+      - name: ImageToBase64
+        plugin: Data_Processing.ImageToBase64
+        config:
+          input_key: traffic_image_path
+          output_key: image_base64
+        output: image_base64
+      - name: LLMHeadlineSummary
+        plugin: Data_Processing.LLMFunction
+        config:
+          llm_plugin: AIModels.OpenRouter
+          model: "openai/gpt-3.5-turbo"
+          messages:
+            - role: user
+              content: "Summarize this headline: {{ main_headline }}"
+          output_key: headline_summary
+        output: headline_summary
+      - name: MoondreamCaption
+        plugin: Data_Processing.Moondream
+        config:
+          image_path: traffic_image_path
+          task: caption
+          output_key: moondream_caption
+        output: moondream_caption
+      - name: ExtractNewsURLs
+        plugin: Data_Processing.ExtractURLStrings
+        config:
+          input_key: all_news
+          output_key: news_urls
+        output: news_urls
+      - name: SaveContextToFile
+        plugin: Data_Processing.ContextToFile
+        config:
+          variable: all_news
+          filename: output/all_news.json
+          append: false
+        output: saved_news
+      - name: LoadContextFromFile
+        plugin: Data_Processing.FileToContext
+        config:
+          filename: output/all_news.json
+          variable: loaded_news
+        output: loaded_news
+
+      # --- Output Plugins ---
+      - name: GenerateHTMLReport
+        plugin: Output.HTMLReport
+        config:
+          title: "Test All Functions Pipeline Report"
+          sections:
+            - heading: "Headline Summary"
+              text: "{{ headline_summary }}"
+            - heading: "Moondream Caption"
+              text: "{{ moondream_caption }}"
+            - heading: "News URLs"
+              text: "{{ news_urls }}"
+            - heading: "Aircraft Data"
+              text: "{{ aircraft_data }}"
+            - heading: "Gaza Incidents"
+              text: "{{ gaza_data }}"
+            - heading: "Traffic Camera Image"
+              text: "<img src='data:image/jpeg;base64,{{ image_base64 }}' />"
+          filename: test_report.html
+        output: html_report_path
+      - name: GenerateMap
+        plugin: Output.LeafletJSmap
+        config:
+          title: "Test Map"
+          center: [54.6079, -5.9264]
+          zoom: 6
+          markers:
+            - lat: 54.6079
+              lon: -5.9264
+              popup: "Belfast (Aircraft)"
+            - lat: 54.6079
+              lon: -5.9264
+              popup: "Traffic Camera"
+          filename: test_map.html
+        output: map_path

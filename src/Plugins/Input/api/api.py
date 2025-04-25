@@ -2,7 +2,7 @@
 Plugin for making API requests to various endpoints
 
 Example usage:
-    plugin = APIPlugin()
+    plugin = ApiPlugin()
     result = plugin.execute_pipeline_step({
         "config": {
             "url": "https://httpbin.org/bytes/100",
@@ -29,9 +29,8 @@ sys.path.insert(0, src_dir)
 from Plugins.BasePlugin import BasePlugin
 
 
-class APIPlugin(BasePlugin):
+class ApiPlugin(BasePlugin):
     """Plugin for making configurable API requests"""
-
     plugin_type = "Input"
 
     def __init__(self):
@@ -46,7 +45,7 @@ class APIPlugin(BasePlugin):
         
         Expected step_config format:
         {
-            "plugin": "APIPlugin",
+            "plugin": "ApiPlugin",
             "config": {
                 "url": "https://api.example.com/endpoint",
                 "method": "GET",  # Optional, default: GET
@@ -141,14 +140,14 @@ class APIPlugin(BasePlugin):
 
 if __name__ == "__main__":
     # Test the plugin
-    plugin = APIPlugin()
+    plugin = ApiPlugin()
     
     # Test configurations
     test_configs = [
         {
             "name": "GET bytes",
             "config": {
-                "plugin": "APIPlugin",
+                "plugin": "ApiPlugin",
                 "config": {
                     "url": "https://httpbin.org/bytes/100",
                     "method": "GET"
@@ -159,7 +158,7 @@ if __name__ == "__main__":
         {
             "name": "POST data",
             "config": {
-                "plugin": "APIPlugin",
+                "plugin": "ApiPlugin",
                 "config": {
                     "url": "https://httpbin.org/post",
                     "method": "POST",
@@ -172,7 +171,7 @@ if __name__ == "__main__":
         {
             "name": "GET with params",
             "config": {
-                "plugin": "APIPlugin",
+                "plugin": "ApiPlugin",
                 "config": {
                     "url": "https://httpbin.org/get",
                     "params": {"key": "value"}

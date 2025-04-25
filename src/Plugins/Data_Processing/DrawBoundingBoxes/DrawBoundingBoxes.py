@@ -49,3 +49,7 @@ class DrawBoundingBoxes(BasePlugin):
         output_key = step_config.get('output_image_path_key', 'output_image_path')
         context[output_key] = output_path
         return context
+
+# Aliases for PluginManager compatibility
+Drawboundingboxes = DrawBoundingBoxes
+DrawboundingboxesPlugin = DrawBoundingBoxes

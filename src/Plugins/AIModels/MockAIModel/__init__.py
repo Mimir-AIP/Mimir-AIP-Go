@@ -1,3 +1,3 @@
-from .MockAIModel import MockAIModel
+from .MockAIModel import MockAIModel, Mockaimodel, MockaimodelPlugin
 
-__all__ = ['MockAIModel']
+__all__ = ['MockAIModel', 'Mockaimodel', 'MockaimodelPlugin']

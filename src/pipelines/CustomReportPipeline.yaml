@@ -126,6 +126,68 @@ pipelines:
           max_items: 5
         output: wh_report_html
 
+      # --- AI Model Demo Section: OpenRouter ---
+      - name: AskOpenRouter
+        plugin: AIModels.OpenRouter
+        config:
+          model: thudm/glm-z1-9b:free
+          messages:
+            - role: user
+              content: "What is the capital of France?"
+        output: openrouter_answer
+      - name: LogOpenRouterAnswer
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_values: true
+        output: null
+      - name: FormatOpenRouterAnswer
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: openrouter_answer
+          output_key: openrouter_html
+          format: html_block
+          title_key: null
+          body_key: null
+        output: openrouter_html
+
+      # --- AI Model Demo Section: GitHubModels ---
+      - name: AskGitHubModels
+        plugin: AIModels.GitHubModels
+        config:
+          model: openai/gpt-4.1
+          messages:
+            - role: user
+              content: "What is the capital of France?"
+        output: githubmodels_answer
+      - name: FormatGitHubModelsAnswer
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: githubmodels_answer
+          output_key: githubmodels_html
+          format: html_block
+          title_key: null
+          body_key: null
+        output: githubmodels_html
+
+      # --- AI Model Demo Section: MockAIModel ---
+      - name: AskMockAIModel
+        plugin: AIModels.MockAIModel
+        config:
+          model: mock-model-1
+          messages:
+            - role: user
+              content: "What is the capital of France?"
+        output: mockai_answer
+      - name: FormatMockAIAnswer
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: mockai_answer
+          output_key: mockai_html
+          format: html_block
+          title_key: null
+          body_key: null
+        output: mockai_html
+
       # --- HTML Report Generation ---
       - name: GenerateHTMLReport
         plugin: Output.HTMLReport
@@ -146,4 +208,10 @@ pipelines:
               text: "{rss_feed_html}"
             - heading: "White House Press Pool"
               text: "{wh_report_html}"
+            - heading: "OpenRouter AI Model Demo"
+              text: "{openrouter_html}"
+            - heading: "GitHubModels AI Model Demo"
+              text: "{githubmodels_html}"
+            - heading: "MockAIModel Demo"
+              text: "{mockai_html}"
         output: html_report_path

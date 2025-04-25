@@ -13,7 +13,7 @@ from PipelineScheduler import CronSchedule
 
 # Configure logging BEFORE any other imports that might log
 logging.basicConfig(
-    level=logging.INFO,  # Default to INFO; can be overridden in main()
+    level=logging.DEBUG,  # Set to DEBUG for detailed diagnostics
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("mimir.log", mode="w"),
@@ -370,5 +370,44 @@ if __name__ == "__main__":
         # Run the first (or only) pipeline in the file
         execute_pipeline(pipeline_defs[0], plugin_manager, output_dir)
     else:
-        # Default: run scheduled pipelines
-        run_scheduled_pipelines(config, plugin_manager, output_dir)
+        # Improved default behavior: run enabled pipeline(s) or prompt user
+        pipelines = config.get('pipelines', [])
+        enabled_pipelines = [p for p in pipelines if p.get('enabled', False)]
+        if not enabled_pipelines:
+            print("Error: No enabled pipelines found in config.yaml. Please enable at least one pipeline or specify --pipeline <name>.")
+            exit(1)
+        elif len(enabled_pipelines) == 1:
+            selected = enabled_pipelines[0]
+            print(f"No pipeline specified. Running the only enabled pipeline: {selected.get('name')}")
+        else:
+            print("Multiple enabled pipelines found. Please select one to run:")
+            for idx, p in enumerate(enabled_pipelines, 1):
+                print(f"  {idx}. {p.get('name')}")
+            while True:
+                try:
+                    choice = input(f"Enter a number (1-{len(enabled_pipelines)}): ").strip()
+                    num = int(choice)
+                    if 1 <= num <= len(enabled_pipelines):
+                        selected = enabled_pipelines[num-1]
+                        break
+                    else:
+                        print(f"Invalid selection. Please enter a number between 1 and {len(enabled_pipelines)}.")
+                except (ValueError, KeyboardInterrupt):
+                    print("Input cancelled or invalid. Exiting.")
+                    exit(1)
+        pipeline_file = selected.get('file')
+        if not pipeline_file:
+            print(f"No file specified for pipeline '{selected.get('name')}'.")
+            exit(1)
+        pipeline_path = os.path.join(pipeline_dir, os.path.basename(pipeline_file))
+        try:
+            with open(pipeline_path, 'r') as pf:
+                pipeline_yaml = yaml.safe_load(pf)
+        except Exception as e:
+            print(f"Error loading pipeline YAML: {e}")
+            exit(1)
+        pipeline_defs = pipeline_yaml.get('pipelines', [])
+        if not pipeline_defs:
+            print(f"No pipelines found in {pipeline_file}.")
+            exit(1)
+        execute_pipeline(pipeline_defs[0], plugin_manager, output_dir)

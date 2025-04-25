@@ -1,6 +1,15 @@
 import os
 import sys
 import logging
+import argparse
+import yaml #used to load pipelines
+import datetime  # Added for scheduler loop
+import time      # Added for scheduler loop sleep
+from Plugins.PluginManager import PluginManager
+from PipelineVisualizer.AsciiTree import PipelineAsciiTreeVisualizer
+import threading
+import signal
+from PipelineScheduler import CronSchedule
 
 # Configure logging BEFORE any other imports that might log
 logging.basicConfig(
@@ -14,15 +23,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logger.info("[Test] Logging to file and console should work now.")
-
-from Plugins.PluginManager import PluginManager
-import yaml #used to load pipelines
-import datetime  # Added for scheduler loop
-import time      # Added for scheduler loop sleep
-from PipelineVisualizer.AsciiTree import PipelineAsciiTreeVisualizer
-import threading
-import signal
-from PipelineScheduler import CronSchedule
 
 def main():
     """Main entry point of the application"""
@@ -326,16 +326,49 @@ def run_scheduled_pipelines(config, plugin_manager, output_dir):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Mimir-AIP Pipeline Runner")
+    parser.add_argument('--pipeline', type=str, help='Name of pipeline to run once (manual trigger)')
+    args = parser.parse_args()
+
     try:
         with open("config.yaml", "r") as f:
             config = yaml.safe_load(f)
     except Exception as e:
         print(f"Error loading config.yaml: {e}")
         exit(1)
-    # Setup logging, plugin_manager, etc. as before
+
     pipeline_dir = config.get("settings", {}).get("pipeline_directory", "pipelines")
     output_dir = config.get("settings", {}).get("output_directory", "output")
     log_level = config.get("settings", {}).get("log_level", "INFO")
     os.makedirs(output_dir, exist_ok=True)
     plugin_manager = PluginManager()
-    run_scheduled_pipelines(config, plugin_manager, output_dir)
+
+    if args.pipeline:
+        # Manual trigger: run the specified pipeline once
+        pipelines = config.get('pipelines', [])
+        selected = next((p for p in pipelines if p.get('name') == args.pipeline), None)
+        if not selected:
+            print(f"Pipeline '{args.pipeline}' not found in config.yaml.")
+            exit(1)
+        # Load the pipeline YAML
+        pipeline_file = selected.get('file')
+        if not pipeline_file:
+            print(f"No file specified for pipeline '{args.pipeline}'.")
+            exit(1)
+        pipeline_path = os.path.join(pipeline_dir, os.path.basename(pipeline_file))
+        try:
+            with open(pipeline_path, 'r') as pf:
+                pipeline_yaml = yaml.safe_load(pf)
+        except Exception as e:
+            print(f"Error loading pipeline YAML: {e}")
+            exit(1)
+        # Find the actual pipeline definition (list under 'pipelines')
+        pipeline_defs = pipeline_yaml.get('pipelines', [])
+        if not pipeline_defs:
+            print(f"No pipelines found in {pipeline_file}.")
+            exit(1)
+        # Run the first (or only) pipeline in the file
+        execute_pipeline(pipeline_defs[0], plugin_manager, output_dir)
+    else:
+        # Default: run scheduled pipelines
+        run_scheduled_pipelines(config, plugin_manager, output_dir)

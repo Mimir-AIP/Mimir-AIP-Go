@@ -75,10 +75,12 @@ class TrafficWatchNIImage(BasePlugin):
                     abs_image_path = os.path.abspath(image_path)
                     self.logger.info(f"Downloaded image for camera {camera_id} to {abs_image_path}")
                     result[output_key] = abs_image_path
+                    print(f"[DEBUG] Setting {output_key} in context to: {abs_image_path}")
                 else:
                     self.logger.info(f"[FetchTrafficCamera] Not saving image to disk (save_to_disk is False)")
                     result[output_key] = None
                 self.logger.info(f"[FetchTrafficCamera] Returning result keys: {list(result.keys())}, values: {result}")
+                print(f"[DEBUG] Returning result: {result}")
                 return result
             else:
                 self.logger.error(f"Failed to fetch image for camera {camera_id}: HTTP {resp.status_code}")

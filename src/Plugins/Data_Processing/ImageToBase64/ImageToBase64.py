@@ -35,33 +35,36 @@ class ImageToBase64(BasePlugin):
         config = step_config.get('config', {})
         input_key = config.get('input_key') or config.get('input_image_path_key') or 'image_path'
         output_key = config.get('output_key', 'image_base64')
+        print(f"[DEBUG][ImageToBase64] config: {config}")
+        print(f"[DEBUG][ImageToBase64] Context keys BEFORE: {list(context.keys())}")
         image_path = context.get(input_key) or config.get('image_path')
-        logger = self.logger if hasattr(self, 'logger') else logging.getLogger(__name__)
-        logger.info(f"[ImageToBase64] Using input_key: '{input_key}', resolved image_path: '{image_path}'")
+        print(f"[DEBUG][ImageToBase64] Using input_key: '{input_key}', resolved image_path: '{image_path}'")
+        if not image_path:
+            print(f"[DEBUG][ImageToBase64] Image path is None or empty: {image_path}")
+            context[output_key] = "No data available"
+            print(f"[DEBUG][ImageToBase64] Context keys AFTER: {list(context.keys())}")
+            return context
         try:
-            if not image_path:
-                logger.error(f"Image path is None or empty: {image_path}")
+            print(f"[DEBUG][ImageToBase64] Checking existence of file: {os.path.abspath(image_path)}")
+            if not os.path.exists(image_path):
+                print(f"[DEBUG][ImageToBase64] File does not exist: {image_path}")
                 context[output_key] = "No data available"
+                print(f"[DEBUG][ImageToBase64] Context keys AFTER: {list(context.keys())}")
                 return context
-            file_exists = os.path.isfile(image_path)
-            logger.info(f"[ImageToBase64] File exists: {file_exists}")
-            if file_exists:
-                file_size = os.path.getsize(image_path)
-                logger.info(f"[ImageToBase64] File size: {file_size} bytes")
-            else:
-                logger.error(f"Image file not found: {image_path}")
-                context[output_key] = "No data available"
-                return context
-            with open(image_path, 'rb') as f:
+            print(f"[DEBUG][ImageToBase64] File exists: {os.path.exists(image_path)}")
+            print(f"[DEBUG][ImageToBase64] File size: {os.path.getsize(image_path)} bytes")
+            with open(image_path, "rb") as f:
                 image_bytes = f.read()
-            base64_str = base64.b64encode(image_bytes).decode('utf-8')
-            # Default to jpeg, can be customized via config
-            mime_type = config.get('mime_type', 'image/jpeg')
-            # Only store the raw base64 string in the context; the HTML template should add the data URL prefix
+            base64_str = f"data:image/jpeg;base64,{base64.b64encode(image_bytes).decode('utf-8')}"
             context[output_key] = base64_str
-            logger.info(f"[ImageToBase64] Successfully encoded image to base64 (raw, no prefix) and set context['{output_key}'].")
+            print(f"[DEBUG][ImageToBase64] Setting {output_key} in context to: (base64 string, length={len(base64_str)})")
+            print(f"[DEBUG][ImageToBase64] Context keys AFTER: {list(context.keys())}")
+            if self.logger:
+                self.logger.info(f"[ImageToBase64] Successfully encoded image to base64 (raw, no prefix) and set context['{output_key}'].")
             return context
         except Exception as e:
-            logger.error(f"ImageToBase64: Error encoding image: {e}")
+            if self.logger:
+                self.logger.error(f"ImageToBase64: Error encoding image: {e}")
             context[output_key] = "No data available"
+            print(f"[DEBUG][ImageToBase64] Exception occurred, context keys AFTER: {list(context.keys())}")
             return context

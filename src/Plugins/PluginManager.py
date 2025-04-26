@@ -58,6 +58,7 @@ class PluginManager:
             return
 
         for folder in os.listdir(plugin_type_path):
+            print(f"[DIAG][PluginManager] plugin_type={plugin_type}, folder={folder}")
             if folder.startswith('__'):  # Skip __pycache__ and similar
                 continue
                     
@@ -69,6 +70,7 @@ class PluginManager:
                     logging.getLogger(__name__).info(f"[PluginManager] Attempting to import {module_name} from {plugin_file}")
                     try:
                         module = importlib.import_module(module_name)
+                        print(f"[DIAG][PluginManager] dir({module_name}) = {dir(module)}")
                         logging.getLogger(__name__).info(f"[PluginManager] Imported module {module_name} from {module.__file__}")
                         # Debug: print out module namespace for diagnosis
                         logging.getLogger(__name__).debug(f"dir({module_name}): {dir(module)}")
@@ -86,6 +88,7 @@ class PluginManager:
                         for class_name in class_names:
                             if hasattr(module, class_name):
                                 attr = getattr(module, class_name)
+                                print(f"[DIAG][PluginManager] Checking class '{class_name}': type={type(attr)}, plugin_type={getattr(attr, 'plugin_type', None)}, is_abstract={inspect.isclass(attr) and inspect.isabstract(attr)}")
                                 # Debug: log plugin_type and abstract status
                                 plugin_type_val = getattr(attr, 'plugin_type', None)
                                 is_abstract = inspect.isclass(attr) and inspect.isabstract(attr)
@@ -95,9 +98,11 @@ class PluginManager:
                                 # Skip abstract base classes (ABC) and classes with abstract methods
                                 if inspect.isclass(attr) and not inspect.isabstract(attr):
                                     if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
+                                        print(f"[DIAG][PluginManager] Will instantiate class '{class_name}' for plugin '{folder}'")
                                         plugin_class = attr
                                         break
                         if not plugin_class:
+                            print(f"[DIAG][PluginManager] No plugin class found in {module_name} for names {class_names}")
                             logging.getLogger(__name__).warning(f"No plugin class found in {module_name} for names {class_names}")
 
                         if plugin_class:
@@ -114,13 +119,13 @@ class PluginManager:
                                         continue
                                 else:
                                     plugin_instance = plugin_class()
+                                print(f"[DIAG][PluginManager] Instantiated {plugin_class} from {plugin_file}")
                                 logging.getLogger(__name__).info(f"[PluginManager] Instantiated {plugin_class} from {plugin_file}")
                                 self.plugins.setdefault(plugin_type, {})[folder] = plugin_instance
                                 logging.getLogger(__name__).info(f"Successfully loaded plugin: {folder}")  
                             except Exception as e:
+                                print(f"[DIAG][PluginManager] Error instantiating plugin {folder}: {str(e)}")
                                 self.warnings.add(f"Error instantiating plugin {folder}: {str(e)}")
-                        else:
-                            self.warnings.add(f"Warning: No valid plugin class found in {module_name}")
 
                     except ImportError as e:
                         self.warnings.add(f"Error importing module {module_name}: {str(e)}")

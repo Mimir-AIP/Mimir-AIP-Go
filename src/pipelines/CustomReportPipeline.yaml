@@ -26,12 +26,77 @@ pipelines:
           camera_id: 1  # Chichester Street, known-good from cache
           save_to_disk: true
         output: traffic_image_path
+      - name: LogTrafficImagePath
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [traffic_image_path]
+          log_values: true
+        output: null
+      # --- Traffic Camera Image Analysis Section ---
+      - name: AnalyzeTrafficCameraWithMoondream
+        plugin: Data_Processing.MoondreamPlugin
+        config:
+          input_image_key: traffic_image_path
+          output_key: bounding_boxes
+          action: detect
+          object: vehicle
+        output: bounding_boxes
+      - name: LogContextAfterMoondream
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [traffic_image_path, bounding_boxes]
+          log_values: true
+        output: null
+      - name: LogBoundingBoxes
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [bounding_boxes]
+          log_values: true
+        output: null
+      - name: DrawBoundingBoxesOnTrafficImage
+        plugin: Data_Processing.DrawBoundingBoxes
+        config:
+          input_image_path_key: traffic_image_path
+          input_boxes_key: bounding_boxes
+          output_image_path_key: boxed_traffic_image
+          output_path: reports/boxed_traffic_image.jpg
+        output: boxed_traffic_image
+      - name: LogContextAfterDrawBoxes
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [boxed_traffic_image, bounding_boxes]
+          log_values: true
+        output: null
+      - name: LogBoxedTrafficImage
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [boxed_traffic_image]
+          log_values: true
+        output: null
+      - name: BoxedTrafficImageToBase64
+        plugin: Data_Processing.ImageToBase64
+        config:
+          input_key: boxed_traffic_image
+          output_key: boxed_image_base64
+        output: boxed_image_base64
+      - name: LogBoxedImageBase64
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [boxed_image_base64]
+          log_values: true
+        output: null
       - name: ImageToBase64
         plugin: Data_Processing.ImageToBase64
         config:
           input_key: traffic_image_path
           output_key: image_base64
         output: image_base64
+      - name: LogImageBase64
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [image_base64]
+          log_values: true
+        output: null
 
       # --- Map Section ---
       - name: GenerateMap
@@ -198,8 +263,12 @@ pipelines:
           sections:
             - heading: "Aircraft Data"
               text: "{aircraft_data_html}"
+            - heading: "Traffic Camera Image (with Detected Objects)"
+              text: |
+                <p>This image was gathered from TrafficWatchNI and analyzed using the Moondream model to highlight detected features. Bounding boxes have been drawn to indicate detected objects in the scene.</p>
+                <img src="boxed_traffic_image.jpg" />
             - heading: "Traffic Camera Image"
-              text: "<img src='data:image/jpeg;base64,{image_base64}' />"
+              text: "<img src=\"{traffic_image_path}\" />"
             - heading: "Map"
               text: "{map_html}"
             - heading: "Bloomberg News"

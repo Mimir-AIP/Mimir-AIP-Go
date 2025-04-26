@@ -10,6 +10,8 @@ Features:
 API key must be provided in a `.env` file in the same directory with the variable `MOONDREAM_API_KEY`.
 """
 
+print("[DIAG][MoondreamPlugin] MoondreamPlugin.py module imported!")
+
 import os
 import base64
 import requests
@@ -34,41 +36,65 @@ class MoondreamPlugin(BasePlugin):
             plugin_manager (PluginManager, optional): The plugin manager instance.
             logger (logging.Logger, optional): Logger instance.
         """
-        self.plugin_manager = plugin_manager if plugin_manager is not None else PluginManager()
+        self.plugin_manager = plugin_manager  # Do NOT instantiate PluginManager here to avoid recursion
         self.logger = logger
-        env_path = os.path.join(os.path.dirname(__file__), '.env')
-        load_dotenv(env_path)
-        self.api_key = os.getenv('MOONDREAM_API_KEY')
+        # Consistent with OpenRouter and GitHubModels: load .env from plugin dir, get var, raise if missing
+        import dotenv
+        print("[DIAG][MoondreamPlugin] CWD:", os.getcwd())
+        print("[DIAG][MoondreamPlugin] Files in plugin dir:", os.listdir(os.path.dirname(os.path.abspath(__file__))))
+        print("[DIAG][MoondreamPlugin] dotenv imported from:", dotenv.__file__)
+        result = dotenv.load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), verbose=True)
+        print("[DIAG][MoondreamPlugin] load_dotenv result:", result)
+        self.api_key = os.getenv("MOONDREAM_API_KEY")
+        print(f"[DIAG][MoondreamPlugin] Loaded MOONDREAM_API_KEY: {self.api_key}")
         if not self.api_key:
-            raise ValueError("MOONDREAM_API_KEY not found in .env file.")
+            raise ValueError("MOONDREAM_API_KEY environment variable not set")
 
     def _headers(self) -> Dict[str, str]:
+        """
+        Return headers for Moondream API requests using the correct Moondream Auth header.
+        See: https://docs.moondream.ai/reference/detect (X-Moondream-Auth required)
+        """
         return {
             "X-Moondream-Auth": self.api_key,
             "Content-Type": "application/json"
         }
 
-    def _image_to_base64(self, image_bytes: bytes) -> str:
-        base64_str = base64.b64encode(image_bytes).decode('utf-8')
-        return f"data:image/jpeg;base64,{base64_str}"
-
-    def query_image(self, image: bytes, question: str, stream: bool = False, timeout: int = 20, return_raw: bool = False) -> Union[str, Tuple[str, Dict]]:
+    def _image_to_base64(self, image_bytes: bytes, with_prefix: bool = False) -> str:
         """
-        Ask a natural language question about an image.
+        Convert image bytes to a base64-encoded string.
+        If with_prefix is True, returns a Data URL; otherwise, returns plain base64 string (for API).
+        """
+        base64_str = base64.b64encode(image_bytes).decode('utf-8')
+        if with_prefix:
+            return f"data:image/jpeg;base64,{base64_str}"
+        return base64_str
+
+    def query_image(self, image: Union[bytes, str], question: str, stream: bool = False, timeout: int = 20, return_raw: bool = False) -> Union[str, Tuple[str, Dict]]:
+        """
+        Query an image with a question (VQA).
         Args:
-            image (bytes): Image data in bytes.
+            image (bytes or str): Image data as bytes or base64 string.
             question (str): The question to ask about the image.
             stream (bool): Whether to stream the response.
             timeout (int): Timeout for the request in seconds.
-            return_raw (bool): If True, return (result, raw_response_dict)
+            return_raw (bool): If True, return (answer, raw_response_dict)
         Returns:
-            str or (str, dict): The answer from Moondream, or (answer, raw response) if return_raw
+            str or (str, dict): The answer string, or (answer, raw response) if return_raw
         Raises:
             Exception: On network or API error.
         """
         url = f"https://api.moondream.ai/v1/query"
+        if isinstance(image, bytes):
+            image_b64 = self._image_to_base64(image)
+            print(f"[DIAG][MoondreamPlugin] query_image: image was bytes, encoded to base64")
+        elif isinstance(image, str):
+            image_b64 = image
+            print(f"[DIAG][MoondreamPlugin] query_image: image is base64 string (len={len(image_b64)})")
+        else:
+            raise ValueError("query_image: image must be bytes or base64 string")
         payload = {
-            "image_url": self._image_to_base64(image),
+            "image_url": image_b64,
             "question": question,
             "stream": stream
         }
@@ -130,11 +156,11 @@ class MoondreamPlugin(BasePlugin):
             return result, resp.json()
         return result
 
-    def detect_objects(self, image: bytes, object_name: str = None, stream: bool = False, timeout: int = 20, return_raw: bool = False) -> Union[List[Dict], Tuple[List[Dict], Dict]]:
+    def detect_objects(self, image: Union[bytes, str], object_name: str = None, stream: bool = False, timeout: int = 20, return_raw: bool = False) -> Union[List[Dict], Tuple[List[Dict], Dict]]:
         """
         Detect objects in an image.
         Args:
-            image (bytes): Image data in bytes.
+            image (bytes or str): Image data as bytes or base64 string.
             object_name (str): Name of the object to detect.
             stream (bool): Whether to stream the response.
             timeout (int): Timeout for the request in seconds.
@@ -145,11 +171,22 @@ class MoondreamPlugin(BasePlugin):
             Exception: On network or API error.
         """
         url = f"https://api.moondream.ai/v1/detect"
+        # Accept both bytes (encode) and str (assume base64)
+        if isinstance(image, bytes):
+            image_b64 = self._image_to_base64(image)
+            print(f"[DIAG][MoondreamPlugin] detect_objects: image was bytes, encoded to base64")
+        elif isinstance(image, str):
+            image_b64 = image
+            print(f"[DIAG][MoondreamPlugin] detect_objects: image is base64 string (len={len(image_b64)})")
+        else:
+            raise ValueError("detect_objects: image must be bytes or base64 string")
+        print(f"[DIAG][MoondreamPlugin] object_name in detect_objects: {object_name} (type: {type(object_name)})")
         payload = {
-            "image_url": self._image_to_base64(image),
+            "image_url": image_b64,
             "object": object_name,
             "stream": stream
         }
+        print(f"[DIAG][MoondreamPlugin] Payload for /detect: {payload}")
         if self.logger:
             self.logger.info(f"Sending /detect request to Moondream API for object: {object_name}")
         try:
@@ -161,9 +198,11 @@ class MoondreamPlugin(BasePlugin):
         if resp.status_code != 200:
             if self.logger:
                 self.logger.error(f"Moondream /detect error: {resp.status_code} {resp.text}")
+            print(f"[ERROR][MoondreamPlugin] /detect failed: {resp.status_code} {resp.text}")
             raise Exception(f"Moondream /detect error: {resp.status_code} {resp.text}")
         if self.logger:
             self.logger.info(f"/detect response: {resp.json()}")
+        print(f"[DIAG][MoondreamPlugin] /detect response: {resp.json()}")
         result = resp.json().get("objects", [])
         if return_raw:
             return result, resp.json()
@@ -214,38 +253,74 @@ class MoondreamPlugin(BasePlugin):
         Returns:
             dict: Updated context with any new variables
         """
-        action = step_config.get('action')
-        image = context.get(step_config.get('input_image_key', 'image'))
-        if image is None:
-            raise ValueError("No image data found in context.")
-        # Handle image input as bytes, base64 string, or file path
-        if isinstance(image, bytes):
-            image_bytes = image
-        elif isinstance(image, str) and image.startswith('data:image/'):
-            match = re.match(r'data:image/[^;]+;base64,(.*)', image)
-            if not match:
-                raise ValueError("Invalid base64 image data URL format.")
-            image_bytes = base64.b64decode(match.group(1))
-        elif isinstance(image, str):
-            with open(image, 'rb') as f:
-                image_bytes = f.read()
-        else:
-            raise ValueError("Unsupported image input type for MoondreamPlugin.")
-        result = None
-        if action == 'query':
-            question = step_config.get('question')
-            result = self.query_image(image_bytes, question)
-        elif action == 'caption':
-            length = step_config.get('length', 'normal')
-            result = self.caption_image(image_bytes, length)
-        elif action == 'detect':
-            object_name = step_config.get('object')
-            result = self.detect_objects(image_bytes, object_name)
-        elif action == 'point':
-            object_name = step_config.get('object')
-            result = self.locate_object(image_bytes, object_name)
-        else:
-            raise ValueError(f"Unknown action: {action}")
-        output_key = step_config.get('output_key', 'result')
-        context[output_key] = result
-        return context
+        print("[DIAG][MoondreamPlugin] ENTER execute_pipeline_step")
+        print(f"[DIAG][MoondreamPlugin] step_config: {step_config}")
+        print(f"[DIAG][MoondreamPlugin] context (keys): {list(context.keys())}")
+        try:
+            config = step_config.get('config', {})
+            print(f"[DIAG][MoondreamPlugin] extracted config: {config}")
+            action = config.get('action')
+            print(f"[DIAG][MoondreamPlugin] action: {action}")
+            input_image_key = config.get('input_image_key', 'image')
+            image = context.get(input_image_key)
+            print(f"[DIAG][MoondreamPlugin] input_image_key: {input_image_key}, image: {image}")
+            # Handle image input as bytes, base64 string, or file path
+            if isinstance(image, bytes):
+                image_bytes = image
+                print(f"[DIAG][MoondreamPlugin] image is bytes, length: {len(image_bytes)}")
+            elif isinstance(image, str) and image.startswith('data:image/'):
+                match = re.match(r'data:image/[^;]+;base64,(.*)', image)
+                if not match:
+                    print("[DIAG][MoondreamPlugin] Invalid base64 image data URL format.")
+                    raise ValueError("Invalid base64 image data URL format.")
+                image_bytes = base64.b64decode(match.group(1))
+                print(f"[DIAG][MoondreamPlugin] image is base64 string, decoded length: {len(image_bytes)}")
+            elif isinstance(image, str):
+                print(f"[DIAG][MoondreamPlugin] image is file path: {image}")
+                if not os.path.exists(image):
+                    print(f"[ERROR][MoondreamPlugin] Image file does not exist: {image}")
+                    raise FileNotFoundError(f"Image file does not exist: {image}")
+                with open(image, 'rb') as f:
+                    image_bytes = f.read()
+                print(f"[DIAG][MoondreamPlugin] image loaded from file, length: {len(image_bytes)}")
+            else:
+                print("[ERROR][MoondreamPlugin] Unsupported image input type.")
+                raise ValueError("Unsupported image input type for MoondreamPlugin.")
+
+            # Always send plain base64 string to API
+            image_b64 = self._image_to_base64(image_bytes, with_prefix=False)
+            print(f"[DIAG][MoondreamPlugin] image_b64 sample (plain): {image_b64[:100]}")
+
+            if action == 'query':
+                question = config.get('question')
+                result = self.query_image(image_b64, question)
+            elif action == 'caption':
+                length = config.get('length', 'normal')
+                result = self.caption_image(image_bytes, length)
+            elif action == 'detect':
+                # Robustly extract object name from config (accept both 'object' and 'object_name')
+                object_name = config.get('object')
+                if object_name is None:
+                    object_name = config.get('object_name')
+                print(f"[DIAG][MoondreamPlugin] Raw object_name from config: {object_name} (type: {type(object_name)})")
+                if not isinstance(object_name, str) or not object_name.strip():
+                    print(f"[ERROR][MoondreamPlugin] 'object' parameter is missing or not a valid string: {object_name}")
+                    raise ValueError("Moondream detect action requires a non-empty 'object' string in config.")
+                object_name = str(object_name).strip()
+                print(f"[DIAG][MoondreamPlugin] Using object_name for detect (after type/strip): '{object_name}' (type: {type(object_name)})")
+                result = self.detect_objects(image_b64, object_name)
+            elif action == 'point':
+                object_name = config.get('object')
+                result = self.locate_object(image_bytes, object_name)
+            else:
+                print(f"[ERROR][MoondreamPlugin] Unknown action: {action}")
+                raise ValueError(f"Unknown action: {action}")
+            output_key = config.get('output_key', 'result')
+            print(f"[DIAG][MoondreamPlugin] Output key: {output_key}, result: {result}")
+            context[output_key] = result
+            return context
+        except Exception as e:
+            print(f"[DIAG][MoondreamPlugin] ERROR in execute_pipeline_step: {e}")
+            if self.logger:
+                self.logger.error(f"Exception in execute_pipeline_step: {e}")
+            raise

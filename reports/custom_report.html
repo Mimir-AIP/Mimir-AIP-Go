@@ -112,7 +112,9 @@ hr {
             <div class="section">
                 <h2>Aircraft Data</h2>
                 <div class="content">
-                    <table><thead><tr><th>flight</th><th>r</th><th>t</th><th>desc</th><th>ownOp</th><th>alt_geom</th><th>gs</th><th>lat</th><th>lon</th></tr></thead><tbody><tr><td>EXS98K  </td><td>G-JZHO</td><td>B738</td><td>BOEING 737-800</td><td></td><td>5725</td><td>248.8</td><td>54.534178</td><td>-6.418679</td></tr><tr><td>FRA40   </td><td>G-BLNT</td><td>BN2T</td><td>BRITTEN-NORMAN BN-2T Turbine Islander</td><td></td><td>4200</td><td>117.3</td><td>54.832626</td><td>-6.213253</td></tr><tr><td>EAG44H  </td><td>G-CMJL</td><td>AT76</td><td>ATR-72-600</td><td></td><td>2525</td><td>165.9</td><td>54.556366</td><td>-5.941988</td></tr><tr><td>EZY789N </td><td>G-EZBJ</td><td>A319</td><td>AIRBUS A-319</td><td></td><td>4225</td><td>224.6</td><td>54.728851</td><td>-5.816938</td></tr><tr><td>CWY04H  </td><td>G-NIAB</td><td>BE20</td><td>BEECH 200 Super King Air</td><td></td><td>17100</td><td>196.8</td><td>54.337006</td><td>-5.642287</td></tr><tr><td>EZY9002 </td><td>G-EZUZ</td><td>A320</td><td>AIRBUS A-320</td><td></td><td>6725</td><td>266.5</td><td>54.656342</td><td>-5.590345</td></tr><tr><td>EZY93XM </td><td>G-EZWR</td><td>A320</td><td>AIRBUS A-320</td><td></td><td>1750</td><td>164.0</td><td>54.645717</td><td>-6.260376</td></tr></tbody></table>
+                    <p>Fetched aircraft positions around the given coordinates (latitude 54.6079, longitude -5.9264). Expected an HTML table listing up to 10 flights with details.</p>
+<p>No aircraft data available.</p>
+
                 </div>
                 
             </div>
@@ -120,7 +122,8 @@ hr {
             <div class="section">
                 <h2>Traffic Camera Image (with Detected Objects)</h2>
                 <div class="content">
-                    <p>This image was gathered from TrafficWatchNI and analyzed using the Moondream model to highlight detected features. Bounding boxes have been drawn to indicate detected objects in the scene.</p>
+                    <p>This image was gathered from TrafficWatchNI and analyzed by the Moondream plugin to detect vehicles. Bounding boxes highlight detected objects.</p>
+<p>You should see vehicles boxed in the image indicating areas of interest.</p>
 <img src="boxed_traffic_image.jpg" />
 
                 </div>
@@ -130,7 +133,9 @@ hr {
             <div class="section">
                 <h2>Traffic Camera Image</h2>
                 <div class="content">
-                    <img src="/Users/ciaran/Documents/GitHub/Mimir-AIP/traffic_images/1_20250426_141446.jpg" />
+                    <p>Raw camera image fetched from TrafficWatchNI. Expected output is the unannotated snapshot below.</p>
+<img src="/Users/ciaran/Documents/GitHub/Mimir-AIP/traffic_images/1_20250426_181231.jpg" />
+
                 </div>
                 
             </div>
@@ -138,7 +143,8 @@ hr {
             <div class="section">
                 <h2>Map</h2>
                 <div class="content">
-                    
+                    <p>Rendered a static map with predetermined markers. No real-time flight data is plotted; this is a simple map embed.</p>
+
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <div id="map" style="height:400px;width:100%;margin:20px 0;"></div>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -158,6 +164,7 @@ hr {
             
         </script>
         
+
                 </div>
                 
             </div>
@@ -165,9 +172,11 @@ hr {
             <div class="section">
                 <h2>Bloomberg News</h2>
                 <div class="content">
-                    <ul>
-<li><a href='https://www.bloomberg.com/news/articles/2025-04-26/trump-held-court-at-pope-s-funeral-as-politics-ritual-collided?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>Trump Held Court at Pope Funeral as Politics, Ritual Mixed</a></li><li><a href='https://www.bloomberg.com/news/articles/2025-04-26/trump-zelenskiy-meet-on-the-sidelines-of-pope-francis-funeral?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>Zelenskiy Hails Potential Historic Outcome After Trump Talks</a></li><li><a href='https://www.bloomberg.com/news/articles/2025-04-26/ecb-s-simkus-says-two-more-cuts-possible-as-trade-hurts-economy?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>ECB’s Simkus Says Two More Cuts Possible as Trade Hurts Economy</a></li>
+                    <p>Fetched Bloomberg news articles via the input plugin and formatted them. Expected output is a list of headlines with links.</p>
+<ul>
+<li><a href='https://www.bloomberg.com/news/videos/2025-04-26/pm-mark-carney-on-trump-s-desire-for-canada-51st-state-video?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>PM Mark Carney on Trump&#x27;s Desire For Canada 51st State</a></li><li><a href='https://www.bloomberg.com/news/articles/2025-04-26/tesla-hikes-canadian-prices-and-pushes-its-pre-tariff-inventory?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>Tesla Hikes Canadian Prices and Pushes Its Pre-Tariff Inventory</a></li><li><a href='https://www.bloomberg.com/news/articles/2025-04-26/ecb-launches-new-task-force-to-simplify-banking-regulation?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>ECB Launches New Task Force to Simplify Banking Regulation</a></li>
 </ul>
+
                 </div>
                 
             </div>
@@ -175,9 +184,11 @@ hr {
             <div class="section">
                 <h2>BBC World RSS Headlines</h2>
                 <div class="content">
-                    <ul>
-<li><a href='https://www.bbc.com/news/articles/ce8gpdj704mo' target='_blank'>Zelensky and Trump meet inside St Peter&#x27;s Basilica</a></li><li><a href='https://www.bbc.com/news/articles/cx251yyvwr3o' target='_blank'>Hundreds injured and deaths reported in Iran explosion</a></li><li><a href='https://www.bbc.com/news/articles/cql67qk0dd3o' target='_blank'>Virginia Giuffre, Prince Andrew and Jeffrey Epstein accuser, dies</a></li><li><a href='https://www.bbc.com/news/articles/c62x6qx682jo' target='_blank'>Woman jailed for 14 years in Brazil after &#x27;lipstick coup&#x27;</a></li><li><a href='https://www.bbc.com/news/articles/c9w8q91ld75o' target='_blank'>DR Congo and Rwanda vow to agree peace plan within days</a></li>
+                    <p>Fetched and formatted BBC World News RSS feed. Expected output is an HTML list of the latest headlines.</p>
+<ul>
+<li><a href='https://www.bbc.com/news/articles/c8x8w4xk1gno' target='_blank'>World bids farewell to Pope who told people to &#x27;build bridges, not walls&#x27;</a></li><li><a href='https://www.bbc.com/news/articles/ce8gpdj704mo' target='_blank'>Zelensky and Trump hold &#x27;very productive&#x27; talks at Vatican</a></li><li><a href='https://www.bbc.com/news/articles/cx251yyvwr3o' target='_blank'>Five dead and more than 700 injured in blast at key Iran port</a></li><li><a href='https://www.bbc.com/news/articles/c5yle7pxlyno' target='_blank'>Virginia Giuffre&#x27;s death leaves unanswered questions</a></li><li><a href='https://www.bbc.com/news/articles/cx26166ngpdo' target='_blank'>Russia claims it has regained full control of Kursk from Ukraine</a></li>
 </ul>
+
                 </div>
                 
             </div>
@@ -185,7 +196,8 @@ hr {
             <div class="section">
                 <h2>White House Press Pool</h2>
                 <div class="content">
-                    <ul>
+                    <p>Fetched White House press pool items and formatted them. Expected output is an HTML list of press releases.</p>
+<ul>
 <li><a href='https://www.forth.news/whpool/CNXHwKxPXGjGgqLUfJSsZ' target='_blank'>Travel pool note #12  Wheels up</a><br>From: Megan Messerly
 Sent: Saturday, April 26, 2025, 7:06 AM
 To: DL WHO Wranglers
@@ -232,22 +244,7 @@ Subject: Travel pool report #8b  Finnish *president*
 In that last pool report, it should instead be *Finnish President Alexander Stubb.*
 </li>
 </ul>
-                </div>
-                
-            </div>
-            
-            <div class="section">
-                <h2>OpenRouter AI Model Demo</h2>
-                <div class="content">
-                    The capital of France is Paris.
-                </div>
-                
-            </div>
-            
-            <div class="section">
-                <h2>GitHubModels AI Model Demo</h2>
-                <div class="content">
-                    The capital of France is **Paris**.
+
                 </div>
                 
             </div>
@@ -255,7 +252,115 @@ In that last pool report, it should instead be *Finnish President Alexander Stu
             <div class="section">
                 <h2>MockAIModel Demo</h2>
                 <div class="content">
-                    Mock response to: What is the capital of France?...
+                    <p>Ran a test prompt through the MockAIModel plugin. Expected output is a mock response string.</p>
+Mock response to: What is the capital of France?...
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>LLM Function Output</h2>
+                <div class="content">
+                    
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Postcode Geocoding Example (BT7 1NN)</h2>
+                <div class="content">
+                    <p>Geocoded postcode BT7 1NN via the PostcodeGeocoding plugin. Expected output is the location's coordinates or descriptive info.</p>
+[{'postcode': 'BT7 1NN', 'latitude': 54.584772, 'longitude': -5.934438, 'region': None, 'country': 'Northern Ireland'}]
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Delay Plugin Demo</h2>
+                <div class="content">
+                    <p>The Delay plugin introduces a pause in pipeline execution.</p>
+<p>Expected output: boolean True indicating completion.</p>
+Completed: True
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Context Aggregator Demo</h2>
+                <div class="content">
+                    <p>The ContextAggregator plugin collected the 'headline_text' into a list under key 'aggregated_headlines'.</p>
+<p>Expected output: a list containing the original headline string.</p>
+['Major storm disrupts travel across Europe. Thousands of flights cancelled.']
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Context Promoter Demo</h2>
+                <div class="content">
+                    <p>The ContextPromoter plugin copied 'aggregated_headlines' to a new key 'promoted_headlines'.</p>
+<p>Expected output: same list under the new context key.</p>
+['Major storm disrupts travel across Europe. Thousands of flights cancelled.']
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>ContextToFile & FileToContext Demo</h2>
+                <div class="content">
+                    <p>The ContextToFile plugin saved 'promoted_headlines' to JSON, and FileToContext loaded it back as 'file_promoted_headlines'.</p>
+<p>Expected output: content of file_promoted_headlines matches the original list.</p>
+['Major storm disrupts travel across Europe. Thousands of flights cancelled.']
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Extract URL Strings Demo</h2>
+                <div class="content">
+                    <p>The ExtractURLStrings plugin extracted URL links from the RSS feed items.</p>
+<p>Expected output: an HTML list of news URLs.</p>
+<ul>
+<li>https://www.bbc.com/news/articles/c8x8w4xk1gno</li><li>https://www.bbc.com/news/articles/ce8gpdj704mo</li><li>https://www.bbc.com/news/articles/cx251yyvwr3o</li><li>https://www.bbc.com/news/articles/c5yle7pxlyno</li><li>https://www.bbc.com/news/articles/cx26166ngpdo</li><li>https://www.bbc.com/news/articles/c9w8q91ld75o</li><li>https://www.bbc.com/news/articles/cgkg8r85n1eo</li><li>https://www.bbc.com/news/articles/c62x6qx682jo</li><li>https://www.bbc.com/news/articles/cn4wvvnzp39o</li><li>https://www.bbc.com/news/articles/cly5xx017vko</li><li>https://www.bbc.com/news/articles/cnv58ejyrpzo</li><li>https://www.bbc.com/news/articles/cx2wryz4gw7o</li><li>https://www.bbc.com/news/articles/cze1xj6pdzyo</li><li>https://www.bbc.com/news/articles/cn4j33klz33o</li><li>https://www.bbc.com/news/articles/c9dj4vy1yvpo</li><li>https://www.bbc.com/news/articles/cq5w9yzy1vpo</li><li>https://www.bbc.com/news/articles/c62jxdxng7do</li><li>https://www.bbc.com/news/articles/ce8y4j91l83o</li><li>https://www.bbc.com/news/articles/c86je4vyg36o</li><li>https://www.bbc.com/news/articles/c175z14r8pro</li><li>https://www.bbc.com/news/articles/ckgxk40ndk1o</li><li>https://www.bbc.com/news/articles/c0kxe1m1y26o</li><li>https://www.bbc.com/news/articles/c5y65nw5lgvo</li><li>https://www.bbc.com/news/articles/cn05zgd00eko</li><li>https://www.bbc.com/news/articles/cj3xv653k6do</li><li>https://www.bbc.com/news/articles/cj0z7lde14eo</li><li>https://www.bbc.com/news/articles/clyqgy6m8e6o</li><li>https://www.bbc.com/news/articles/cpdzy96xdzqo</li><li>https://www.bbc.com/news/articles/ckgxk40ndk1o</li><li>https://www.bbc.com/news/videos/clywpwr8y71o</li><li>https://www.bbc.com/news/videos/c0el5x0nxrwo</li><li>https://www.bbc.com/news/videos/c8ep87wdj26o</li><li>https://www.bbc.com/news/videos/ce3qdpnvdglo</li><li>https://www.bbc.com/news/videos/c33zl7r4e0ko</li><li>https://www.bbc.com/news/videos/c8x8ylnjr77o</li><li>https://www.bbc.com/news/videos/ce82jd985e6o</li><li>https://www.bbc.com/news/videos/cx25vnrvkdko</li>
+</ul>
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Sentiment Analysis Demo</h2>
+                <div class="content">
+                    <p>The SentimentAnalysis plugin performed a basic sentiment check on the headline_text.</p>
+<p>Expected output: a sentiment summary (e.g., 'Neutral sentiment detected.').</p>
+Neutral sentiment detected.
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>OpenRouter Demo</h2>
+                <div class="content">
+                    <p>Ran a test prompt through the OpenRouter plugin. Expected output is a response string.</p>
+The capital of France is **Paris**. It is a major cultural, historical, and economic center, renowned for its landmarks like the Eiffel Tower, the Louvre Museum, and the Notre-Dame Cathedral. Paris has been the capital since the late 18th century and remains one of the most visited cities in the world.
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>GitHubModels Demo</h2>
+                <div class="content">
+                    <p>Ran a test prompt through the GitHubModels plugin. Expected output is a response string.</p>
+The capital of France is **Paris**.
+
                 </div>
                 
             </div>

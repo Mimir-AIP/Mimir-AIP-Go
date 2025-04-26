@@ -109,11 +109,11 @@ class PluginManager:
                             try:
                                 # Handle plugins that need dependencies
                                 if plugin_type == "Data_Processing" and folder == "LLMFunction":
-                                    # Get the first available AI Model plugin
+                                    # Get the first available AI Model plugin and pass plugin_manager for dynamic selection
                                     ai_plugins = self.get_plugins("AIModels")
                                     if ai_plugins:
                                         first_ai_plugin = next(iter(ai_plugins.values()))
-                                        plugin_instance = plugin_class(llm_plugin=first_ai_plugin)
+                                        plugin_instance = plugin_class(llm_plugin=first_ai_plugin, plugin_manager=self)
                                     else:
                                         self.warnings.add(f"Error instantiating plugin {folder}: No AI Model plugins available")
                                         continue

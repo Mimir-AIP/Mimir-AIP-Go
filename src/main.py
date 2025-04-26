@@ -227,7 +227,9 @@ def execute_step(step, context, plugin_manager):
         if result:
             for k, v in result.items():
                 logger.info(f"[ContextUpdate] Key: {k}, Type: {type(v)}, Sample: {str(v)[:300]}")
-            context.update(result)
+            # Robust context update: merge all result keys into context, do not overwrite
+            for k, v in result.items():
+                context[k] = v
     except Exception as e:
         logger.error(f"Error executing step {step.get('name', 'Unnamed')}: {e}")
 

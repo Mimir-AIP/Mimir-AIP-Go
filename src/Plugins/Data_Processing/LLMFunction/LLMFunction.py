@@ -71,14 +71,15 @@ class LLMFunction(BasePlugin):
         try:
             logger = logging.getLogger(__name__)
             logger.info("[LLMFunction DEBUG] Entered execute_pipeline_step")
-            # Check for test mode
+            logger.info(f"[LLMFunction DEBUG] step_config: {step_config}")
+            logger.info(f"[LLMFunction DEBUG] context (keys): {list(context.keys())}")
+            logger.info(f"[LLMFunction DEBUG] context (headline_text): {context.get('headline_text', 'MISSING')}")
             test_mode = False
             if "test_mode" in context:
                 test_mode = context["test_mode"]
             elif "test_mode" in step_config:
                 test_mode = step_config["test_mode"]
             if test_mode:
-                # Prefer mock_response in step_config, then in step_config['config'] if present
                 mock_response = step_config.get("mock_response")
                 if not mock_response and "config" in step_config:
                     mock_response = step_config["config"].get("mock_response")
@@ -90,28 +91,58 @@ class LLMFunction(BasePlugin):
                     result = "No headline generated."
                 else:
                     config = step_config["config"]
-                    try:
-                        input_data = eval(step_config["input"], context)
-                        if "function" in config and config["function"]:
-                            messages = [
-                                {
-                                    "role": "user",
-                                    "content": f"{config['function']}\n\n{input_data}"
-                                }
-                            ]
-                            response = self.llm_plugin.chat_completion(
-                                model=config.get("model", ""),
-                                messages=messages
-                            )
-                            if isinstance(response, dict) and 'content' in response:
-                                result = response['content']
-                            else:
-                                result = response if response else "No headline generated."
+                    # Dynamically select LLM plugin based on config
+                    plugin_name = config.get("plugin")
+                    if plugin_name and self.plugin_manager:
+                        plugin_candidate = self.plugin_manager.get_plugin("AIModels", plugin_name)
+                        if not plugin_candidate:
+                            # Fallback to case-insensitive match
+                            for name, inst in self.plugin_manager.get_plugins("AIModels").items():
+                                if name.lower() == plugin_name.lower():
+                                    plugin_candidate = inst
+                                    break
+                        if plugin_candidate:
+                            self.llm_plugin = plugin_candidate
                         else:
-                            result = "No headline generated."
+                            logger.error(f"LLMFunction: LLM plugin '{plugin_name}' not found")
+                            raise ValueError(f"LLM plugin '{plugin_name}' not found")
+                    try:
+                        input_expr = step_config.get("input", None)
+                        if not input_expr:
+                            logger.error("[LLMFunction] No 'input' key specified in step_config.")
+                            raise ValueError("No 'input' key specified in step_config.")
+                        try:
+                            input_data = eval(input_expr, context)
+                        except Exception as eval_exc:
+                            logger.error(f"[LLMFunction] Could not evaluate input expression '{input_expr}': {eval_exc}")
+                            raise
+                        if input_data is None:
+                            logger.error(f"[LLMFunction] Input data for '{input_expr}' is None or missing in context.")
+                            raise ValueError(f"Input data for '{input_expr}' is None or missing in context.")
+                        # Construct the prompt with function and format
+                        function = config.get('function', '')
+                        format = config.get('format', '')
+                        prompt = f"{function}\n\n{format}\n\n{input_data}"
+                        messages = [
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ]
+                        logger.info(f"[LLMFunction DEBUG] Sending messages to mock model: {messages}")
+                        response = self.llm_plugin.chat_completion(
+                            model=config.get("model", ""),
+                            messages=messages
+                        )
+                        logger.info(f"[LLMFunction DEBUG] Raw response from llm_plugin: {response!r} (type: {type(response)})")
+                        if isinstance(response, dict) and 'content' in response:
+                            result = response['content']
+                        else:
+                            result = response if response else "No headline generated."
+                        logger.info(f"[LLMFunction DEBUG] Final result assigned: {result!r}")
                     except Exception as e:
                         logger.error(f"LLMFunction: Error during LLM call: {e}")
-                        result = "No headline generated."
+                        result = f"No headline generated. Error: {e}"
             logger.info(f"[LLMFunction] Output: {result}")
             output_key = step_config["output"]
             context[output_key] = result
@@ -121,8 +152,8 @@ class LLMFunction(BasePlugin):
         except Exception as top_level_e:
             logger.error(f"LLMFunction: Top-level error: {top_level_e}")
             output_key = step_config.get("output", "llm_result")
-            context[output_key] = "No headline generated."
-            return {output_key: "No headline generated."}
+            context[output_key] = f"No headline generated. Top-level error: {top_level_e}"
+            return {output_key: f"No headline generated. Top-level error: {top_level_e}"}
 
 if __name__ == "__main__":
     # Example usage

@@ -11,7 +11,6 @@ class ArchiveWebSearchPlugin:
     plugin_type = "Input"
     name = "archive-web-search"
 
-    """__init__: TODO add description."""
     def __init__(self):
         self.base_url = "https://archive.org/advancedsearch.php"
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -61,7 +60,6 @@ class ArchiveWebSearchPlugin:
             results.append(result)
         self.logger.debug(f"ArchiveWebSearchPlugin.search: returning {len(results)} results")
         return results
-    """extract_urls_from_response: TODO add description."""
 
     def extract_urls_from_response(self, response, deduplicate=True):
         self.logger.debug(f"extract_urls_from_response called with type: {type(response)}")
@@ -84,7 +82,6 @@ class ArchiveWebSearchPlugin:
         else:
             self.logger.warning(f"Unexpected response type in extract_urls_from_response: {type(response)}. Value: {response}")
         self.logger.debug(f"extract_urls_from_response returning URLs: {urls}")
-    """execute_pipeline_step: TODO add description."""
         return urls
 
     def execute_pipeline_step(self, step_config, context):
@@ -98,7 +95,6 @@ class ArchiveWebSearchPlugin:
         deduplicate = config.get("deduplicate", True)
 
         self.logger.debug(f"archive-web-search plugin received query: {query}")
-        """parse_if_str: TODO add description."""
         # Support list of queries
         import logging
         logger = logging.getLogger(__name__)

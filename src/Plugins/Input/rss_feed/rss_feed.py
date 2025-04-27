@@ -60,7 +60,6 @@ class RssFeed(BasePlugin):
             # Defensive patch: ensure output is always a native Python object, never a string
             import ast
             def parse_if_str(val):
-            """parse_if_str: TODO add description."""
                 if isinstance(val, str):
                     try:
                         parsed = ast.literal_eval(val)
@@ -185,7 +184,6 @@ class RssFeed(BasePlugin):
         Parse an RSS feed
         """
         def strip_cdata(text):
-        """strip_cdata: TODO add description."""
             if text is None:
                 return ""
             # Remove CDATA if present

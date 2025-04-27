@@ -49,11 +49,18 @@ jobs:
             --add-data "src/Plugins${SEPARATOR}Plugins" \
             src/main.py
 
-      - name: Zip platform bundle
+      - name: Zip platform bundle (non-Windows)
+        if: runner.os != 'Windows'
         run: |
           cd dist
           zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }} src/pipelines config.yaml src/Plugins
           cd ..
+
+      - name: Zip platform bundle (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\mimir-aip-${{ matrix.os }}" -DestinationPath "mimir-aip-${{ matrix.os }}.zip"
 
       - name: Create GitHub Release
         id: create_release

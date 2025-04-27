@@ -29,26 +29,21 @@ class ADSBdata(BasePlugin):
 
     def query_adsb_lol(self, lat, lon, radius):
         url = f"https://api.adsb.lol/v2/point/{lat}/{lon}/{radius}"
-        print(f"Querying adsb.lol: {url}")
         response = requests.get(url)
         if response.status_code == 200:
             return response.json()
         else:
-            print(f"Error querying adsb.lol: {response.status_code}")
             return {}
 
     def query_adsb_fi(self, lat, lon, radius):
         url = f"https://opendata.adsb.fi/api/v2/lat/{lat}/lon/{lon}/dist/{radius}"
-        print(f"Querying adsb.fi: {url}")
         time.sleep(2)  # Slow down to avoid rate limiting
         response = requests.get(url)
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 404:
-            print(f"404 Error querying adsb.fi: {url}")
             return {}
         else:
-            print(f"Error querying adsb.fi: {response.status_code}")
             return {}
 
     def combine_aircraft_data(self, adsb_lol_data, adsb_fi_data):

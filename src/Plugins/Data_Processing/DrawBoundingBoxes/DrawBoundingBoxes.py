@@ -1,3 +1,8 @@
+"""
+DrawBoundingBoxes module.
+
+Provides DrawBoundingBoxes plugin to draw bounding boxes on images based on detection results.
+"""
 import os
 from PIL import Image, ImageDraw
 from Plugins.BasePlugin import BasePlugin
@@ -10,6 +15,12 @@ class DrawBoundingBoxes(BasePlugin):
     plugin_type = "Data_Processing"
 
     def __init__(self, plugin_manager=None, logger=None):
+        """Initialize the DrawBoundingBoxes plugin.
+
+        Args:
+            plugin_manager (PluginManager, optional): Manager for plugin discovery and context.
+            logger (logging.Logger, optional): Logger for diagnostic messages.
+        """
         self.plugin_manager = plugin_manager
         self.logger = logger
 
@@ -18,24 +29,24 @@ class DrawBoundingBoxes(BasePlugin):
         Draw bounding boxes on an image and save the result.
         Args:
             step_config (dict): Should contain:
-                - input_image_path_key: key for image path in context (default 'image_path')
-                - input_boxes_key: key for boxes list in context (default 'boxes')
-                - output_path: where to save the result (default 'output_with_boxes.jpg')
-                - color: box color (default 'red')
-                - width: box line width (default 3)
+                - config: dictionary with configuration
             context (dict): Pipeline context.
         Returns:
-            dict: Updated context (with output_path under 'output_image_path' or specified output key)
+            dict: Updated context with new keys.
         """
-        image_path = context.get(step_config.get('input_image_path_key', 'image_path'))
-        boxes = context.get(step_config.get('input_boxes_key', 'boxes'))
-        output_path = step_config.get('output_path', 'output_with_boxes.jpg')
-        color = step_config.get('color', 'red')
-        width = step_config.get('width', 3)
-        if not image_path or not os.path.isfile(image_path):
-            raise ValueError(f"Image file not found: {image_path}")
-        if not boxes or not isinstance(boxes, list):
-            raise ValueError("No bounding boxes provided or wrong format.")
+        config = step_config.get('config', {})
+        input_image_path_key = config.get('input_image_path_key', 'image_path')
+        input_boxes_key = config.get('input_boxes_key', 'boxes')
+        output_path = config.get('output_path', 'output_with_boxes.jpg')
+        color = config.get('color', 'red')
+        width = config.get('width', 3)
+        # Load configuration values
+        image_path = context.get(input_image_path_key)
+        boxes = context.get(input_boxes_key)
+        # Fetch input from context
+        if image_path is None or boxes is None:
+            # Missing required context entries; skip drawing
+            return context
         image = Image.open(image_path).convert("RGB")
         draw = ImageDraw.Draw(image)
         w, h = image.size
@@ -45,10 +56,12 @@ class DrawBoundingBoxes(BasePlugin):
             x1 = int(obj['x_max'] * w)
             y1 = int(obj['y_max'] * h)
             draw.rectangle([x0, y0, x1, y1], outline=color, width=width)
+        # Save the boxed image
         image.save(output_path)
         if self.logger:
             self.logger.info(f"Saved image with bounding boxes to {output_path}")
-        output_key = step_config.get('output_image_path_key', 'output_image_path')
+        output_key = config.get('output_image_path_key', 'output_image_path')
+        # Insert output path into context under output_key
         context[output_key] = output_path
         return context
 

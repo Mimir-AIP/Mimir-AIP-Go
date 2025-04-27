@@ -17,6 +17,7 @@ ICONS = {
 }
 
 class PipelineAsciiTreeVisualizer:
+    """Provides methods to build and render ASCII tree visualizations of pipeline steps."""
     @staticmethod
     def render(tree: Dict, highlight_path: Optional[List[int]] = None, file=sys.stdout):
         """
@@ -26,6 +27,7 @@ class PipelineAsciiTreeVisualizer:
             highlight_path (list of int): Path to the currently running node (for highlighting).
             file: Output stream (default: sys.stdout)
         """
+        # Internal recursive rendering helper
         def _render_node(node, prefix='', is_last=True, path=None):
             path = path or []
             # Status icon
@@ -59,6 +61,7 @@ class PipelineAsciiTreeVisualizer:
         Returns:
             dict: Tree structure for rendering.
         """
+        # Internal recursive node construction helper
         def _build_node(step):
             name = step.get('name', 'unnamed')
             status = (statuses or {}).get(name, 'pending')

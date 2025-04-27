@@ -52,14 +52,23 @@ class MockAIModel(BaseAIModel, BasePlugin):
         Returns:
             str: Mock response text
         """
-        # Extract the last user message
-        last_message = next((m for m in reversed(messages) if m["role"] == "user"), None)
-        if not last_message:
-            return "No user message found"
-
-        # Generate a simple mock response
-        response = f"Mock response to: {last_message['content'][:50]}..."
-        return response
+        try:
+            if not isinstance(messages, list):
+                raise ValueError("messages must be a list of dicts")
+            last_message = next((m for m in reversed(messages) if m.get("role") == "user"), None)
+            if not last_message:
+                return "No user message found"
+            # Defensive: ensure 'content' exists
+            content = last_message.get('content', '')
+            if not isinstance(content, str):
+                content = str(content)
+            # Format the response with both the function and the content
+            response = f"Mock response to: {content[:50]}..."
+            return response
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"[MockAIModel] chat_completion error: {e}")
+            return f"[MockAIModel] Error: {e}"
 
     def text_completion(self, model, prompt):
         """

@@ -18,6 +18,28 @@ pipelines:
           input_key: aircraft_data
           output_key: aircraft_data_html
         output: aircraft_data_html
+      - name: SetHeadlineText
+        plugin: Data_Processing.ContextSetter
+        config:
+          values:
+            headline_text: "Major storm disrupts travel across Europe. Thousands of flights cancelled."
+        output: headline_text
+      - name: LogHeadlineTextContext
+        plugin: Data_Processing.ContextLogger
+        config:
+          keys:
+            - headline_text
+        output: log_headline_text
+      - name: LogFullContextBeforeLLM
+        plugin: Data_Processing.ContextLogger
+        config:
+          keys: __all__
+        output: log_full_context_llm
+      - name: LogContextAfterLLM
+        plugin: Data_Processing.ContextLogger
+        config:
+          keys: __all__
+        output: log_context_after_llm
 
       # --- Traffic Camera Section ---
       - name: FetchTrafficCamera
@@ -26,12 +48,77 @@ pipelines:
           camera_id: 1  # Chichester Street, known-good from cache
           save_to_disk: true
         output: traffic_image_path
+      - name: LogTrafficImagePath
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [traffic_image_path]
+          log_values: true
+        output: null
+      # --- Traffic Camera Image Analysis Section ---
+      - name: AnalyzeTrafficCameraWithMoondream
+        plugin: Data_Processing.MoondreamPlugin
+        config:
+          input_image_key: traffic_image_path
+          output_key: bounding_boxes
+          action: detect
+          object: vehicle
+        output: bounding_boxes
+      - name: LogContextAfterMoondream
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [traffic_image_path, bounding_boxes]
+          log_values: true
+        output: null
+      - name: LogBoundingBoxes
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [bounding_boxes]
+          log_values: true
+        output: null
+      - name: DrawBoundingBoxesOnTrafficImage
+        plugin: Data_Processing.DrawBoundingBoxes
+        config:
+          input_image_path_key: traffic_image_path
+          input_boxes_key: bounding_boxes
+          output_image_path_key: boxed_traffic_image
+          output_path: reports/boxed_traffic_image.jpg
+        output: boxed_traffic_image
+      - name: LogContextAfterDrawBoxes
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [boxed_traffic_image, bounding_boxes]
+          log_values: true
+        output: null
+      - name: LogBoxedTrafficImage
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [boxed_traffic_image]
+          log_values: true
+        output: null
+      - name: BoxedTrafficImageToBase64
+        plugin: Data_Processing.ImageToBase64
+        config:
+          input_key: boxed_traffic_image
+          output_key: boxed_image_base64
+        output: boxed_image_base64
+      - name: LogBoxedImageBase64
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [boxed_image_base64]
+          log_values: true
+        output: null
       - name: ImageToBase64
         plugin: Data_Processing.ImageToBase64
         config:
           input_key: traffic_image_path
           output_key: image_base64
         output: image_base64
+      - name: LogImageBase64
+        plugin: Data_Processing.ContextLogger
+        config:
+          log_keys: [image_base64]
+          log_values: true
+        output: null
 
       # --- Map Section ---
       - name: GenerateMap
@@ -49,6 +136,14 @@ pipelines:
               popup: "Traffic Camera"
           export_mode: embed
         output: map_html
+
+      # --- Postcode Geocoding Example Section ---
+      - name: GeocodeExamplePostcode
+        plugin: Data_Processing.PostcodeGeocoding
+        config:
+          postcodes:
+            - "BT7 1NN"
+        output: postcode_geocode
 
       # --- Bloomberg Section ---
       - name: FetchBloombergNews
@@ -188,6 +283,62 @@ pipelines:
           body_key: null
         output: mockai_html
 
+      # --- Demo Data Processing Plugins ---
+      - name: DelayDemo
+        plugin: Data_Processing.Delay
+        config:
+          seconds: 0
+        output: delay_done
+      - name: ContextAggregatorDemo
+        plugin: Data_Processing.ContextAggregator
+        config:
+          key: aggregated_headlines
+          value: headline_text
+        output: aggregated_headlines
+      - name: ContextPromoterDemo
+        plugin: Data_Processing.ContextPromoter
+        source: aggregated_headlines
+        target: promoted_headlines
+        output: promoted_headlines
+      - name: ContextToFileDemo
+        plugin: Data_Processing.ContextToFile
+        variable: promoted_headlines
+        filename: "reports/promoted_headlines.json"
+        output: null
+      - name: FileToContextDemo
+        plugin: Data_Processing.FileToContext
+        filename: "reports/promoted_headlines.json"
+        variable: file_promoted_headlines
+        output: file_promoted_headlines
+      - name: ExtractURLDemo
+        plugin: Data_Processing.ExtractURLStrings
+        config:
+          input: rss_feed
+        output: news_urls
+      - name: FormatURLDemo
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: news_urls
+          output_key: news_urls_html
+          format: html_list
+          title_key: null
+          link_key: null
+        output: news_urls_html
+      - name: SentimentAnalysisDemo
+        plugin: Data_Processing.SentimentAnalysis
+        config:
+          input: headline_text
+        output: sentiment
+      - name: FormatSentimentDemo
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          input_key: sentiment
+          output_key: sentiment_html
+          format: html_block
+          title_key: null
+          body_key: null
+        output: sentiment_html
+
       # --- HTML Report Generation ---
       - name: GenerateHTMLReport
         plugin: Output.HTMLReport
@@ -197,21 +348,82 @@ pipelines:
           filename: "custom_report.html"
           sections:
             - heading: "Aircraft Data"
-              text: "{aircraft_data_html}"
+              text: |
+                <p>Fetched aircraft positions around the given coordinates (latitude 54.6079, longitude -5.9264). Expected an HTML table listing up to 10 flights with details.</p>
+                {aircraft_data_html}
+            - heading: "Traffic Camera Image (with Detected Objects)"
+              text: |
+                <p>This image was gathered from TrafficWatchNI and analyzed by the Moondream plugin to detect vehicles. Bounding boxes highlight detected objects.</p>
+                <p>You should see vehicles boxed in the image indicating areas of interest.</p>
+                <img src="boxed_traffic_image.jpg" />
             - heading: "Traffic Camera Image"
-              text: "<img src='data:image/jpeg;base64,{image_base64}' />"
+              text: |
+                <p>Raw camera image fetched from TrafficWatchNI. Expected output is the unannotated snapshot below.</p>
+                <img src="{traffic_image_path}" />
             - heading: "Map"
-              text: "{map_html}"
+              text: |
+                <p>Rendered a static map with predetermined markers. No real-time flight data is plotted; this is a simple map embed.</p>
+                {map_html}
             - heading: "Bloomberg News"
-              text: "{bloomberg_html}"
+              text: |
+                <p>Fetched Bloomberg news articles via the input plugin and formatted them. Expected output is a list of headlines with links.</p>
+                {bloomberg_html}
             - heading: "BBC World RSS Headlines"
-              text: "{rss_feed_html}"
+              text: |
+                <p>Fetched and formatted BBC World News RSS feed. Expected output is an HTML list of the latest headlines.</p>
+                {rss_feed_html}
             - heading: "White House Press Pool"
-              text: "{wh_report_html}"
-            - heading: "OpenRouter AI Model Demo"
-              text: "{openrouter_html}"
-            - heading: "GitHubModels AI Model Demo"
-              text: "{githubmodels_html}"
+              text: |
+                <p>Fetched White House press pool items and formatted them. Expected output is an HTML list of press releases.</p>
+                {wh_report_html}
             - heading: "MockAIModel Demo"
-              text: "{mockai_html}"
+              text: |
+                <p>Ran a test prompt through the MockAIModel plugin. Expected output is a mock response string.</p>
+                {mockai_html}
+            - heading: "LLM Function Output"
+              text: |
+                <p>Used LLMFunction to summarize the headline text. Expected output is a one-sentence summary.</p>
+                {llm_output}
+            - heading: "Postcode Geocoding Example (BT7 1NN)"
+              text: |
+                <p>Geocoded postcode BT7 1NN via the PostcodeGeocoding plugin. Expected output is the location's coordinates or descriptive info.</p>
+                {postcode_geocode}
+            - heading: "Delay Plugin Demo"
+              text: |
+                <p>The Delay plugin introduces a pause in pipeline execution.</p>
+                <p>Expected output: boolean True indicating completion.</p>
+                Completed: {delay_done}
+            - heading: "Context Aggregator Demo"
+              text: |
+                <p>The ContextAggregator plugin collected the 'headline_text' into a list under key 'aggregated_headlines'.</p>
+                <p>Expected output: a list containing the original headline string.</p>
+                {aggregated_headlines}
+            - heading: "Context Promoter Demo"
+              text: |
+                <p>The ContextPromoter plugin copied 'aggregated_headlines' to a new key 'promoted_headlines'.</p>
+                <p>Expected output: same list under the new context key.</p>
+                {promoted_headlines}
+            - heading: "ContextToFile & FileToContext Demo"
+              text: |
+                <p>The ContextToFile plugin saved 'promoted_headlines' to JSON, and FileToContext loaded it back as 'file_promoted_headlines'.</p>
+                <p>Expected output: content of file_promoted_headlines matches the original list.</p>
+                {file_promoted_headlines}
+            - heading: "Extract URL Strings Demo"
+              text: |
+                <p>The ExtractURLStrings plugin extracted URL links from the RSS feed items.</p>
+                <p>Expected output: an HTML list of news URLs.</p>
+                {news_urls_html}
+            - heading: "Sentiment Analysis Demo"
+              text: |
+                <p>The SentimentAnalysis plugin performed a basic sentiment check on the headline_text.</p>
+                <p>Expected output: a sentiment summary (e.g., 'Neutral sentiment detected.').</p>
+                {sentiment_html}
+            - heading: "OpenRouter Demo"
+              text: |
+                <p>Ran a test prompt through the OpenRouter plugin. Expected output is a response string.</p>
+                {openrouter_html}
+            - heading: "GitHubModels Demo"
+              text: |
+                <p>Ran a test prompt through the GitHubModels plugin. Expected output is a response string.</p>
+                {githubmodels_html}
         output: html_report_path

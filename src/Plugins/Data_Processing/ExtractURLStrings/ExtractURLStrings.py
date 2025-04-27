@@ -1,24 +1,28 @@
 """
-Data processing plugin to extract URL strings from a list of dicts.
-Prefers 'link', falls back to 'FirstURL'.
+ExtractURLStrings module.
+
+Extracts URL strings from a list of dictionaries in the pipeline context,
+preferring 'link' and falling back to 'FirstURL'.
 """
 
 from Plugins.BasePlugin import BasePlugin
 import logging
 
 class ExtractURLStrings(BasePlugin):
+    """Plugin to extract URL strings from a list of dicts in the pipeline context."""
     plugin_type = "Data_Processing"
 
-    def execute_pipeline_step(self, step_config, context):
-        """
-        Expects:
-        {
-            "plugin": "ExtractURLStrings",
-            "config": {
-                "input": "context_key_or_list"
-            },
-            "output": "output_key"
-        }
+    def execute_pipeline_step(self, step_config: dict, context: dict) -> dict:
+        """Extract URLs from input data and map them to an output key.
+
+        Args:
+            step_config (dict): Step definition; includes:
+                config (dict): With 'input' (str or List[dict]).
+                output (str): Context key for storing results.
+            context (dict): Current pipeline context.
+
+        Returns:
+            dict: {output_key: List[str]} of extracted URLs or fallback list.
         """
         config = step_config.get("config", {})
         input_data = config.get("input")

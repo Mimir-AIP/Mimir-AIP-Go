@@ -60,6 +60,7 @@ class Bloomberg(BasePlugin):
         import ast, logging
         logger = logging.getLogger(__name__)
         def parse_if_str(val):
+        """parse_if_str: TODO add description."""
             if isinstance(val, str):
                 try:
                     parsed = ast.literal_eval(val)

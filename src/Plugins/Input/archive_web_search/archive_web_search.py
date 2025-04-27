@@ -1,3 +1,6 @@
+"""
+Module archive_web_search.py: TODO description.
+"""
 import requests
 import logging
 

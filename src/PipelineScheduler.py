@@ -1,3 +1,8 @@
+'''CronSchedule module.
+
+Provides CronSchedule class for parsing and evaluating standard 5-field cron expressions: minute, hour, day, month, and weekday.
+'''
+
 """
 Simple pure-Python cron parser and scheduler for Mimir-AIP pipeline runner.
 Supports standard 5-field cron syntax: minute hour day month weekday.
@@ -13,15 +18,45 @@ import time
 from typing import List, Optional
 
 class CronSchedule:
+    """Schedules execution based on 5-field cron expressions.
+
+    Attributes:
+        expr (str): Cron expression string (minute, hour, day, month, weekday).
+        fields (List[List[int]]): Parsed lists of valid values for each cron field.
+    """
     def __init__(self, expr: str):
+        """Initialize the CronSchedule and parse the cron expression.
+
+        Args:
+            expr (str): Cron expression string with 5 fields.
+        """
         self.expr = expr
         self.fields = self.parse(expr)
 
     @staticmethod
     def parse(expr: str) -> List[List[int]]:
+        """
+        Parse a standard 5-field cron expression into lists of valid values for each field.
+
+        Args:
+            expr (str): Cron expression string with fields minute, hour, day, month, weekday.
+
+        Returns:
+            List[List[int]]: Lists of valid values for each of the 5 fields.
+        """
         # Parse a standard 5-field cron expression into lists of valid values for each field
         # Fields: minute hour day month weekday
         def expand(field, minval, maxval):
+            """Expand a cron field into valid numeric values (supports '*', ranges, lists, and steps).
+
+            Args:
+                field (str): Cron field component.
+                minval (int): Minimum allowed value.
+                maxval (int): Maximum allowed value.
+
+            Returns:
+                Set[int]: Set of valid integers for this field.
+            """
             vals = set()
             for part in field.split(','):
                 if part == '*':
@@ -54,6 +89,15 @@ class CronSchedule:
         return [minute, hour, day, month, weekday]
 
     def is_now(self, dt: Optional[datetime.datetime] = None) -> bool:
+        """
+        Check if the provided datetime matches this cron schedule.
+
+        Args:
+            dt (datetime.datetime, optional): Datetime to test. Defaults to now.
+
+        Returns:
+            bool: True if dt matches the schedule, False otherwise.
+        """
         if dt is None:
             dt = datetime.datetime.now()
         minute, hour, day, month, weekday = self.fields
@@ -66,6 +110,15 @@ class CronSchedule:
         )
 
     def next_run(self, after: Optional[datetime.datetime] = None) -> datetime.datetime:
+        """
+        Compute the next datetime after the given time that matches the cron schedule.
+
+        Args:
+            after (datetime.datetime, optional): Starting point for search. Defaults to now+1 minute.
+
+        Returns:
+            datetime.datetime: Next matching run time.
+        """
         # Returns the next datetime after 'after' that matches the cron schedule
         if after is None:
             after = datetime.datetime.now().replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)

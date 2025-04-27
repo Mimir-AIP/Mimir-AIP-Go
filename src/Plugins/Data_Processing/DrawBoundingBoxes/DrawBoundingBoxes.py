@@ -1,3 +1,8 @@
+"""
+DrawBoundingBoxes module.
+
+Provides DrawBoundingBoxes plugin to draw bounding boxes on images based on detection results.
+"""
 import os
 from PIL import Image, ImageDraw
 from Plugins.BasePlugin import BasePlugin
@@ -10,6 +15,12 @@ class DrawBoundingBoxes(BasePlugin):
     plugin_type = "Data_Processing"
 
     def __init__(self, plugin_manager=None, logger=None):
+        """Initialize the DrawBoundingBoxes plugin.
+
+        Args:
+            plugin_manager (PluginManager, optional): Manager for plugin discovery and context.
+            logger (logging.Logger, optional): Logger for diagnostic messages.
+        """
         self.plugin_manager = plugin_manager
         self.logger = logger
 
@@ -29,12 +40,12 @@ class DrawBoundingBoxes(BasePlugin):
         output_path = config.get('output_path', 'output_with_boxes.jpg')
         color = config.get('color', 'red')
         width = config.get('width', 3)
-        print(f"[DEBUG][DrawBoundingBoxes] config: {config}")
+        # Load configuration values
         image_path = context.get(input_image_path_key)
         boxes = context.get(input_boxes_key)
-        print(f"[DEBUG][DrawBoundingBoxes] image_path: {image_path}, boxes: {boxes}, output_path: {output_path}")
+        # Fetch input from context
         if image_path is None or boxes is None:
-            print(f"[DEBUG][DrawBoundingBoxes] Missing image_path or boxes. Skipping bounding box drawing.")
+            # Missing required context entries; skip drawing
             return context
         image = Image.open(image_path).convert("RGB")
         draw = ImageDraw.Draw(image)
@@ -45,13 +56,13 @@ class DrawBoundingBoxes(BasePlugin):
             x1 = int(obj['x_max'] * w)
             y1 = int(obj['y_max'] * h)
             draw.rectangle([x0, y0, x1, y1], outline=color, width=width)
+        # Save the boxed image
         image.save(output_path)
-        print(f"[DEBUG][DrawBoundingBoxes] Saved boxed image to: {output_path}")
         if self.logger:
             self.logger.info(f"Saved image with bounding boxes to {output_path}")
         output_key = config.get('output_image_path_key', 'output_image_path')
+        # Insert output path into context under output_key
         context[output_key] = output_path
-        print(f"[DEBUG][DrawBoundingBoxes] Setting {output_key} in context to: {output_path}")
         return context
 
 # Aliases for PluginManager compatibility

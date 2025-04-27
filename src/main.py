@@ -1,3 +1,9 @@
+"""
+Mimir-AIP Main Module
+
+Entry point for pipeline execution. Loads config.yaml, initializes plugins,
+and executes configured pipelines with ASCII visualization of step statuses.
+"""
 import os
 import sys
 import logging
@@ -134,6 +140,12 @@ def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
     step_statuses = {step.get('name', f'step_{i}'): 'pending' for i, step in enumerate(pipeline["steps"])}
 
     def render_tree(highlight_idx=None, runtime_info=None):
+        """Render the pipeline tree with current statuses and highlighting.
+
+        Args:
+            highlight_idx (int, optional): Index of the active step to highlight.
+            runtime_info (dict, optional): Runtime info for iteration statuses.
+        """
         tree = PipelineAsciiTreeVisualizer.build_tree_from_pipeline(pipeline, step_statuses, runtime_info=runtime_info)
         PipelineAsciiTreeVisualizer.render(tree, highlight_path=[highlight_idx] if highlight_idx is not None else None)
 
@@ -275,6 +287,7 @@ def run_scheduled_pipelines(config, plugin_manager, output_dir):
             except Exception as e:
                 logger.error(f"Error executing pipeline {pipeline.get('name', 'Unnamed')}: {e}")
 
+    """scheduler_loop: TODO add description."""
     # Scheduler loop for scheduled pipelines
     def scheduler_loop():
         logger.info("[SCHEDULER] Starting scheduler loop for pipelines...")

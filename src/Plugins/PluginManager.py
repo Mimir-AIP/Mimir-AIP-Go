@@ -1,3 +1,9 @@
+'''PluginManager module.
+
+Discovers and loads plugins from the specified 'Plugins' directory. Each plugin must inherit from BasePlugin
+and implement execute_pipeline_step(step_config, context).
+'''
+
 import importlib
 import os
 import sys
@@ -10,7 +16,20 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger(__name__).info(f"[PluginManager:Startup] CWD: {os.getcwd()}, Python exec: {sys.executable}")
 
 class PluginManager:
+    '''Manages the discovery and loading of plugins from the specified 'Plugins' directory.
+
+    Attributes:
+        plugins_path (str): Path to the plugins directory.
+        plugins (Dict[str, Dict[str, object]]): Dictionary of loaded plugins, where keys are plugin types and values are dictionaries of plugin instances.
+        warnings (Set[str]): Set of warnings encountered during plugin loading.
+    '''
+
     def __init__(self, plugins_path="Plugins"):
+        '''Initializes the PluginManager instance.
+
+        Args:
+            plugins_path (str): Path to the plugins directory. Defaults to "Plugins".
+        '''
         self.plugins_path = plugins_path
         self.plugins: Dict[str, Dict[str, object]] = {}
         self.warnings: Set[str] = set()
@@ -38,7 +57,7 @@ class PluginManager:
             logging.getLogger(__name__).warning(warning)
 
     def _load_plugins_by_type(self):
-        """Load plugins in a specific order to handle dependencies"""
+        '''Loads plugins in a specific order to handle dependencies.'''
         # First load AI Models as they are dependencies
         self._load_plugins_of_type("AIModels")
         
@@ -51,14 +70,17 @@ class PluginManager:
                 self._load_plugins_of_type(plugin_type)
 
     def _load_plugins_of_type(self, plugin_type: str):
-        """Load all plugins of a specific type"""
+        '''Loads all plugins of a specific type.
+
+        Args:
+            plugin_type (str): Type of plugin to load.
+        '''
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         plugin_type_path = os.path.join(project_root, self.plugins_path, plugin_type)
         if not os.path.isdir(plugin_type_path):
             return
 
         for folder in os.listdir(plugin_type_path):
-            print(f"[DIAG][PluginManager] plugin_type={plugin_type}, folder={folder}")
             if folder.startswith('__'):  # Skip __pycache__ and similar
                 continue
                     
@@ -70,7 +92,6 @@ class PluginManager:
                     logging.getLogger(__name__).info(f"[PluginManager] Attempting to import {module_name} from {plugin_file}")
                     try:
                         module = importlib.import_module(module_name)
-                        print(f"[DIAG][PluginManager] dir({module_name}) = {dir(module)}")
                         logging.getLogger(__name__).info(f"[PluginManager] Imported module {module_name} from {module.__file__}")
                         # Debug: print out module namespace for diagnosis
                         logging.getLogger(__name__).debug(f"dir({module_name}): {dir(module)}")
@@ -88,7 +109,6 @@ class PluginManager:
                         for class_name in class_names:
                             if hasattr(module, class_name):
                                 attr = getattr(module, class_name)
-                                print(f"[DIAG][PluginManager] Checking class '{class_name}': type={type(attr)}, plugin_type={getattr(attr, 'plugin_type', None)}, is_abstract={inspect.isclass(attr) and inspect.isabstract(attr)}")
                                 # Debug: log plugin_type and abstract status
                                 plugin_type_val = getattr(attr, 'plugin_type', None)
                                 is_abstract = inspect.isclass(attr) and inspect.isabstract(attr)
@@ -98,11 +118,9 @@ class PluginManager:
                                 # Skip abstract base classes (ABC) and classes with abstract methods
                                 if inspect.isclass(attr) and not inspect.isabstract(attr):
                                     if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
-                                        print(f"[DIAG][PluginManager] Will instantiate class '{class_name}' for plugin '{folder}'")
                                         plugin_class = attr
                                         break
                         if not plugin_class:
-                            print(f"[DIAG][PluginManager] No plugin class found in {module_name} for names {class_names}")
                             logging.getLogger(__name__).warning(f"No plugin class found in {module_name} for names {class_names}")
 
                         if plugin_class:
@@ -119,12 +137,10 @@ class PluginManager:
                                         continue
                                 else:
                                     plugin_instance = plugin_class()
-                                print(f"[DIAG][PluginManager] Instantiated {plugin_class} from {plugin_file}")
                                 logging.getLogger(__name__).info(f"[PluginManager] Instantiated {plugin_class} from {plugin_file}")
                                 self.plugins.setdefault(plugin_type, {})[folder] = plugin_instance
                                 logging.getLogger(__name__).info(f"Successfully loaded plugin: {folder}")  
                             except Exception as e:
-                                print(f"[DIAG][PluginManager] Error instantiating plugin {folder}: {str(e)}")
                                 self.warnings.add(f"Error instantiating plugin {folder}: {str(e)}")
 
                     except ImportError as e:
@@ -134,30 +150,28 @@ class PluginManager:
                     self.warnings.add(f"Error loading plugin {folder}: {str(e)}")
 
     def get_plugins(self, plugin_type=None):
-        """
-        Get all plugins or plugins of a specific type
+        '''Gets all plugins or plugins of a specific type.
 
         Args:
-            plugin_type (str): Type of plugin to get. If None, returns all plugins
+            plugin_type (str): Type of plugin to get. If None, returns all plugins.
 
         Returns:
-            dict: Dictionary of plugins, where keys are plugin names and values are plugin instances
-        """
+            dict: Dictionary of plugins, where keys are plugin names and values are plugin instances.
+        '''
         if plugin_type:
             return self.plugins.get(plugin_type, {})
         return self.plugins
 
     def get_plugin(self, plugin_type, name):
-        """
-        Get a specific plugin instance
+        '''Gets a specific plugin instance.
 
         Args:
             plugin_type (str): Type of plugin (e.g., 'Input', 'Output', 'Data_Processing')
             name (str): Name of the plugin (e.g., 'rss_feed', 'HTMLReport')
 
         Returns:
-            object: Plugin instance if found, None otherwise
-        """
+            object: Plugin instance if found, None otherwise.
+        '''
         if plugin_type not in self.plugins:
             return None
         
@@ -167,7 +181,7 @@ class PluginManager:
         return self.plugins[plugin_type][name]
 
     def get_all_plugins(self):
-        """Get all loaded plugins"""
+        '''Gets all loaded plugins.'''
         return self.get_plugins()
 
 if __name__ == "__main__":

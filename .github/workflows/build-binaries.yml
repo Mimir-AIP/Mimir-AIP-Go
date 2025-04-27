@@ -44,14 +44,14 @@ jobs:
             --onedir \
             --name mimir-aip-${{ matrix.os }} \
             --add-data config.yaml${sep}. \
-            --add-data pipelines${sep}pipelines \
+            --add-data src/pipelines${sep}pipelines \
             --add-data src/Plugins${sep}Plugins \
             src/main.py
 
       - name: Zip platform bundle
         run: |
           cd dist
-          zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }} pipelines config.yaml Plugins
+          zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }} src/pipelines config.yaml src/Plugins
           cd ..
 
       - name: Create GitHub Release

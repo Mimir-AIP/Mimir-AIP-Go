@@ -31,19 +31,20 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
 
       - name: Build with PyInstaller (one-dir + include data)
+        shell: bash
         run: |
           pyinstaller \
             --clean \
             --onedir \
             --name mimir-aip-${{ matrix.os }} \
-            --add-data config.yaml${{ matrix.os == 'windows-latest' && ';' || ':' }}. \
-            --add-data src/pipelines${{ matrix.os == 'windows-latest' && ';' || ':' }}pipelines \
-            --add-data src/Plugins${{ matrix.os == 'windows-latest' && ';' || ':' }}Plugins \
+            --add-data "config.yaml${{ matrix.os == 'windows-latest' && ';' || ':' }}:." \
+            --add-data "src/pipelines${{ matrix.os == 'windows-latest' && ';' || ':' }}:pipelines" \
+            --add-data "src/Plugins${{ matrix.os == 'windows-latest' && ';' || ':' }}:Plugins" \
             src/main.py
 
       - name: Zip platform bundle

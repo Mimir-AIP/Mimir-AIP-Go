@@ -54,6 +54,12 @@ class HTMLReport(BasePlugin):
     plugin_type = "Output"
 
     def __init__(self, output_directory="reports"):
+        """
+        Initialize the HTMLReport plugin.
+        
+        Args:
+            output_directory (str, optional): Directory to save the report. Defaults to 'reports'.
+        """
         self.output_directory = output_directory
         # Create the output directory if it doesn't exist
         os.makedirs(self.output_directory, exist_ok=True)

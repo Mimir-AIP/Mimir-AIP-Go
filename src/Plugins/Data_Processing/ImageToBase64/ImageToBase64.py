@@ -1,9 +1,15 @@
 """
-ImageToBase64: Data processing plugin to convert image files to base64-encoded strings for use in vision-language models or APIs.
+ImageToBase64 module.
 
-Usage:
-- Provide the image file path in the context or via step_config.
-- The plugin will output a base64 string with the appropriate data URL prefix.
+Converts an image file to a base64-encoded data URL for embedding or API usage.
+
+Config (step_config['config']):
+    input_key (str, optional): Context key or image path (default 'image_path').
+    image_path (str, optional): Direct image file path override.
+    output_key (str, optional): Context key for base64 string (default 'image_base64').
+
+Returns:
+    dict: {output_key: base64_string or fallback message}.
 """
 
 import os
@@ -13,23 +19,34 @@ from Plugins.PluginManager import PluginManager
 import logging
 
 class ImageToBase64(BasePlugin):
-    """
-    Data processing plugin to convert image files to base64-encoded strings.
+    """Plugin to convert an image file to a base64-encoded data URL.
+
+    Attributes:
+        plugin_type (str): 'Data_Processing'.
+        plugin_manager (PluginManager): Optional manager instance.
+        logger (logging.Logger): Logger for diagnostic messages.
     """
     plugin_type = "Data_Processing"
 
     def __init__(self, plugin_manager=None, logger=None):
+        """Initialize ImageToBase64 plugin.
+
+        Args:
+            plugin_manager (PluginManager, optional): Manager for plugin discovery.
+            logger (logging.Logger, optional): Logger for diagnostic messages.
+        """
         self.plugin_manager = plugin_manager
         self.logger = logger if logger is not None else logging.getLogger(__name__)
 
     def execute_pipeline_step(self, step_config: dict, context: dict) -> dict:
-        """
-        Convert an image file to a base64-encoded string.
+        """Convert an image file to base64 data URL and update context.
+
         Args:
-            step_config (dict): Pipeline step configuration.
-            context (dict): Pipeline context.
+            step_config (dict): Step configuration; must contain 'config' dict.
+            context (dict): Current pipeline context.
+
         Returns:
-            dict: Updated context with base64 string under output_key.
+            dict: Updated context with {output_key: base64_string or fallback}.
         """
         # Always extract config from step_config['config'] for robustness
         config = step_config.get('config', {})

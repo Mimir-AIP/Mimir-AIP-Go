@@ -287,8 +287,9 @@ def run_scheduled_pipelines(config, plugin_manager, output_dir):
             except Exception as e:
                 logger.error(f"Error executing pipeline {pipeline.get('name', 'Unnamed')}: {e}")
 
-    """scheduler_loop: TODO add description."""
-    # Scheduler loop for scheduled pipelines
+    """
+    Scheduler loop for scheduled pipelines
+    """
     def scheduler_loop():
         logger.info("[SCHEDULER] Starting scheduler loop for pipelines...")
         next_runs = []

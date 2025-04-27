@@ -20,6 +20,7 @@ class TrafficWatchNIImage(BasePlugin):
     CACHE_EXPIRY_DAYS = 31
 
     def __init__(self, plugin_manager=None, logger=None):
+    """__init__: TODO add description."""
         self.plugin_manager = plugin_manager
         import logging
         self.logger = logger or logging.getLogger(__name__)
@@ -109,6 +110,7 @@ class TrafficWatchNIImage(BasePlugin):
             self._save_cache(cache)
         return name, image_url
 
+    """_fetch_camera_metadata_from_web: TODO add description."""
     def _fetch_camera_metadata_from_web(self, camera_id):
         url = f"https://trafficwatchni.com/twni/cameras/static?id={camera_id}"
         try:

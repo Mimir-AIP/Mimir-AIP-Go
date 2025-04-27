@@ -1,21 +1,33 @@
 """
-Plugin for formatting aircraft data as a human-readable HTML table for reports.
+AircraftDataFormatter module.
+
+Formats a list of aircraft data records into an HTML table for embedding in reports.
+
+Config (step_config['config']):
+    input_key (str): Context key for the list of aircraft data (default 'aircraft_data').
+    output_key (str): Context key to store the HTML table (default 'aircraft_data_html').
+
+Returns:
+    dict: {output_key: html_table_str}.
 """
 import html
 from Plugins.BasePlugin import BasePlugin
 
 class AircraftDataFormatter(BasePlugin):
-    """Formats aircraft data (list of dicts) into an HTML table for report embedding."""
+    """Plugin to format aircraft data into an HTML table for report embedding."""
     plugin_type = "Data_Processing"
 
-    def execute_pipeline_step(self, step_config, context):
-        """
+    def execute_pipeline_step(self, step_config: dict, context: dict) -> dict:
+        """Generate an HTML table from aircraft data and update context.
+
         Args:
-            step_config (dict): expects step_config['config']['input_key'] (str, context key for aircraft data)
-                                      step_config['config']['output_key'] (str, context key for HTML output)
-            context (dict): pipeline context
+            step_config (dict): Contains 'config' dict with:
+                input_key (str): Context key for list of aircraft data.
+                output_key (str): Context key for storing the HTML output.
+            context (dict): Current pipeline context.
+
         Returns:
-            dict: {output_key: html_table_str}
+            dict: {output_key: html_table_str}.
         """
         config = step_config["config"]
         input_key = config.get("input_key", "aircraft_data")

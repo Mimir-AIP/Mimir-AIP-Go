@@ -1,34 +1,23 @@
 """
-GeneralFormatter Plugin for Mimir-AIP
+GeneralFormatter module.
 
-Formats lists of dicts, dicts, or strings in the pipeline context into HTML (list, table, json, raw, etc.).
-Configurable via pipeline YAML for different use cases (RSS, news, generic data).
+Formats context data (lists of dicts, dicts, or strings) into HTML or JSON for reporting.
 
-Config options:
-- input_key: context key to format
-- output_key: context key to store formatted result
-- format: 'html_list' (default), 'table', 'json', 'raw'
-- title_key: (optional) key for item title/headline
-- link_key: (optional) key for item link (for RSS/news)
-- body_key: (optional) key for item body/content
-- max_items: (optional) limit number of items
-
-Example usage:
-  config:
-    input_key: rss_feed
-    output_key: rss_feed_html
-    format: html_list
-    title_key: title
-    link_key: link
-    max_items: 5
-
-Author: Cascade AI
+Config Options:
+    input_key (str): Context key to format.
+    output_key (str): Context key to store formatted result.
+    format (str): One of 'html_list', 'table', 'json', 'raw'. Defaults to 'html_list'.
+    title_key (str, optional): Key for item title/headline.
+    link_key (str, optional): Key for item link.
+    body_key (str, optional): Key for item body/content.
+    max_items (int, optional): Limit number of items.
 """
 from Plugins.BasePlugin import BasePlugin
 import html
 import json
 
 class GeneralFormatter(BasePlugin):
+    """Plugin to format context data into HTML or JSON for reporting."""
     plugin_type = "Data_Processing"
 
     def execute_pipeline_step(self, step_config, context):
@@ -68,6 +57,18 @@ class GeneralFormatter(BasePlugin):
         return context
 
     def _format_html_list(self, data, title_key, link_key, body_key, max_items):
+        """Format list of items into an HTML <ul> list.
+
+        Args:
+            data (list|dict|str): Data to format.
+            title_key (str, optional): Key for item title.
+            link_key (str, optional): Key for item link.
+            body_key (str, optional): Key for item body.
+            max_items (int, optional): Maximum number of items.
+
+        Returns:
+            str: HTML string of the list.
+        """
         if isinstance(data, dict):
             data = [data]
         if not isinstance(data, list):
@@ -96,6 +97,15 @@ class GeneralFormatter(BasePlugin):
         return f"<ul>\n{''.join(items)}\n</ul>"
 
     def _format_html_table(self, data, max_items):
+        """Format list of dicts into an HTML <table>.
+
+        Args:
+            data (list|dict): Data to format.
+            max_items (int, optional): Maximum number of items.
+
+        Returns:
+            str: HTML string of the table.
+        """
         if isinstance(data, dict):
             data = [data]
         if not isinstance(data, list) or not data:

@@ -1,5 +1,15 @@
 """
-Plugin for loading a variable from a JSON file into the context.
+FileToContext module.
+
+Loads a variable from a JSON file into the pipeline context.
+
+Config:
+    filename (str): Path to JSON file.
+    variable (str): Context key to assign loaded data.
+    output (str, optional): Output context key (defaults to variable).
+
+Returns:
+    dict: {output_key: loaded_value}.
 """
 import json
 import os
@@ -7,15 +17,26 @@ import logging
 from Plugins.BasePlugin import BasePlugin
 
 class FileToContext(BasePlugin):
+    """Plugin to load JSON data from a file into the pipeline context.
+
+    Attributes:
+        plugin_type (str): 'Data_Processing'.
+    """
     plugin_type = "Data_Processing"
 
-    def execute_pipeline_step(self, step_config, context):
-        """
-        Loads a variable from a JSON file into the context.
-        step_config:
-          filename: the file to read from (relative or absolute)
-          variable: the context key to set
-          output: the output key (optional, defaults to variable)
+    def execute_pipeline_step(self, step_config: dict, context: dict) -> dict:
+        """Load JSON variable from file into context.
+
+        Args:
+            step_config (dict): Must include 'filename' (str) and 'variable' (str); optional 'output' (str).
+            context (dict): Current pipeline context.
+
+        Returns:
+            dict: {output_key: loaded_value}.
+
+        Raises:
+            FileNotFoundError: If file does not exist.
+            JSONDecodeError: If the file content is invalid JSON.
         """
         filename = step_config["filename"]
         variable = step_config["variable"]

@@ -1,14 +1,25 @@
+"""
+SentimentAnalysis module.
+
+Performs a simple sentiment analysis on text input, returning a neutral summary or fallback message.
+"""
 import logging
 from Plugins.BasePlugin import BasePlugin
 
 class SentimentAnalysis(BasePlugin):
-    """
-    Plugin for performing a simple sentiment analysis on a text input.
-    Returns a neutral sentiment summary by default.
-    """
+    """Plugin to perform sentiment analysis on text input, returning a neutral summary or fallback message."""
     plugin_type = "Data_Processing"
 
-    def execute_pipeline_step(self, step_config, context):
+    def execute_pipeline_step(self, step_config: dict, context: dict) -> dict:
+        """Perform sentiment analysis on text input and update context.
+
+        Args:
+            step_config (dict): Step configuration with 'config' dict containing 'input' (str or context key) and optional 'output' (str).
+            context (dict): Current pipeline context.
+
+        Returns:
+            dict: Mapping of output_key to sentiment result string.
+        """
         # Get text input from context
         config = step_config.get("config", {})
         input_key = config.get("input")

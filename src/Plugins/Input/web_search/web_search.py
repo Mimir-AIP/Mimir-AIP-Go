@@ -19,10 +19,12 @@ from Plugins.BasePlugin import BasePlugin
 
 
 class WebSearchPlugin(BasePlugin):
+"""WebSearchPlugin: TODO add description."""
     plugin_type = "Input"
 
     def __init__(self):
         # WARNING: DuckDuckGo aggressively blocks automated scraping. This plugin is likely to fail.
+    """__init__: TODO add description."""
         # Use a third-party search API or a headless browser for reliable results.
         self.base_url = "https://html.duckduckgo.com/html/"
 

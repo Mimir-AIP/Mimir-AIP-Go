@@ -1,8 +1,7 @@
-'''PluginManager module.
+"""PluginManager module.
 
-Discovers and loads plugins from the specified 'Plugins' directory. Each plugin must inherit from BasePlugin
-and implement execute_pipeline_step(step_config, context).
-'''
+Discovers and loads plugins from the 'Plugins' directory. Plugins must inherit from BasePlugin and implement execute_pipeline_step.
+"""
 
 import importlib
 import os

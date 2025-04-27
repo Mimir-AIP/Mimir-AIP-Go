@@ -1,23 +1,37 @@
 """
-Plugin for introducing a delay (sleep) in pipeline execution.
+Delay plugin module.
+
+Introduces a delay (sleep) in pipeline execution. Useful for rate-limiting or pacing between steps.
 """
 
 import time
 from Plugins.BasePlugin import BasePlugin
 
 class Delay(BasePlugin):
+    """Plugin to pause execution for a specified number of seconds.
+
+    Attributes:
+        plugin_type (str): Plugin type identifier.
+        logger (logging.Logger): Logger for diagnostic messages.
+    """
     plugin_type = "Data_Processing"
 
     def __init__(self):
+        """Initialize Delay plugin with a default logger."""
         super().__init__()
         import logging
         self.logger = logging.getLogger(__name__)
 
     def execute_pipeline_step(self, step_config, context):
-        """
-        step_config:
-          seconds: number of seconds to sleep (default: 1)
-          output: name of the output context key (default: 'delay_done')
+        """Sleep for a specified duration and return a context flag.
+
+        Args:
+            step_config (dict): Configuration for the step. Supports:
+                - config (dict): Contains 'seconds' (int) and 'output' (str) keys.
+            context (dict): Pipeline context.
+
+        Returns:
+            dict: Contains {output_key: True} indicating completion.
         """
         # Robustly support both legacy and new step_config structures
         if 'config' in step_config and isinstance(step_config['config'], dict):

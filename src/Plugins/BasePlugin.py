@@ -1,3 +1,8 @@
+"""
+BasePlugin module.
+
+Defines the abstract BasePlugin class that all plugins must extend. Provides execute_pipeline_step interface.
+"""
 from abc import ABC, abstractmethod
 
 class BasePlugin(ABC):

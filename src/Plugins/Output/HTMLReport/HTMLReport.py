@@ -23,7 +23,27 @@ Example usage:
 
 import os
 import logging
+import re
 from Plugins.BasePlugin import BasePlugin
+
+
+# Utility: Ensure a base64 string has exactly one 'data:image/jpeg;base64,' prefix
+def ensure_single_base64_prefix(b64_string: str) -> str:
+    """
+    Ensure the input string has exactly one 'data:image/jpeg;base64,' prefix.
+    Removes all existing such prefixes, then prepends one.
+    Args:
+        b64_string (str): The base64 image string, possibly with or without prefix.
+    Returns:
+        str: String with exactly one prefix.
+    """
+    prefix = "data:image/jpeg;base64,"
+    if not isinstance(b64_string, str):
+        return b64_string
+    # Remove all leading prefixes
+    while b64_string.startswith(prefix):
+        b64_string = b64_string[len(prefix):]
+    return prefix + b64_string
 
 
 class HTMLReport(BasePlugin):
@@ -34,6 +54,12 @@ class HTMLReport(BasePlugin):
     plugin_type = "Output"
 
     def __init__(self, output_directory="reports"):
+        """
+        Initialize the HTMLReport plugin.
+        
+        Args:
+            output_directory (str, optional): Directory to save the report. Defaults to 'reports'.
+        """
         self.output_directory = output_directory
         # Create the output directory if it doesn't exist
         os.makedirs(self.output_directory, exist_ok=True)
@@ -64,6 +90,14 @@ class HTMLReport(BasePlugin):
         config = step_config["config"]
         logger = logging.getLogger(__name__)
         
+        # Log all context variables ending with 'image_path' and check file existence
+        for k, v in context.items():
+            if (k.endswith('image_path') or k == 'traffic_image_path') and isinstance(v, str):
+                exists = os.path.exists(v)
+                logger.info(f"[HTMLReport] Context variable '{k}': {v} (exists: {exists})")
+                if not exists:
+                    logger.warning(f"[HTMLReport] Image file referenced by '{k}' does not exist: {v}")
+        
         # Update output directory if specified
         if "output_dir" in config:
             self.output_directory = config["output_dir"]
@@ -74,10 +108,36 @@ class HTMLReport(BasePlugin):
             logger.info(f"[HTMLReport] Output directory: {self.output_directory}")
             logger.info(f"[HTMLReport] Step config: {step_config}")
             logger.info(f"[HTMLReport] Context keys: {list(context.keys())}")
+            # Diagnostic: log samples of image base64
+            boxed_b64 = context.get('boxed_image_base64', None)
+            img_b64 = context.get('image_base64', None)
+            logger.info(f"[HTMLReport] boxed_image_base64 present: {boxed_b64 is not None}, sample: {boxed_b64[:40] if boxed_b64 else 'None'}")
+            logger.info(f"[HTMLReport] image_base64 present: {img_b64 is not None}, sample: {img_b64[:40] if img_b64 else 'None'}")
             logger.info(f"[HTMLReport] Evaluating sections from config: {config.get('sections')}")
             sections = eval(config["sections"], {"context": context, **context}) if isinstance(config["sections"], str) else config["sections"]
             logger.info(f"[HTMLReport] Number of sections to write: {len(sections)}")
             logger.info(f"[HTMLReport] Sample section: {sections[0] if sections else 'None'}")
+
+            # Robust placeholder substitution for each section
+            for section in sections:
+                # Check all text fields for placeholders
+                for key in list(section.keys()):
+                    value = section[key]
+                    if isinstance(value, str):
+                        matches = re.findall(r'\{([a-zA-Z0-9_]+)\}', value)
+                        for match in matches:
+                            replacement = context.get(match, None)
+                            if replacement is None or (isinstance(replacement, (list, dict)) and not replacement):
+                                # Hide section if critical data is missing or empty
+                                if key == 'text':
+                                    section[key] = ''
+                                else:
+                                    section[key] = section[key].replace(f"{{{match}}}", "")
+                                logger.warning(f"[HTMLReport] Placeholder {{{match}}} not found or empty in context; hiding section or substituting blank.")
+                            else:
+                                section[key] = section[key].replace(f"{{{match}}}", str(replacement))
+            # Remove sections with empty 'text' or all empty fields
+            sections = [s for s in sections if any(str(v).strip() for k, v in s.items() if k != 'javascript')]
         except Exception as e:
             logger.error(f"Error evaluating sections: {e}")
             raise
@@ -108,28 +168,56 @@ class HTMLReport(BasePlugin):
         :param title: Title of the HTML document
         :param sections: List of sections, where each section is a dictionary with:
                      - "heading": Heading for the section
-                     - "text": Text content for the section (HTML allowed)
+                     - "text": Text content for the section (HTML allowed, supports {var} interpolation)
                      - "javascript": JavaScript code for the section
         :param filename: Name of the output HTML file
         :param css: Optional custom CSS string to override the default styling
         :return: Absolute path to the generated HTML file
         """
-        import os
         import logging
         logger = logging.getLogger(__name__)
         # Generate HTML content for all text and JavaScript sections
         section_html = ""
+        # Variable interpolation: use context if available
+        import inspect
+        # Find the context from the caller's stack if passed
+        frame = inspect.currentframe()
+        context = {}
+        try:
+            outer = frame.f_back.f_back
+            if 'context' in outer.f_locals:
+                context = outer.f_locals['context']
+        except Exception:
+            pass
         for section in sections:
+            # Interpolate variables in text using context
+            text = section.get('text', '')
+            if context:
+                try:
+                    # Use image path variables if present for direct linking
+                    safe_context = context.copy()
+                    for k, v in safe_context.items():
+                        # Prefer *_image_path or traffic_image_path for direct linking
+                        if (k.endswith('image_path') or k == 'traffic_image_path') and isinstance(v, str):
+                            # Make the path relative to the HTML report if needed
+                            import os
+                            report_dir = os.path.dirname(os.path.abspath(os.path.join(self.output_directory, filename)))
+                            rel_path = os.path.relpath(v, report_dir)
+                            safe_context[k] = rel_path
+                    text = text.format(**safe_context)
+                except Exception as e:
+                    logger.warning(f"[HTMLReport] Error formatting section text with context: {e}")
+                    pass  # fallback to raw text if formatting fails
+            # No base64 sanitization needed for direct file linking
             section_html += f"""
             <div class="section">
                 <h2>{section.get('heading', '')}</h2>
                 <div class="content">
-                    {section.get('text', '')}
+                    {text}
                 </div>
                 {f'<script>{section["javascript"]}</script>' if section.get('javascript') else ''}
             </div>
             """
-
         # Default CSS (Mimir-AIP GitHub Pages inspired)
         default_css = '''
 html {
@@ -231,16 +319,13 @@ hr {
   margin: 24px 0;
 }
 '''
-        style_block = css if css else default_css
-
-        # HTML template with styling
         html_template = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <title>{title}</title>
     <style>
-{style_block}
+    {css or default_css}
     </style>
 </head>
 <body>
@@ -252,11 +337,8 @@ hr {
 </body>
 </html>
 """
-        # Full path for the output file
-        report_path = os.path.abspath(os.path.join(self.output_directory, filename))
-        logger.info(f"[HTMLReport] Absolute report path: {report_path}")
-
-        # Write the HTML content to the file
+        # Write to file
+        report_path = os.path.join(self.output_directory, filename)
         try:
             with open(report_path, "w", encoding="utf-8") as file:
                 file.write(html_template)
@@ -264,13 +346,11 @@ hr {
         except Exception as e:
             logger.error(f"[HTMLReport] ERROR writing HTML to {report_path}: {e}")
             raise
-
         # Check existence immediately after writing
         if os.path.exists(report_path):
             logger.info(f"[HTMLReport] File confirmed present after write: {report_path}")
         else:
             logger.error(f"[HTMLReport] File missing after write: {report_path}")
-
         print(f"Report generated: {report_path}")
         return report_path
 

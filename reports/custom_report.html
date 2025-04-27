@@ -1,0 +1,372 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Custom Mimir-AIP Report</title>
+    <style>
+    
+html {
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+  -ms-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #24292e;
+  background-color: #fff;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 32px 16px 32px 16px;
+}
+h1 {
+  font-size: 2em;
+  font-weight: 600;
+  color: #2c3e50;
+  text-align: center;
+  margin-top: 0.67em;
+  margin-bottom: 0.67em;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #eee;
+}
+h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  color: #34495e;
+  margin-top: 30px;
+  margin-bottom: 0.5em;
+}
+p {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+a {
+  color: #0366d6;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+.section {
+  background: #fff;
+  padding: 24px 20px;
+  margin: 24px 0;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  box-shadow: 0 1px 5px rgba(27,31,35,0.07);
+}
+.content {
+  margin: 15px 0;
+  padding: 10px;
+  background: #f6f8fa;
+  border-radius: 5px;
+  overflow-x: auto;
+}
+footer {
+  text-align: center;
+  margin-top: 32px;
+  font-size: 0.95em;
+  color: #888;
+}
+code, pre {
+  font-family: "SFMono-Regular",Consolas,"Liberation Mono",Menlo,Courier,monospace;
+  font-size: 13px;
+  background: #f6f8fa;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+th, td {
+  border: 1px solid #e1e4e8;
+  padding: 8px 12px;
+  text-align: left;
+}
+th {
+  background: #f6f8fa;
+}
+blockquote {
+  margin: 0 0 16px 0;
+  padding-left: 1em;
+  color: #6a737d;
+  border-left: 4px solid #dfe2e5;
+  background: #f6f8fa;
+}
+hr {
+  border: 0;
+  border-bottom: 1px solid #e1e4e8;
+  margin: 24px 0;
+}
+
+    </style>
+</head>
+<body>
+    <h1>Custom Mimir-AIP Report</h1>
+    
+            <div class="section">
+                <h2>Aircraft Data</h2>
+                <div class="content">
+                    <p>Fetched aircraft positions around the given coordinates (latitude 54.6079, longitude -5.9264). Expected an HTML table listing up to 10 flights with details.</p>
+<p>No aircraft data available.</p>
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Traffic Camera Image (with Detected Objects)</h2>
+                <div class="content">
+                    <p>This image was gathered from TrafficWatchNI and analyzed by the Moondream plugin to detect vehicles. Bounding boxes highlight detected objects.</p>
+<p>You should see vehicles boxed in the image indicating areas of interest.</p>
+<img src="boxed_traffic_image.jpg" />
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Traffic Camera Image</h2>
+                <div class="content">
+                    <p>Raw camera image fetched from TrafficWatchNI. Expected output is the unannotated snapshot below.</p>
+<img src="/Users/ciaran/Documents/GitHub/Mimir-AIP/traffic_images/1_20250426_181231.jpg" />
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Map</h2>
+                <div class="content">
+                    <p>Rendered a static map with predetermined markers. No real-time flight data is plotted; this is a simple map embed.</p>
+
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <div id="map" style="height:400px;width:100%;margin:20px 0;"></div>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+            var map = L.map('map').setView([54.6079, -5.9264], 6);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+            
+            L.marker([54.6079, -5.9264])
+                .addTo(map)
+                .bindPopup("Belfast (Aircraft)");
+            
+            L.marker([54.6082, -5.9264])
+                .addTo(map)
+                .bindPopup("Traffic Camera");
+            
+        </script>
+        
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Bloomberg News</h2>
+                <div class="content">
+                    <p>Fetched Bloomberg news articles via the input plugin and formatted them. Expected output is a list of headlines with links.</p>
+<ul>
+<li><a href='https://www.bloomberg.com/news/videos/2025-04-26/pm-mark-carney-on-trump-s-desire-for-canada-51st-state-video?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>PM Mark Carney on Trump&#x27;s Desire For Canada 51st State</a></li><li><a href='https://www.bloomberg.com/news/articles/2025-04-26/tesla-hikes-canadian-prices-and-pushes-its-pre-tariff-inventory?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>Tesla Hikes Canadian Prices and Pushes Its Pre-Tariff Inventory</a></li><li><a href='https://www.bloomberg.com/news/articles/2025-04-26/ecb-launches-new-task-force-to-simplify-banking-regulation?utm_source=glassdoor&amp;utm_medium=bd&amp;utm_campaign=company&amp;cmpId=glassdoor.company' target='_blank'>ECB Launches New Task Force to Simplify Banking Regulation</a></li>
+</ul>
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>BBC World RSS Headlines</h2>
+                <div class="content">
+                    <p>Fetched and formatted BBC World News RSS feed. Expected output is an HTML list of the latest headlines.</p>
+<ul>
+<li><a href='https://www.bbc.com/news/articles/c8x8w4xk1gno' target='_blank'>World bids farewell to Pope who told people to &#x27;build bridges, not walls&#x27;</a></li><li><a href='https://www.bbc.com/news/articles/ce8gpdj704mo' target='_blank'>Zelensky and Trump hold &#x27;very productive&#x27; talks at Vatican</a></li><li><a href='https://www.bbc.com/news/articles/cx251yyvwr3o' target='_blank'>Five dead and more than 700 injured in blast at key Iran port</a></li><li><a href='https://www.bbc.com/news/articles/c5yle7pxlyno' target='_blank'>Virginia Giuffre&#x27;s death leaves unanswered questions</a></li><li><a href='https://www.bbc.com/news/articles/cx26166ngpdo' target='_blank'>Russia claims it has regained full control of Kursk from Ukraine</a></li>
+</ul>
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>White House Press Pool</h2>
+                <div class="content">
+                    <p>Fetched White House press pool items and formatted them. Expected output is an HTML list of press releases.</p>
+<ul>
+<li><a href='https://www.forth.news/whpool/CNXHwKxPXGjGgqLUfJSsZ' target='_blank'>Travel pool note #12  Wheels up</a><br>From: Megan Messerly
+Sent: Saturday, April 26, 2025, 7:06 AM
+To: DL WHO Wranglers
+Subject: Travel pool note #12  Wheels up
+
+AF1 was wheels up at 1:06 p.m. CEST.
+
+Unclear whether White House will again stream audio from any possible gaggles we might get in flight but I&#x27;d keep an eye on the WH YouTube page just in case.
+
+I&#x27;ll have a pool report for you on it either way, but won&#x27;t be for 10ish hours.
+</li><li><a href='https://www.forth.news/whpool/CNXHRcnL9LLNKr8v4UwPX' target='_blank'>Travel pool note #11  Boarding AF1</a><br>From: Megan Messerly
+Sent: Saturday, April 26, 2025, 6:56 AM EDT
+To: DL WHO Wranglers
+Subject: Travel pool note #11  Boarding AF1
+
+The presidential motorcade arrived at Leonardo da Vinci International Airport at 12:53 p.m. CEST.
+
+POTUS was up the AF1 steps by the time we got out of our van. Will send another note when we&#x27;re wheels up. We&#x27;re expecting our flight to be just under 10 hours.
+
+Next stop: Newark.
+
+</li><li><a href='https://www.forth.news/whpool/CNXGoDKwVdEruPnisSgM2' target='_blank'>Travel pool report #10  Departing the Vatican</a><br>From: Megan Messerly
+Sent: Saturday, April 26, 2025, 6:24 AM EDT
+To: DL WHO Wranglers
+Subject: Travel pool report #10  Departing the Vatican
+
+Motorcade is underway at 12:20 p.m. CEST. Departing Vatican City and heading to the airport. Bells can be heard tolling from St. Peters Basilica as we leave.
+
+Pool is aware of photos circulating on social media showing President Trump meeting with President Zelenskyy inside St. Peters Basilica, the two seated on chairs and hunched over talking. O</li><li><a href='https://www.forth.news/whpool/CNXGDN7KfB6b9SRRE51MP' target='_blank'>Travel pool report #9  Back to motorcade</a><br>From: Megan Messerly
+Sent: Saturday, April 26, 2025 5:40 AM EDT
+To: DL WHO Wranglers
+Subject:  Travel pool report #9  Back to motorcade
+
+Pool departed our balcony perch at 11:30 a.m. CEST and are heading back to the motorcade.
+
+Per fellow poolers, during the Sign of Peace, POTUS kissed FLOTUS on the cheek. He did not, however, receive a blessing.
+
+We returned to our van at 11:39 a.m. CEST and expect to be underway shortly. Will keep you apprised.
+</li><li><a href='https://www.forth.news/whpool/CNXFevS6VmsmE8PKeyC6b' target='_blank'>Travel pool report #8b  Finnish *president*</a><br>From: Megan Messerly
+Sent: Saturday, April 26, 2025 5:27 AM
+To: DL WHO Wranglers
+Subject: Travel pool report #8b  Finnish *president*
+
+In that last pool report, it should instead be *Finnish President Alexander Stubb.*
+</li>
+</ul>
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>MockAIModel Demo</h2>
+                <div class="content">
+                    <p>Ran a test prompt through the MockAIModel plugin. Expected output is a mock response string.</p>
+Mock response to: What is the capital of France?...
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>LLM Function Output</h2>
+                <div class="content">
+                    
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Postcode Geocoding Example (BT7 1NN)</h2>
+                <div class="content">
+                    <p>Geocoded postcode BT7 1NN via the PostcodeGeocoding plugin. Expected output is the location's coordinates or descriptive info.</p>
+[{'postcode': 'BT7 1NN', 'latitude': 54.584772, 'longitude': -5.934438, 'region': None, 'country': 'Northern Ireland'}]
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Delay Plugin Demo</h2>
+                <div class="content">
+                    <p>The Delay plugin introduces a pause in pipeline execution.</p>
+<p>Expected output: boolean True indicating completion.</p>
+Completed: True
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Context Aggregator Demo</h2>
+                <div class="content">
+                    <p>The ContextAggregator plugin collected the 'headline_text' into a list under key 'aggregated_headlines'.</p>
+<p>Expected output: a list containing the original headline string.</p>
+['Major storm disrupts travel across Europe. Thousands of flights cancelled.']
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Context Promoter Demo</h2>
+                <div class="content">
+                    <p>The ContextPromoter plugin copied 'aggregated_headlines' to a new key 'promoted_headlines'.</p>
+<p>Expected output: same list under the new context key.</p>
+['Major storm disrupts travel across Europe. Thousands of flights cancelled.']
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>ContextToFile & FileToContext Demo</h2>
+                <div class="content">
+                    <p>The ContextToFile plugin saved 'promoted_headlines' to JSON, and FileToContext loaded it back as 'file_promoted_headlines'.</p>
+<p>Expected output: content of file_promoted_headlines matches the original list.</p>
+['Major storm disrupts travel across Europe. Thousands of flights cancelled.']
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Extract URL Strings Demo</h2>
+                <div class="content">
+                    <p>The ExtractURLStrings plugin extracted URL links from the RSS feed items.</p>
+<p>Expected output: an HTML list of news URLs.</p>
+<ul>
+<li>https://www.bbc.com/news/articles/c8x8w4xk1gno</li><li>https://www.bbc.com/news/articles/ce8gpdj704mo</li><li>https://www.bbc.com/news/articles/cx251yyvwr3o</li><li>https://www.bbc.com/news/articles/c5yle7pxlyno</li><li>https://www.bbc.com/news/articles/cx26166ngpdo</li><li>https://www.bbc.com/news/articles/c9w8q91ld75o</li><li>https://www.bbc.com/news/articles/cgkg8r85n1eo</li><li>https://www.bbc.com/news/articles/c62x6qx682jo</li><li>https://www.bbc.com/news/articles/cn4wvvnzp39o</li><li>https://www.bbc.com/news/articles/cly5xx017vko</li><li>https://www.bbc.com/news/articles/cnv58ejyrpzo</li><li>https://www.bbc.com/news/articles/cx2wryz4gw7o</li><li>https://www.bbc.com/news/articles/cze1xj6pdzyo</li><li>https://www.bbc.com/news/articles/cn4j33klz33o</li><li>https://www.bbc.com/news/articles/c9dj4vy1yvpo</li><li>https://www.bbc.com/news/articles/cq5w9yzy1vpo</li><li>https://www.bbc.com/news/articles/c62jxdxng7do</li><li>https://www.bbc.com/news/articles/ce8y4j91l83o</li><li>https://www.bbc.com/news/articles/c86je4vyg36o</li><li>https://www.bbc.com/news/articles/c175z14r8pro</li><li>https://www.bbc.com/news/articles/ckgxk40ndk1o</li><li>https://www.bbc.com/news/articles/c0kxe1m1y26o</li><li>https://www.bbc.com/news/articles/c5y65nw5lgvo</li><li>https://www.bbc.com/news/articles/cn05zgd00eko</li><li>https://www.bbc.com/news/articles/cj3xv653k6do</li><li>https://www.bbc.com/news/articles/cj0z7lde14eo</li><li>https://www.bbc.com/news/articles/clyqgy6m8e6o</li><li>https://www.bbc.com/news/articles/cpdzy96xdzqo</li><li>https://www.bbc.com/news/articles/ckgxk40ndk1o</li><li>https://www.bbc.com/news/videos/clywpwr8y71o</li><li>https://www.bbc.com/news/videos/c0el5x0nxrwo</li><li>https://www.bbc.com/news/videos/c8ep87wdj26o</li><li>https://www.bbc.com/news/videos/ce3qdpnvdglo</li><li>https://www.bbc.com/news/videos/c33zl7r4e0ko</li><li>https://www.bbc.com/news/videos/c8x8ylnjr77o</li><li>https://www.bbc.com/news/videos/ce82jd985e6o</li><li>https://www.bbc.com/news/videos/cx25vnrvkdko</li>
+</ul>
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>Sentiment Analysis Demo</h2>
+                <div class="content">
+                    <p>The SentimentAnalysis plugin performed a basic sentiment check on the headline_text.</p>
+<p>Expected output: a sentiment summary (e.g., 'Neutral sentiment detected.').</p>
+Neutral sentiment detected.
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>OpenRouter Demo</h2>
+                <div class="content">
+                    <p>Ran a test prompt through the OpenRouter plugin. Expected output is a response string.</p>
+The capital of France is **Paris**. It is a major cultural, historical, and economic center, renowned for its landmarks like the Eiffel Tower, the Louvre Museum, and the Notre-Dame Cathedral. Paris has been the capital since the late 18th century and remains one of the most visited cities in the world.
+
+                </div>
+                
+            </div>
+            
+            <div class="section">
+                <h2>GitHubModels Demo</h2>
+                <div class="content">
+                    <p>Ran a test prompt through the GitHubModels plugin. Expected output is a response string.</p>
+The capital of France is **Paris**.
+
+                </div>
+                
+            </div>
+            
+    <footer>
+        Generated by HTMLReport
+    </footer>
+</body>
+</html>

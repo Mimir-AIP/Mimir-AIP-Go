@@ -1,3 +1,6 @@
+"""
+Module archive_web_search.py: TODO description.
+"""
 import requests
 import logging
 
@@ -93,27 +96,40 @@ class ArchiveWebSearchPlugin:
 
         self.logger.debug(f"archive-web-search plugin received query: {query}")
         # Support list of queries
+        import logging
+        logger = logging.getLogger(__name__)
+        def parse_if_str(val):
+            import ast
+            if isinstance(val, str):
+                try:
+                    parsed = ast.literal_eval(val)
+                    if isinstance(parsed, (list, dict)):
+                        return parsed
+                except Exception:
+                    pass
+            return val
+        
         if isinstance(query, list):
             results = [self.search(q, mediatype=mediatype, max_results=max_results, advanced=advanced, deduplicate=deduplicate) for q in query]
+            results = parse_if_str(results)
             if extract_urls:
                 urls = []
                 for r in results:
                     urls.extend(self.extract_urls_from_response(r, deduplicate=deduplicate))
-                self.logger.debug(f"archive-web-search plugin returning URLs (list): {urls}")
-                self.logger.debug(f"archive-web-search plugin URLs type: {type(urls)}")
+                urls = parse_if_str(urls)
+                logger.info(f"[archive_web_search] Returning type: {type(urls)}, sample: {str(urls)[:300]}")
                 return {step_config["output"]: urls}
             else:
-                self.logger.debug(f"archive-web-search plugin returning results (list): {results}")
-                self.logger.debug(f"archive-web-search plugin results type: {type(results)}")
+                logger.info(f"[archive_web_search] Returning type: {type(results)}, sample: {str(results)[:300]}")
                 return {step_config["output"]: results}
 
         result = self.search(query, mediatype=mediatype, max_results=max_results, advanced=advanced, deduplicate=deduplicate)
+        result = parse_if_str(result)
         if extract_urls:
             urls = self.extract_urls_from_response(result, deduplicate=deduplicate)
-            self.logger.debug(f"archive-web-search plugin returning URLs: {urls}")
-            self.logger.debug(f"archive-web-search plugin URLs type: {type(urls)}")
+            urls = parse_if_str(urls)
+            logger.info(f"[archive_web_search] Returning type: {type(urls)}, sample: {str(urls)[:300]}")
             return {step_config["output"]: urls}
         else:
-            self.logger.debug(f"archive-web-search plugin returning result: {result}")
-            self.logger.debug(f"archive-web-search plugin result type: {type(result)}")
+            logger.info(f"[archive_web_search] Returning type: {type(result)}, sample: {str(result)[:300]}")
             return {step_config["output"]: result}

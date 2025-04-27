@@ -3,7 +3,7 @@ pipelines:
     description: "Generates reports for important news stories from BBC News RSS feed"
     steps:
       - name: "Fetch BBC News RSS Feed"
-        plugin: "rss_feed"
+        plugin: "Input.rss_feed"
         config:
           url: "https://feeds.bbci.co.uk/news/world/rss.xml?edition=uk"
           feed_name: "BBC_News"
@@ -13,13 +13,13 @@ pipelines:
         iterate: "context.get('feed_BBC_News', [])"
         steps:
           - name: "Delay Before Importance"
-            plugin: "Delay"
+            plugin: "Data_Processing.Delay"
             config:
-              seconds: 30
+              seconds: 5
             output: "delay_before_importance"
 
           - name: "Determine Importance"
-            plugin: "LLMFunction"
+            plugin: "Data_Processing.LLMFunction"
             config:
               plugin: "OpenRouter"
               model: "meta-llama/llama-4-maverick:free"
@@ -36,13 +36,13 @@ pipelines:
             condition: "importance_score['score'] > 7"
             steps:
               - name: "Delay Before Section Prompt"
-                plugin: "Delay"
+                plugin: "Data_Processing.Delay"
                 config:
-                  seconds: 30
+                  seconds: 5
                 output: "delay_before_section_prompt"
 
               - name: "Generate Section Prompt"
-                plugin: "LLMFunction"
+                plugin: "Data_Processing.LLMFunction"
                 config:
                   plugin: "OpenRouter"
                   model: "meta-llama/llama-4-maverick:free"
@@ -56,7 +56,7 @@ pipelines:
                 output: "section_prompt"
 
               - name: "Generate Section Summary"
-                plugin: "LLMFunction"
+                plugin: "Data_Processing.LLMFunction"
                 config:
                   plugin: "OpenRouter"
                   model: "meta-llama/llama-4-maverick:free"
@@ -74,22 +74,22 @@ pipelines:
                 output: "section_summary"
 
               - name: "Build Section Data"
-                plugin: "ContextPromoter"
+                plugin: "Data_Processing.ContextPromoter"
                 source: "item"
                 target: "section_data"
 
               - name: "Add Importance and Summary to Section Data"
-                plugin: "ContextPromoter"
+                plugin: "Data_Processing.ContextPromoter"
                 source: "importance_score['score']"
                 target: "section_data['importance']"
 
               - name: "Add Section Summary to Section Data"
-                plugin: "ContextPromoter"
+                plugin: "Data_Processing.ContextPromoter"
                 source: "section_summary['section_summary']"
                 target: "section_data['section_summary']"
 
               - name: "Collect Section Data"
-                plugin: "ContextAggregator"
+                plugin: "Data_Processing.ContextAggregator"
                 key: "section_summaries"
                 value: "section_data"
                 required_keys:
@@ -100,22 +100,23 @@ pipelines:
                   - section_summary
                 output: "section_summaries"
 
-              - name: "Write Section Summary to File"
-                condition: "section_summary is not None"
-                plugin: "ContextToFile"
-                variable: "section_summaries"
-                filename: "section_summaries.json"
-                append: false
-                output: "written_section_summary"
+      - name: "Write All Section Summaries to File"
+        plugin: "Data_Processing.ContextToFile"
+        config:
+          variable: "section_summaries"
+          filename: "section_summaries.json"
+          append: false
+        output: "written_section_summaries"
 
       - name: "Load Section Summaries"
-        plugin: "FileToContext"
-        filename: "section_summaries.json"
-        variable: "section_summaries"
+        plugin: "Data_Processing.FileToContext"
+        config:
+          filename: "section_summaries.json"
+          variable: "section_summaries"
         output: "section_summaries"
 
       - name: "Generate HTML Report"
-        plugin: "HTMLReport"
+        plugin: "Output.HTMLReport"
         config:
           title: "BBC News Report"
           sections: |

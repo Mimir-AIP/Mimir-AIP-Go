@@ -2,6 +2,6 @@
 API plugin for making HTTP requests to httpbin.org
 """
 
-from .api import APIPlugin
+from .api import ApiPlugin
 
-__all__ = ['APIPlugin']
+__all__ = ['ApiPlugin']

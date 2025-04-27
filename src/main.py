@@ -1,9 +1,34 @@
-from Plugins.PluginManager import PluginManager
-import yaml #used to load pipelines
+"""
+Mimir-AIP Main Module
+
+Entry point for pipeline execution. Loads config.yaml, initializes plugins,
+and executes configured pipelines with ASCII visualization of step statuses.
+"""
 import os
+import sys
 import logging
+import argparse
+import yaml #used to load pipelines
+import datetime  # Added for scheduler loop
+import time      # Added for scheduler loop sleep
+from Plugins.PluginManager import PluginManager
+from PipelineVisualizer.AsciiTree import PipelineAsciiTreeVisualizer
+import threading
+import signal
+from PipelineScheduler import CronSchedule
 
-
+# Configure logging BEFORE any other imports that might log
+logging.basicConfig(
+    level=logging.DEBUG,  # Set to DEBUG for detailed diagnostics
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("mimir.log", mode="w"),
+        logging.StreamHandler()
+    ],
+    force=True
+)
+logger = logging.getLogger(__name__)
+logger.info("[Test] Logging to file and console should work now.")
 
 def main():
     """Main entry point of the application"""
@@ -29,16 +54,9 @@ def main():
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    # Configure logging
-    logging.basicConfig(
-        level=getattr(logging, log_level),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("mimir.log", mode="w"),
-            logging.StreamHandler()
-        ]
-    )
-    logger = logging.getLogger(__name__)
+    # (Optional) Adjust log level based on config
+    logging.getLogger().setLevel(getattr(logging, log_level))
+    logger.info(f"[Startup] CWD: {os.getcwd()}, Python exec: {sys.executable}")
 
     # Step 2: Initialize the PluginManager
     plugin_manager = PluginManager()
@@ -101,7 +119,7 @@ def main():
 
 
 def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
-    """Execute a single pipeline definition"""
+    """Execute a single pipeline definition with ASCII tree visualization"""
     logger = logging.getLogger(__name__)
     logger.info(f"Starting pipeline: {pipeline.get('name', 'Unnamed Pipeline')}")
     
@@ -117,156 +135,295 @@ def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
             except Exception as e:
                 logger.warning(f"[CLEANUP] Could not remove {fpath}: {e}")
 
-    # Initialize pipeline context
+    # Initialize pipeline context and status tracking
     context = {"output_dir": output_dir, "test_mode": test_mode}
-    
-    for step in pipeline["steps"]:
-        if step.get("iterate"):
-            # Evaluate condition if present BEFORE evaluating iterate expression
-            if "condition" in step:
+    step_statuses = {step.get('name', f'step_{i}'): 'pending' for i, step in enumerate(pipeline["steps"])}
+
+    def render_tree(highlight_idx=None, runtime_info=None):
+        """Render the pipeline tree with current statuses and highlighting.
+
+        Args:
+            highlight_idx (int, optional): Index of the active step to highlight.
+            runtime_info (dict, optional): Runtime info for iteration statuses.
+        """
+        tree = PipelineAsciiTreeVisualizer.build_tree_from_pipeline(pipeline, step_statuses, runtime_info=runtime_info)
+        PipelineAsciiTreeVisualizer.render(tree, highlight_path=[highlight_idx] if highlight_idx is not None else None)
+
+    iteration_tracking = {}
+    for idx, step in enumerate(pipeline["steps"]):
+        step_name = step.get('name', f'step_{idx}')
+        try:
+            step_statuses[step_name] = 'running'
+            # For iterative steps, track iteration count, statuses, and labels
+            if step.get("iterate"):
+                data = []
+                labels = []
                 try:
-                    condition_result = eval(step["condition"], {"__builtins__": {}}, context)
-                    if not condition_result:
-                        logger.info(f"[EARLY GUARD] Skipping iteration for step {step.get('name', 'unnamed')} due to failing condition.")
-                        continue
-                except Exception as e:
-                    logger.error(f"Error evaluating condition for step {step.get('name', 'unnamed')}: {e}")
-                    continue
-            # Handle iteration over items
-            try:
-                # Get the data to iterate over from context
-                logger.debug(f"Current context: {context}")
-                logger.debug(f"Evaluating iterate expression: {step['iterate']}")
-                data = eval(step["iterate"], {"__builtins__": {}}, {"context": context})
-                logger.debug(f"Data to iterate over: {data}")
-                logger.info(f"[DEBUG] Number of items to iterate: {len(data)}")
-                # Universal type check and logging
-                step_name = step.get("name", "").lower()
-                data_type = type(data)
-                first_item_type = type(data[0]) if isinstance(data, list) and data else None
-                logger.info(f"[UNIVERSAL DEBUG] Step: {step.get('name', 'unnamed')}, Data type: {data_type}, First item type: {first_item_type}")
-                if isinstance(data, list) and data:
-                    logger.info(f"[UNIVERSAL DEBUG] First item value: {data[0]}")
-                # For scraping steps, enforce list of URLs
-                if any(x in step_name for x in ["search result url", "manual search result url", "scrape"]):
-                    if not (isinstance(data, list) and all(isinstance(x, str) and x.startswith("http") for x in data)):
-                        logger.warning(f"[UNIVERSAL GUARD] Skipping iteration for step {step.get('name', 'unnamed')}: data is not a list of URLs.")
-                        continue
-                # For RSS processing steps, enforce list of dicts
-                if "process stories" in step_name or "rss" in step_name:
-                    if not (isinstance(data, list) and all(isinstance(x, dict) for x in data)):
-                        logger.warning(f"[UNIVERSAL GUARD] Skipping iteration for step {step.get('name', 'unnamed')}: data is not a list of dicts (RSS items).")
-                        continue
-                for item in data:
-                    # Create a new context for each iteration that includes both the item and the pipeline context
-                    iteration_context = {"item": item, "output_dir": output_dir, **context}
-                    logger.debug(f"Starting iteration with context: {iteration_context}")
-                    for substep in step["steps"]:
-                        logger.debug(f"Executing step: {substep.get('name', 'unnamed')}")
-                        logger.debug(f"Step input: {iteration_context}")
-                        updated_context = execute_step(substep, iteration_context, plugin_manager)
-                        logger.debug(f"Step output: {updated_context}")
-                        # Update the pipeline context with any changes from the iteration
-                        context.update({k: v for k, v in iteration_context.items() if k != "item"})
-                        logger.debug(f"Updated context after step {substep.get('name', 'unnamed')}: {context}")
-            except Exception as e:
-                logger.error(f"Error in iteration step: {e}")
-                raise
-        else:
-            try:
-                logger.debug(f"Executing step: {step.get('name', 'unnamed')}")
-                logger.debug(f"Step input: {context}")
-                context["output_dir"] = output_dir
-                updated_context = execute_step(step, context, plugin_manager)
-                logger.debug(f"Step output: {updated_context}")
-                if updated_context:
-                    context.update(updated_context)
-                # Debug log for Fetch BBC News RSS Feed output
-                if step.get("name") == "Fetch BBC News RSS Feed":
-                    logger.info(f"[DEBUG] Output of Fetch BBC News RSS Feed: {context.get('feed_BBC_News')}")
-                    if isinstance(context.get('feed_BBC_News'), list):
-                        logger.info(f"[DEBUG] Number of fetched items: {len(context.get('feed_BBC_News'))}")
-            except Exception as e:
-                logger.error(f"Error in step: {e}")
-                raise
+                    data = eval(step["iterate"], {"__builtins__": {}}, {"context": context})
+                    # Try to extract a label for each item if possible (e.g., title, name, id, str(item))
+                    for item in data:
+                        label = None
+                        if isinstance(item, dict):
+                            for key in ["title", "name", "id"]:
+                                if key in item and isinstance(item[key], str):
+                                    label = item[key][:40]  # Truncate for display
+                                    break
+                        if not label:
+                            label = str(item)[:40]
+                        labels.append(label)
+                except Exception:
+                    pass
+                iter_count = len(data) if isinstance(data, list) else 0
+                iteration_tracking[step_name] = {'count': iter_count, 'statuses': ['pending'] * iter_count, 'labels': labels}
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                if iter_count > 0:
+                    for i, item in enumerate(data):
+                        iteration_context = {"item": item, "output_dir": output_dir, **context}
+                        for substep in step["steps"]:
+                            execute_step(substep, iteration_context, plugin_manager)
+                        if "section_summaries" in iteration_context:
+                            context["section_summaries"] = iteration_context["section_summaries"]
+                        iteration_tracking[step_name]['statuses'][i] = 'completed'
+                        render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                step_statuses[step_name] = 'completed'
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+            else:
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                execute_step(step, context, plugin_manager)
+                step_statuses[step_name] = 'completed'
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+        except Exception as e:
+            logger.error(f"Error in step: {e}")
+            step_statuses[step_name] = 'failed'
+            render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+            raise
 
 
 def execute_step(step, context, plugin_manager):
-    """Execute a single pipeline step"""
+    """Execute a single pipeline step using the correct plugin lookup logic."""
     logger = logging.getLogger(__name__)
-    # Evaluate step condition if present
-    if "condition" in step:
-        try:
-            # Check for None context variables in condition
-            condition_vars = [var.split("[")[0].split(".")[0] for var in step["condition"].replace("'", "").replace("]", "").split() if var.isidentifier()]
-            for var in condition_vars:
-                if var in context and context[var] is None:
-                    logger.warning(f"[STEP SKIP] Skipping step '{step.get('name', 'unnamed')}' because context variable '{var}' is None (likely due to API failure or prior error).")
-                    return
-            condition_result = eval(step["condition"], {"__builtins__": {}}, context)
-            if not condition_result:
-                logger.info(f"[STEP SKIP] Skipping step '{step.get('name', 'unnamed')}' due to failing condition: {step['condition']}")
-                return
-        except Exception as e:
-            logger.error(f"[STEP SKIP] Error evaluating condition for step {step.get('name', 'unnamed')}: {e}")
+    plugin_ref = step.get('plugin')
+    if not plugin_ref:
+        logger.error(f"No plugin specified for step: {step.get('name', 'Unnamed')}")
+        return
+
+    # Split plugin_ref like 'Output.HTMLReport' or 'Data_Processing.Delay'
+    if '.' in plugin_ref:
+        plugin_type, plugin_name = plugin_ref.split('.', 1)
+    else:
+        plugin_type, plugin_name = None, plugin_ref
+
+    # Try to get plugin by type and name
+    plugin_instance = None
+    if plugin_type:
+        plugins_of_type = plugin_manager.get_plugins(plugin_type)
+        if plugins_of_type and plugin_name in plugins_of_type:
+            plugin_instance = plugins_of_type[plugin_name]
+        else:
+            logger.error(f"Plugin {plugin_ref} not found in plugin type {plugin_type}")
             return
-    try:
-        # PATCH: Evaluate condition before executing the step itself
-        if "condition" in step:
-            try:
-                condition_result = eval(step["condition"], {"__builtins__": {}}, context)
-                if not condition_result:
-                    logger.info(f"[STEP SKIP] Skipping step '{step.get('name', 'unnamed')}' due to failing condition: {step['condition']}")
-                    return
-            except Exception as e:
-                logger.error(f"Error evaluating condition for step {step.get('name', 'unnamed')}: {e}")
-                return
-        logger.info(f"[STEP DEBUG] Step: {step.get('name', 'unnamed')}, Plugin: {step.get('plugin', None)}")
-        logger.info(f"[STEP DEBUG] Context keys: {list(context.keys())}")
-        logger.info(f"[STEP DEBUG] Context 'item' value: {context.get('item', None)} (type: {type(context.get('item', None))})")
-        # If this step is a container (no plugin, only substeps), just execute substeps if present
-        if "plugin" not in step:
-            if "steps" in step:
-                for substep in step["steps"]:
-                    execute_step(substep, context, plugin_manager)
-            return
-        # Get plugin instance
-        plugin_name = step["plugin"]
-        # HARD GUARD: If this is a WebScraping step, only allow string URLs
-        if plugin_name == "WebScraping":
-            item = context.get('item', None)
-            if not (isinstance(item, str) and item.startswith('http')):
-                logger.error(f"[HARD GUARD] Skipping WebScraping step: item is not a URL string. Got: {item} (type: {type(item)})")
-                return
-        # Try to find the plugin in each type
-        plugin_instance = None
-        for plugin_type in ["Input", "Output", "Data_Processing", "AIModels"]:
-            plugin_instance = plugin_manager.get_plugin(plugin_type, plugin_name)
-            if plugin_instance:
+    else:
+        # Try all plugins if type not specified
+        for type_name, plugins_of_type in plugin_manager.get_plugins().items():
+            if plugin_name in plugins_of_type:
+                plugin_instance = plugins_of_type[plugin_name]
                 break
-                
         if not plugin_instance:
-            logger.error(f"Plugin {plugin_name} not found in any plugin type")
+            logger.error(f"Plugin {plugin_ref} not found in any plugin type")
             return
 
-        logger.info(f"Executing step: {step.get('name', 'unnamed')}")
-        # Let the plugin handle its own step execution
-        updated_context = plugin_instance.execute_pipeline_step(step, context)
-        logger.debug(f"Updated context: {updated_context}")
-        if updated_context:
-            context.update(updated_context)
-        # Handle conditional execution for substeps
-        if "condition" in step:
-            # Patch: use pipeline context as locals for eval
-            condition_result = eval(step["condition"], {"__builtins__": {}}, context)
-            if condition_result and "steps" in step:
-                for substep in step["steps"]:
-                    execute_step(substep, context, plugin_manager)
-
+    # Execute the pipeline step
+    try:
+        result = plugin_instance.execute_pipeline_step(step, context)
+        # Defensive logging: log type and sample of every value added to context
+        if result:
+            for k, v in result.items():
+                logger.info(f"[ContextUpdate] Key: {k}, Type: {type(v)}, Sample: {str(v)[:300]}")
+            # Robust context update: merge all result keys into context, do not overwrite
+            for k, v in result.items():
+                context[k] = v
     except Exception as e:
-        logger.error(f"Error executing step {step.get('name', 'unnamed')}: {e}")
-        raise  # Re-raise to handle in caller
+        logger.error(f"Error executing step {step.get('name', 'Unnamed')}: {e}")
+
+
+def run_scheduled_pipelines(config, plugin_manager, output_dir):
+    """Run scheduled pipelines, patched to avoid IndexError on empty schedules."""
+    logger = logging.getLogger(__name__)
+    pipelines = config.get("pipelines", [])
+    schedules = [(p, p.get("schedule")) for p in pipelines if p.get("enabled", False) and p.get("schedule")]
+    if not schedules:
+        logger.info("No scheduled pipelines to run. Exiting scheduler loop.")
+        return
+    # ... (rest of original logic)
+    scheduled = []
+    manual = []
+    for pipeline_config, sched_expr in schedules:
+        try:
+            sched = CronSchedule(sched_expr)
+            scheduled.append((pipeline_config, sched))
+        except Exception as e:
+            logger.error(f"Invalid schedule for pipeline {pipeline_config.get('name')}: {e}")
+        else:
+            manual.append(pipeline_config)
+
+    # Run manual pipelines immediately
+    for pipeline_config in manual:
+        logger.info(f"[SCHEDULER] Running manual pipeline: {pipeline_config.get('name')}")
+        pipeline_file = pipeline_config.get("file")
+        if not pipeline_file:
+            logger.error(f"No file specified for pipeline: {pipeline_config.get('name', 'Unnamed')}")
+            continue
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        pipeline_file_path = os.path.join(project_root, pipeline_file) if not os.path.isabs(pipeline_file) else pipeline_file
+        try:
+            with open(pipeline_file_path, "r") as f:
+                pipeline_def = yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Failed to load pipeline {pipeline_file_path}: {e}")
+            continue
+        for pipeline in pipeline_def.get("pipelines", []):
+            try:
+                execute_pipeline(pipeline, plugin_manager, output_dir)
+            except Exception as e:
+                logger.error(f"Error executing pipeline {pipeline.get('name', 'Unnamed')}: {e}")
+
+    """
+    Scheduler loop for scheduled pipelines
+    """
+    def scheduler_loop():
+        logger.info("[SCHEDULER] Starting scheduler loop for pipelines...")
+        next_runs = []
+        for pipeline_config, sched in scheduled:
+            next_run = sched.next_run()
+            next_runs.append((next_run, pipeline_config, sched))
+            logger.info(f"[SCHEDULER] Pipeline '{pipeline_config.get('name')}' scheduled for {next_run}")
+        while True:
+            now = datetime.datetime.now().replace(second=0, microsecond=0)
+            # Find the soonest next run
+            next_runs.sort()
+            soonest, pipeline_config, sched = next_runs[0]
+            sleep_secs = (soonest - now).total_seconds()
+            if sleep_secs > 0:
+                logger.info(f"[SCHEDULER] Sleeping for {sleep_secs:.1f} seconds until next pipeline: {pipeline_config.get('name')}")
+                time.sleep(min(sleep_secs, 60))  # Sleep in chunks in case of signal
+                continue
+            # Time to run the pipeline
+            logger.info(f"[SCHEDULER] Running scheduled pipeline: {pipeline_config.get('name')} at {now}")
+            pipeline_file = pipeline_config.get("file")
+            if not pipeline_file:
+                logger.error(f"No file specified for pipeline: {pipeline_config.get('name', 'Unnamed')}")
+                next_run = sched.next_run(now)
+                next_runs[0] = (next_run, pipeline_config, sched)
+                continue
+            project_root = os.path.dirname(os.path.abspath(__file__))
+            pipeline_file_path = os.path.join(project_root, pipeline_file) if not os.path.isabs(pipeline_file) else pipeline_file
+            try:
+                with open(pipeline_file_path, "r") as f:
+                    pipeline_def = yaml.safe_load(f)
+            except Exception as e:
+                logger.error(f"Failed to load pipeline {pipeline_file_path}: {e}")
+                next_run = sched.next_run(now)
+                next_runs[0] = (next_run, pipeline_config, sched)
+                continue
+            for pipeline in pipeline_def.get("pipelines", []):
+                try:
+                    execute_pipeline(pipeline, plugin_manager, output_dir)
+                except Exception as e:
+                    logger.error(f"Error executing pipeline {pipeline.get('name', 'Unnamed')}: {e}")
+            # Schedule next run
+            next_run = sched.next_run(now)
+            next_runs[0] = (next_run, pipeline_config, sched)
+
+    # Run scheduler loop in foreground (can be made a thread if needed)
+    try:
+        scheduler_loop()
+    except KeyboardInterrupt:
+        logger.info("[SCHEDULER] Shutting down scheduler loop.")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Mimir-AIP Pipeline Runner")
+    parser.add_argument('--pipeline', type=str, help='Name of pipeline to run once (manual trigger)')
+    args = parser.parse_args()
+
+    try:
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+    except Exception as e:
+        print(f"Error loading config.yaml: {e}")
+        exit(1)
+
+    pipeline_dir = config.get("settings", {}).get("pipeline_directory", "pipelines")
+    output_dir = config.get("settings", {}).get("output_directory", "output")
+    log_level = config.get("settings", {}).get("log_level", "INFO")
+    os.makedirs(output_dir, exist_ok=True)
+    plugin_manager = PluginManager()
+
+    if args.pipeline:
+        # Manual trigger: run the specified pipeline once
+        pipelines = config.get('pipelines', [])
+        selected = next((p for p in pipelines if p.get('name') == args.pipeline), None)
+        if not selected:
+            print(f"Pipeline '{args.pipeline}' not found in config.yaml.")
+            exit(1)
+        # Load the pipeline YAML
+        pipeline_file = selected.get('file')
+        if not pipeline_file:
+            print(f"No file specified for pipeline '{args.pipeline}'.")
+            exit(1)
+        pipeline_path = os.path.join(pipeline_dir, os.path.basename(pipeline_file))
+        try:
+            with open(pipeline_path, 'r') as pf:
+                pipeline_yaml = yaml.safe_load(pf)
+        except Exception as e:
+            print(f"Error loading pipeline YAML: {e}")
+            exit(1)
+        # Find the actual pipeline definition (list under 'pipelines')
+        pipeline_defs = pipeline_yaml.get('pipelines', [])
+        if not pipeline_defs:
+            print(f"No pipelines found in {pipeline_file}.")
+            exit(1)
+        # Run the first (or only) pipeline in the file
+        execute_pipeline(pipeline_defs[0], plugin_manager, output_dir)
+    else:
+        # Improved default behavior: run enabled pipeline(s) or prompt user
+        pipelines = config.get('pipelines', [])
+        enabled_pipelines = [p for p in pipelines if p.get('enabled', False)]
+        if not enabled_pipelines:
+            print("Error: No enabled pipelines found in config.yaml. Please enable at least one pipeline or specify --pipeline <name>.")
+            exit(1)
+        elif len(enabled_pipelines) == 1:
+            selected = enabled_pipelines[0]
+            print(f"No pipeline specified. Running the only enabled pipeline: {selected.get('name')}")
+        else:
+            print("Multiple enabled pipelines found. Please select one to run:")
+            for idx, p in enumerate(enabled_pipelines, 1):
+                print(f"  {idx}. {p.get('name')}")
+            while True:
+                try:
+                    choice = input(f"Enter a number (1-{len(enabled_pipelines)}): ").strip()
+                    num = int(choice)
+                    if 1 <= num <= len(enabled_pipelines):
+                        selected = enabled_pipelines[num-1]
+                        break
+                    else:
+                        print(f"Invalid selection. Please enter a number between 1 and {len(enabled_pipelines)}.")
+                except (ValueError, KeyboardInterrupt):
+                    print("Input cancelled or invalid. Exiting.")
+                    exit(1)
+        pipeline_file = selected.get('file')
+        if not pipeline_file:
+            print(f"No file specified for pipeline '{selected.get('name')}'.")
+            exit(1)
+        pipeline_path = os.path.join(pipeline_dir, os.path.basename(pipeline_file))
+        try:
+            with open(pipeline_path, 'r') as pf:
+                pipeline_yaml = yaml.safe_load(pf)
+        except Exception as e:
+            print(f"Error loading pipeline YAML: {e}")
+            exit(1)
+        pipeline_defs = pipeline_yaml.get('pipelines', [])
+        if not pipeline_defs:
+            print(f"No pipelines found in {pipeline_file}.")
+            exit(1)
+        execute_pipeline(pipeline_defs[0], plugin_manager, output_dir)

@@ -1,5 +1,7 @@
 """
-Plugin for promoting a variable from a nested or previous context into the main context.
+ContextPromoter module.
+
+Promotes context values from nested or previous contexts into the main pipeline context.
 """
 
 from Plugins.BasePlugin import BasePlugin
@@ -7,14 +9,21 @@ import logging
 import ast
 
 class ContextPromoter(BasePlugin):
+    """Plugin to copy values from nested or previous context into the main pipeline context.
+
+    Supports nested expressions via AST parsing and falls back to flat assignment if needed.
+    """
     plugin_type = "Data_Processing"
 
     def execute_pipeline_step(self, step_config, context):
-        """
-        Copies the value of a source key or expression to a target key (supports nested assignment) in the main context.
-        step_config:
-          source: the key or expression to copy from (e.g., 'foo', 'foo["bar"]', or 'foo[0]["bar"]')
-          target: the key or nested expression to copy to (e.g., 'foo', 'foo["bar"]', 'foo[0]["bar"]')
+        """Copy value from source expression to target context key.
+
+        Args:
+            step_config (dict): Contains 'source' (str: expression or context key) and 'target' (str: expression or context key).
+            context (dict): Current pipeline context dictionary.
+
+        Returns:
+            dict: Mapping of target key to assigned value.
         """
         logger = logging.getLogger(__name__)
         source = step_config["source"]
@@ -40,9 +49,13 @@ class ContextPromoter(BasePlugin):
         return {target: value}
 
     def _assign_nested(self, context, target_expr, value, logger):
-        """
-        Assigns value to the nested target specified by target_expr within context.
-        Supports dict and list traversal, e.g., foo['bar'][0]['baz'].
+        """Assign a value to a nested context expression using AST parsing.
+
+        Args:
+            context (dict): Pipeline context dictionary.
+            target_expr (str): Target assignment expression (e.g., 'foo["bar"][0]')
+            value: Value to assign.
+            logger (logging.Logger): Logger for diagnostic messages.
         """
         # Parse the target expression
         node = ast.parse(target_expr, mode='eval').body
@@ -61,9 +74,14 @@ class ContextPromoter(BasePlugin):
             raise ValueError(f"Unsupported assignment target: {type(obj)}, key: {final_key}")
 
     def _resolve_parent(self, context, node):
-        """
-        Traverse the AST to get the parent object and final key/index for assignment.
-        Returns (parent_obj, final_key).
+        """Resolve parent object and final key/index from AST node for assignment.
+
+        Args:
+            context (dict): Pipeline context.
+            node (ast.AST): AST node representing the target expression.
+
+        Returns:
+            tuple: (parent_obj, final_key/index) for the assignment.
         """
         # If node is a Name, we can't assign to its parent, so raise
         if isinstance(node, ast.Name):

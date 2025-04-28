@@ -1,9 +1,14 @@
+# This workflow builds and uploads binaries to GitHub Releases for both tag pushes and release publishes.
+# It uses softprops/action-gh-release to robustly handle both cases.
+
 name: Build & Package Binaries
 
 on:
   push:
     tags:
       - 'v*.*.*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -62,21 +67,11 @@ jobs:
         run: |
           Compress-Archive -Path "dist\mimir-aip-${{ matrix.os }}" -DestinationPath "mimir-aip-${{ matrix.os }}.zip"
 
-      - name: Create GitHub Release
-        id: create_release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/create-release@v1
+      # Upload binaries to GitHub Release (works for both tag and release triggers)
+      - name: Upload binaries to GitHub Release
+        if: (github.event_name == 'release' && github.event.action == 'published') || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Release Asset
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: mimir-aip-${{ matrix.os }}.zip
-          asset_name: mimir-aip-${{ matrix.os }}.zip
-          asset_content_type: application/zip
+          files: mimir-aip-${{ matrix.os }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

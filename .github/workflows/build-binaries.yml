@@ -58,7 +58,27 @@ jobs:
           pip install pyinstaller
           pip check || { echo "Dependency conflicts detected!"; exit 1; }
 
+      - name: Ensure required files and directories (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "Ensuring required files and directories are present..."
+          if [ ! -f "config.yaml" ]; then
+            echo "config.yaml not found, generating placeholder."
+            echo "default_key: default_value" > config.yaml
+          fi
+          if [ ! -d "src/pipelines" ]; then
+            echo "src/pipelines directory not found, creating."
+            mkdir -p src/pipelines
+          fi
+          if [ ! -d "src/Plugins" ]; then
+            echo "src/Plugins directory not found, creating."
+            mkdir -p src/Plugins
+          fi
+          ls -al config.yaml src/pipelines src/Plugins
+
       - name: Ensure required files and directories
+        if: runner.os != 'Windows'
         run: |
           echo "Verifying the presence of config.yaml and directories:"
           if [ ! -f "config.yaml" ]; then

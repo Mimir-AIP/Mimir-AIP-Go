@@ -60,21 +60,20 @@ jobs:
 
       - name: Ensure required files and directories
         run: |
-          # Ensure config.yaml exists in the repo root
+          echo "Verifying the presence of config.yaml and directories:"
           if [ ! -f "config.yaml" ]; then
             echo "WARNING: config.yaml not found, generating placeholder."
             echo "default_key: default_value" > config.yaml
           fi
-          # Ensure src/pipelines exists
           if [ ! -d "src/pipelines" ]; then
             echo "WARNING: src/pipelines directory not found, creating empty directory."
             mkdir -p src/pipelines
           fi
-          # Ensure src/Plugins exists (case-sensitive)
           if [ ! -d "src/Plugins" ]; then
             echo "WARNING: src/Plugins directory not found, creating empty directory."
             mkdir -p src/Plugins
           fi
+          ls -al config.yaml src/pipelines src/Plugins
 
       - name: Validate Required Files
         run: |
@@ -97,15 +96,19 @@ jobs:
             --add-data "config.yaml${SEPARATOR}." \
             --add-data "src/pipelines${SEPARATOR}pipelines" \
             --add-data "src/Plugins${SEPARATOR}Plugins" \
-            src/main.py || (echo "PyInstaller failed!" && exit 1)
+            src/main.py
 
-      - name: Check PyInstaller output
+      - name: Validate and Zip Output
         run: |
-          echo "Checking dist directory contents after PyInstaller:"
-          ls -al dist || (echo "ERROR: dist directory not found! Check PyInstaller logs." && exit 1)
           if [ ! -d "dist/mimir-aip-${{ matrix.os }}" ]; then
-            echo "ERROR: mimir-aip-${{ matrix.os }} directory not found in dist!" && exit 1
+            echo "ERROR: mimir-aip-${{ matrix.os }} directory not found in dist!"
+            exit 1
           fi
+          echo "Listing dist contents:"
+          ls -al dist
+          cd dist
+          zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }}
+          cd ..
 
       - name: Zip platform bundle (Linux/macOS)
         if: runner.os != 'Windows'

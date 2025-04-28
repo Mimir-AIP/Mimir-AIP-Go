@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build:
@@ -50,18 +51,10 @@ jobs:
           pip --version
           pip list
 
-      - name: Install dependencies
+      - name: Debug: List repo and src contents
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r requirements.txt
-
-      - name: Debug Missing Files
-        run: |
-          echo "Listing repository contents:"
-          ls -al
-          echo "Checking src directory contents:"
-          ls -al src || echo "src directory not found"
+          echo "Repository root contents:" && ls -al
+          echo "src directory contents:" && ls -al src || echo "src directory not found"
 
       - name: Validate Required Files
         run: |
@@ -75,14 +68,24 @@ jobs:
             echo "ERROR: src/Plugins directory not found!" && exit 1
           fi
 
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip check || { echo "Dependency conflicts detected!"; exit 1; }
+
+      - name: Debug Missing Files
+        run: |
+          echo "Listing repository contents:"
+          ls -al
+          echo "Checking src directory contents:"
+          ls -al src || echo "src directory not found"
+
       - name: Build with PyInstaller (one-dir + include data)
         shell: bash
         run: |
           SEPARATOR=":"
           if [[ "$RUNNER_OS" == "Windows" ]]; then SEPARATOR=";"; fi
           pyinstaller \
-            --clean \
-            --onedir \
             --name mimir-aip-${{ matrix.os }} \
             --add-data "config.yaml${SEPARATOR}." \
             --add-data "src/pipelines${SEPARATOR}pipelines" \
@@ -112,13 +115,9 @@ jobs:
       - name: Zip platform bundle (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
-          zip -r mimir-aip-${{ matrix.os }}.zip "dist/mimir-aip-${{ matrix.os }}"
-
-      - name: Show contents of zip file (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          echo "Contents of the zip file:"
-          unzip -l mimir-aip-${{ matrix.os }}.zip || echo "Could not list zip contents."
+          cd dist
+          zip -r ../releases/${{ env.tag }}/mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }}
+          cd ..
 
       - name: Zip platform bundle (Windows)
         if: runner.os == 'Windows'
@@ -140,7 +139,13 @@ jobs:
 
       - name: Install GitHub CLI
         run: |
-          sudo apt-get update && sudo apt-get install -y gh || brew install gh
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update && sudo apt-get install -y gh
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install gh
+          else
+            echo "Unsupported OS for GitHub CLI installation" && exit 1
+          fi
 
       - name: Set release tag
         id: set_tag
@@ -173,6 +178,6 @@ jobs:
           git checkout -b $branch || git checkout $branch
           git add releases/${{ env.tag }}/mimir-aip-${{ matrix.os }}.zip
           git commit -m "Add binaries for ${{ env.tag }} [skip ci]" || echo "No changes to commit"
-          git pull --rebase origin $branch || git rebase --abort
+          git pull --rebase origin $branch || { echo "Conflict detected. Aborting rebase."; git rebase --abort; exit 1; }
           git push --force origin $branch
-          gh pr create --title "Add binaries for ${{ env.tag }} (${{ matrix.os }})" --body "This PR adds binaries for ${{ env.tag }} (${{ matrix.os }})" --base main --head $branch --repo ${{ github.repository }}
+          gh pr create --title "Add binaries for ${{ env.tag }} (${{ matrix.os }})" --body "This PR adds binaries for ${{ env.tag }} (${{ matrix.os }})" --base main --head $branch --repo ${{ github.repository }} || { echo "Failed to create PR"; exit 1; }

@@ -60,10 +60,10 @@ jobs:
       - name: Debug: List repo and src contents
         run: |
           echo "Repository root contents:"
-          ls -al
+          ls -al || echo "Failed to list repository root contents"
           echo "src directory contents:"
           if [ -d src ]; then
-            ls -al src
+            ls -al src || echo "Failed to list src directory contents"
           else
             echo "src directory not found"
           fi

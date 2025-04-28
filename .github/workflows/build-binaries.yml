@@ -62,18 +62,29 @@ jobs:
             src/main.py
 
       # Debug: List contents of dist after PyInstaller
-      - name: Debug dist folder after PyInstaller
+      - name: Debug dist folder
         if: runner.os != 'Windows'
         run: |
           echo "Contents of the dist folder after PyInstaller:"
           ls -al dist
 
-      # Robust zip step with error checking
+      # Robust zip step with error checking and path validation
       - name: Zip platform bundle (non-Windows)
         if: runner.os != 'Windows'
         run: |
+          echo "Ensuring the dist directory exists and checking contents:"
+          if [ ! -d dist ]; then
+            echo "ERROR: dist directory not found!"
+            exit 1
+          fi
+          ls -al dist
+          echo "Zipping the platform bundle..."
           cd dist
-          if ! zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }} src/pipelines config.yaml src/Plugins; then
+          if [ ! -d mimir-aip-${{ matrix.os }} ]; then
+            echo "ERROR: mimir-aip-${{ matrix.os }} directory not found in dist!"
+            exit 1
+          fi
+          if ! zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }}; then
             echo "ERROR: Failed to create zip file!"
             exit 1
           fi

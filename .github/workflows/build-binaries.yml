@@ -61,11 +61,22 @@ jobs:
             --add-data "src/Plugins${SEPARATOR}Plugins" \
             src/main.py
 
+      # Debug: List contents of dist after PyInstaller
+      - name: Debug dist folder after PyInstaller
+        if: runner.os != 'Windows'
+        run: |
+          echo "Contents of the dist folder after PyInstaller:"
+          ls -al dist
+
+      # Robust zip step with error checking
       - name: Zip platform bundle (non-Windows)
         if: runner.os != 'Windows'
         run: |
           cd dist
-          zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }} src/pipelines config.yaml src/Plugins
+          if ! zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }} src/pipelines config.yaml src/Plugins; then
+            echo "ERROR: Failed to create zip file!"
+            exit 1
+          fi
           cd ..
 
       # Validate that the zip file was created successfully
@@ -78,27 +89,12 @@ jobs:
           fi
           echo "Zip file mimir-aip-${{ matrix.os }}.zip created successfully."
 
-      # Debug: Check zip process exit status and contents
-      - name: Debug zip process
+      # Debug: Show contents of the zip file
+      - name: Debug zip file contents
         if: runner.os != 'Windows'
         run: |
-          echo "Checking zip process exit status and contents:"
-          ls -al
+          echo "Checking zip file contents:"
           zipinfo mimir-aip-${{ matrix.os }}.zip || echo "Zip file is invalid or empty."
-
-      # Debug: List contents of dist after zipping
-      - name: Debug dist folder contents
-        if: runner.os != 'Windows'
-        run: |
-          echo "Checking contents of dist folder:"
-          ls -al dist
-
-      # Debug: List contents of root after zipping
-      - name: Debug zip file in root
-        if: runner.os != 'Windows'
-        run: |
-          echo "Checking contents of root folder for zip file:"
-          ls -al
 
       # Ensure the zip file exists before copying
       - name: Check zip file exists

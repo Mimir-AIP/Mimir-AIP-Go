@@ -66,13 +66,13 @@ jobs:
       - name: Validate Required Files
         run: |
           if [ ! -f "config.yaml" ]; then
-            echo "WARNING: config.yaml not found!"
+            echo "ERROR: config.yaml not found!" && exit 1
           fi
           if [ ! -d "src/pipelines" ]; then
-            echo "WARNING: src/pipelines directory not found!"
+            echo "ERROR: src/pipelines directory not found!" && exit 1
           fi
           if [ ! -d "src/Plugins" ]; then
-            echo "WARNING: src/Plugins directory not found!"
+            echo "ERROR: src/Plugins directory not found!" && exit 1
           fi
 
       - name: Build with PyInstaller (one-dir + include data)
@@ -92,19 +92,21 @@ jobs:
       - name: Debug PyInstaller Output
         run: |
           echo "Checking dist directory contents after PyInstaller:"
-          ls -al dist || (echo "dist directory not found! Please check PyInstaller logs." && exit 1)
+          ls -al dist || (echo "ERROR: dist directory not found! Check PyInstaller logs." && exit 1)
           echo "Debugging additional PyInstaller output..."
           if [ -f build/main/summary.log ]; then
             cat build/main/summary.log
           else
-            echo "No summary log found."
+            echo "No summary log found. Check PyInstaller execution logs for details."
           fi
 
       - name: Validate dist directory
         run: |
+          if [ ! -d "dist" ]; then
+            echo "ERROR: dist directory not found!" && exit 1
+          fi
           if [ ! -d "dist/mimir-aip-${{ matrix.os }}" ]; then
-            echo "ERROR: mimir-aip-${{ matrix.os }} directory not found in dist!"
-            exit 1
+            echo "ERROR: mimir-aip-${{ matrix.os }} directory not found in dist!" && exit 1
           fi
 
       - name: Zip platform bundle (Linux/macOS)
@@ -171,8 +173,6 @@ jobs:
           git checkout -b $branch || git checkout $branch
           git add releases/${{ env.tag }}/mimir-aip-${{ matrix.os }}.zip
           git commit -m "Add binaries for ${{ env.tag }} [skip ci]" || echo "No changes to commit"
-          git pull --rebase origin $branch || echo "No remote branch to rebase"
-          git push --force origin $branch  # WARNING: This force-pushes to the branch, overwriting remote changes.
+          git pull --rebase origin $branch || git rebase --abort
+          git push --force origin $branch
           gh pr create --title "Add binaries for ${{ env.tag }} (${{ matrix.os }})" --body "This PR adds binaries for ${{ env.tag }} (${{ matrix.os }})" --base main --head $branch --repo ${{ github.repository }}
-        # Update: Added fallback logic to check out the branch if it already exists (e.g., from a previous run).
-        # Update: Added pull/rebase before pushing to resolve non-fast-forward errors if the branch already exists remotely.

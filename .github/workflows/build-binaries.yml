@@ -68,6 +68,24 @@ jobs:
           zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }} src/pipelines config.yaml src/Plugins
           cd ..
 
+      # Validate that the zip file was created successfully
+      - name: Validate zip file creation
+        if: runner.os != 'Windows'
+        run: |
+          if [ ! -f mimir-aip-${{ matrix.os }}.zip ]; then
+            echo "ERROR: Zip file creation failed!"
+            exit 1
+          fi
+          echo "Zip file mimir-aip-${{ matrix.os }}.zip created successfully."
+
+      # Debug: Check zip process exit status and contents
+      - name: Debug zip process
+        if: runner.os != 'Windows'
+        run: |
+          echo "Checking zip process exit status and contents:"
+          ls -al
+          zipinfo mimir-aip-${{ matrix.os }}.zip || echo "Zip file is invalid or empty."
+
       # Debug: List contents of dist after zipping
       - name: Debug dist folder contents
         if: runner.os != 'Windows'

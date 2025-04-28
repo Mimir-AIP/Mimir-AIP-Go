@@ -164,8 +164,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           branch=add-binaries-${{ env.tag }}-${{ matrix.os }}
-          git checkout -b $branch
+          git checkout -b $branch || git checkout $branch
           git add releases/${{ env.tag }}/mimir-aip-${{ matrix.os }}.zip
           git commit -m "Add binaries for ${{ env.tag }} [skip ci]" || echo "No changes to commit"
+          git pull --rebase origin $branch || echo "No remote branch to rebase"
           git push origin $branch
           gh pr create --title "Add binaries for ${{ env.tag }} (${{ matrix.os }})" --body "This PR adds binaries for ${{ env.tag }} (${{ matrix.os }})" --base main --head $branch --repo ${{ github.repository }}
+        # Update: Added fallback logic to check out the branch if it already exists (e.g., from a previous run).
+        # Update: Added pull/rebase before pushing to resolve non-fast-forward errors if the branch already exists remotely.

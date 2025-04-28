@@ -53,8 +53,14 @@ jobs:
 
       - name: Debug: List repo and src contents
         run: |
-          echo "Repository root contents:" && ls -al
-          echo "src directory contents:" && ls -al src || echo "src directory not found"
+          echo "Repository root contents:"
+          ls -al
+          echo "src directory contents:"
+          if [ -d src ]; then
+            ls -al src
+          else
+            echo "src directory not found"
+          fi
 
       - name: Validate Required Files
         run: |

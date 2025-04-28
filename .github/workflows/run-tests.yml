@@ -1,0 +1,51 @@
+# This workflow runs all tests and is only triggered manually.
+# It ensures plugins are discoverable and usable by setting the correct PYTHONPATH.
+
+name: Run All Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      extra_args:
+        description: 'Extra arguments to pass to the test runner (optional)'
+        required: false
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.10']
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python ${{ matrix.python }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run tests (pytest, with plugins)
+        env:
+          PYTHONPATH: src
+        run: |
+          echo "PYTHONPATH set to: $PYTHONPATH"
+          if [ -f "pytest.ini" ] || [ -f "pyproject.toml" ] || [ -d "tests" ]; then
+            pytest tests ${{ github.event.inputs.extra_args }}
+          else
+            echo "No pytest config or tests directory found, falling back to unittest."
+            python -m unittest discover -s tests || { echo 'No tests found or tests failed.'; exit 1; }
+
+      # Documentation: This workflow ensures that all tests are run with the correct PYTHONPATH so plugins can be discovered.
+      # It is intended for manual use only to avoid unnecessary CI load.

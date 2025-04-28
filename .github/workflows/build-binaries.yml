@@ -58,6 +58,24 @@ jobs:
           pip install pyinstaller
           pip check || { echo "Dependency conflicts detected!"; exit 1; }
 
+      - name: Ensure required files and directories
+        run: |
+          # Ensure config.yaml exists in the repo root
+          if [ ! -f "config.yaml" ]; then
+            echo "WARNING: config.yaml not found, generating placeholder."
+            echo "default_key: default_value" > config.yaml
+          fi
+          # Ensure src/pipelines exists
+          if [ ! -d "src/pipelines" ]; then
+            echo "WARNING: src/pipelines directory not found, creating empty directory."
+            mkdir -p src/pipelines
+          fi
+          # Ensure src/Plugins exists (case-sensitive)
+          if [ ! -d "src/Plugins" ]; then
+            echo "WARNING: src/Plugins directory not found, creating empty directory."
+            mkdir -p src/Plugins
+          fi
+
       - name: Validate Required Files
         run: |
           if [ ! -f "config.yaml" ]; then

@@ -68,6 +68,28 @@ jobs:
           zip -r ../mimir-aip-${{ matrix.os }}.zip mimir-aip-${{ matrix.os }} src/pipelines config.yaml src/Plugins
           cd ..
 
+      # Debug: List contents of dist after zipping
+      - name: Debug dist folder contents
+        if: runner.os != 'Windows'
+        run: |
+          echo "Checking contents of dist folder:"
+          ls -al dist
+
+      # Debug: List contents of root after zipping
+      - name: Debug zip file in root
+        if: runner.os != 'Windows'
+        run: |
+          echo "Checking contents of root folder for zip file:"
+          ls -al
+
+      # Ensure the zip file exists before copying
+      - name: Check zip file exists
+        run: |
+          if [ ! -f mimir-aip-${{ matrix.os }}.zip ]; then
+            echo "ERROR: mimir-aip-${{ matrix.os }}.zip not found!"
+            exit 1
+          fi
+
       - name: Zip platform bundle (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

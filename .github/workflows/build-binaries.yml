@@ -1,5 +1,6 @@
-# This workflow builds and uploads binaries to GitHub Releases for both tag pushes and release publishes.
-# It uses softprops/action-gh-release to robustly handle both cases.
+# This workflow builds binaries and commits them to the main branch under releases/<tag>/.
+# WARNING: Storing binaries in git will increase repo size over time.
+# Make sure branch protection allows GitHub Actions to push to main.
 
 name: Build & Package Binaries
 
@@ -10,6 +11,10 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag of the release to use for the folder name (e.g. v1.0.0)'
+        required: true
 
 jobs:
   build:
@@ -20,8 +25,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Setup Python ${{ matrix.python }}
         uses: actions/setup-python@v4
@@ -67,11 +74,36 @@ jobs:
         run: |
           Compress-Archive -Path "dist\mimir-aip-${{ matrix.os }}" -DestinationPath "mimir-aip-${{ matrix.os }}.zip"
 
-      # Upload binaries to GitHub Release (works for both tag and release triggers)
-      - name: Upload binaries to GitHub Release
-        if: (github.event_name == 'release' && github.event.action == 'published') || startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+      # Determine the tag to use for the release folder
+      - name: Set release tag
+        id: set_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "::set-output name=tag::${{ github.event.inputs.tag_name }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            echo "::set-output name=tag::${{ github.event.release.tag_name }}"
+          else
+            echo "::set-output name=tag::${{ github.ref_name }}"
+          fi
+
+      # Checkout main branch with write access
+      - name: Checkout main branch
+        uses: actions/checkout@v3
         with:
-          files: mimir-aip-${{ matrix.os }}.zip
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy binaries to releases folder
+        run: |
+          mkdir -p releases/${{ steps.set_tag.outputs.tag }}
+          cp mimir-aip-${{ matrix.os }}.zip releases/${{ steps.set_tag.outputs.tag }}/
+
+      - name: Commit and push binaries
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add releases/${{ steps.set_tag.outputs.tag }}/mimir-aip-${{ matrix.os }}.zip
+          git commit -m "Add binaries for ${{ steps.set_tag.outputs.tag }} [skip ci]" || echo "No changes to commit"
+          git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

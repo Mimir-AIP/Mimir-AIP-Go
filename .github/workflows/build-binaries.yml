@@ -55,18 +55,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyinstaller
           pip check || { echo "Dependency conflicts detected!"; exit 1; }
-
-      - name: Debug: List repo and src contents
-        run: |
-          echo "Repository root contents:"
-          ls -al || echo "Failed to list repository root contents"
-          echo "src directory contents:"
-          if [ -d src ]; then
-            ls -al src || echo "Failed to list src directory contents"
-          else
-            echo "src directory not found"
-          fi
 
       - name: Validate Required Files
         run: |
@@ -80,15 +70,7 @@ jobs:
             echo "ERROR: src/Plugins directory not found!" && exit 1
           fi
 
-      - name: Debug Missing Files
-        run: |
-          echo "Listing repository contents:"
-          ls -al
-          echo "Checking src directory contents:"
-          ls -al src || echo "src directory not found"
-
-      - name: Build with PyInstaller (one-dir + include data)
-        shell: bash
+      - name: Build with PyInstaller
         run: |
           SEPARATOR=":"
           if [[ "$RUNNER_OS" == "Windows" ]]; then SEPARATOR=";"; fi
@@ -99,22 +81,10 @@ jobs:
             --add-data "src/Plugins${SEPARATOR}Plugins" \
             src/main.py || (echo "PyInstaller failed!" && exit 1)
 
-      - name: Debug PyInstaller Output
+      - name: Check PyInstaller output
         run: |
           echo "Checking dist directory contents after PyInstaller:"
           ls -al dist || (echo "ERROR: dist directory not found! Check PyInstaller logs." && exit 1)
-          echo "Debugging additional PyInstaller output..."
-          if [ -f build/main/summary.log ]; then
-            cat build/main/summary.log
-          else
-            echo "No summary log found. Check PyInstaller execution logs for details."
-          fi
-
-      - name: Validate dist directory
-        run: |
-          if [ ! -d "dist" ]; then
-            echo "ERROR: dist directory not found!" && exit 1
-          fi
           if [ ! -d "dist/mimir-aip-${{ matrix.os }}" ]; then
             echo "ERROR: mimir-aip-${{ matrix.os }} directory not found in dist!" && exit 1
           fi
@@ -169,11 +139,6 @@ jobs:
         run: |
           mkdir -p releases/${{ env.tag }}
           cp mimir-aip-${{ matrix.os }}.zip releases/${{ env.tag }}/
-
-      - name: Debug files to be pushed
-        run: |
-          echo "Files to be pushed:"
-          ls -al releases/${{ env.tag }}
 
       - name: Commit and create pull request
         env:

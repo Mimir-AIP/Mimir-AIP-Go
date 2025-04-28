@@ -51,6 +51,12 @@ jobs:
           pip --version
           pip list
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check || { echo "Dependency conflicts detected!"; exit 1; }
+
       - name: Debug: List repo and src contents
         run: |
           echo "Repository root contents:"
@@ -73,11 +79,6 @@ jobs:
           if [ ! -d "src/Plugins" ]; then
             echo "ERROR: src/Plugins directory not found!" && exit 1
           fi
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip check || { echo "Dependency conflicts detected!"; exit 1; }
 
       - name: Debug Missing Files
         run: |

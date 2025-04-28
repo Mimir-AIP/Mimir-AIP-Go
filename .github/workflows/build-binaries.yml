@@ -56,6 +56,21 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
+      - name: Validate Required Files
+        run: |
+          if [ ! -f "config.yaml" ]; then
+            echo "ERROR: config.yaml not found!"
+            exit 1
+          fi
+          if [ ! -d "src/pipelines" ]; then
+            echo "ERROR: src/pipelines directory not found!"
+            exit 1
+          fi
+          if [ ! -d "src/Plugins" ]; then
+            echo "ERROR: src/Plugins directory not found!"
+            exit 1
+          fi
+
       - name: Build with PyInstaller (one-dir + include data)
         shell: bash
         run: |
@@ -68,12 +83,12 @@ jobs:
             --add-data "config.yaml${SEPARATOR}." \
             --add-data "src/pipelines${SEPARATOR}pipelines" \
             --add-data "src/Plugins${SEPARATOR}Plugins" \
-            src/main.py
+            src/main.py || (echo "PyInstaller failed!" && exit 1)
 
       - name: Debug PyInstaller Output
         run: |
           echo "Checking dist directory contents after PyInstaller:"
-          ls -al dist || (echo "dist directory not found!" && exit 1)
+          ls -al dist || (echo "dist directory not found! Please check PyInstaller logs." && exit 1)
           echo "Debugging additional PyInstaller output..."
           if [ -f build/main/summary.log ]; then
             cat build/main/summary.log

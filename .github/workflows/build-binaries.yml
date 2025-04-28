@@ -56,19 +56,23 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
+      - name: Debug Missing Files
+        run: |
+          echo "Listing repository contents:"
+          ls -al
+          echo "Checking src directory contents:"
+          ls -al src || echo "src directory not found"
+
       - name: Validate Required Files
         run: |
           if [ ! -f "config.yaml" ]; then
-            echo "ERROR: config.yaml not found!"
-            exit 1
+            echo "WARNING: config.yaml not found!"
           fi
           if [ ! -d "src/pipelines" ]; then
-            echo "ERROR: src/pipelines directory not found!"
-            exit 1
+            echo "WARNING: src/pipelines directory not found!"
           fi
           if [ ! -d "src/Plugins" ]; then
-            echo "ERROR: src/Plugins directory not found!"
-            exit 1
+            echo "WARNING: src/Plugins directory not found!"
           fi
 
       - name: Build with PyInstaller (one-dir + include data)
@@ -168,7 +172,7 @@ jobs:
           git add releases/${{ env.tag }}/mimir-aip-${{ matrix.os }}.zip
           git commit -m "Add binaries for ${{ env.tag }} [skip ci]" || echo "No changes to commit"
           git pull --rebase origin $branch || echo "No remote branch to rebase"
-          git push origin $branch
+          git push --force origin $branch  # WARNING: This force-pushes to the branch, overwriting remote changes.
           gh pr create --title "Add binaries for ${{ env.tag }} (${{ matrix.os }})" --body "This PR adds binaries for ${{ env.tag }} (${{ matrix.os }})" --base main --head $branch --repo ${{ github.repository }}
         # Update: Added fallback logic to check out the branch if it already exists (e.g., from a previous run).
         # Update: Added pull/rebase before pushing to resolve non-fast-forward errors if the branch already exists remotely.

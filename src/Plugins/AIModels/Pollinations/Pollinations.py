@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 import base64
 import sys
 import os
+import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from src.Plugins.AIModels.BaseAIModel.BaseAIModel import BaseAIModel
 
@@ -60,7 +61,7 @@ class Pollinations(BaseAIModel):
         try:
             response = requests.get(f"{self.text_base_url}/models")
             response.raise_for_status()
-            models = response.json()
+            models = response.json().get("models", [])
             return [{"name": m, "description": f"{m} model"} for m in models]
         except Exception as e:
             self.logger.error(f"Error fetching text models: {e}")
@@ -250,21 +251,25 @@ class Pollinations(BaseAIModel):
         else:
             raise ValueError("Unsupported image format")
             
-    def _handle_streaming_response(self, response: requests.Response) -> Dict[str, Any]:
+    def _handle_streaming_response(self, response: requests.Response):
         """Handle streaming responses"""
-        full_response = ""
-        
-        for chunk in response.iter_content(chunk_size=1024):
-            if chunk:
-                try:
-                    chunk_text = chunk.decode('utf-8')
-                    if chunk_text.strip() == '[DONE]':
-                        break
-                    full_response += chunk_text
-                except Exception as e:
-                    self.logger.error(f"Error processing stream chunk: {e}")
-        
-        return {"streamed_content": full_response}
+        try:
+            from sseclient import SSEClient
+            messages = []
+            for msg in SSEClient(response):
+                if msg.data != '[DONE]':
+                    try:
+                        data = json.loads(msg.data)
+                        if "choices" in data and data["choices"]:
+                            delta = data["choices"][0].get("delta", {})
+                            if "content" in delta:
+                                messages.append(delta["content"])
+                    except json.JSONDecodeError:
+                        continue
+            return {"streamed_content": json.dumps({"choices": [{"delta": {"content": "".join(messages)}, "finish_reason": "stop"}]})}
+        except Exception as e:
+            self.logger.error(f"Error handling streaming response: {e}")
+            return {"streamed_content": json.dumps({"choices": [{"delta": {"content": ""}, "finish_reason": "error"}]})}
         
     def chat_completion(self, model: str, messages: List[Dict[str, Any]]) -> str:
         """

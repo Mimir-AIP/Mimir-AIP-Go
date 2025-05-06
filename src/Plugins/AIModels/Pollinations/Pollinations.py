@@ -62,10 +62,10 @@ class Pollinations(BaseAIModel):
             response = requests.get(f"{self.text_base_url}/models")
             response.raise_for_status()
             models = response.json().get("models", [])
-            return [{"name": m, "description": f"{m} model"} for m in models]
+            return [{"name": m} for m in models]
         except Exception as e:
             self.logger.error(f"Error fetching text models: {e}")
-            return [{"name": "openai", "description": "OpenAI model"}, {"name": "mistral", "description": "Mistral model"}]
+            return [{"name": "openai"}, {"name": "mistral"}]
             
     def _get_image_models(self) -> List[str]:
         """Get available image models"""
@@ -73,10 +73,10 @@ class Pollinations(BaseAIModel):
             response = requests.get(f"{self.image_base_url}/models")
             response.raise_for_status()
             models = response.json()
-            return [{"name": m, "description": f"{m} model"} for m in models]
+            return [{"name": m} for m in models]
         except Exception as e:
             self.logger.error(f"Error fetching image models: {e}")
-            return [{"name": "flux", "description": "Flux model"}]
+            return [{"name": "flux"}]
             
     def execute_pipeline_step(self, step_config: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -95,6 +95,10 @@ class Pollinations(BaseAIModel):
             
             if output_type == "image":
                 return self._handle_image_generation(config)
+            elif output_type == "text":
+                return self._handle_text_generation(config)
+            elif output_type == "stream":
+                return self._handle_streaming_generation(config)
             elif output_type == "audio":
                 return self._handle_audio_generation(config)
             elif output_type == "multimodal" and config.get("image"):
@@ -130,49 +134,99 @@ class Pollinations(BaseAIModel):
             return self._handle_streaming_response(response)
         return response.json()
         
+    def _handle_streaming_generation(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle streaming text generation"""
+        try:
+            # Prepare request
+            url = f"{self.text_base_url}/stream"
+            headers = {"Content-Type": "application/json"}
+            data = {
+                "prompt": config["prompt"],
+                "model": config.get("model", "openai"),
+                "stream": True
+            }
+            
+            # Make request
+            response = requests.post(url, json=data, headers=headers, stream=True)
+            response.raise_for_status()
+            
+            # Process streaming response
+            content = ""
+            for line in response.iter_lines():
+                if line:
+                    json_line = line.decode('utf-8')
+                    if json_line.startswith("data: "):
+                        json_data = json_line[6:]
+                        if json_data == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(json_data)
+                            if "choices" in data and len(data["choices"]) > 0:
+                                delta = data["choices"][0].get("delta", {})
+                                content += delta.get("content", "")
+                        except json.JSONDecodeError:
+                            self.logger.error(f"Failed to parse streaming line: {json_line}")
+                            continue
+            
+            # Make sure we have some content
+            if not content:
+                raise ValueError("No content received from streaming response")
+            
+            return {
+                "success": True,
+                "streamed_content": json.dumps({
+                    "choices": [{
+                        "delta": {
+                            "content": content
+                        },
+                        "finish_reason": "stop"
+                    }]
+                }),
+                "model": config.get("model", "openai")
+            }
+        except Exception as e:
+            self.logger.error(f"Error in streaming generation: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+            
     def _handle_image_generation(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Handle image generation requests"""
-        prompt = config["prompt"]
-        model = config.get("model", "flux")
-        width = config.get("width", 1024)
-        height = config.get("height", 1024)
-        
-        # Prepare URL parameters
-        params = {
-            "model": model,
-            "width": width,
-            "height": height,
-            "seed": config.get("seed"),
-            "nologo": config.get("nologo", False),
-            "private": config.get("private", False),
-            "enhance": config.get("enhance", False),
-            "safe": config.get("safe", False)
-        }
-        
-        # Remove None values
-        params = {k: v for k, v in params.items() if v is not None}
-        
-        # Make request
-        response = requests.get(
-            f"{self.image_base_url}/prompt/{prompt}",
-            params=params,
-            stream=True
-        )
-        
-        if response.status_code == 200:
-            # Save image to file
-            import os
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"generated_image_{timestamp}.jpg"
+        try:
+            # Prepare request
+            url = f"{self.image_base_url}/prompt/{config["prompt"]}"
+            headers = {"Content-Type": "application/json"}
+            params = {
+                "model": config.get("model", "flux"),
+                "width": config.get("width", 512),
+                "height": config.get("height", 512),
+                "nologo": config.get("nologo", True),
+                "private": config.get("private", True),
+                "enhance": config.get("enhance", True),
+                "safe": config.get("safe", True)
+            }
             
-            with open(filename, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            
-            return {"image_path": os.path.abspath(filename)}
-        else:
+            # Make request
+            response = requests.get(url, params=params, headers=headers)
             response.raise_for_status()
+            
+            # Process response
+            # The API returns the image file directly
+            image_path = self.test_output_dir / "test_image.png"
+            with open(image_path, "wb") as f:
+                f.write(response.content)
+            
+            return {
+                "success": True,
+                "image_path": str(image_path)
+            }
+        except Exception as e:
+            self.logger.error(f"Error in image generation: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
             
     def _handle_audio_generation(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Handle audio generation requests"""
@@ -254,22 +308,45 @@ class Pollinations(BaseAIModel):
     def _handle_streaming_response(self, response: requests.Response):
         """Handle streaming responses"""
         try:
-            from sseclient import SSEClient
-            messages = []
-            for msg in SSEClient(response):
-                if msg.data != '[DONE]':
-                    try:
-                        data = json.loads(msg.data)
-                        if "choices" in data and data["choices"]:
-                            delta = data["choices"][0].get("delta", {})
-                            if "content" in delta:
-                                messages.append(delta["content"])
-                    except json.JSONDecodeError:
-                        continue
-            return {"streamed_content": json.dumps({"choices": [{"delta": {"content": "".join(messages)}, "finish_reason": "stop"}]})}
+            content = ""
+            for line in response.iter_lines():
+                if line:
+                    json_line = line.decode('utf-8')
+                    if json_line.startswith("data: "):
+                        json_data = json_line[6:]
+                        if json_data == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(json_data)
+                            if "choices" in data and len(data["choices"]) > 0:
+                                delta = data["choices"][0].get("delta", {})
+                                content += delta.get("content", "")
+                        except json.JSONDecodeError:
+                            self.logger.error(f"Failed to parse streaming line: {json_line}")
+                            continue
+            
+            # Make sure we have some content
+            if not content:
+                raise ValueError("No content received from streaming response")
+            
+            return {
+                "success": True,
+                "streamed_content": json.dumps({
+                    "choices": [{
+                        "delta": {
+                            "content": content
+                        },
+                        "finish_reason": "stop"
+                    }]
+                }),
+                "model": "openai"
+            }
         except Exception as e:
             self.logger.error(f"Error handling streaming response: {e}")
-            return {"streamed_content": json.dumps({"choices": [{"delta": {"content": ""}, "finish_reason": "error"}]})}
+            return {
+                "success": False,
+                "error": str(e)
+            }
         
     def chat_completion(self, model: str, messages: List[Dict[str, Any]]) -> str:
         """

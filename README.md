@@ -4,6 +4,8 @@ Overview
 ---
 The MIMIR Artificial Intelligence Platform is an open-source framework designed to connect inputs and outputs to AI systems with integrated storage capabilities. The platform is built to provide a modular and flexible architecture, allowing users to easily integrate various components and customize the system to suit their specific needs.
 
+[![Star History Chart](https://api.star-history.com/svg?repos=Mimir-AIP/Mimir-AIP&type=Date)](https://www.star-history.com/#Mimir-AIP/Mimir-AIP&Date)
+
 Modular Plugin System
 ---
 MIMIR features a modular plugin system that enables users to extend the platform's functionality through the use of plugins. This system allows for the easy addition of new inputs, outputs, and data processing modules, making it simple to integrate with a wide range of data sources and AI systems.

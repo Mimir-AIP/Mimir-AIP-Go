@@ -5,3 +5,4 @@ Pillow>=11.2.1
 transformers>=4.30.0
 sentencepiece>=0.2.10
 torch>=2.0.0
+opencv-python>=4.9.0

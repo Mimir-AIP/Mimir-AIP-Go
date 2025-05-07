@@ -183,4 +183,67 @@ A: The context is a generic dictionary, propagated through all steps. Plugins sh
 
 ---
 
+## Video Input Support
+
+The VideoInput plugin enables processing video files in Mimir-AIP pipelines. It supports:
+- Video frame extraction at configurable intervals
+- Frame resizing options
+- Metadata extraction
+- Multiple video formats (mp4, avi, mov, mkv)
+- Integration with existing image processing plugins
+
+### Using VideoInput Plugin
+
+Example pipeline configuration:
+```yaml
+steps:
+  - name: "Extract video frames"
+    config:
+      plugin: "VideoInput"
+      config:
+        video_path: "input.mp4"           # Path to video file
+        frame_interval: 30                 # Extract every 30th frame (1fps for 30fps video)
+        output_dir: "extracted_frames"     # Where to save frames
+        frame_size: [640, 480]            # Optional resize dimensions
+        output_format: "jpg"              # Output image format (jpg/png)
+        max_frames: 100                   # Optional limit on frames
+      output: "video_data"                # Output context variable
+```
+
+The plugin outputs:
+- Extracted frame paths and timestamps
+- Video metadata (fps, duration, dimensions)
+- Total frames processed
+
+### Integration with Image Processing
+
+VideoInput works seamlessly with existing image processing plugins:
+
+```yaml
+steps:
+  - name: "Extract video frames"
+    config:
+      plugin: "VideoInput"
+      config:
+        video_path: "input.mp4"
+        frame_interval: 30
+      output: "video_data"
+  
+  - name: "Process frames with Moondream"
+    config:
+      plugin: "MoondreamPlugin"
+      config:
+        action: "detect"
+        input_image_key: "video_data.frames[0].path"  # Process first frame
+        object: "car"
+      output: "detection_result"
+```
+
+### Requirements
+- OpenCV (opencv-python package)
+- Sufficient storage for frame extraction
+- Supported video codecs installed
+
+---
+
 For further details, see plugin docstrings and example YAML files in `src/pipelines/`.

@@ -1,0 +1,22 @@
+version: 2
+name: add_user_profiles
+description: Add user profiles table with one-to-one relationship to users (MySQL version)
+up: |
+  CREATE TABLE user_profiles (
+    user_id INTEGER PRIMARY KEY,
+    full_name TEXT,
+    bio TEXT,
+    avatar_url TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- Update users table to add automatic timestamp update
+  ALTER TABLE users MODIFY updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+down: |
+  -- Revert users table modification
+  ALTER TABLE users MODIFY updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+  
+  DROP TABLE IF EXISTS user_profiles;

@@ -1,0 +1,17 @@
+version: 1
+name: create_users
+description: Create initial users table with basic fields
+up: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX idx_users_username ON users(username);
+  CREATE INDEX idx_users_email ON users(email);
+down: |
+  DROP TABLE IF EXISTS users;

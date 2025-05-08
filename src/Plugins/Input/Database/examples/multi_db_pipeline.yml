@@ -1,0 +1,68 @@
+name: Multi-Database Example Pipeline
+description: Demonstrates using multiple database plugins together
+
+steps:
+  # Initialize schema in PostgreSQL
+  - plugin: PostgreSQL
+    config:
+      connection:
+        host: localhost
+        database: sourceblog
+        user: ${POSTGRES_USER}
+        password: ${POSTGRES_PASSWORD}
+      mode: migrate
+      migrations_dir: migrations/postgresql
+      close_connection: true
+    output: pg_migration_result
+
+  # Import blog posts from MongoDB
+  - plugin: MongoDB
+    config:
+      connection:
+        host: mongodb://localhost:27017
+        database: blogdb
+      mode: query
+      collection: posts
+      query: {"status": "published"}
+      projection: {"_id": 0, "title": 1, "content": 1, "author": 1}
+      close_connection: true
+    output: mongo_posts
+
+  # Store posts in PostgreSQL
+  - plugin: PostgreSQL
+    config:
+      connection:
+        host: localhost
+        database: sourceblog
+        user: ${POSTGRES_USER}
+        password: ${POSTGRES_PASSWORD}
+      mode: query
+      query: >
+        INSERT INTO posts (title, content, author) 
+        VALUES (%(title)s, %(content)s, %(author)s)
+      params: ${mongo_posts}  # Reference previous step's output
+      close_connection: true
+    output: pg_insert_result
+
+  # Export to SQLite for offline use
+  - plugin: SQLite
+    config:
+      connection:
+        database: blog_offline.db
+      mode: migrate
+      migrations_dir: migrations/sqlite
+    output: sqlite_migration_result
+
+  - plugin: SQLite
+    config:
+      connection:
+        database: blog_offline.db
+      mode: query
+      query: >
+        INSERT INTO posts 
+        SELECT id, title, content, author, created_at, updated_at 
+        FROM dblink('host=localhost dbname=sourceblog user=${POSTGRES_USER} password=${POSTGRES_PASSWORD}',
+                   'SELECT * FROM posts')
+        AS p(id INT, title TEXT, content TEXT, author TEXT, created_at TIMESTAMP, updated_at TIMESTAMP)
+      close_connection: true
+    output: sqlite_sync_result

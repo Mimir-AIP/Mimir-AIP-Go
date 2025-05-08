@@ -182,3 +182,31 @@ rss_feed_raw.xml
 # debug_scrape_input_type.json
 # debug_search_queries.json
 # debug_search_urls.json
+
+# Mimir-AIP specific
+generated_*.mp3
+generated_*.jpg
+generated_*.png
+output_*.jpg
+output_*.png
+map.html
+**/reports/*.html
+**/output/*
+!**/output/.gitkeep
+
+# API keys and secrets
+*.key
+.secrets/
+config.local.yaml
+
+# Local development
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Debug and temporary files
+debug_*.json
+debug_*.txt
+temp/
+tmp/

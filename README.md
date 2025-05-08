@@ -1,38 +1,97 @@
+# Mimir-AIP
+
 <img src="Docs/Assets/mimir-aip-svg-banners.svg" alt="Mimir AIP- Building the future of intelligent data pipelines"/>
 
-Overview
----
-The MIMIR Artificial Intelligence Platform is an open-source framework designed to connect inputs and outputs to AI systems with integrated storage capabilities. The platform is built to provide a modular and flexible architecture, allowing users to easily integrate various components and customize the system to suit their specific needs.
+[![License](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/downloads/)
+[![Documentation](https://img.shields.io/badge/docs-Documentation.md-green)](Documentation.md)
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Mimir-AIP/Mimir-AIP&type=Date)](https://www.star-history.com/#Mimir-AIP/Mimir-AIP&Date)
+## Overview
 
-Modular Plugin System
----
-MIMIR features a modular plugin system that enables users to extend the platform's functionality through the use of plugins. This system allows for the easy addition of new inputs, outputs, and data processing modules, making it simple to integrate with a wide range of data sources and AI systems.
+Mimir-AIP (Artificial Intelligence Platform) is a powerful open-source framework designed to seamlessly connect data inputs and outputs with AI systems. Built with modularity and flexibility at its core, it enables rapid development of AI-powered data pipelines.
 
-- Inputs: Plugins can be created to connect to various data sources, such as databases, APIs, or file systems, allowing users to ingest data from multiple sources.
-- Outputs: Output plugins enable the platform to send processed data to different destinations, including databases, messaging systems, or file systems.
-- Data_Processing: Data processing plugins can be used to perform tasks such as data transformation, filtering, and analysis, allowing users to customize the data processing pipeline.
+### Key Features
 
-Support for Large Language Models (LLMs)
----
-MIMIR provides support for both locally hosted and remotely hosted Large Language Models (LLMs). This allows users to choose the deployment model that best suits their needs, whether it's hosting their own LLM or leveraging cloud-based services.
+- 🔌 **Modular Plugin System**: Easily extend functionality with plugins for:
+  - Data input from various sources (APIs, databases, files)
+  - AI/ML processing with both local and cloud models
+  - Custom output formats and destinations
+  - Data transformation and analysis
 
-Open Alternative to Proprietary Solutions
----
-The MIMIR Artificial Intelligence Platform is intended as an open alternative to proprietary solutions like Palantir AIP. By providing a flexible and customizable framework, MIMIR aims to democratize access to AI technology and enable users to build custom solutions that meet their specific requirements.
+- 🤖 **LLM Integration**: 
+  - Support for both local and cloud-hosted LLMs
+  - Easy integration with OpenAI, OpenRouter, and other providers
+  - Flexible prompt management and response handling
+
+- 📊 **Advanced Processing**:
+  - Video and image processing capabilities
+  - Real-time data streaming
+  - Customizable data transformation pipelines
+  - Report generation with multiple formats
+
+- 🛠️ **Developer-Friendly**:
+  - YAML-based pipeline configuration
+  - Comprehensive testing support
+  - Detailed logging and error handling
+  - Environment-based configuration
+
+## Quick Start
+
+1. Clone the repository:
+```bash
+git clone https://github.com/Mimir-AIP/Mimir-AIP.git
+cd Mimir-AIP
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Configure your environment:
+```bash
+cp src/Plugins/AIModels/AzureAI/.env.template .env
+# Edit .env with your API keys
+```
+
+4. Run your first pipeline:
+```bash
+python src/main.py
+```
+
+## Architecture
 
 ```mermaid
 flowchart TD
- subgraph subGraph0["Input Plugins"]
+    subgraph subGraph0["Input Plugins"]
         A["Data Connection sources and plugins"]
-  end
- subgraph subGraph1["Output Plugins"]
-        E["Output plugins for  graphs & visuals"]
-  end
+    end
+    subgraph subGraph1["Output Plugins"]
+        E["Output plugins for graphs & visuals"]
+    end
     A -->D["Data_Processing Plugins"]
     D-->B["LLM and other AI models"]
     B --> C["Storage"] & E
     C --> B
-
 ```
+
+## Documentation
+
+- [Full Documentation](Documentation.md)
+- [Contributing Guidelines](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+
+## Community & Support
+
+- 🌟 Star this repository to show your support
+- 🐛 Report issues via [GitHub Issues](https://github.com/Mimir-AIP/Mimir-AIP/issues)
+- 💡 Submit feature requests through [GitHub Discussions](https://github.com/Mimir-AIP/Mimir-AIP/discussions)
+- 🤝 Contribute via [Pull Requests](https://github.com/Mimir-AIP/Mimir-AIP/pulls)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Mimir-AIP/Mimir-AIP&type=Date)](https://www.star-history.com/#Mimir-AIP/Mimir-AIP&Date)
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.

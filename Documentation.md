@@ -1,249 +1,272 @@
 # Mimir-AIP Documentation
 
+## Table of Contents
+- [Project Overview](#project-overview)
+- [Getting Started](#getting-started)
+- [Core Concepts](#core-concepts)
+- [Configuration](#configuration)
+- [Plugin Development](#plugin-development)
+- [Testing & Debugging](#testing--debugging)
+- [Advanced Features](#advanced-features)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+
 ## Project Overview
 Mimir-AIP is a modular, plugin-driven pipeline framework for automating data processing, AI/LLM tasks, and report generation. It is designed for extensibility, robust error handling, and flexible testing.
 
----
-
 ## Getting Started
 
+### Prerequisites
+- Python 3.8 or higher
+- pip package manager
+- Virtual environment (recommended)
+
 ### Installation
-- Clone the repository: `git clone <repo_url>`
-- Install dependencies: `pip install -r requirements.txt`
-- (Optional) Set up a Python virtual environment for isolation.
+1. Clone the repository:
+   ```bash
+   git clone <repo_url>
+   cd Mimir-AIP
+   ```
+
+2. Set up virtual environment (recommended):
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ### Project Structure
 ```
 Mimir-AIP/
 ├── src/
-│   ├── Plugins/           # All plugin code (AIModels, Input, Output, Data_Processing, etc.)
-│   ├── pipelines/         # Pipeline YAML definitions
-│   ├── config.yaml        # Main configuration file
-│   └── main.py            # Pipeline runner
-├── tests/                 # Unit and integration tests
-├── requirements.txt       # Python dependencies
-├── Documentation.md       # (This file)
-└── ...
+│   ├── Plugins/           # All plugin code
+│   │   ├── AIModels/     # AI/LLM integration plugins
+│   │   ├── Input/        # Data input plugins
+│   │   ├── Output/       # Output formatting plugins
+│   │   └── Data_Processing/ # Data transformation plugins
+│   ├── pipelines/        # Pipeline YAML definitions
+│   ├── config.yaml       # Main configuration file
+│   └── main.py          # Pipeline runner
+├── tests/               # Unit and integration tests
+├── reports/            # Generated reports
+└── docs/              # Additional documentation
 ```
 
----
+## Core Concepts
 
-## How to Create and Configure Pipelines
+### Pipeline Architecture
+- Pipelines are declarative and defined in YAML
+- Each pipeline is a sequence of steps
+- Steps are executed in order, with context passing between them
+- Plugins handle the actual processing in each step
 
-- Pipelines are defined as YAML files in `src/pipelines/`.
-- Each pipeline is a sequence of steps, each step specifying a plugin, config, and output.
-- Example pipeline step:
+### Context System
+- Context is a shared dictionary passed through all steps
+- Each step can read from and write to the context
+- Use step output names to manage data flow
+- Context is cleared between pipeline runs
+
+### Plugin System
+- Plugins are auto-discovered from the Plugins directory
+- Each plugin type (Input, Output, etc.) has its own subdirectory
+- Plugins must implement the BasePlugin interface
+- Configuration is passed via step_config['config']
+
+## Configuration
+
+### Environment Variables
+The following environment variables are supported across different plugins:
+
+#### Core Settings
+- `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
+- `OUTPUT_DIR`: Directory for generated files
+- `CACHE_DIR`: Directory for caching responses
+
+#### AI Model Integration
+- `OPENROUTER_API_KEY`: API key for OpenRouter integration
+- `AZURE_OPENAI_API_KEY`: API key for Azure OpenAI services
+- `AZURE_OPENAI_ENDPOINT`: Endpoint URL for Azure OpenAI
+- `MOONDREAM_API_KEY`: API key for Moondream AI services
+
+#### Database Integration
+- `DB_HOST`: Database host address
+- `DB_PORT`: Database port number
+- `DB_NAME`: Database name
+- `DB_USER`: Database username
+- `DB_PASSWORD`: Database password
+
+Create a `.env` file based on `.env.template` in the root directory to configure these variables.
+
+### Dependencies
+
+Core dependencies are listed in `requirements.txt`. Some plugins have additional requirements:
+
+#### Database Plugins
+```
+psycopg2-binary>=2.9.9  # PostgreSQL
+mysql-connector-python>=8.2.0  # MySQL
+pymongo>=4.6.0  # MongoDB
+```
+
+#### Video Processing
+```
+opencv-python>=4.8.0
+```
+
+#### API Integration
+```
+requests>=2.25.0
+```
+
+Install plugin-specific dependencies when using those features:
+```bash
+pip install -r src/Plugins/Input/Database/requirements.txt  # For database support
+```
+
+### Pipeline Configuration
+Example pipeline step:
 ```yaml
-- name: "Generate Section Summary"
+- name: "Generate Summary"
   plugin: "LLMFunction"
   config:
-    prompt: "Summarize this section: {section_text}"
+    prompt: "Summarize: {text}"
     model: "openrouter/mistral-7b"
-    mock_response: {"section_summary": "This is a mock section summary for testing."}  # For test mode
-  output: "section_summary"
-```
-- Reference your pipeline in `src/config.yaml`:
-```yaml
-pipelines:
-  - name: "BBC News Pipeline"
-    file: "pipelines/POC.yaml"
-    enabled: true
+    mock_response: {"summary": "Test summary"}
+  output: "summary_result"
 ```
 
----
+## Plugin Development
 
-## How to Add API Keys (e.g., OpenRouter)
+### Creating New Plugins
+1. Create a new directory under appropriate plugin type
+2. Implement BasePlugin interface
+3. Add configuration validation
+4. Document inputs and outputs
+5. Add error handling and logging
 
-- API keys are loaded via environment variables.
-- For OpenRouter, set `OPENROUTER_API_KEY` in your environment:
-  - On Mac/Linux: `export OPENROUTER_API_KEY=your_key_here`
-  - On Windows: `set OPENROUTER_API_KEY=your_key_here`
-- (Optional) Use a `.env` file and a loader like `python-dotenv` if supported.
-- The OpenRouter plugin will raise an error if the key is missing.
-
----
-
-## How to Create New Plugins
-
-- Plugins live under `src/Plugins/<Type>/<PluginName>/<PluginName>.py`.
-- Types include: `AIModels`, `Input`, `Output`, `Data_Processing`, etc.
-- Each plugin must subclass `BasePlugin` and implement `execute_pipeline_step(self, step_config, context)`.
-- Example skeleton:
+Example plugin structure:
 ```python
 from Plugins.BasePlugin import BasePlugin
 
 class MyPlugin(BasePlugin):
     plugin_type = "Data_Processing"
+    
     def execute_pipeline_step(self, step_config, context):
-        # Your logic here
-        return {step_config["output"]: result}
+        config = step_config['config']
+        # Validate config
+        # Process data
+        return {step_config['output']: result}
 ```
-- Register your plugin by placing it in the correct directory and naming it appropriately.
-- Plugins are auto-discovered by the PluginManager.
 
----
+### Best Practices
+- Use clear error messages
+- Document all config options
+- Implement proper error handling
+- Use typing hints
+- Write unit tests
+- Follow PEP standards
 
-## How to Use Test Mode
+## Testing & Debugging
 
-- Enable test mode in `config.yaml`:
+### Test Mode
+Enable test mode in config.yaml:
 ```yaml
 settings:
   test_mode: true
 ```
-- In test mode, LLMFunction and similar plugins will use `mock_response` from the pipeline YAML and avoid real API calls.
-- All steps requiring external APIs should have explicit `mock_response` fields for predictable tests.
-- Output files are automatically cleaned up at the start of each test-mode run.
 
----
+Features:
+- Uses mock responses instead of API calls
+- Cleans up test outputs automatically
+- Validates pipeline configuration
+- Faster execution for testing
 
-## Generalization & Flexibility
+### Logging
+- Check src/mimir.log for detailed logs
+- Log levels: DEBUG, INFO, WARNING, ERROR
+- Each plugin should log appropriate information
+- Use structured logging for better parsing
 
-Mimir-AIP is designed for maximum generalization and flexibility:
-- **Plugin-driven:** All processing is handled by modular plugins, which are auto-discovered by the PluginManager. New plugins can be added without modifying core code.
-- **Declarative pipelines:** Pipelines are defined in YAML, allowing you to add, remove, or reorder steps and plugins without code changes.
-- **Generic context propagation:** The context is a flexible dictionary passed through all steps, supporting any data structure required by future pipelines.
-- **Config extraction best practice:** Plugins must always extract their configuration from `step_config['config']` for maximum robustness and compatibility with future pipeline designs.
-- **No hardcoded logic:** There are no assumptions about pipeline names, step types, or data shapes in the core runner.
+## Advanced Features
 
----
+### Video Processing
+The VideoInput plugin supports:
+- Frame extraction
+- Metadata handling
+- Format conversion
+- Integration with image processing
 
-## Best Practices for Plugin Development
+### Report Generation
+- Multiple output formats (HTML, JSON, etc.)
+- Customizable templates
+- Dynamic content generation
+- Interactive elements
 
-- **Error handling:** All plugins should use robust error handling and log meaningful messages for easier debugging and maintenance.
-- **Docstrings:** Public classes and methods must have clear, PEP 257-style docstrings, including descriptions of expected input, output, and any assumptions.
-- **Input/output documentation:** Each plugin should document the expected input context keys and output structure in its docstring.
-- **Extensibility:** When adding new plugins, ensure they do not assume fixed context keys or data shapes unless clearly documented.
+### LLM Integration
+- Support for multiple providers
+- Prompt management
+- Response parsing
+- Error handling
 
----
+### Plugin Dependencies
 
-## Common Questions & Answers (FAQ)
+Each plugin type may have specific dependencies. These are documented in plugin-specific `requirements.txt` files. Always check the plugin's directory for additional requirements before use.
 
-**Q: How do I add a new step to a pipeline?**
-A: Edit the pipeline YAML and append a new step with the required plugin and config.
+Common plugin dependencies:
+- Database plugins: PostgreSQL, MySQL, or MongoDB drivers
+- Video processing: OpenCV
+- API plugins: requests library
+- LLM plugins: Various AI model SDKs
 
-**Q: Why is my API plugin failing?**
-A: Check that the required API key is set in your environment.
+### Generated Files
 
-**Q: How do I debug pipeline errors?**
-A: Check the logs in `src/mimir.log` for detailed error messages and context.
+The following file types may be generated during pipeline execution:
+- `generated_*.mp3`: Audio output files
+- `generated_*.jpg/png`: Image output files
+- `output_*.jpg/png`: Processed image files
+- `**/reports/*.html`: HTML reports
+- `map.html`: Map visualizations
+- Debug logs and temporary files
 
-**Q: Where are reports and outputs saved?**
-A: By default, in the `src/reports/` and `src/output/` directories. Paths can be configured in YAML or `config.yaml`.
+These files are automatically managed in test mode and are excluded from version control.
 
-**Q: How do I ensure clean test runs?**
-A: Use test mode and let the framework handle output cleanup automatically.
+## Troubleshooting
 
-**Q: How do I ensure my plugin is general and future-proof?**
-A: Always extract configuration from `step_config['config']`, avoid hardcoded context keys, and clearly document input/output in the docstring.
+### Common Issues
+- **API Errors**: Check environment variables and API keys
+- **Plugin Loading**: Verify plugin directory structure
+- **Pipeline Errors**: Validate YAML syntax and config
+- **Context Errors**: Check step output names and dependencies
 
-**Q: Can I add new pipeline steps or plugins without changing the core code?**
-A: Yes. The system is fully plugin-driven and declarative. Just add your plugin and reference it in the YAML pipeline.
+### Debug Tools
+- Enable debug logging
+- Use test mode for isolation
+- Check plugin-specific logs
+- Validate configuration files
 
-**Q: How is context handled across steps?**
-A: The context is a generic dictionary, propagated through all steps. Plugins should only expect what is specified in the pipeline YAML or their docstring.
+## Contributing
 
----
+### Development Workflow
+1. Fork the repository
+2. Create a feature branch
+3. Write tests
+4. Implement changes
+5. Update documentation
+6. Submit pull request
 
-## Troubleshooting & Best Practices
+### Code Style
+- Follow PEP 8
+- Use type hints
+- Write clear docstrings
+- Keep functions focused
+- Comment complex logic
 
-- Use descriptive step names and outputs in pipeline YAML.
-- Always provide `mock_response` for LLM/API steps in test mode.
-- Review plugin docstrings for config options and expected formats.
-- Use absolute paths for output files if you want to control their location precisely.
-- Check logs for `[ERROR]` and `[CLEANUP]` messages.
-
----
-
-## Directory Structure Reference
-
-- `src/Plugins/` - All plugin code, organized by type.
-- `src/pipelines/` - Pipeline YAMLs.
-- `src/config.yaml` - Main config and pipeline references.
-- `src/reports/` - Generated HTML reports.
-- `src/output/` - Other outputs and intermediate files.
-- `tests/` - Automated tests.
-
----
-
-## Contribution Guide (Optional)
-- Fork the repo and create a branch for your feature.
-- Follow the existing code style and naming conventions.
-- Add clear docstrings and comments for new plugins or features.
-- Add or update tests in `tests/`.
-- Submit a pull request with a detailed description.
-
----
-
-## Design Decisions & Gotchas
-- Plugins are auto-discovered and must follow naming conventions.
-- Environment variables are preferred for secrets/API keys (never hardcode them).
-- Test mode is strict: all LLM/API steps must have explicit mocks.
-- Output directories may be relative to `src/`—use absolute paths if needed.
-- Logging is your friend: check `mimir.log` for everything!
-
----
-
-## Video Input Support
-
-The VideoInput plugin enables processing video files in Mimir-AIP pipelines. It supports:
-- Video frame extraction at configurable intervals
-- Frame resizing options
-- Metadata extraction
-- Multiple video formats (mp4, avi, mov, mkv)
-- Integration with existing image processing plugins
-
-### Using VideoInput Plugin
-
-Example pipeline configuration:
-```yaml
-steps:
-  - name: "Extract video frames"
-    config:
-      plugin: "VideoInput"
-      config:
-        video_path: "input.mp4"           # Path to video file
-        frame_interval: 30                 # Extract every 30th frame (1fps for 30fps video)
-        output_dir: "extracted_frames"     # Where to save frames
-        frame_size: [640, 480]            # Optional resize dimensions
-        output_format: "jpg"              # Output image format (jpg/png)
-        max_frames: 100                   # Optional limit on frames
-      output: "video_data"                # Output context variable
-```
-
-The plugin outputs:
-- Extracted frame paths and timestamps
-- Video metadata (fps, duration, dimensions)
-- Total frames processed
-
-### Integration with Image Processing
-
-VideoInput works seamlessly with existing image processing plugins:
-
-```yaml
-steps:
-  - name: "Extract video frames"
-    config:
-      plugin: "VideoInput"
-      config:
-        video_path: "input.mp4"
-        frame_interval: 30
-      output: "video_data"
-  
-  - name: "Process frames with Moondream"
-    config:
-      plugin: "MoondreamPlugin"
-      config:
-        action: "detect"
-        input_image_key: "video_data.frames[0].path"  # Process first frame
-        object: "car"
-      output: "detection_result"
-```
-
-### Requirements
-- OpenCV (opencv-python package)
-- Sufficient storage for frame extraction
-- Supported video codecs installed
-
----
-
-For further details, see plugin docstrings and example YAML files in `src/pipelines/`.
+### Testing Requirements
+- Write unit tests for new features
+- Update existing tests as needed
+- Include integration tests
+- Verify in test mode

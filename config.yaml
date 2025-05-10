@@ -5,6 +5,18 @@ pipelines:
     enabled: true
     # No schedule: run-once pipeline
 
+plugins:
+  # Optional: explicitly enable specific plugins (default: all enabled)
+  # enabled:
+  #   - AIModels.OpenAI
+  #   - Data_Processing.LLMFunction
+  #   - Input.web_search
+  
+  # Optional: explicitly disable specific plugins
+  # disabled:
+  #   - AIModels.MockAIModel
+  #   - Data_Processing.Delay
+
 settings:
   pipeline_directory: "src/pipelines"
   output_directory: "output"

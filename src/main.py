@@ -58,8 +58,8 @@ def main():
     logging.getLogger().setLevel(getattr(logging, log_level))
     logger.info(f"[Startup] CWD: {os.getcwd()}, Python exec: {sys.executable}")
 
-    # Step 2: Initialize the PluginManager
-    plugin_manager = PluginManager()
+    # Step 2: Initialize the PluginManager with config
+    plugin_manager = PluginManager(config=config)
     
     # Step 3: Load all plugins
     try:

@@ -23,15 +23,17 @@ class PluginManager:
         warnings (Set[str]): Set of warnings encountered during plugin loading.
     '''
 
-    def __init__(self, plugins_path="Plugins"):
+    def __init__(self, plugins_path="Plugins", config=None):
         '''Initializes the PluginManager instance.
 
         Args:
             plugins_path (str): Path to the plugins directory. Defaults to "Plugins".
+            config (dict): Optional configuration containing plugin enable/disable lists
         '''
         self.plugins_path = plugins_path
         self.plugins: Dict[str, Dict[str, object]] = {}
         self.warnings: Set[str] = set()
+        self.config = config or {}
         
         # Add src directory to Python path for imports
         src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -79,8 +81,25 @@ class PluginManager:
         if not os.path.isdir(plugin_type_path):
             return
 
+        # Get plugin config if available
+        plugin_config = self.config.get('plugins', {})
+        enabled_plugins = plugin_config.get('enabled')
+        disabled_plugins = plugin_config.get('disabled', [])
+
         for folder in os.listdir(plugin_type_path):
             if folder.startswith('__'):  # Skip __pycache__ and similar
+                continue
+                
+            plugin_full_name = f"{plugin_type}.{folder}"
+            
+            # Skip if explicitly disabled
+            if plugin_full_name in disabled_plugins:
+                self.warnings.add(f"Plugin {plugin_full_name} is disabled by config")
+                continue
+                
+            # Skip if enabled list exists and this plugin isn't in it
+            if enabled_plugins and plugin_full_name not in enabled_plugins:
+                self.warnings.add(f"Plugin {plugin_full_name} not in enabled list")
                 continue
                     
             plugin_file = os.path.join(plugin_type_path, folder, f"{folder}.py")

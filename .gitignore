@@ -190,9 +190,6 @@ generated_*.png
 output_*.jpg
 output_*.png
 map.html
-**/reports/*.html
-**/output/*
-!**/output/.gitkeep
 
 # API keys and secrets
 *.key

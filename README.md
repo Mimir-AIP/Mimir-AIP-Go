@@ -28,6 +28,11 @@ Mimir-AIP (Artificial Intelligence Platform) is a powerful open-source framework
   - Real-time data streaming
   - Customizable data transformation pipelines
   - Report generation with multiple formats
+  - **Context Management**:
+    - Thread-safe operations using locking
+    - Versioning via snapshots
+    - Configurable conflict resolution (overwrite/keep/merge)
+    - Dictionary merging support
 
 - 🛠️ **Developer-Friendly**:
   - YAML-based pipeline configuration

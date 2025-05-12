@@ -65,10 +65,42 @@ Mimir-AIP/
 - Plugins handle the actual processing in each step
 
 ### Context System
-- Context is a shared dictionary passed through all steps
-- Each step can read from and write to the context
-- Use step output names to manage data flow
-- Context is cleared between pipeline runs
+
+The ContextManager provides centralized state management with thread-safe operations.
+
+#### Features
+- **Thread Safety**: All operations protected by threading.Lock()
+- **Version Control**: Take and restore snapshots of context state
+- **Conflict Resolution**:
+  - `overwrite`: Replace existing values (default)
+  - `keep`: Preserve existing values
+  - `merge`: Combine dictionaries recursively
+- **Performance**: Optimized for high throughput (tested to 1000 ops in <100ms)
+- **Error Handling**: Validates inputs and logs errors
+
+#### API Reference
+```python
+get_context(key=None) -> Any
+set_context(key, value, overwrite=True) -> bool
+merge_context(new_context, conflict_strategy='overwrite') -> Dict
+snapshot_context() -> int
+restore_context(snapshot_id) -> bool
+clear_context() -> None
+```
+
+#### Example Usage
+```python
+# Basic operations
+cm.set_context('user', {'name': 'Alice'})
+user = cm.get_context('user')
+
+# Merge dictionaries
+cm.merge_context({'user': {'age': 30}}, conflict_strategy='merge')
+
+# Version control
+snap_id = cm.snapshot_context()
+cm.restore_context(snap_id)
+```
 
 ### Plugin System
 - Plugins are auto-discovered from the Plugins directory

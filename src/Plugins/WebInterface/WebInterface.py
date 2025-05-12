@@ -1,5 +1,5 @@
 """
-WebInterface plugin with customizable theming
+WebInterface with LLMFunction-compatible processing
 """
 import os
 import logging
@@ -12,105 +12,184 @@ from Plugins.BasePlugin import BasePlugin
 from Plugins.PluginManager import PluginManager
 
 class WebInterface(BasePlugin):
-    """Customizable web interface for pipelines"""
+    """Web interface with direct LLM processing"""
     
     plugin_type = "InputOutput"
-    
-    DEFAULT_CSS = """
-    :root {
-        --primary-color: #2563eb;
-        --secondary-color: #1e40af;
-        --text-color: #1f2937;
-        --bg-color: #f9fafb;
-    }
-    body {
-        font-family: sans-serif;
-        color: var(--text-color);
-        background: var(--bg-color);
-    }
-    .llm-chat {
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        padding: 1rem;
-        margin: 1rem 0;
-    }
-    """
     
     def __init__(self, port: int = 8080):
         super().__init__()
         self.port = port
         self.app = FastAPI()
         self.active_connections = set()
-        self.theme_config = {}
+        self.llm_plugin = None
+        self.plugin_manager = PluginManager()
+        self.dashboard_sections = {}  # section_id -> section_data
+        self.section_lock = threading.Lock()
+        self.default_css = """
+        .dashboard-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #fff;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            box-shadow: 0 1px 5px rgba(27,31,35,0.07);
+        }
+        .section-header h2 {
+            font-size: 1.5em;
+            color: #34495e;
+            margin: 0 0 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .section-content {
+            padding: 10px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0;
+        }
+        th, td {
+            border: 1px solid #e1e4e8;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        th {
+            background: #f6f8fa;
+        }
+        code, pre {
+            font-family: monospace;
+            background: #f6f8fa;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        """
         
         # Set up routes
         self.app.mount("/static", StaticFiles(directory="static"), name="static")
         self.app.add_websocket_route("/ws", self.websocket_endpoint)
         self.app.add_route("/", self.serve_interface, methods=["GET"])
-        self.app.add_route("/theme.css", self.serve_theme_css, methods=["GET"])
-        
-    async def serve_interface(self) -> HTMLResponse:
-        """Serve the themed web interface"""
-        html_content = f"""
+        self.app.add_route("/llm-query", self.handle_llm_query, methods=["POST"])
+        self.app.add_route("/update-dashboard", self.handle_dashboard_update, methods=["POST"])
+
+    async def handle_dashboard_update(self, request: Request):
+        """Handle dashboard section updates from pipelines"""
+        try:
+            updates = await request.json()
+            with self.section_lock:
+                for update in updates:
+                    section_id = update['id']
+                    if update.get('action') == 'remove':
+                        self.dashboard_sections.pop(section_id, None)
+                    else:  # add/update
+                        self.dashboard_sections[section_id] = update['data']
+            
+            await self._broadcast_sections()
+            return JSONResponse({"status": "success"})
+        except Exception as e:
+            logging.error(f"Dashboard update error: {e}")
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    async def _broadcast_sections(self):
+        """Send current dashboard state to all clients"""
+        message = {
+            'type': 'dashboard_update',
+            'sections': list(self.dashboard_sections.values()),
+            'timestamp': time.time()
+        }
+        await self._broadcast(message)
+
+    async def handle_llm_query(self, request: Request):
+        """Handle LLM query using same pattern as LLMFunction"""
+        try:
+            data = await request.json()
+            config = data.get('config', {})
+            
+            # Same LLM plugin selection as LLMFunction
+            plugin_name = config.get("plugin", "OpenAI")
+            self.llm_plugin = self.plugin_manager.get_plugin("AIModels", plugin_name)
+            if not self.llm_plugin:
+                raise ValueError(f"LLM plugin {plugin_name} not found")
+
+            # Format messages like LLMFunction
+            messages = [{
+                "role": "user",
+                "content": f"{config.get('function', '')}\n\n{config.get('format', '')}\n\n{data['prompt']}"
+            }]
+
+            response = self.llm_plugin.chat_completion(
+                model=config.get("model", "gpt-3.5-turbo"),
+                messages=messages
+            )
+
+            # Return consistent response format
+            return JSONResponse({
+                "response": response['content'] if isinstance(response, dict) else response
+            })
+            
+        except Exception as e:
+            logging.error(f"LLM query error: {e}")
+            return JSONResponse(
+                {"error": str(e)}, 
+                status_code=500
+            )
+
+    def execute_pipeline_step(self, step_config: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute step with same interface as LLMFunction"""
+        try:
+            config = step_config["config"]
+            
+            # Same direct LLM processing
+            plugin_name = config.get("plugin", "OpenAI")
+            self.llm_plugin = self.plugin_manager.get_plugin("AIModels", plugin_name)
+            if not self.llm_plugin:
+                raise ValueError(f"LLM plugin {plugin_name} not found")
+
+            messages = [{
+                "role": "user",
+                "content": f"{config.get('function', '')}\n\n{config.get('format', '')}\n\n{step_config.get('input', '')}"
+            }]
+
+            response = self.llm_plugin.chat_completion(
+                model=config.get("model", "gpt-3.5-turbo"),
+                messages=messages
+            )
+
+            result = response['content'] if isinstance(response, dict) else response
+            context[step_config["output"]] = result
+            
+            # Start web interface if not running
+            if not hasattr(self, '_server'):
+                import uvicorn
+                import threading
+                self._server = threading.Thread(
+                    target=uvicorn.run,
+                    args=(self.app,),
+                    kwargs={"host": "0.0.0.0", "port": self.port},
+                    daemon=True
+                )
+                self._server.start()
+                
+            return {step_config["output"]: result}
+            
+        except Exception as e:
+            logging.error(f"Pipeline step error: {e}")
+            return {step_config.get("output", "llm_result"): f"Error: {str(e)}"}
+
+    async def serve_interface(self, request: Request):
+        """Serve the main web interface with default CSS styling"""
+        return HTMLResponse(f"""
         <!DOCTYPE html>
         <html>
-        <head>
-            <title>Mimir Web Interface</title>
-            <link rel="stylesheet" href="/theme.css">
-            <link rel="stylesheet" href="/static/css/interface.css">
-        </head>
-        <body>
-            <div id="content-container"></div>
-            <script src="/static/js/app.js"></script>
-            <script src="/static/js/llm-chat.js"></script>
-        </body>
+            <head>
+                <title>Mimir AIP Web Interface</title>
+                <style>
+                {self.default_css}
+                </style>
+            </head>
+            <body>
+                <div id="content-container"></div>
+                <script src="/static/js/app.js"></script>
+            </body>
         </html>
-        """
-        return HTMLResponse(content=html_content)
-        
-    async def serve_theme_css(self) -> HTMLResponse:
-        """Serve dynamic theme CSS"""
-        css = self.theme_config.get('css', self.DEFAULT_CSS)
-        return HTMLResponse(content=css, media_type="text/css")
-        
-    def execute_pipeline_step(self, step_config: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute pipeline step with theme configuration"""
-        config = step_config.get("config", {})
-        
-        # Apply theme configuration
-        self.theme_config = {
-            'css': config.get('css'),
-            'title': config.get('title', 'Mimir Web Interface')
-        }
-        
-        # Start server if not running
-        if not hasattr(self, '_server'):
-            import uvicorn
-            import threading
-            self._server = threading.Thread(
-                target=uvicorn.run,
-                args=(self.app,),
-                kwargs={"host": "0.0.0.0", "port": self.port},
-                daemon=True
-            )
-            self._server.start()
-            
-        return context
-
-if __name__ == "__main__":
-    plugin = WebInterface()
-    test_config = {
-        "plugin": "WebInterface",
-        "config": {
-            "port": 8080,
-            "css": """
-            :root {
-                --primary-color: #7c3aed;
-                --secondary-color: #5b21b6;
-                --text-color: #111827;
-                --bg-color: #f5f3ff;
-            }
-            """
-        }
-    }
-    result = plugin.execute_pipeline_step(test_config, {})
+        """)

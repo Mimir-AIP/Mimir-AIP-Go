@@ -16,11 +16,60 @@ class WebInterfaceApp {
         };
     }
 
+    constructor() {
+        this.sectionElements = new Map();
+        this.socket = new WebSocket(`ws://${window.location.host}/ws`);
+        this.socket.onmessage = (event) => this.handleMessage(event);
+        this.container = document.getElementById('content-container');
+    }
+
     handleMessage(event) {
         const message = JSON.parse(event.data);
         if (message.type === 'content_update') {
             this.renderContent(message.content);
         }
+        else if (message.type === 'dashboard_update') {
+            this.handleDashboardUpdate(message);
+        }
+    }
+
+    handleDashboardUpdate(message) {
+        message.sections.forEach(section => {
+            const existing = this.sectionElements.get(section.id);
+            
+            if (existing) {
+                // Update existing section
+                existing.innerHTML = this.renderSection(section);
+            } else {
+                // Create new section
+                const element = document.createElement('div');
+                element.id = `section-${section.id}`;
+                element.className = 'dashboard-section';
+                element.innerHTML = this.renderSection(section);
+                this.container.appendChild(element);
+                this.sectionElements.set(section.id, element);
+            }
+            
+            // Execute any JavaScript
+            if (section.javascript) {
+                try {
+                    new Function(section.javascript)();
+                } catch (e) {
+                    console.error('Error executing section JS:', e);
+                }
+            }
+        });
+    }
+
+    renderSection(section) {
+        return `
+            <div class="section-header">
+                <h2>${section.heading}</h2>
+            </div>
+            <div class="section-content">
+                ${section.content}
+            </div>
+        `;
     }
 
     renderContent(contentBlocks) {

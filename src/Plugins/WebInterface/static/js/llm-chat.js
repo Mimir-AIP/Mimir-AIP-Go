@@ -13,7 +13,7 @@ class LLMChat {
 
     initUI() {
         this.container.innerHTML = `
-            <div class="llm-chat">
+            <div class="llm-chat" data-dashboard-integration="true">
                 <div class="chat-header">
                     <h3>${this.theme.title || 'LLM Chat'}</h3>
                     <select class="context-select">
@@ -127,6 +127,20 @@ class LLMChat {
                 value: lastResponse
             }
         };
+        
+        // Check if we should also create a dashboard section
+        if (this.container.dataset.dashboardIntegration === "true") {
+            window.app.sendMessage('dashboard_update', {
+                id: `chat_${Date.now()}`,
+                action: "add",
+                data: {
+                    heading: "Chat Export",
+                    content: lastResponse,
+                    javascript: ""
+                }
+            });
+        }
+        
         window.app.sendMessage(exportData.type, exportData.data);
     }
 }

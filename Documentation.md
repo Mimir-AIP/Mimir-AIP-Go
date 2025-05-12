@@ -232,6 +232,39 @@ The VideoInput plugin supports:
 - Format conversion
 - Integration with image processing
 
+### Live Stream Processing
+The LiveStreamProcessor plugin supports:
+- HLS (.m3u8) and DASH (.mpd) streams
+- Stream validation and health checks
+- Frame capture from live streams
+- Integration with WebInterface player
+
+#### WebInterface Player Features:
+- Uses hls.js for HLS playback
+- Native fallback for Safari
+- Configurable player controls
+- Multiple concurrent streams
+- Error handling and recovery
+
+#### Example Pipeline:
+```yaml
+- plugin: "Input/LiveStreamProcessor/LiveStreamProcessor"
+  config:
+    stream_url: "http://example.com/stream.m3u8"
+    capture_frame: true  # Optional frame capture
+  output: "stream_data"
+
+- plugin: "WebInterface/WebInterface"
+  config:
+    stream_displays:
+      - player_id: "stream1"
+        source: "stream_data.stream_url"
+        config:
+          autoplay: true
+          controls: true
+          width: "800px"
+```
+
 ### Report Generation
 - Multiple output formats (HTML, JSON, etc.)
 - Customizable templates

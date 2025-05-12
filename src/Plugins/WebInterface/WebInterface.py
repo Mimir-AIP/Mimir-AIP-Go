@@ -250,18 +250,91 @@ class WebInterface(BasePlugin):
         <html>
             <head>
                 <title>Mimir AIP Web Interface</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
+                /* Base Responsive Styles */
+                :root {{
+                    --spacing: 1rem;
+                    --border-radius: 6px;
+                }}
+
+                /* Visualizer Controls */
+                .visualizer-wrapper {{
+                    position: relative;
+                    margin: var(--spacing) 0;
+                }}
+                
+                .toggle-visualizer {{
+                    background: #f6f8fa;
+                    border: 1px solid #e1e4e8;
+                    border-radius: var(--border-radius);
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    margin-bottom: 8px;
+                }}
+                
+                .toggle-visualizer:hover {{
+                    background: #e1e4e8;
+                }}
+                
+                body {{
+                    margin: 0;
+                    padding: 0;
+                    min-height: 100vh;
+                    display: grid;
+                    grid-template-rows: auto 1fr;
+                }}
+                
+                #app-container {{
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: var(--spacing);
+                    padding: var(--spacing);
+                    max-width: 100%;
+                }}
+                
+                #content-container {{
+                    display: grid;
+                    gap: var(--spacing);
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                }}
+                
+                /* Preserve existing styles */
                 {self.default_css}
+                
+                /* Responsive adjustments */
+                @media (max-width: 768px) {{
+                    .dashboard-section {{
+                        margin: 10px 0;
+                        padding: 10px;
+                    }}
+                }}
                 </style>
             </head>
             <body>
-                <div id="content-container"></div>
-                <div id="pipeline-visualizer-container" style="display:none;"></div>
-                <div id="stream-players-container"></div>
+                <div id="app-container">
+                    <div id="content-container"></div>
+                    <div class="visualizer-wrapper">
+                        <button class="toggle-visualizer" onclick="toggleVisualizer()">Toggle Pipeline View</button>
+                        <div id="pipeline-visualizer-container" style="display:none;"></div>
+                    </div>
+                    <div id="stream-players-container"></div>
+                </div>
                 <script src="/static/js/app.js"></script>
                 <script src="/static/js/pipeline-visualizer.js"></script>
                 <script src="/static/js/stream-player.js"></script>
                 <script>
+                    // Toggle visualizer visibility
+                    function toggleVisualizer() {{
+                        const container = document.getElementById('pipeline-visualizer-container');
+                        if (container.style.display === 'none') {{
+                            container.style.display = 'block';
+                            pipelineVisualizer.renderLast();
+                        }} else {{
+                            container.style.display = 'none';
+                        }}
+                    }}
+
                     // Initialize pipeline visualizer
                     const pipelineVisualizer = new PipelineVisualizer('pipeline-visualizer-container');
                     

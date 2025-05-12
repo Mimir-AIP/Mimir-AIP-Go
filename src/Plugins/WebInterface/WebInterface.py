@@ -216,6 +216,33 @@ class WebInterface(BasePlugin):
             logging.error(f"Toggle visualizer error: {e}")
             return JSONResponse({"error": str(e)}, status_code=500)
 
+    async def handle_stream_message(self, message: Dict):
+        """Handle stream-related messages from pipelines"""
+        if message['type'] == 'stream_init':
+            await self._init_stream_player(
+                message['player_id'],
+                message['stream_url'],
+                message.get('config', {})
+            )
+        elif message['type'] == 'stream_stop':
+            await self._stop_stream_player(message['player_id'])
+
+    async def _init_stream_player(self, player_id: str, stream_url: str, config: Dict):
+        """Initialize a new stream player instance"""
+        await self._broadcast({
+            'type': 'stream_init',
+            'player_id': player_id,
+            'stream_url': stream_url,
+            'config': config
+        })
+
+    async def _stop_stream_player(self, player_id: str):
+        """Stop and cleanup a stream player"""
+        await self._broadcast({
+            'type': 'stream_stop',
+            'player_id': player_id
+        })
+
     async def serve_interface(self, request: Request):
         """Serve the main web interface with default CSS styling"""
         return HTMLResponse(f"""
@@ -230,8 +257,10 @@ class WebInterface(BasePlugin):
             <body>
                 <div id="content-container"></div>
                 <div id="pipeline-visualizer-container" style="display:none;"></div>
+                <div id="stream-players-container"></div>
                 <script src="/static/js/app.js"></script>
                 <script src="/static/js/pipeline-visualizer.js"></script>
+                <script src="/static/js/stream-player.js"></script>
                 <script>
                     // Initialize pipeline visualizer
                     const pipelineVisualizer = new PipelineVisualizer('pipeline-visualizer-container');
@@ -240,6 +269,31 @@ class WebInterface(BasePlugin):
                     function updatePipeline(tree, highlightPath) {{
                         document.getElementById('pipeline-visualizer-container').style.display = 'block';
                         pipelineVisualizer.render(tree, highlightPath);
+                    }}
+
+                    // Stream player instances
+                    const streamPlayers = {{}};
+
+                    // Handle stream messages
+                    function handleStreamMessage(message) {{
+                        if (message.type === 'stream_init') {{
+                            const container = document.getElementById('stream-players-container');
+                            const playerDiv = document.createElement('div');
+                            playerDiv.id = `stream-player-${{message.player_id}}`;
+                            container.appendChild(playerDiv);
+                            
+                            streamPlayers[message.player_id] = new StreamPlayer({{
+                                targetElementId: playerDiv.id,
+                                ...message.config
+                            }});
+                            streamPlayers[message.player_id].loadStream(message.stream_url);
+                        }}
+                        else if (message.type === 'stream_stop') {{
+                            if (streamPlayers[message.player_id]) {{
+                                streamPlayers[message.player_id].destroy();
+                                delete streamPlayers[message.player_id];
+                            }}
+                        }}
                     }}
                 </script>
             </body>

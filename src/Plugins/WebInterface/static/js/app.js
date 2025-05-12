@@ -6,6 +6,7 @@ class WebInterfaceApp {
         this.socket = new WebSocket(`ws://${window.location.host}/ws`);
         this.socket.onmessage = (event) => this.handleMessage(event);
         this.container = document.getElementById('content-container');
+        this.pipelineContainer = document.getElementById('pipeline-visualizer-container');
         
         // Initialize content types handlers
         this.contentHandlers = {
@@ -14,6 +15,31 @@ class WebInterfaceApp {
             'javascript': this.handleJsContent.bind(this),
             'mixed': this.handleMixedContent.bind(this)
         };
+
+        // Create pipeline visualization section
+        this.pipelineSection = document.createElement('div');
+        this.pipelineSection.id = 'pipeline-section';
+        this.pipelineSection.className = 'dashboard-section';
+        this.pipelineSection.innerHTML = `
+            <div class="section-header">
+                <h2>Pipeline Status</h2>
+                <button id="toggle-pipeline" class="toggle-button">Show</button>
+            </div>
+            <div class="section-content" id="pipeline-content"></div>
+        `;
+        this.container.appendChild(this.pipelineSection);
+        
+        // Setup toggle button
+        document.getElementById('toggle-pipeline').addEventListener('click', () => {
+            const button = document.getElementById('toggle-pipeline');
+            if (this.pipelineContainer.style.display === 'none') {
+                this.pipelineContainer.style.display = 'block';
+                button.textContent = 'Hide';
+            } else {
+                this.pipelineContainer.style.display = 'none';
+                button.textContent = 'Show';
+            }
+        });
     }
 
     constructor() {
@@ -30,6 +56,9 @@ class WebInterfaceApp {
         }
         else if (message.type === 'dashboard_update') {
             this.handleDashboardUpdate(message);
+        }
+        else if (message.type === 'pipeline_update') {
+            this.handlePipelineUpdate(message);
         }
     }
 
@@ -130,6 +159,12 @@ class WebInterfaceApp {
         const temp = document.createElement('div');
         temp.textContent = html;
         return temp.innerHTML;
+    }
+
+    handlePipelineUpdate(message) {
+        if (window.updatePipeline) {
+            updatePipeline(message.tree, message.highlight_path);
+        }
     }
 }
 

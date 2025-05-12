@@ -25,6 +25,8 @@ class WebInterface(BasePlugin):
         self.plugin_manager = PluginManager()
         self.dashboard_sections = {}  # section_id -> section_data
         self.section_lock = threading.Lock()
+        self.pipeline_state = None
+        self.pipeline_visualizer_enabled = False
         self.default_css = """
         .dashboard-section {
             margin: 20px 0;
@@ -33,6 +35,20 @@ class WebInterface(BasePlugin):
             border: 1px solid #e1e4e8;
             border-radius: 6px;
             box-shadow: 0 1px 5px rgba(27,31,35,0.07);
+        }
+        
+        /* Pipeline visualization styles */
+        .pipeline-node {
+            font-family: monospace;
+            white-space: pre;
+            margin: 5px 0;
+        }
+        .pipeline-line {
+            line-height: 1.5;
+        }
+        .pipeline-node.highlight .pipeline-line {
+            background-color: #f0f7ff;
+            font-weight: bold;
         }
         .section-header h2 {
             font-size: 1.5em;
@@ -71,6 +87,7 @@ class WebInterface(BasePlugin):
         self.app.add_route("/", self.serve_interface, methods=["GET"])
         self.app.add_route("/llm-query", self.handle_llm_query, methods=["POST"])
         self.app.add_route("/update-dashboard", self.handle_dashboard_update, methods=["POST"])
+        self.app.add_route("/toggle-pipeline-visualizer", self.toggle_visualizer, methods=["POST"])
 
     async def handle_dashboard_update(self, request: Request):
         """Handle dashboard section updates from pipelines"""
@@ -95,6 +112,19 @@ class WebInterface(BasePlugin):
         message = {
             'type': 'dashboard_update',
             'sections': list(self.dashboard_sections.values()),
+            'timestamp': time.time()
+        }
+        await self._broadcast(message)
+
+    async def update_pipeline_visualization(self, tree: Dict, highlight_path: List[int] = None):
+        """Update the pipeline visualization for all connected clients"""
+        if not self.pipeline_visualizer_enabled:
+            return
+            
+        message = {
+            'type': 'pipeline_update',
+            'tree': tree,
+            'highlight_path': highlight_path,
             'timestamp': time.time()
         }
         await self._broadcast(message)
@@ -176,6 +206,16 @@ class WebInterface(BasePlugin):
             logging.error(f"Pipeline step error: {e}")
             return {step_config.get("output", "llm_result"): f"Error: {str(e)}"}
 
+    async def toggle_visualizer(self, request: Request):
+        """Enable/disable the pipeline visualizer"""
+        try:
+            data = await request.json()
+            self.pipeline_visualizer_enabled = data.get('enabled', False)
+            return JSONResponse({"status": "success"})
+        except Exception as e:
+            logging.error(f"Toggle visualizer error: {e}")
+            return JSONResponse({"error": str(e)}, status_code=500)
+
     async def serve_interface(self, request: Request):
         """Serve the main web interface with default CSS styling"""
         return HTMLResponse(f"""
@@ -189,7 +229,19 @@ class WebInterface(BasePlugin):
             </head>
             <body>
                 <div id="content-container"></div>
+                <div id="pipeline-visualizer-container" style="display:none;"></div>
                 <script src="/static/js/app.js"></script>
+                <script src="/static/js/pipeline-visualizer.js"></script>
+                <script>
+                    // Initialize pipeline visualizer
+                    const pipelineVisualizer = new PipelineVisualizer('pipeline-visualizer-container');
+                    
+                    // Function to update pipeline visualization
+                    function updatePipeline(tree, highlightPath) {{
+                        document.getElementById('pipeline-visualizer-container').style.display = 'block';
+                        pipelineVisualizer.render(tree, highlightPath);
+                    }}
+                </script>
             </body>
         </html>
         """)

@@ -1,13 +1,5 @@
 # Security Policy
 
-## Supported Versions
-
-Currently supported versions of Mimir-AIP for security updates:
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-
 ## Reporting a Vulnerability
 
 We take the security of Mimir-AIP seriously. If you believe you have found a security vulnerability, please follow these steps:

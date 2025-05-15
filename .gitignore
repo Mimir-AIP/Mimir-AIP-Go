@@ -207,3 +207,4 @@ debug_*.json
 debug_*.txt
 temp/
 tmp/
+.clinerules

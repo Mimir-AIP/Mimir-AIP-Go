@@ -22,6 +22,21 @@ class PipelineVisualizer {
         this.contentContainer.innerHTML = this._renderNode(tree, '', true, highlightPath);
     }
 
+    updateNodeStatus(path, status) {
+        if (!this.currentTree) return;
+        
+        // Find the node in the tree
+        let node = this.currentTree;
+        for (const index of path) {
+            if (!node.children || index >= node.children.length) return;
+            node = node.children[index];
+        }
+        
+        // Update status and re-render
+        node.status = status;
+        this.render(this.currentTree, this.currentHighlightPath);
+    }
+
     _renderNode(node, prefix = '', isLast = true, highlightPath = null, currentPath = []) {
         if (!node) return '';
         // Status icon
@@ -73,3 +88,11 @@ class PipelineVisualizer {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = PipelineVisualizer;
 }
+
+// Global handler for pipeline visualization updates
+window.updatePipeline = function(tree, highlightPath) {
+    const visualizer = window.currentPipelineVisualizer;
+    if (visualizer) {
+        visualizer.render(tree, highlightPath);
+    }
+};

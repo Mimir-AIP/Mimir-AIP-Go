@@ -10,6 +10,7 @@ class StreamPlayer {
         this.autoplay = options.autoplay !== false;
         this.muted = options.muted !== false;
         this.controls = options.controls !== false;
+        this.pipelineId = options.pipelineId || null;
         
         // Player state
         this.player = null;
@@ -110,3 +111,43 @@ class StreamPlayer {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = StreamPlayer;
 }
+
+// Global handler for stream control commands from pipeline
+window.handleStreamControl = function(command, data) {
+    const player = window.currentStreamPlayer;
+    if (!player) return;
+
+    switch (command) {
+        case 'load':
+            player.loadStream(data.url);
+            break;
+        case 'play':
+            player.videoElement.play();
+            break;
+        case 'pause':
+            player.videoElement.pause();
+            break;
+        case 'stop':
+            player.videoElement.pause();
+            player.videoElement.currentTime = 0;
+            break;
+        case 'mute':
+            player.videoElement.muted = true;
+            break;
+        case 'unmute':
+            player.videoElement.muted = false;
+            break;
+    }
+    
+    // Send status update back to pipeline
+    if (player.pipelineId) {
+        const status = {
+            type: 'stream_status',
+            pipelineId: player.pipelineId,
+            state: player.videoElement.paused ? 'paused' : 'playing',
+            currentTime: player.videoElement.currentTime,
+            muted: player.videoElement.muted
+        };
+        window.app.sendPipelineInput(status);
+    }
+};

@@ -92,14 +92,20 @@ class LLMChat {
 
         const prompt = `Context (${contextKey}):\n${contextStr}\n\nQuestion: ${query}`;
 
-        const response = await fetch('/llm-query', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({prompt})
+        // Send LLM query through pipeline
+        const queryData = {
+            type: 'llm_query',
+            prompt: prompt,
+            contextKey: selectedKey,
+            contextData: contextData
+        };
+        
+        window.app.sendPipelineInput(queryData);
+        
+        // Return a promise that will be resolved by the response handler
+        return new Promise((resolve) => {
+            this.pendingResponse = resolve;
         });
-
-        if (!response.ok) throw new Error('LLM query failed');
-        return await response.text();
     }
 
     addMessage(role, content) {
@@ -141,6 +147,15 @@ class LLMChat {
             });
         }
         
-        window.app.sendMessage(exportData.type, exportData.data);
+        window.app.sendPipelineInput(exportData);
     }
 }
+
+// Global handler for LLM responses from pipeline
+window.handleLLMResponse = function(response) {
+    const chat = window.currentChatInstance;
+    if (chat && chat.pendingResponse) {
+        chat.pendingResponse(response);
+        chat.pendingResponse = null;
+    }
+};

@@ -38,9 +38,10 @@ class FileToContext(BasePlugin):
             FileNotFoundError: If file does not exist.
             JSONDecodeError: If the file content is invalid JSON.
         """
-        filename = step_config["filename"]
-        variable = step_config["variable"]
-        output = step_config.get("output", variable)
+        config = step_config.get("config", {})
+        filename = config["filename"]
+        variable = config["variable"]
+        output = config.get("output", variable)
         if not os.path.exists(filename):
             raise FileNotFoundError(f"File '{filename}' does not exist.")
         with open(filename, "r") as f:

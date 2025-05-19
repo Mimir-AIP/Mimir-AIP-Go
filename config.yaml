@@ -1,22 +1,16 @@
-# Main configuration file for Mimir-AIP, you can define pipelines to run here (and schedule them in future versions)
+# Main configuration file for Mimir-AIP
 pipelines:
-  - name: CustomReportPipeline
-    file: "pipelines/CustomReportPipeline.yaml"
+  - name: VisualizerDemo
+    file: "pipelines/visualizer_demo.yaml"
     enabled: true
-    # No schedule: run-once pipeline
 
 plugins:
-  # Optional: explicitly enable specific plugins (default: all enabled)
-  # enabled:
-  #   - AIModels.OpenAI
-  #   - Data_Processing.LLMFunction
-  #   - Input.web_search
-  
-  # Optional: explicitly disable specific plugins
-  # disabled:
-  #   - AIModels.MockAIModel
-  #   - Data_Processing.Delay
-
+  # Enable only required plugins for our demo
+  enabled:
+    - Data_Processing.FileToContext
+    - Data_Processing.GeneralFormatter
+    - Data_Processing.RuleEngine
+    - Output.HTMLReport
 settings:
   pipeline_directory: "src/pipelines"
   output_directory: "output"

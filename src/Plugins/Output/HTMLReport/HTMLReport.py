@@ -200,10 +200,13 @@ class HTMLReport(BasePlugin):
                         # Prefer *_image_path or traffic_image_path for direct linking
                         if (k.endswith('image_path') or k == 'traffic_image_path') and isinstance(v, str):
                             # Make the path relative to the HTML report if needed
-                            import os
-                            report_dir = os.path.dirname(os.path.abspath(os.path.join(self.output_directory, filename)))
-                            rel_path = os.path.relpath(v, report_dir)
-                            safe_context[k] = rel_path
+                            try:
+                                report_dir = os.path.dirname(os.path.abspath(os.path.join(self.output_directory, filename)))
+                                rel_path = os.path.relpath(v, report_dir)
+                                safe_context[k] = rel_path
+                            except (TypeError, ValueError, OSError) as e:
+                                logger.warning(f"[HTMLReport] Error processing image path {k}: {e}")
+                                safe_context[k] = v  # Keep original path on error
                     text = text.format(**safe_context)
                 except Exception as e:
                     logger.warning(f"[HTMLReport] Error formatting section text with context: {e}")

@@ -203,7 +203,8 @@ class RuleEngine(BasePlugin):
                     - 'evaluate': Evaluate rules against facts
                 - rules: Rule definitions for add operation
                 - rule_ids: Rule IDs for remove operation
-                - facts: Facts dictionary for evaluate operation
+                - input_key: Context key containing facts to evaluate
+                - output_key: Context key to store validation results
             context: Pipeline context
             
         Returns:
@@ -232,12 +233,21 @@ class RuleEngine(BasePlugin):
                 return {step_config["output"]: {"removed": len(rule_ids)}}
                 
             elif operation == "evaluate":
-                facts = config.get("facts", {})
+                input_key = config.get("input_key")
+                if not input_key or input_key not in context:
+                    raise ValueError(f"Invalid or missing input_key: {input_key}")
+                    
+                facts = context.get(input_key)
+                if not isinstance(facts, dict):
+                    raise ValueError(f"Input data must be a dictionary, got {type(facts)}")
+                    
                 updated_facts = self.evaluate_rules(facts)
-                return {step_config["output"]: updated_facts}
+                output_key = config.get("output_key", step_config["output"])
+                return {output_key: updated_facts}
                 
             else:
                 raise ValueError(f"Unknown operation: {operation}")
                 
         except Exception as e:
+            self.logger.error(f"Error in RuleEngine plugin: {str(e)}")
             raise ValueError(f"Error in RuleEngine plugin: {str(e)}")

@@ -119,9 +119,115 @@ def main():
 
 
 def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
-    """Execute a single pipeline definition with ASCII tree visualization"""
+    """Execute a pipeline with support for single, scheduled, or continuous execution"""
     logger = logging.getLogger(__name__)
-    logger.info(f"Starting pipeline: {pipeline.get('name', 'Unnamed Pipeline')}")
+    execution_mode = pipeline.get('execution_mode', 'single')
+    logger.info(f"Starting pipeline: {pipeline.get('name', 'Unnamed Pipeline')} (mode: {execution_mode})")
+
+    # Initialize pipeline context and status tracking
+    context = {"output_dir": output_dir, "test_mode": test_mode}
+    step_statuses = {step.get('name', f'step_{i}'): 'pending'
+                   for i, step in enumerate(pipeline["steps"])}
+    iteration_tracking = {}
+
+    def render_tree(highlight_idx=None, runtime_info=None):
+        """Render the pipeline tree with current statuses and highlighting"""
+        full_runtime_info = {
+            'execution_mode': execution_mode,
+            'run_count': run_count if execution_mode == 'continuous' else 1,
+            **(runtime_info or {})
+        }
+        tree = PipelineAsciiTreeVisualizer.build_tree_from_pipeline(
+            pipeline, step_statuses, runtime_info=full_runtime_info)
+        PipelineAsciiTreeVisualizer.render(
+            tree,
+            highlight_path=[highlight_idx] if highlight_idx is not None else None,
+            runtime_info=full_runtime_info)
+
+    def _execute_single_run():
+        """Execute one complete run of the pipeline"""
+        nonlocal context, step_statuses, iteration_tracking
+        
+        for idx, step in enumerate(pipeline["steps"]):
+            step_name = step.get('name', f'step_{idx}')
+            try:
+                step_statuses[step_name] = 'running'
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                
+                if step.get("iterate"):
+                    data = []
+                    labels = []
+                    try:
+                        data = eval(step["iterate"], {"__builtins__": {}}, {"context": context})
+                        for item in data:
+                            label = None
+                            if isinstance(item, dict):
+                                for key in ["title", "name", "id"]:
+                                    if key in item and isinstance(item[key], str):
+                                        label = item[key][:40]
+                                        break
+                            if not label:
+                                label = str(item)[:40]
+                            labels.append(label)
+                    except Exception:
+                        pass
+                    iter_count = len(data) if isinstance(data, list) else 0
+                    iteration_tracking[step_name] = {
+                        'count': iter_count,
+                        'statuses': ['pending'] * iter_count,
+                        'labels': labels
+                    }
+                    render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                    
+                    if iter_count > 0:
+                        for i, item in enumerate(data):
+                            iteration_context = {"item": item, "output_dir": output_dir, **context}
+                            for substep in step["steps"]:
+                                execute_step(substep, iteration_context, plugin_manager)
+                            if "section_summaries" in iteration_context:
+                                context["section_summaries"] = iteration_context["section_summaries"]
+                            iteration_tracking[step_name]['statuses'][i] = 'completed'
+                            render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                else:
+                    execute_step(step, context, plugin_manager)
+                
+                step_statuses[step_name] = 'completed'
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                
+            except Exception as e:
+                logger.error(f"Error in step: {e}")
+                step_statuses[step_name] = 'failed'
+                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
+                raise
+
+    # Handle different execution modes
+    if execution_mode == 'continuous':
+        run_count = 0
+        while True:
+            run_count += 1
+            logger.info(f"Starting continuous pipeline run #{run_count}")
+            try:
+                _execute_single_run()
+            except KeyboardInterrupt:
+                logger.info("Continuous execution interrupted by user")
+                break
+            except Exception as e:
+                logger.error(f"Error in continuous run: {e}")
+                time.sleep(5)  # Brief pause before retry
+    else:
+        _execute_single_run()
+
+    # Automated cleanup for test mode
+    if test_mode:
+        import os
+        for fname in ["section_summaries.json", "reports/report.html"]:
+            fpath = os.path.join(os.path.dirname(__file__), fname) if not fname.startswith("reports/") else os.path.join(os.path.dirname(__file__), "..", fname)
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+                    logger.info(f"[CLEANUP] Removed old file: {fpath}")
+            except Exception as e:
+                logger.warning(f"[CLEANUP] Could not remove {fpath}: {e}")
     
     # Automated cleanup for test mode
     if test_mode:

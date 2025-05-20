@@ -32,8 +32,10 @@ class PluginManager:
         '''
         self.plugins_path = plugins_path
         self.plugins: Dict[str, Dict[str, object]] = {}
+        self.plugin_types = ["AIModels", "Data_Processing", "Input", "Output", "Web"]
         self.warnings: Set[str] = set()
         self.config = config or {}
+        print(f"[DEBUG PluginManager] self.config on init: {self.config}")
         
         # Add src directory to Python path for imports
         src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -85,28 +87,73 @@ class PluginManager:
         plugin_config = self.config.get('plugins', {})
         enabled_plugins = plugin_config.get('enabled')
         disabled_plugins = plugin_config.get('disabled', [])
+        
+        # Log enabled/disabled plugins
+        if enabled_plugins is not None:
+            logging.getLogger(__name__).info(f"Enabled plugins: {enabled_plugins}")
+        if disabled_plugins:
+            logging.getLogger(__name__).info(f"Disabled plugins: {disabled_plugins}")
 
-        for folder in os.listdir(plugin_type_path):
-            if folder.startswith('__'):  # Skip __pycache__ and similar
-                continue
-                
-            plugin_full_name = f"{plugin_type}.{folder}"
+        # Get list of plugin folders to process
+        logging.getLogger(__name__).debug(f"Looking for plugins in: {plugin_type_path}")
+        plugin_folders = [f for f in os.listdir(plugin_type_path) 
+                        if os.path.isdir(os.path.join(plugin_type_path, f)) 
+                        and not f.startswith('__')]
+        logging.getLogger(__name__).debug(f"Found plugin folders: {plugin_folders}")
+
+        for folder in plugin_folders:
+            plugin_base_name = f"{plugin_type}.{folder}"
+            plugin_full_name = f"{plugin_base_name}.{folder}"  # Three-part version
             
-            # Skip if explicitly disabled
-            if plugin_full_name in disabled_plugins:
-                self.warnings.add(f"Plugin {plugin_full_name} is disabled by config")
+            # Generate all possible names this plugin might be referred by
+            possible_names = [
+                plugin_base_name,
+                plugin_full_name,
+                folder,  # Just the folder name
+                f"{plugin_type}.{folder}",  # Type.folder
+                f"{plugin_type}.{folder}.{folder}"  # Type.folder.folder
+            ]
+            logging.getLogger(__name__).debug(f"Checking plugin: {folder}")
+            logging.getLogger(__name__).debug(f"Possible names: {possible_names}")
+            logging.getLogger(__name__).debug(f"Enabled plugins: {enabled_plugins}")
+            logging.getLogger(__name__).debug(f"Disabled plugins: {disabled_plugins}")
+            
+            # Check if plugin is explicitly enabled or disabled
+            is_enabled = (enabled_plugins is None) or any(name in enabled_plugins for name in possible_names)
+            is_disabled = any(name in disabled_plugins for name in possible_names)
+            
+            # Skip if disabled or not explicitly enabled
+            if is_disabled or not is_enabled:
+                if is_disabled:
+                    msg = f"Skipping {plugin_base_name} - disabled by config"
+                    self.warnings.add(f"Plugin {plugin_base_name} is disabled by config")
+                else:
+                    msg = f"Skipping {plugin_base_name} - not in enabled plugins list"
+                    self.warnings.add(f"Plugin {plugin_base_name} not in enabled list")
+                logging.getLogger(__name__).debug(msg)
                 continue
                 
-            # Skip if enabled list exists and this plugin isn't in it
-            if enabled_plugins and plugin_full_name not in enabled_plugins:
-                self.warnings.add(f"Plugin {plugin_full_name} not in enabled list")
-                continue
-                    
+            # If we get here, the plugin is explicitly enabled
+            logging.getLogger(__name__).debug(f"Loading {plugin_base_name} - found in enabled plugins list")
+
             plugin_file = os.path.join(plugin_type_path, folder, f"{folder}.py")
             if os.path.exists(plugin_file):
                 try:
                     # Load module using importlib
-                    module_name = f"Plugins.{plugin_type}.{folder}.{folder}"
+                    # Try both nested and flat module structures
+                    module_names = [
+                        f"Plugins.{plugin_type}.{folder}.{folder}",
+                        f"Plugins.{plugin_type}.{folder}"
+                    ]
+                    module = None
+                    for module_name in module_names:
+                        try:
+                            module = importlib.import_module(module_name)
+                            break
+                        except ImportError:
+                            continue
+                    if not module:
+                        raise ImportError(f"Could not import module from any of: {module_names}")
                     logging.getLogger(__name__).info(f"[PluginManager] Attempting to import {module_name} from {plugin_file}")
                     try:
                         module = importlib.import_module(module_name)
@@ -114,9 +161,13 @@ class PluginManager:
                         # Debug: print out module namespace for diagnosis
                         logging.getLogger(__name__).debug(f"dir({module_name}): {dir(module)}")
                         # Try different class name formats
+                        # Try both the folder name and any class names defined in __all__
                         base_name = folder.replace('-', '_')
+                        possible_names = [base_name]
+                        if hasattr(module, '__all__'):
+                            possible_names.extend(module.__all__)
                         class_names = [
-                            base_name,  # snake_case
+                            *[name for name in possible_names],  # Try all possible names
                             ''.join(word.capitalize() for word in base_name.split('_')),  # PascalCase
                             ''.join(word.capitalize() for word in base_name.split('_')) + 'Plugin',  # PascalCasePlugin
                             folder,  # Original folder name (preserves case)
@@ -137,9 +188,16 @@ class PluginManager:
                                 if inspect.isclass(attr) and not inspect.isabstract(attr):
                                     if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
                                         plugin_class = attr
+                                        logging.getLogger(__name__).debug(f"Found valid plugin class: {plugin_class}")
                                         break
+                        
                         if not plugin_class:
-                            logging.getLogger(__name__).warning(f"No plugin class found in {module_name} for names {class_names}")
+                            all_classes = [name for name, obj in inspect.getmembers(module) if inspect.isclass(obj)]
+                            logging.getLogger(__name__).debug(f"No valid plugin class found in {module.__name__}. Classes found: {all_classes}")
+                            logging.getLogger(__name__).debug(f"Looking for plugin_type: {plugin_type} in module: {module.__name__}")
+                            for name, obj in inspect.getmembers(module):
+                                if inspect.isclass(obj):
+                                    logging.getLogger(__name__).debug(f"Class: {name}, plugin_type: {getattr(obj, 'plugin_type', 'N/A')}, is_abstract: {inspect.isabstract(obj)}")
 
                         if plugin_class:
                             try:
@@ -153,6 +211,15 @@ class PluginManager:
                                     else:
                                         self.warnings.add(f"Error instantiating plugin {folder}: No AI Model plugins available")
                                         continue
+                                elif plugin_type == "Web" and folder == "WebInterface":
+                                    # Always use port from config for WebInterface
+                                    web_cfg = self.config.get("settings", {}).get("webinterface", {})
+                                    logging.getLogger(__name__).info(f"[PluginManager] WebInterface config for port: {web_cfg}")
+                                    port = 8080
+                                    if isinstance(web_cfg, dict) and "port" in web_cfg:
+                                        port = int(web_cfg["port"])
+                                    logging.getLogger(__name__).info(f"[PluginManager] Passing port={port} to WebInterface plugin {folder}")
+                                    plugin_instance = plugin_class(port=port)
                                 else:
                                     plugin_instance = plugin_class()
                                 logging.getLogger(__name__).info(f"[PluginManager] Instantiated {plugin_class} from {plugin_file}")

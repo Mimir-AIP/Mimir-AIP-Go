@@ -1,0 +1,36 @@
+# Test configuration for WebInterface plugin
+test_web_interface:
+  port: 8081  # Default test port (will be overridden in tests)
+  static_dir: tests/test_static
+  upload_dir: tests/test_uploads
+  log_level: DEBUG
+
+# Test pipeline configuration
+test_pipeline:
+  - name: "Test Web Interface"
+    steps:
+      - name: "Add Welcome Section"
+        plugin: "Web.WebInterface"
+        operation: "section_add"
+        config:
+          id: "welcome_section"
+          content:
+            title: "Welcome to Test"
+            content: "This is a test section"
+      
+      - name: "Add Form Section"
+        plugin: "Web.WebInterface"
+        operation: "form_input"
+        config:
+          id: "test_form"
+          fields:
+            - name: "test_field"
+              label: "Test Field"
+              type: "text"
+              required: true
+
+# Plugin configuration for testing
+plugin_configs:
+  WebInterface:
+    test_mode: true
+    mock_responses: true

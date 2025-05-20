@@ -1,18 +1,27 @@
-# Main configuration file for Mimir-AIP
+# Minimal configuration for Web Interface Demo
 pipelines:
-  - name: VisualizerDemo
-    file: "pipelines/visualizer_demo.yaml"
+  - name: WebDemo
+    file: "pipelines/web_demo_pipeline.yaml"
     enabled: true
 
 plugins:
-  # Enable only required plugins for our demo
   enabled:
-    - Data_Processing.FileToContext
     - Data_Processing.GeneralFormatter
-    - Data_Processing.RuleEngine
-    - Output.HTMLReport
+    - Data_Processing.PipelineControl
+    - Web.WebInterface
+    - AIModels.MockAIModel
+
 settings:
   pipeline_directory: "src/pipelines"
   output_directory: "output"
-  log_level: "INFO"
+  log_level: "DEBUG"
   test_mode: true
+  webinterface:
+    port: 8081
+
+# Configure MockAIModel for test mode
+plugin_configs:
+  MockAIModel:
+    use_mock_responses: true
+    mock_response_delay: 0.1  # seconds
+    test_mode: true

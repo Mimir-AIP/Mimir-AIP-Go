@@ -59,6 +59,7 @@ def main():
     logger.info(f"[Startup] CWD: {os.getcwd()}, Python exec: {sys.executable}")
 
     # Step 2: Initialize the PluginManager with config
+    print(f"[DEBUG main.py] Config loaded and passed to PluginManager: {config}")
     plugin_manager = PluginManager(config=config)
     
     # Step 3: Load all plugins
@@ -145,15 +146,24 @@ def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
             runtime_info=full_runtime_info)
 
     def _execute_single_run():
-        """Execute one complete run of the pipeline"""
+        """Execute one complete run of the pipeline, with support for goto/jump steps."""
         nonlocal context, step_statuses, iteration_tracking
-        
-        for idx, step in enumerate(pipeline["steps"]):
+        idx = 0
+        visited_steps = set()
+        steps = pipeline["steps"]
+        while idx < len(steps):
+            step = steps[idx]
             step_name = step.get('name', f'step_{idx}')
             try:
                 step_statuses[step_name] = 'running'
                 render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
-                
+
+                # Prevent infinite loops by tracking visited steps in a single run
+                if step_name in visited_steps:
+                    logger.error(f"Infinite loop detected: step '{step_name}' has already been visited in this run.")
+                    break
+                visited_steps.add(step_name)
+
                 if step.get("iterate"):
                     data = []
                     labels = []
@@ -189,11 +199,22 @@ def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
                             iteration_tracking[step_name]['statuses'][i] = 'completed'
                             render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
                 else:
-                    execute_step(step, context, plugin_manager)
-                
+                    result = execute_step(step, context, plugin_manager, return_result=True)
+                    # Check for goto/jump after step execution
+                    if result and isinstance(result, dict) and "__goto__" in result:
+                        goto_step = result["__goto__"]
+                        # Find the index of the step to jump to
+                        goto_idx = next((i for i, s in enumerate(steps) if s.get('name') == goto_step), None)
+                        if goto_idx is None:
+                            logger.error(f"Goto step '{goto_step}' not found in pipeline. Aborting run.")
+                            break
+                        logger.info(f"Goto: Jumping to step '{goto_step}' (index {goto_idx})")
+                        idx = goto_idx
+                        continue  # Skip normal increment
+
                 step_statuses[step_name] = 'completed'
                 render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
-                
+                idx += 1
             except Exception as e:
                 logger.error(f"Error in step: {e}")
                 step_statuses[step_name] = 'failed'
@@ -228,90 +249,15 @@ def execute_pipeline(pipeline, plugin_manager, output_dir, test_mode=False):
                     logger.info(f"[CLEANUP] Removed old file: {fpath}")
             except Exception as e:
                 logger.warning(f"[CLEANUP] Could not remove {fpath}: {e}")
-    
-    # Automated cleanup for test mode
-    if test_mode:
-        import os
-        for fname in ["section_summaries.json", "reports/report.html"]:
-            fpath = os.path.join(os.path.dirname(__file__), fname) if not fname.startswith("reports/") else os.path.join(os.path.dirname(__file__), "..", fname)
-            try:
-                if os.path.exists(fpath):
-                    os.remove(fpath)
-                    logger.info(f"[CLEANUP] Removed old file: {fpath}")
-            except Exception as e:
-                logger.warning(f"[CLEANUP] Could not remove {fpath}: {e}")
-
-    # Initialize pipeline context and status tracking
-    context = {"output_dir": output_dir, "test_mode": test_mode}
-    step_statuses = {step.get('name', f'step_{i}'): 'pending' for i, step in enumerate(pipeline["steps"])}
-
-    def render_tree(highlight_idx=None, runtime_info=None):
-        """Render the pipeline tree with current statuses and highlighting.
-
-        Args:
-            highlight_idx (int, optional): Index of the active step to highlight.
-            runtime_info (dict, optional): Runtime info for iteration statuses.
-        """
-        tree = PipelineAsciiTreeVisualizer.build_tree_from_pipeline(pipeline, step_statuses, runtime_info=runtime_info)
-        PipelineAsciiTreeVisualizer.render(tree, highlight_path=[highlight_idx] if highlight_idx is not None else None)
-
-    iteration_tracking = {}
-    for idx, step in enumerate(pipeline["steps"]):
-        step_name = step.get('name', f'step_{idx}')
-        try:
-            step_statuses[step_name] = 'running'
-            # For iterative steps, track iteration count, statuses, and labels
-            if step.get("iterate"):
-                data = []
-                labels = []
-                try:
-                    data = eval(step["iterate"], {"__builtins__": {}}, {"context": context})
-                    # Try to extract a label for each item if possible (e.g., title, name, id, str(item))
-                    for item in data:
-                        label = None
-                        if isinstance(item, dict):
-                            for key in ["title", "name", "id"]:
-                                if key in item and isinstance(item[key], str):
-                                    label = item[key][:40]  # Truncate for display
-                                    break
-                        if not label:
-                            label = str(item)[:40]
-                        labels.append(label)
-                except Exception:
-                    pass
-                iter_count = len(data) if isinstance(data, list) else 0
-                iteration_tracking[step_name] = {'count': iter_count, 'statuses': ['pending'] * iter_count, 'labels': labels}
-                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
-                if iter_count > 0:
-                    for i, item in enumerate(data):
-                        iteration_context = {"item": item, "output_dir": output_dir, **context}
-                        for substep in step["steps"]:
-                            execute_step(substep, iteration_context, plugin_manager)
-                        if "section_summaries" in iteration_context:
-                            context["section_summaries"] = iteration_context["section_summaries"]
-                        iteration_tracking[step_name]['statuses'][i] = 'completed'
-                        render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
-                step_statuses[step_name] = 'completed'
-                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
-            else:
-                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
-                execute_step(step, context, plugin_manager)
-                step_statuses[step_name] = 'completed'
-                render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
-        except Exception as e:
-            logger.error(f"Error in step: {e}")
-            step_statuses[step_name] = 'failed'
-            render_tree(highlight_idx=idx, runtime_info={'iterations': iteration_tracking})
-            raise
 
 
-def execute_step(step, context, plugin_manager):
-    """Execute a single pipeline step using the correct plugin lookup logic."""
+def execute_step(step, context, plugin_manager, return_result=False):
+    """Execute a single pipeline step using the correct plugin lookup logic. Optionally return the result."""
     logger = logging.getLogger(__name__)
     plugin_ref = step.get('plugin')
     if not plugin_ref:
         logger.error(f"No plugin specified for step: {step.get('name', 'Unnamed')}")
-        return
+        return None if return_result else None
 
     # Split plugin_ref like 'Output.HTMLReport' or 'Data_Processing.Delay'
     if '.' in plugin_ref:
@@ -327,7 +273,7 @@ def execute_step(step, context, plugin_manager):
             plugin_instance = plugins_of_type[plugin_name]
         else:
             logger.error(f"Plugin {plugin_ref} not found in plugin type {plugin_type}")
-            return
+            return None if return_result else None
     else:
         # Try all plugins if type not specified
         for type_name, plugins_of_type in plugin_manager.get_plugins().items():
@@ -336,7 +282,7 @@ def execute_step(step, context, plugin_manager):
                 break
         if not plugin_instance:
             logger.error(f"Plugin {plugin_ref} not found in any plugin type")
-            return
+            return None if return_result else None
 
     # Execute the pipeline step
     try:
@@ -348,8 +294,10 @@ def execute_step(step, context, plugin_manager):
             # Robust context update: merge all result keys into context, do not overwrite
             for k, v in result.items():
                 context[k] = v
+        return result if return_result else None
     except Exception as e:
         logger.error(f"Error executing step {step.get('name', 'Unnamed')}: {e}")
+        return None if return_result else None
 
 
 def run_scheduled_pipelines(config, plugin_manager, output_dir):
@@ -463,7 +411,8 @@ if __name__ == "__main__":
     output_dir = config.get("settings", {}).get("output_directory", "output")
     log_level = config.get("settings", {}).get("log_level", "INFO")
     os.makedirs(output_dir, exist_ok=True)
-    plugin_manager = PluginManager()
+    print(f"[DEBUG main.py] Config loaded and passed to PluginManager: {config}")
+    plugin_manager = PluginManager(config=config)
 
     if args.pipeline:
         # Manual trigger: run the specified pipeline once

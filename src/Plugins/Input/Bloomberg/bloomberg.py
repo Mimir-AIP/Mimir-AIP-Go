@@ -60,13 +60,15 @@ class Bloomberg(BasePlugin):
         import ast, logging
         logger = logging.getLogger(__name__)
         def parse_if_str(val):
-        """parse_if_str: TODO add description."""
             if isinstance(val, str):
                 try:
+                    # Attempt to parse the string as a Python literal
                     parsed = ast.literal_eval(val)
                     if isinstance(parsed, (list, dict)):
                         return parsed
                 except Exception:
+                    logger.error(f"[Bloomberg:execute_pipeline_step] Failed to parse string as Python literal: {val}")
+                    # If parsing fails, return the original string
                     pass
             return val
         feed_data = parse_if_str(feed_data)

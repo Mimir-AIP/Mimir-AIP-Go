@@ -131,6 +131,12 @@ The following environment variables are supported across different plugins:
 - `DB_USER`: Database username
 - `DB_PASSWORD`: Database password
 
+#### Web Interface
+- `WEBINTERFACE_PORT`: Port for the web interface (default: 8080)
+- `WEBINTERFACE_HOST`: Host for the web interface (default: localhost)
+- `WEBINTERFACE_UPLOAD_DIR`: Custom directory for file uploads
+- `WEBINTERFACE_SESSION_TIMEOUT`: Session timeout in seconds (default: 3600)
+
 Create a `.env` file based on `.env.template` in the root directory to configure these variables.
 
 ### Dependencies
@@ -225,6 +231,23 @@ Features:
 
 ## Advanced Features
 
+### Interactive Web Interface
+The WebInterface plugin provides a real-time, interactive web dashboard for pipeline interaction:
+
+- Input Features:
+  - File uploads (CSV, JSON)
+  - Form-based data input
+  - Real-time LLM chat interface
+  - Context integration
+
+- Output Features:
+  - Dynamic content sections
+  - Video streaming (HLS)
+  - Real-time updates
+  - Interactive elements
+
+See [Web Interface Documentation](Docs/Web_Interface.md) for detailed usage.
+
 ### Video Processing
 The VideoInput plugin supports:
 - Frame extraction
@@ -286,6 +309,11 @@ Common plugin dependencies:
 - Video processing: OpenCV
 - API plugins: requests library
 - LLM plugins: Various AI model SDKs
+- WebInterface plugin:
+  - `websockets>=12.0`: WebSocket support for real-time updates
+  - `httpx>=0.27.0`: Modern HTTP client for async operations
+  - `Pillow>=11.2.1`: Image handling for file uploads
+  - `aiofiles>=23.2.1`: Async file operations
 
 ### Generated Files
 
@@ -335,3 +363,33 @@ These files are automatically managed in test mode and are excluded from version
 - Update existing tests as needed
 - Include integration tests
 - Verify in test mode
+
+#### WebInterface Testing
+The WebInterface plugin includes comprehensive testing suites:
+
+1. Unit Tests (test_webinterface.py):
+   - File upload functionality
+   - WebSocket connections
+   - Section management
+   - Form validation
+   - Request handling
+
+2. Integration Tests (test_webinterface_integration.py):
+   - Complete LLM chat flows
+   - Real-time pipeline updates
+   - WebSocket communication
+   - Long-polling updates
+   - Context synchronization
+
+3. Test Requirements:
+   ```
+   pytest>=8.2.0
+   pytest-asyncio>=0.23.7
+   httpx>=0.27.0
+   websockets>=12.0
+   ```
+
+4. Running Tests:
+   ```bash
+   pytest tests/test_webinterface.py tests/test_webinterface_integration.py -v
+   ```

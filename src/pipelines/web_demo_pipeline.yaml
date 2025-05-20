@@ -1,0 +1,111 @@
+pipelines:
+  - name: WebDemo
+    enabled: true
+    execution_mode: continuous
+    steps:
+      - name: Welcome Section
+        plugin: Web.WebInterface.WebInterface
+        operation: section_add
+        config:
+          id: welcome
+          content:
+            heading: "Welcome to the Web Demo Pipeline"
+            content: "Interact with all available features below."
+
+      - name: Upload Data File
+        plugin: Web.WebInterface.WebInterface
+        operation: file_upload
+        config:
+          id: upload_section
+          heading: "Upload a CSV or JSON file"
+          allowed_types: [".csv", ".json"]
+          max_size: 1048576
+          context_var: uploaded_file
+
+      - name: Enter Parameters
+        plugin: Web.WebInterface.WebInterface
+        operation: form_input
+        config:
+          id: param_form
+          heading: "Enter Analysis Parameters"
+          fields:
+            - name: username
+              label: Username
+              type: text
+              required: true
+            - name: threshold
+              label: Threshold
+              type: number
+              required: true
+              pattern: "[0-9]+"
+            - name: analysis_type
+              label: Analysis Type
+              type: select
+              options:
+                - value: basic
+                  label: Basic
+                - value: advanced
+                  label: Advanced
+          context_var: user_params
+
+      - name: Chat with AI Assistant
+        plugin: Web.WebInterface.WebInterface
+        operation: chat_interface
+        config:
+          id: chat_section
+          heading: "Ask the AI Assistant"
+          llm_plugin: MockAIModel
+          context_var: chat_history
+          options:
+            max_history: 5
+            stream_response: false
+
+      - name: Show Video Stream
+        plugin: Web.WebInterface.WebInterface
+        operation: video_stream
+        config:
+          id: video_section
+          heading: "Live Demo Stream"
+          stream_url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+          autoplay: true
+          controls: true
+
+      - name: Process Uploaded Data
+        plugin: Data_Processing.GeneralFormatter
+        config:
+          format: json
+          template: |
+            {
+              "summary": "Processed file: ${uploaded_file.filename}, threshold: ${user_params.threshold}, type: ${user_params.analysis_type}",
+              "user": "${user_params.username}",
+              "ai_response": "${chat_history.chat_section.messages[-1].content}"
+            }
+        input:
+          file: ${uploaded_file.path}
+          params: ${user_params}
+        output: processed_data
+
+      - name: Display Results
+        plugin: Web.WebInterface.WebInterface
+        operation: section_add
+        config:
+          id: results_section
+          content:
+            heading: "Results"
+            content: |
+              <b>Summary:</b> ${processed_data.summary}<br>
+              <b>User:</b> ${processed_data.user}<br>
+              <b>AI said:</b> ${processed_data.ai_response}
+
+      - name: Remove Old Results
+        plugin: Web.WebInterface
+        operation: section_remove
+        config:
+          id: results_section
+
+      - name: Loop to Start
+        plugin: Data_Processing.PipelineControl
+        operation: goto
+        config:
+          step: Upload Data File
+          max_iterations: 5

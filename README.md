@@ -17,6 +17,7 @@ Mimir-AIP (Artificial Intelligence Platform) is a powerful open-source framework
   - AI/ML processing with both local and cloud models
   - Custom output formats and destinations
   - Data transformation and analysis
+  - Interactive web interface with real-time updates
 
 - 🤖 **LLM Integration**: 
   - Support for both local and cloud-hosted LLMs

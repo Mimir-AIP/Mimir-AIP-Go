@@ -255,8 +255,12 @@ def execute_step(step, context, plugin_manager, return_result=False):
     """Execute a single pipeline step using the correct plugin lookup logic. Optionally return the result."""
     logger = logging.getLogger(__name__)
     plugin_ref = step.get('plugin')
+    step_name = step.get('name', 'Unnamed')
+    
+    logger.info(f"Executing step: {step_name} with plugin: {plugin_ref}")
+    
     if not plugin_ref:
-        logger.error(f"No plugin specified for step: {step.get('name', 'Unnamed')}")
+        logger.error(f"No plugin specified for step: {step_name}")
         return None if return_result else None
 
     # Split plugin_ref like 'Output.HTMLReport' or 'Data_Processing.Delay'
@@ -286,7 +290,9 @@ def execute_step(step, context, plugin_manager, return_result=False):
 
     # Execute the pipeline step
     try:
+        logger.info(f"Calling execute_pipeline_step on {plugin_ref} for step: {step_name}")
         result = plugin_instance.execute_pipeline_step(step, context)
+        logger.info(f"Step {step_name} completed successfully")
         # Defensive logging: log type and sample of every value added to context
         if result:
             for k, v in result.items():

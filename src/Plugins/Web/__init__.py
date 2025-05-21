@@ -1,9 +1,12 @@
 """
 Web plugin for the application.
-This plugin provides a web interface for the application, allowing users to interact with the application through a web browser.
+This plugin provides web interfaces for the application, including a simple web server and web interface.
 """
 from .WebInterface.WebInterface import WebInterface as WebInterfaceClass
+from .SimpleWebServer.SimpleWebServer import SimpleWebServer
 
-# Expose the WebInterface class with the correct name for plugin manager
+# Expose the plugin classes with the correct names for plugin manager
 WebInterface = WebInterfaceClass
-__all__ = ['WebInterface']
+SimpleWebServer = SimpleWebServer
+
+__all__ = ['WebInterface', 'SimpleWebServer']

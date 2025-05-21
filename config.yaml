@@ -1,27 +1,23 @@
-# Minimal configuration for Web Interface Demo
+# Configuration for Simple Web Server
 pipelines:
-  - name: WebDemo
-    file: "pipelines/web_demo_pipeline.yaml"
+  - name: "Simple Web Server"
+    file: "src/pipelines/simple_web_pipeline.yaml"
     enabled: true
 
 plugins:
   enabled:
-    - Data_Processing.GeneralFormatter
-    - Data_Processing.PipelineControl
-    - Web.WebInterface
-    - AIModels.MockAIModel
+    - Web.SimpleWebServer
+    - Core.Logger
+    - Data_Processing.Delay
 
 settings:
   pipeline_directory: "src/pipelines"
   output_directory: "output"
-  log_level: "DEBUG"
-  test_mode: true
-  webinterface:
-    port: 8081
+  log_level: "INFO"
+  test_mode: false
 
-# Configure MockAIModel for test mode
+# Web server configuration
 plugin_configs:
-  MockAIModel:
-    use_mock_responses: true
-    mock_response_delay: 0.1  # seconds
-    test_mode: true
+  SimpleWebServer:
+    port: 8080
+    host: ""  # Empty string for all interfaces

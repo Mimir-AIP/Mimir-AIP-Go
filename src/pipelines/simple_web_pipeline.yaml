@@ -1,0 +1,74 @@
+# List of pipeline definitions
+pipelines:
+  - name: "Simple Web Server"
+    description: "A simple web server with a test endpoint"
+    version: "1.0"
+    enabled: true
+    execution_mode: single  # Run the pipeline in single execution mode
+
+    steps:
+      - name: "Start Web Server"
+        plugin: "Web.SimpleWebServer"
+        config:
+          port: 8080
+          host: "0.0.0.0"  # Listen on all interfaces
+        
+      - name: "Add Test Route"
+        plugin: "Web.SimpleWebServer"
+        config:
+          method: "GET"
+          path: "/api/test"
+          handler: |
+            response = 200, {
+                "status": "success",
+                "message": "Test endpoint is working!"
+            }
+        
+      - name: "Add Dynamic Data Route"
+        plugin: "Web.SimpleWebServer"
+        config:
+          method: "POST"
+          path: "/api/data"
+          handler: |
+            # Get JSON data from request body
+            data = handler._parse_json_body()
+            if data:
+                # Store data in context
+                context.update(data)
+                response = 200, {
+                    "status": "success",
+                    "message": "Data stored in context",
+                    "stored_data": data
+                }
+            else:
+                response = 400, {
+                    "status": "error",
+                    "message": "No valid JSON data provided"
+                }
+
+      - name: "Add Counter Route"
+        plugin: "Web.SimpleWebServer"
+        config:
+          method: "GET"
+          path: "/api/counter"
+          handler: |
+            # Initialize counter if it doesn't exist
+            if 'counter' not in context:
+                context['counter'] = 0
+            
+            # Increment counter
+            context['counter'] += 1
+            
+            # Return current value
+            response = 200, {
+                "status": "success",
+                "counter": context['counter'],
+                "message": f"Counter has been incremented {context['counter']} times"
+            }
+        
+      - name: "Keep Server Running"
+        plugin: "Data_Processing.Delay"
+        config:
+          seconds: 600  # Keep server running for 1 minute for testing
+        output: server_running
+

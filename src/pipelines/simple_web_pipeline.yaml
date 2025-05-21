@@ -1,10 +1,10 @@
 # List of pipeline definitions
 pipelines:
   - name: "Simple Web Server"
-    description: "A simple web server with a test endpoint"
+    description: "A simple web server with test endpoints and context management"
     version: "1.0"
     enabled: true
-    execution_mode: single  # Run the pipeline in single execution mode
+    execution_mode: single
 
     steps:
       - name: "Start Web Server"
@@ -21,30 +21,8 @@ pipelines:
           handler: |
             response = 200, {
                 "status": "success",
-                "message": "Test endpoint is working!"
+                "message": "Test endpoint working"
             }
-        
-      - name: "Add Dynamic Data Route"
-        plugin: "Web.SimpleWebServer"
-        config:
-          method: "POST"
-          path: "/api/data"
-          handler: |
-            # Get JSON data from request body
-            data = handler._parse_json_body()
-            if data:
-                # Store data in context
-                context.update(data)
-                response = 200, {
-                    "status": "success",
-                    "message": "Data stored in context",
-                    "stored_data": data
-                }
-            else:
-                response = 400, {
-                    "status": "error",
-                    "message": "No valid JSON data provided"
-                }
 
       - name: "Add Counter Route"
         plugin: "Web.SimpleWebServer"
@@ -59,16 +37,36 @@ pipelines:
             # Increment counter
             context['counter'] += 1
             
-            # Return current value
             response = 200, {
                 "status": "success",
-                "counter": context['counter'],
-                "message": f"Counter has been incremented {context['counter']} times"
+                "counter": context['counter']
             }
-        
+
+      - name: "Initialize Context Data"
+        plugin: "Data_Processing.ContextManager"
+        config:
+          operation: set
+          key: "server_info"
+          value:
+            name: "Test Server"
+            version: "1.0.0"
+            started_at: ${time.time()}
+
+      - name: "Add Test Data"
+        plugin: "Data_Processing.ContextManager"
+        config:
+          operation: set
+          key: "test_data"
+          value:
+            numbers: [1, 2, 3, 4, 5]
+            message: "Hello from context"
+            metadata:
+              author: "Pipeline"
+              purpose: "Testing"
+
       - name: "Keep Server Running"
         plugin: "Data_Processing.Delay"
         config:
-          seconds: 600  # Keep server running for 1 minute for testing
+          seconds: 600  # Keep running for 10 minutes
         output: server_running
 

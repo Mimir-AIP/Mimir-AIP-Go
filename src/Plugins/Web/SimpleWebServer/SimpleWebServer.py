@@ -39,6 +39,7 @@ class SimpleWebServer(BasePlugin):
             self.server = None
             self.server_thread = None
             self.is_running = False
+            self.pipeline_context = {}  # Add this line to track pipeline context
             
             # Request handler configuration
             self.handlers = {
@@ -61,17 +62,14 @@ class SimpleWebServer(BasePlugin):
         self.add_route("GET", "/", self._handle_root)
         self.add_route("GET", "/health", self._handle_health)
         self.add_route("GET", "/api/status", self._handle_status)
+        self.add_route("GET", "/api/context", self._handle_context)
         
     def _handle_root(self, handler):
         """Handle root endpoint."""
         return 200, {
-            "status": "success",
+            "status": "success", 
             "message": "SimpleWebServer is running",
-            "endpoints": {
-                "GET /": "This help message",
-                "GET /health": "Health check endpoint",
-                "GET /api/status": "Server status information"
-            }
+            "endpoints": self._get_all_endpoints()
         }
         
     def _handle_health(self, handler):
@@ -92,6 +90,47 @@ class SimpleWebServer(BasePlugin):
             "started_at": getattr(self, '_start_time', time.time()),
             "uptime_seconds": time.time() - getattr(self, '_start_time', time.time())
         }
+    
+    def _handle_context(self, handler):
+        """Handle /api/context endpoint.
+        
+        Returns a safe copy of the current pipeline context that can be serialized to JSON.
+        Non-serializable objects will be excluded during the JSON conversion process.
+        """
+        try:
+            # Create a safe copy through JSON serialization
+            # This ensures the context can be sent over HTTP and can't modify the original
+            safe_context = json.loads(json.dumps(self.pipeline_context))
+            
+            # Add metadata about the context
+            metadata = {
+                "timestamp": time.time(),
+                "server": "SimpleWebServer",
+                "context_size": len(json.dumps(safe_context)),
+                "top_level_keys": list(safe_context.keys())
+            }
+            
+            return 200, {
+                "status": "success",
+                "metadata": metadata,
+                "context": safe_context
+            }
+        except Exception as e:
+            logging.error(f"Error handling context request: {str(e)}", exc_info=True)
+            return 500, {"error": "Failed to retrieve context"}
+    
+    def _get_all_endpoints(self) -> dict:
+        """Get all registered endpoints with their descriptions."""
+        endpoints = {}
+        for method in self.handlers:
+            for path in self.handlers[method]:
+                handler = self.handlers[method][path]
+                # Get description from handler docstring if available
+                description = handler.__doc__ or "No description available"
+                # Clean up the description
+                description = description.strip().split('\n')[0]
+                endpoints[f"{method} {path}"] = description
+        return endpoints
     
     def add_route(self, method: str, path: str, handler: Callable):
         """Register a new route handler.
@@ -412,6 +451,7 @@ class SimpleWebServer(BasePlugin):
                 logging.info(f"Current routes: {list(self.handlers['GET'].keys())}")
             
             # Update context
+            self.pipeline_context.update(context)  # Update pipeline context
             context['web_server'] = {
                 'host': self.host or '0.0.0.0',
                 'port': self.port,

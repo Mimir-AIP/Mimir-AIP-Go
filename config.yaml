@@ -9,6 +9,7 @@ plugins:
     - Web.SimpleWebServer
     - Core.Logger
     - Data_Processing.Delay
+    - Data_Processing.ContextManager  # Add ContextManager plugin
 
 settings:
   pipeline_directory: "src/pipelines"
@@ -21,3 +22,7 @@ plugin_configs:
   SimpleWebServer:
     port: 8080
     host: ""  # Empty string for all interfaces
+  
+  # Context manager configuration
+  ContextManager:
+    log_context_changes: true  # Log when context is modified

@@ -17,9 +17,12 @@ from Plugins.AIModels.BaseAIModel.BaseAIModel import BaseAIModel
 import dotenv
 
 class GitHubModels(BaseAIModel):
-    """GitHubModels plugin for accessing models hosted on Azure with GitHub PAT authentication"""
+    """GitHubModels plugin for accessing GitHub-hosted AI models"""
 
     plugin_type = "AIModels"
+    BASE_URL = "https://models.github.ai"
+    API_VERSION = "2022-11-28"
+    CACHE_DURATION = 3600  # 1 hour cache for model list
 
     def __init__(self):
         """Initialize the GitHubModels plugin"""
@@ -29,6 +32,15 @@ class GitHubModels(BaseAIModel):
             raise ValueError("GITHUB_PAT environment variable not set")
         self.logger = logging.getLogger(__name__)
         self.logger.debug("GitHubModels plugin initialized with PAT: {}".format('*' * 20))
+
+    def _get_headers(self):
+        """Get common headers for API requests"""
+        return {
+            "Authorization": f"Bearer {self.github_pat}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": self.API_VERSION,
+            "Content-Type": "application/json"
+        }
 
     def execute_pipeline_step(self, step_config, context):
         """
@@ -43,42 +55,40 @@ class GitHubModels(BaseAIModel):
                     {"role": "user", "content": "<prompt>"}
                 ],
                 "temperature": 1.0,  # optional
-                "top_p": 1.0          # optional
+                "top_p": 1.0,        # optional
+                "organization": None, # optional
+                "seed": None,        # optional
+                "stream": False      # optional
             },
             "output": "response"
         }
-        If temperature or top_p are not specified, defaults will be used (temperature=1.0, top_p=1.0).
         """
         config = step_config["config"]
         endpoint = config.get("endpoint", "https://models.github.ai/inference")
         model = config["model"]
         messages = config["messages"]
-        # Use defaults if not specified
+        org = config.get("organization")
+        seed = config.get("seed")
+        stream = config.get("stream", False)
         temperature = config["temperature"] if "temperature" in config and config["temperature"] is not None else 1.0
         top_p = config["top_p"] if "top_p" in config and config["top_p"] is not None else 1.0
-        response = self.chat_completion(endpoint, model, messages, temperature, top_p)
+        response = self.chat_completion(endpoint, model, messages, temperature, top_p, organization=org)
         return {step_config["output"]: response}
-
+  
     def get_available_models(self):
         """
-        Returns a hardcoded list of currently available models on GitHub Models Marketplace (as of April 2025).
-        This list should be periodically updated as new models are added or removed. For the latest, see:
-        https://github.com/marketplace/models
+        Fetch available models from GitHub Models catalog API.
 
         Returns:
             list[str]: Model identifiers usable in the 'model' parameter for chat completion.
         """
-        return [
-            "openai/gpt-4.1",
-            "openai/o1",
-            "openai/o3",
-            "openai/o3-mini",
-            "openai/o4-mini",
-            "anthropic/claude-3-5-sonnet",
-            "anthropic/claude-3-7-sonnet",
-            "google/gemini-2.0-flash",
-            "google/gemini-2.5-pro"
-        ]
+        url = f"{self.BASE_URL}/catalog/models"
+        response = requests.get(url, headers=self._get_headers())
+        if response.status_code == 200:
+            models = response.json()
+            return [model["id"] for model in models]
+        raise RuntimeError(f"Failed to fetch models: {response.status_code}")
+
 
     def text_completion(self, *args, **kwargs):
         """
@@ -87,25 +97,23 @@ class GitHubModels(BaseAIModel):
         """
         raise NotImplementedError("text_completion is not implemented for GitHubModels. Use chat_completion instead.")
 
-    def chat_completion(self, endpoint, model, messages, temperature=1.0, top_p=1.0, return_full_response=False):
+    def chat_completion(self, endpoint, model, messages, temperature=1.0, top_p=1.0, return_full_response=False, organization=None):
         """
-        Send a chat completion request to the Azure AI endpoint using GitHub PAT authentication.
+        Send a chat completion request to GitHub Models API.
 
         Args:
-            endpoint (str): The Azure AI inference endpoint URL.
-            model (str): The deployment/model name to use.
+            endpoint (str): The inference endpoint URL.
+            model (str): The model name to use.
             messages (list): List of message dicts with 'role' and 'content'.
             temperature (float): Sampling temperature.
             top_p (float): Nucleus sampling parameter.
             return_full_response (bool): If True, return the full API response JSON.
+            organization (str): Optional GitHub organization name.
 
         Returns:
             str or dict: Model response text or full response.
         """
-        headers = {
-            "Authorization": f"Bearer {self.github_pat}",
-            "Content-Type": "application/json"
-        }
+        headers = self._get_headers()
         data = {
             "model": model,
             "messages": messages,
@@ -113,11 +121,11 @@ class GitHubModels(BaseAIModel):
             "top_p": top_p
         }
         try:
-            url = endpoint.rstrip("/") + "/chat/completions"
+            url = f"{self.BASE_URL}/{'orgs/' + organization + '/' if organization else ''}inference/chat/completions"
             resp = requests.post(url, headers=headers, json=data)
             self.logger.debug(f"Request to {url} | Status: {resp.status_code} | Response: {resp.text}")
             if resp.status_code != 200:
-                self.logger.error(f"Error from Azure AI endpoint: {resp.status_code} {resp.text}")
+                self.logger.error(f"Error from GitHub Models API: {resp.status_code} {resp.text}")
                 # Try to extract error from response
                 try:
                     err = resp.json().get("error")
@@ -125,7 +133,7 @@ class GitHubModels(BaseAIModel):
                         raise RuntimeError(err)
                 except Exception:
                     pass
-                raise RuntimeError(f"Azure AI endpoint error: {resp.status_code}")
+                raise RuntimeError(f"GitHub Models API error: {resp.status_code}")
             resp_json = resp.json()
             if "choices" not in resp_json or not resp_json["choices"]:
                 self.logger.error(f"Unexpected response format: {resp_json}")

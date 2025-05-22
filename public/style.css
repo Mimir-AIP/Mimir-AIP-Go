@@ -51,3 +51,22 @@ pre {
 .status-section h2 {
     color: #ff8c00; /* Vibrant Orange for sub-heading */
 }
+
+.chat-section {
+    margin-top: 30px;
+    border-top: 1px solid #4a5a6a;
+    padding-top: 20px;
+}
+
+.chat-section h2 {
+    color: #ff8c00;
+}
+
+.chat-section iframe {
+    width: 100%;
+    border: 1px solid #4a5a6a;
+    border-radius: 8px;
+    background-color: #2a3a4a;
+    margin-top: 15px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}

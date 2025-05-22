@@ -3,17 +3,18 @@ SimpleWebServer - A basic web server plugin for Mimir-AIP.
 
 This plugin provides a simple HTTP server for testing and demonstration purposes.
 """
+from http import HTTPStatus
+from typing import Dict, Any, Optional, Callable, Tuple, Union
 import os
-import sys
 import json
 import time
 import socket
 import logging
 import threading
-import http.server
+import mimetypes
 import socketserver
-from http import HTTPStatus
-from typing import Dict, Any, Optional, Callable, Tuple, Union
+import http.server
+from email.utils import formatdate
 
 from Plugins.BasePlugin import BasePlugin
 
@@ -23,12 +24,13 @@ class SimpleWebServer(BasePlugin):
     plugin_type = "Web"
     _instance = None  # Class variable to store the singleton instance
     
-    def __init__(self, port: int = 8080, host: str = ""):
+    def __init__(self, port: int = 8080, host: str = "", static_dir: Optional[str] = None):
         """Initialize the simple web server.
         
         Args:
             port: Port number to listen on (default: 8080)
             host: Host address to bind to (default: "" - all interfaces)
+            static_dir: Optional directory for static files (default: None)
         """
         super().__init__()
         
@@ -36,10 +38,11 @@ class SimpleWebServer(BasePlugin):
         if SimpleWebServer._instance is None:
             self.port = port
             self.host = host
+            self.static_dir = os.path.abspath(static_dir) if static_dir else None
             self.server = None
             self.server_thread = None
             self.is_running = False
-            self.pipeline_context = {}  # Add this line to track pipeline context
+            self.pipeline_context = {}
             
             # Request handler configuration
             self.handlers = {
@@ -63,6 +66,8 @@ class SimpleWebServer(BasePlugin):
         self.add_route("GET", "/health", self._handle_health)
         self.add_route("GET", "/api/status", self._handle_status)
         self.add_route("GET", "/api/context", self._handle_context)
+        if self.static_dir:
+            self.add_route("GET", "/static/*", self._handle_static)
         
     def _handle_root(self, handler):
         """Handle root endpoint."""
@@ -118,6 +123,55 @@ class SimpleWebServer(BasePlugin):
         except Exception as e:
             logging.error(f"Error handling context request: {str(e)}", exc_info=True)
             return 500, {"error": "Failed to retrieve context"}
+    
+    def _handle_static(self, handler):
+        """Handle static file requests."""
+        try:
+            if not self.static_dir:
+                return 404, {"error": "Static file serving not configured"}
+                
+            # Get requested path and normalize it
+            path = handler.path[len("/static/"):]
+            if not path:
+                return 400, {"error": "Invalid path"}
+                
+            # Construct full file path
+            full_path = os.path.abspath(os.path.join(self.static_dir, path))
+            
+            # Security check: ensure the path is within the static directory
+            if not full_path.startswith(self.static_dir):
+                return 403, {"error": "Access denied"}
+                
+            # Check if file exists
+            if not os.path.isfile(full_path):
+                return 404, {"error": "File not found"}
+                
+            # Get file info
+            file_stat = os.stat(full_path)
+            mime_type, _ = mimetypes.guess_type(full_path)
+            
+            # Send response headers
+            handler.send_response(200)
+            handler.send_header("Content-Type", mime_type or "application/octet-stream")
+            handler.send_header("Content-Length", str(file_stat.st_size))
+            handler.send_header("Last-Modified", formatdate(file_stat.st_mtime, usegmt=True))
+            handler.send_header("Cache-Control", "public, max-age=3600")
+            handler.end_headers()
+            
+            # Send file content in chunks
+            if handler.command != 'HEAD':
+                with open(full_path, 'rb') as f:
+                    while True:
+                        chunk = f.read(8192)  # 8KB chunks
+                        if not chunk:
+                            break
+                        handler.wfile.write(chunk)
+                
+            return None  # Response already sent
+            
+        except Exception as e:
+            logging.error(f"Error serving static file: {str(e)}")
+            return 500, {"error": "Internal server error"}
     
     def _get_all_endpoints(self) -> dict:
         """Get all registered endpoints with their descriptions."""
@@ -254,16 +308,28 @@ class SimpleWebServer(BasePlugin):
             logging.info("Server thread stopped")
     
     def get_route_handler(self, method: str, path: str) -> Optional[Callable]:
-        """Get the handler for a specific route.
+        """Get the handler for a specific route, supporting wildcards.
         
         Args:
             method: HTTP method ("GET", "POST", etc.)
-            path: URL path (e.g., "/api/endpoint")
+            path: URL path (e.g., "/api/endpoint", "/static/index.html")
             
         Returns:
             The handler function if found, None otherwise
         """
-        return self.handlers.get(method, {}).get(path)
+        # Try exact match first
+        handler = self.handlers.get(method, {}).get(path)
+        if handler:
+            return handler
+
+        # If no exact match, try wildcard matches (e.g., /static/*)
+        for registered_path, registered_handler in self.handlers.get(method, {}).items():
+            if registered_path.endswith('/*'):
+                base_path = registered_path[:-1] # Remove the '*'
+                if path.startswith(base_path):
+                    return registered_handler
+        
+        return None
 
     def _create_request_handler(self):
         """Create a request handler class with the current instance as context."""
@@ -403,6 +469,20 @@ class SimpleWebServer(BasePlugin):
                 self.port = config.get('port', 8080)
                 self.host = config.get('host', '')
                 
+                # Configure static file serving
+                if 'static_dir' in config:
+                    static_dir = config['static_dir']
+                    if not os.path.isabs(static_dir):
+                        # Make relative paths absolute from the workspace root
+                        static_dir = os.path.abspath(static_dir)
+                    if os.path.exists(static_dir):
+                        self.static_dir = static_dir
+                        # Re-register routes to include static handler
+                        self._register_default_routes()
+                        logging.info(f"Static file serving enabled from directory: {self.static_dir}")
+                    else:
+                        logging.warning(f"Static directory not found: {static_dir}")
+                
                 # Start the server
                 if not self.start():
                     raise RuntimeError("Failed to start web server")
@@ -456,7 +536,8 @@ class SimpleWebServer(BasePlugin):
                 'host': self.host or '0.0.0.0',
                 'port': self.port,
                 'url': f"http://{self.host or 'localhost'}:{self.port}",
-                'status': 'running' if self.is_running else 'stopped'
+                'status': 'running' if self.is_running else 'stopped',
+                'static_dir': self.static_dir if self.static_dir else None
             }
             
             return context

@@ -9,8 +9,8 @@ This plugin provides centralized context management capabilities including:
 
 from typing import Any, Dict, Optional
 import threading
-from src.Plugins.BasePlugin import BasePlugin
-from src.Plugins.PluginManager import PluginManager
+import logging
+from Plugins.BasePlugin import BasePlugin
 
 class ContextManager(BasePlugin):
     """Centralized context management for pipeline operations.
@@ -21,17 +21,18 @@ class ContextManager(BasePlugin):
         _context_history: History of context states
     """
     
-    def __init__(self, plugin_manager: PluginManager) -> None:
+    plugin_type = "Data_Processing"
+    
+    def __init__(self) -> None:
         """Initialize the ContextManager.
         
-        Args:
-            plugin_manager: Reference to the PluginManager for dependency injection
+        Initializes internal context storage, thread lock, and logging.
         """
-        super().__init__()  # Call parent class __init__ without arguments
+        super().__init__()
+        self.logger = logging.getLogger(__name__)
         self._context: Dict[str, Any] = {}
         self._context_lock = threading.Lock()
         self._context_history: Dict[int, Dict[str, Any]] = {}
-        self.plugin_manager = plugin_manager  # Store plugin_manager reference
         
     def get_context(self, key: Optional[str] = None) -> Any:
         """Get the current context or a specific context value.
@@ -181,7 +182,7 @@ class ContextManager(BasePlugin):
         Args:
             message: The error message to log
         """
-        print(f"ERROR: {message}")  # Simple print for now, can be enhanced with proper logging
+        self.logger.error(message)
 
     def execute(self, *args, **kwargs) -> Any:
         """Execute the plugin's main functionality.
@@ -220,43 +221,6 @@ class ContextManager(BasePlugin):
         except Exception as e:
             self.log_error(f"ContextManager operation failed: {str(e)}")
             raise
-
-    def merge_context(self, new_context: Dict[str, Any], conflict_strategy: str = 'overwrite') -> Dict[str, Any]:
-        """Merge new context into existing context.
-        
-        Args:
-            new_context: Dictionary of new context values
-            conflict_strategy: How to handle conflicts ('overwrite', 'keep', 'merge')
-            
-        Returns:
-            Dictionary of any conflicts that were handled
-            
-        Raises:
-            ValueError: If conflict_strategy is invalid
-        """
-        if conflict_strategy not in ('overwrite', 'keep', 'merge'):
-            raise ValueError(f"Invalid conflict strategy: {conflict_strategy}")
-            
-        conflicts = {}
-        with self._context_lock:
-            for key, value in new_context.items():
-                if key in self._context:
-                    if conflict_strategy == 'overwrite':
-                        conflicts[key] = self._context[key]
-                        self._context[key] = value
-                    elif conflict_strategy == 'keep':
-                        conflicts[key] = value
-                    elif conflict_strategy == 'merge':
-                        if isinstance(value, dict) and isinstance(self._context[key], dict):
-                            conflicts[key] = self._context[key].copy()  # Return original dict
-                            self._context[key] = {**self._context[key], **value}  # Merge dicts
-                        else:
-                            conflicts[key] = self._context[key]
-                            self._context[key] = value
-                else:
-                    self._context[key] = value
-                    
-        return conflicts
             
     def execute_pipeline_step(self, *args, **kwargs) -> Any:
         """Execute a pipeline step - delegates to the execute() method.

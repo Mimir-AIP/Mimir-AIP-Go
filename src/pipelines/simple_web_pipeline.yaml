@@ -12,6 +12,7 @@ pipelines:
         config:
           port: 8080
           host: "0.0.0.0"  # Listen on all interfaces
+          static_dir: "public"  # Files will be served at /static/*
         
       - name: "Add Test Route"
         plugin: "Web.SimpleWebServer"

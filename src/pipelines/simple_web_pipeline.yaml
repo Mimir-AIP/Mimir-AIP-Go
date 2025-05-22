@@ -5,14 +5,18 @@ pipelines:
     version: "1.0"
     enabled: true
     execution_mode: single
+    plugin_manager_required: true  # Ensure plugin manager is passed to plugins
 
     steps:
       - name: "Start Web Server"
         plugin: "Web.SimpleWebServer"
+        use_plugin_manager: true  # Explicitly request plugin manager for this plugin
         config:
-          port: 8080
+          port: 1234
           host: "0.0.0.0"  # Listen on all interfaces
           static_dir: "public"  # Files will be served at /static/*
+          default_llm_provider: "MockAIModel" # Default LLM provider for chat
+          default_llm_model: "mock-model-1" # Default LLM model for chat
         
       - name: "Add Test Route"
         plugin: "Web.SimpleWebServer"

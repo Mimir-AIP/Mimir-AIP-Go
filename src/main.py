@@ -267,14 +267,14 @@ def execute_step(step, context, plugin_manager, return_result=False):
     if '.' in plugin_ref:
         plugin_type, plugin_name = plugin_ref.split('.', 1)
     else:
-        plugin_type, plugin_name = None, plugin_ref
-
-    # Try to get plugin by type and name
+        plugin_type, plugin_name = None, plugin_ref            # Try to get plugin by type and name
     plugin_instance = None
     if plugin_type:
         plugins_of_type = plugin_manager.get_plugins(plugin_type)
         if plugins_of_type and plugin_name in plugins_of_type:
             plugin_instance = plugins_of_type[plugin_name]
+            if hasattr(plugin_instance, 'plugin_manager'):
+                plugin_instance.plugin_manager = plugin_manager  # Ensure plugin has access to plugin manager
         else:
             logger.error(f"Plugin {plugin_ref} not found in plugin type {plugin_type}")
             return None if return_result else None

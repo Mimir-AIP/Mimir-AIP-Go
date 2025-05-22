@@ -9,7 +9,10 @@ plugins:
     - Web.SimpleWebServer
     - Core.Logger
     - Data_Processing.Delay
-    - Data_Processing.ContextManager  # Add ContextManager plugin
+    - Data_Processing.ContextManager
+    - Data_Processing.LLMFunction
+    - AIModels.MockAIModel
+    - AIModels.BaseAIModel
 
 settings:
   pipeline_directory: "src/pipelines"

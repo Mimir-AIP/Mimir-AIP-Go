@@ -52,10 +52,16 @@ class LLMFunction(BasePlugin):
         """
         if not self.plugin_manager:
             raise RuntimeError("LLMFunction: plugin_manager must be set before calling set_llm_plugin(). Avoid recursive PluginManager instantiation.")
-        self.llm_plugin = self.plugin_manager.get_plugin("AIModel", plugin_name)
+        self.llm_plugin = self.plugin_manager.get_plugin("AIModels", plugin_name)
+        if not self.llm_plugin:
+            # Try case-insensitive match
+            for name, plugin in self.plugin_manager.get_plugins("AIModels").items():
+                if name.lower() == plugin_name.lower():
+                    self.llm_plugin = plugin
+                    break
         if not self.llm_plugin:
             raise ValueError(f"LLM plugin {plugin_name} not found")
-        self.logger.debug(f"Loaded LLM plugin: {plugin_name}")
+        self.logger.info(f"Loaded LLM plugin: {plugin_name}")
 
     def execute_pipeline_step(self, step_config, context):
         """

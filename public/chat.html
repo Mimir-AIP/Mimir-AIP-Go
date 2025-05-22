@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mimir-AIP LLM Chat</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 70vh;
+            border: 1px solid #4a5a6a;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background-color: #1f2f3f; /* Slightly lighter than body for chat area */
+        }
+        .chat-input-area {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid #4a5a6a;
+            background-color: #2a3a4a;
+        }
+        .chat-input-area input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #4a5a6a;
+            border-radius: 5px;
+            background-color: #3a4a5a;
+            color: #e0e0e0;
+            margin-right: 10px;
+        }
+        .chat-input-area button {
+            padding: 10px 15px;
+            background-color: #ff8c00;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .chat-input-area button:hover {
+            background-color: #e67e00;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 5px;
+            max-width: 80%;
+        }
+        .message.user {
+            background-color: #0056b3; /* Blue for user messages */
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .message.llm {
+            background-color: #4a5a6a; /* Grey for LLM messages */
+            align-self: flex-start;
+            margin-right: auto;
+        }
+    </style>
+    <style>
+        .model-selection {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #2a3a4a;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .model-selection label {
+            color: #e0e0e0;
+            font-weight: bold;
+        }
+        .model-selection select {
+            padding: 8px;
+            border: 1px solid #4a5a6a;
+            border-radius: 5px;
+            background-color: #3a4a5a;
+            color: #e0e0e0;
+            cursor: pointer;
+        }
+        .model-selection select:focus {
+            outline: none;
+            border-color: #ff8c00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LLM Chat Interface</h1>
+        <p>Interact with the LLM backend.</p>
+
+        <div class="model-selection">
+            <label for="llmProvider">LLM Provider:</label>
+            <select id="llmProvider">
+                <!-- Options will be loaded dynamically -->
+            </select>
+            <label for="llmModel">LLM Model:</label>
+            <select id="llmModel">
+                <!-- Options will be loaded dynamically -->
+            </select>
+        </div>
+
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages">
+                <!-- Chat messages will be appended here -->
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Type your message...">
+                <button id="sendMessage">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/chat.js"></script>
+</body>
+</html>

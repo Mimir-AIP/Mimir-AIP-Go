@@ -17,6 +17,8 @@ import http.server
 from email.utils import formatdate
 
 from Plugins.BasePlugin import BasePlugin
+from Plugins.PluginManager import PluginManager
+from Plugins.Data_Processing.LLMFunction.LLMFunction import LLMFunction
 
 class SimpleWebServer(BasePlugin):
     """A simple web server plugin for Mimir-AIP."""
@@ -24,13 +26,14 @@ class SimpleWebServer(BasePlugin):
     plugin_type = "Web"
     _instance = None  # Class variable to store the singleton instance
     
-    def __init__(self, port: int = 8080, host: str = "", static_dir: Optional[str] = None):
+    def __init__(self, port: int = 8080, host: str = "", static_dir: Optional[str] = None, plugin_manager=None):
         """Initialize the simple web server.
         
         Args:
             port: Port number to listen on (default: 8080)
             host: Host address to bind to (default: "" - all interfaces)
             static_dir: Optional directory for static files (default: None)
+            plugin_manager: Optional plugin manager instance. If not provided, LLM features will be disabled.
         """
         super().__init__()
         
@@ -43,6 +46,16 @@ class SimpleWebServer(BasePlugin):
             self.server_thread = None
             self.is_running = False
             self.pipeline_context = {}
+            
+            # Initialize plugin manager and llm function if plugin_manager is provided
+            self.plugin_manager = plugin_manager
+            self.llm_function_plugin = None
+            if plugin_manager is not None:
+                # Initialize LLMFunction with plugin manager
+                self.llm_function_plugin = LLMFunction(plugin_manager=plugin_manager)
+            
+            self.default_llm_provider = None
+            self.default_llm_model = None
             
             # Request handler configuration
             self.handlers = {
@@ -68,11 +81,17 @@ class SimpleWebServer(BasePlugin):
         self.add_route("GET", "/api/context", self._handle_context)
         if self.static_dir:
             self.add_route("GET", "/static/*", self._handle_static)
+        self._register_llm_routes()
         
+    def _register_llm_routes(self):
+        """Register LLM-related routes."""
+        self.add_route("GET", "/api/llm_options", self._handle_llm_options)
+        self.add_route("POST", "/api/chat", self._handle_chat)
+
     def _handle_root(self, handler):
         """Handle root endpoint."""
         return 200, {
-            "status": "success", 
+            "status": "success",
             "message": "SimpleWebServer is running",
             "endpoints": self._get_all_endpoints()
         }
@@ -117,12 +136,135 @@ class SimpleWebServer(BasePlugin):
             
             return 200, {
                 "status": "success",
-                "metadata": metadata,
-                "context": safe_context
+                "context": safe_context,
+                "metadata": metadata
             }
         except Exception as e:
-            logging.error(f"Error handling context request: {str(e)}", exc_info=True)
-            return 500, {"error": "Failed to retrieve context"}
+            logging.error(f"Error in _handle_context: {str(e)}")
+            return 500, {
+                "status": "error",
+                "message": f"Failed to retrieve context: {str(e)}"
+            }
+
+    def _handle_llm_options(self, handler):
+        """Handle /api/llm_options endpoint."""
+        try:
+            if not self.plugin_manager:
+                return 503, {
+                    "status": "error", 
+                    "message": "LLM functionality not available - server was initialized without plugin manager"
+                }
+
+            # Get all AI model plugins from the plugin manager
+            ai_models = self.plugin_manager.get_plugins("AIModels")
+            
+            # Create a dictionary of providers and their available models
+            providers = {}
+            for plugin_name, plugin in ai_models.items():
+                try:
+                    # Get available models from the plugin's get_available_models method
+                    models = plugin.get_available_models()
+                    if not models:  # If no models returned, use a default
+                        models = ['default-model']
+                    providers[plugin_name] = models
+                except Exception as model_error:
+                    logging.warning(f"Error getting models for {plugin_name}: {str(model_error)}")
+                    continue
+            
+            return 200, providers
+        except Exception as e:
+            logging.error(f"Error in _handle_llm_options: {str(e)}")
+            return 500, {
+                "status": "error",
+                "message": f"Failed to retrieve LLM options: {str(e)}"
+            }
+
+    def _handle_chat(self, handler):
+        """Handle /api/chat endpoint for LLM interaction."""
+        try:
+            # First check for plugin manager
+            if not self.plugin_manager:
+                return 503, {
+                    "status": "error",
+                    "message": "LLM functionality not available - server was initialized without plugin manager"
+                }
+                
+            # Initialize LLM function if needed
+            if not self.llm_function_plugin:
+                self.llm_function_plugin = LLMFunction(plugin_manager=self.plugin_manager)
+                
+            # Double check initialization worked
+            if not self.llm_function_plugin:
+                return 503, {
+                    "status": "error",
+                    "message": "Failed to initialize LLM functionality"
+                }
+
+            # Read and parse the request body
+            content_length = int(handler.headers['Content-Length'])
+            post_data = handler.rfile.read(content_length)
+            request_data = json.loads(post_data.decode('utf-8'))
+            
+            # Extract message and model info
+            message = request_data.get('message')
+            provider = request_data.get('provider')
+            model = request_data.get('model')
+            
+            if not all([message, provider, model]):
+                return 400, {
+                    "status": "error",
+                    "message": "Missing required fields (message, provider, or model)"
+                }
+            
+            try:
+                self.llm_function_plugin.set_llm_plugin(provider)
+            except Exception as e:
+                logging.error(f"Error setting LLM provider {provider}: {str(e)}")
+                return 500, {
+                    "status": "error",
+                    "message": f"Failed to initialize provider {provider}: {str(e)}"
+                }
+            
+            # Prepare the pipeline step configuration
+            step_config = {
+                "config": {
+                    "plugin": provider,
+                    "model": model,
+                    "function": "Chat message response",
+                    "format": "Respond in a helpful and concise manner"
+                },
+                "input": "message",
+                "output": "response"
+            }
+            
+            # Create context with the message
+            context = {"message": message}
+            
+            # Execute the pipeline step
+            result = self.llm_function_plugin.execute_pipeline_step(step_config, context)
+            
+            if not result or "response" not in result:
+                return 500, {
+                    "status": "error",
+                    "message": "No response generated by LLM"
+                }
+            
+            return 200, {
+                "status": "success",
+                "response": result["response"]
+            }
+            
+        except json.JSONDecodeError:
+            return 400, {
+                "status": "error",
+                "message": "Invalid JSON in request body"
+            }
+        except Exception as e:
+            logging.error(f"Error in _handle_chat: {str(e)}")
+            return 500, {
+                "status": "error", 
+                "message": f"Internal server error: {str(e)}"
+            }
     
     def _handle_static(self, handler):
         """Handle static file requests."""
@@ -390,9 +532,10 @@ class SimpleWebServer(BasePlugin):
                     # Find a matching handler using the server's method
                     handler = server_instance.get_route_handler(method, path)
                     if not handler:
+                        logging.warning(f"No handler found for {method} {path}")
                         self._send_response(404, {"error": "Not found"})
                         return
-                    
+
                     # Call the handler
                     response = handler(self)
                     if response is not None:
@@ -435,6 +578,11 @@ class SimpleWebServer(BasePlugin):
                         
                 except Exception as e:
                     logging.error(f"Error sending response: {str(e)}", exc_info=True)
+                    if not self._headers_sent:
+                        self.send_response(500)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": "Internal server error"}).encode('utf-8'))
             
             def do_OPTIONS(self):
                 """Handle OPTIONS requests for CORS preflight."""
@@ -461,13 +609,27 @@ class SimpleWebServer(BasePlugin):
             # Get configuration
             config = step_config.get('config', {})
 
+            # Check if plugin manager is needed and available
+            if config.get('use_plugin_manager', False):
+                if not self.plugin_manager:
+                    logging.error("Plugin manager required but not available")
+                    raise RuntimeError("Plugin manager required but not available")
+                # Re-initialize LLM functionality if needed
+                if not self.llm_function_plugin:
+                    self.llm_function_plugin = LLMFunction(plugin_manager=self.plugin_manager)
+
             # For the first step that starts the server
             if 'port' in config:
                 logging.info("Starting server step...")
                 
-                # Configure server
+                # Configure server and ensure LLM functionality
                 self.port = config.get('port', 8080)
                 self.host = config.get('host', '')
+                
+                # Make sure LLM function is initialized if we have a plugin manager
+                if self.plugin_manager and not self.llm_function_plugin:
+                    logging.info("Initializing LLM functionality with plugin manager")
+                    self.llm_function_plugin = LLMFunction(plugin_manager=self.plugin_manager)
                 
                 # Configure static file serving
                 if 'static_dir' in config:
@@ -482,6 +644,12 @@ class SimpleWebServer(BasePlugin):
                         logging.info(f"Static file serving enabled from directory: {self.static_dir}")
                     else:
                         logging.warning(f"Static directory not found: {static_dir}")
+
+                # Set default LLM provider and model from pipeline config
+                self.default_llm_provider = config.get('default_llm_provider')
+                self.default_llm_model = config.get('default_llm_model')
+                if self.default_llm_provider and self.default_llm_model:
+                    logging.info(f"Default LLM set: Provider={self.default_llm_provider}, Model={self.default_llm_model}")
                 
                 # Start the server
                 if not self.start():
@@ -492,7 +660,7 @@ class SimpleWebServer(BasePlugin):
                 
             # For steps that add routes
             elif 'method' in config and 'path' in config and 'handler' in config:
-                # Ensure we're using the running instance 
+                # Ensure we're using the running instance
                 if SimpleWebServer._instance and SimpleWebServer._instance.is_running:
                     self.__dict__ = SimpleWebServer._instance.__dict__
                 
@@ -566,8 +734,11 @@ if __name__ == "__main__":
         ]
     )
     
-    # Create and start the server
-    server = SimpleWebServer(port=8080)
+    # Initialize plugin manager
+    plugin_manager = PluginManager()
+    
+    # Create and start the server with plugin manager
+    server = SimpleWebServer(port=8080, plugin_manager=plugin_manager)
     
     try:
         if server.start():

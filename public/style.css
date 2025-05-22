@@ -1,11 +1,53 @@
 body {
-    background-color: #f5f5f5;
-    color: #333;
-    max-width: 800px;
-    margin: 0 auto;
+    background-color: #1a2a3a; /* Dark Navy */
+    color: #e0e0e0; /* Light grey for text */
+    font-family: Arial, sans-serif;
+    margin: 0;
     padding: 20px;
+    line-height: 1.6;
 }
 
-h1 {
-    color: #007bff;
+.container {
+    background-color: #2a3a4a; /* Slightly lighter navy for container */
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    max-width: 800px;
+    margin: 20px auto;
+}
+
+h1, h2 {
+    color: #ff8c00; /* Vibrant Orange for headings */
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+p {
+    margin-bottom: 10px;
+}
+
+code {
+    background-color: #3a4a5a;
+    color: #ff8c00;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+pre {
+    background-color: #0f1f2f; /* Even darker for code blocks */
+    color: #e0e0e0;
+    padding: 15px;
+    border-radius: 5px;
+    overflow-x: auto;
+    border: 1px solid #ff8c00; /* Orange border for pre */
+}
+
+.status-section {
+    margin-top: 30px;
+    border-top: 1px solid #4a5a6a; /* Subtle divider */
+    padding-top: 20px;
+}
+
+.status-section h2 {
+    color: #ff8c00; /* Vibrant Orange for sub-heading */
 }

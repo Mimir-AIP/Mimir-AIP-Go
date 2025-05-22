@@ -2,13 +2,37 @@
 <html>
 <head>
     <title>Mimir-AIP</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        h1 { color: #333; }
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>Welcome to Mimir-AIP</h1>
-    <p>Static file serving is working!</p>
+    <div class="container">
+        <h1>Welcome to Mimir-AIP</h1>
+        <p>Static file serving is working!</p>
+
+        <div class="status-section">
+            <h2>Server Status</h2>
+            <p>Fetching server status from <code>/api/status</code>...</p>
+            <pre id="apiStatus"></pre>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/status')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('apiStatus').textContent = JSON.stringify(data, null, 2);
+                })
+                .catch(error => {
+                    console.error('Error fetching API status:', error);
+                    document.getElementById('apiStatus').textContent = `Error: ${error.message}`;
+                });
+        });
+    </script>
 </body>
 </html>

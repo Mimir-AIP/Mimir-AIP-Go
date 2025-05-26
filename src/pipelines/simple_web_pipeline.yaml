@@ -69,9 +69,9 @@ pipelines:
               author: "Pipeline"
               purpose: "Testing"
 
-      - name: "Keep Server Running"
-        plugin: "Data_Processing.Delay"
+      - name: "Keep Server Running Indefinitely"
+        plugin: "Data_Processing.PipelineControl"
         config:
-          seconds: 600  # Keep running for 10 minutes
-        output: server_running
+          operation: halt
+        output: server_running_indefinitely
 

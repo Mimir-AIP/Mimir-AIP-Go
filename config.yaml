@@ -8,7 +8,7 @@ plugins:
   enabled:
     - Web.SimpleWebServer
     - Core.Logger
-    - Data_Processing.Delay
+    - Data_Processing.PipelineControl
     - Data_Processing.ContextManager
     - Data_Processing.LLMFunction
     - AIModels.MockAIModel

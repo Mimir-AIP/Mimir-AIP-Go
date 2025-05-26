@@ -38,14 +38,10 @@ jobs:
 
       - name: Run tests (pytest, with plugins)
         env:
-          PYTHONPATH: src
+          PYTHONPATH: .:${{ github.workspace }}/src # Set PYTHONPATH to current directory and src for module discovery
         run: |
           echo "PYTHONPATH set to: $PYTHONPATH"
-          if [ -f "pytest.ini" ] || [ -f "pyproject.toml" ] || [ -d "tests" ]; then
-            pytest tests ${{ github.event.inputs.extra_args }}
-          else
-            echo "No pytest config or tests directory found, falling back to unittest."
-            python -m unittest discover -s tests || { echo 'No tests found or tests failed.'; exit 1; }
+          python -m pytest tests ${{ github.event.inputs.extra_args }}
 
       # Documentation: This workflow ensures that all tests are run with the correct PYTHONPATH so plugins can be discovered.
       # It is intended for manual use only to avoid unnecessary CI load.

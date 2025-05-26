@@ -182,3 +182,4 @@ rss_feed_raw.xml
 # debug_scrape_input_type.json
 # debug_search_queries.json
 # debug_search_urls.json
+/.roo

@@ -208,3 +208,4 @@ debug_*.txt
 temp/
 tmp/
 .clinerules
+.roo/

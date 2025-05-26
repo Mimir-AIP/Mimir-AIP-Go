@@ -192,7 +192,7 @@ from Plugins.BasePlugin import BasePlugin
 
 class MyPlugin(BasePlugin):
     plugin_type = "Data_Processing"
-    
+
     def execute_pipeline_step(self, step_config, context):
         config = step_config['config']
         # Validate config
@@ -228,6 +228,34 @@ Features:
 - Log levels: DEBUG, INFO, WARNING, ERROR
 - Each plugin should log appropriate information
 - Use structured logging for better parsing
+
+### Adding New Tests
+
+When adding new tests, follow these guidelines:
+
+1. **Test File Location**: Place test files in the `tests/` directory.
+2. **Test File Naming**: Name test files with the pattern `test_*.py`.
+3. **Test Class Naming**: Use the pattern `Test<PluginName>` for test classes.
+4. **Test Methods**: Name test methods with the prefix `test_`.
+5. **Test Setup**: Use the `setUp` method for test fixture setup.
+6. **Test Teardown**: Use the `tearDown` method for cleanup.
+7. **Mocking**: Use mock objects for external dependencies.
+8. **Assertions**: Use Python's `unittest` framework for assertions.
+9. **Running Tests**: Use the command:
+   ```bash
+   PYTHONPATH=<project_root> python tests/test_<plugin_name>.py
+   ```
+   (Replace `<project_root>` with the absolute path to the project directory)
+10. **Python Path**: Ensure you add the `src` directory to the Python path:
+    ```python
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+    ```
+11. **Plugin Import**: Import plugins using the full path:
+    ```python
+    from Plugins.<PluginType>.<PluginName>.<PluginName> import <PluginClass>
+    ```
 
 ## Advanced Features
 
@@ -392,4 +420,3 @@ The WebInterface plugin includes comprehensive testing suites:
 4. Running Tests:
    ```bash
    pytest tests/test_webinterface.py tests/test_webinterface_integration.py -v
-   ```

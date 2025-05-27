@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const llmModelSelect = document.getElementById('llmModel');
 
     let availableProviders = {}; // To store providers and their models
+    let loadingMessage = null; // Reference to the loading message element
+    let conversationHistory = []; // To maintain conversation context
 
     function appendMessage(sender, text) {
         const messageDiv = document.createElement('div');
@@ -13,9 +15,22 @@ document.addEventListener('DOMContentLoaded', function() {
         messageDiv.textContent = text;
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to bottom
+        return messageDiv; // Return the message element for reference
+    }
+
+    function showLoadingIndicator() {
+        loadingMessage = appendMessage('system', 'Loading...');
+    }
+
+    function hideLoadingIndicator() {
+        if (loadingMessage) {
+            loadingMessage.remove();
+            loadingMessage = null;
+        }
     }
 
     async function fetchLLMOptions() {
+        showLoadingIndicator();
         try {
             const response = await fetch('/api/llm_options');
             if (!response.ok) {
@@ -26,6 +41,8 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Error fetching LLM options:', error);
             appendMessage('llm', `Error: Could not load LLM options. (${error.message})`);
+        } finally {
+            hideLoadingIndicator();
         }
     }
 
@@ -61,6 +78,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    async function sendMessageWithRetry(url, options, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Attempt ${attempt} failed:`, error);
+                if (attempt === retries) {
+                    throw error; // Re-throw after all retries
+                }
+                // Wait before retrying
+                await new Promise(res => setTimeout(res, 1000 * attempt));
+            }
+        }
+    }
+
     async function sendMessage() {
         const message = chatInput.value.trim();
         if (message === '') return;
@@ -73,31 +109,34 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // Add user message to conversation history
+        conversationHistory.push({ role: 'user', content: message });
         appendMessage('user', message);
         chatInput.value = '';
 
+        showLoadingIndicator();
         try {
-            const response = await fetch('/api/chat', {
+            const response = await sendMessageWithRetry('/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    message: message,
-                    provider: selectedProvider,
-                    model: selectedModel
+                    message: message, // Required field
+                    provider: selectedProvider, // Required field
+                    model: selectedModel, // Required field
+                    messages: conversationHistory // Send conversation history
                 }),
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            appendMessage('llm', data.response);
+            // Add LLM response to conversation history
+            conversationHistory.push({ role: 'llm', content: response.response });
+            appendMessage('llm', response.response);
         } catch (error) {
             console.error('Error sending message to LLM:', error);
             appendMessage('llm', `Error: Could not get response from LLM. (${error.message})`);
+        } finally {
+            hideLoadingIndicator();
         }
     }
 
@@ -112,5 +151,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initial message from LLM and fetch options
     appendMessage('llm', 'Hello! How can I help you today?');
+    conversationHistory.push({ role: 'llm', content: 'Hello! How can I help you today?' });
     fetchLLMOptions();
 });

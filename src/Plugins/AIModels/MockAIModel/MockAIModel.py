@@ -29,7 +29,7 @@ class MockAIModel(BaseAIModel, BasePlugin):
         """Initialize with default configuration"""
         self.name = "MockAIModel"
         self.config = {
-            "response_style": "helpful",  # helpful, concise, creative, technical
+            "response_style": "helpful", # helpful, concise, creative, technical
             "response_format": "text",    # text, json
             "latency_ms": (50, 200),      # min/max response delay in ms
             "error_rate": 0.05,           # 5% chance of error
@@ -40,7 +40,7 @@ class MockAIModel(BaseAIModel, BasePlugin):
             "context_persistence": True,  # Persist context across calls
             "max_context_size": 2000      # Max context size in tokens
         }
-        self.context_history = []
+        self.context_history = []  # Store conversation history
         self.model_capabilities = {
             "mock-model-1": {"max_tokens": 500, "supports_images": False, "max_context_size": 1000},
             "mock-model-2": {"max_tokens": 1000, "supports_images": True, "max_context_size": 2000},
@@ -158,20 +158,35 @@ class MockAIModel(BaseAIModel, BasePlugin):
             if not isinstance(messages, list):
                 raise ValueError("messages must be a list of dicts")
 
-            # Extract conversation history
-            conversation = "\n".join(
+            # Check for canned responses in the conversation
+            conversation_text = "\n".join(
                 f"{m.get('role', 'user')}: {m.get('content', '')}"
                 for m in messages
             )
 
-            # Check for canned responses
             for key in self.canned_responses:
-                if key in conversation.lower():
+                if key.lower() in conversation_text.lower():
                     return self.canned_responses[key]
 
+            # Count only user and llm messages, not system messages
+            user_llm_messages = [m for m in messages if m.get('role') in ['user', 'llm']]
+            message_count = len(user_llm_messages)
+
+            # Get the last user message
+            if user_llm_messages:
+                last_user_message = user_llm_messages[-1].get('content', '')[:100]
+            else:
+                last_user_message = "No user input"
+
             # Generate context-aware response based on configuration
-            last_content = messages[-1].get('content', '')[:100]
-            response = self._generate_response(last_content, len(messages))
+            response = self._generate_response(last_user_message, message_count)
+
+            # Update context history with the new messages
+            if self.config["context_persistence"]:
+                self.context_history.append({
+                    "config": {"model": model},
+                    "context": {"messages": messages}
+                })
 
             return self._truncate_response(response, model)
 
@@ -192,12 +207,12 @@ class MockAIModel(BaseAIModel, BasePlugin):
         try:
             # Check for canned responses
             prompt_lower = prompt.lower()
-            if any(key in prompt_lower for key in self.canned_responses):
+            if any(key.lower() in prompt_lower for key in self.canned_responses):
                 for key in self.canned_responses:
-                    if key in prompt_lower:
+                    if key.lower() in prompt_lower:
                         return self.canned_responses[key]
 
-            response = self._generate_response(prompt[:100])
+            response = self._generate_response(prompt[:100], 1)
             return self._truncate_response(response, model)
 
         except Exception as e:
@@ -214,10 +229,17 @@ class MockAIModel(BaseAIModel, BasePlugin):
         Returns:
             str: Generated response
         """
-        base = f"Regarding '{prompt}':\n"
+        # Extract the actual user input from the prompt
+        if "Chat message response Respond in a helpful and concise manner" in prompt:
+            # Remove the prefix to get the actual user question
+            actual_prompt = prompt.replace("Chat message response Respond in a helpful and concise manner", "").strip()
+        else:
+            actual_prompt = prompt
+
+        base = f"Regarding '{actual_prompt}':\n"
 
         # Include part of the prompt in the response
-        prompt_snippet = prompt[:50]
+        prompt_snippet = actual_prompt[:50]
 
         if self.config["response_style"] == "helpful":
             response = (
@@ -230,7 +252,7 @@ class MockAIModel(BaseAIModel, BasePlugin):
         elif self.config["response_style"] == "technical":
             response = (
                 f"{base}Technical analysis:\n"
-                f"- Input length: {len(prompt)}\n"
+                f"- Input length: {len(actual_prompt)}\n"
                 f"- Context items: {message_count}\n"
                 f"- Keywords identified: {prompt_snippet}\n"
                 f"- Suggested approach: Consider multiple factors"

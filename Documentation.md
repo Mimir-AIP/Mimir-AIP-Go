@@ -75,7 +75,6 @@ The ContextManager provides centralized state management with thread-safe operat
   - `overwrite`: Replace existing values (default)
   - `keep`: Preserve existing values
   - `merge`: Combine dictionaries recursively
-- **Performance**: Optimized for high throughput (tested to 1000 ops in <100ms)
 - **Error Handling**: Validates inputs and logs errors
 
 #### API Reference
@@ -200,6 +199,14 @@ class MyPlugin(BasePlugin):
         return {step_config['output']: result}
 ```
 
+Corresponding __init__.py file
+```python
+# __init__.py
+from .MyPlugin import MyPlugin
+
+__all__ = ["MyPlugin"]
+```
+
 ### Best Practices
 - Use clear error messages
 - Document all config options
@@ -263,14 +270,11 @@ When adding new tests, follow these guidelines:
 The WebInterface plugin provides a real-time, interactive web dashboard for pipeline interaction:
 
 - Input Features:
-  - File uploads (CSV, JSON)
-  - Form-based data input
   - Real-time LLM chat interface
   - Context integration
 
 - Output Features:
   - Dynamic content sections
-  - Video streaming (HLS)
   - Real-time updates
   - Interactive elements
 

@@ -1,31 +1,53 @@
-# Configuration for Simple Web Server
+# Configuration for POC Pipelines
+# This configuration enables both versions of the BBC News Report Generator POC pipeline
+# Only the plugins used in the POC pipeline are enabled to keep the configuration minimal
+
 pipelines:
-  - name: "Simple Web Server"
-    file: "src/pipelines/simple_web_pipeline.yaml"
+  - name: "BBC News Report Generator (Old)"
+    file: "src/pipelines/POC.yaml"
+    enabled: true
+  - name: "BBC News Report Generator (V2)"
+    file: "src/pipelines/POC_v2.yaml"
     enabled: true
 
 plugins:
   enabled:
-    - Web.SimpleWebServer
-    - Core.Logger
+    # Data processing plugins
     - Data_Processing.PipelineControl
     - Data_Processing.ContextManager
     - Data_Processing.LLMFunction
-    - AIModels.MockAIModel
-    - AIModels.BaseAIModel
+    - Data_Processing.Delay
+    - Data_Processing.ContextAggregator
+    - Data_Processing.ContextToFile
+    - Data_Processing.FileToContext
+    - Data_Processing.RuleEngine
+    - Data_Processing.GeneralFormatter
+    - Data_Processing.FormatConverter
+    - Data_Processing.ContextPromoter
+    - Data_Processing.ContextLogger  # Added for debugging
+
+    # AI Model plugins
+    - AIModels.OpenRouter
+
+    # Input plugins
+    - Input.rss_feed
+
+    # Output plugins
+    - Output.HTMLReport
 
 settings:
   pipeline_directory: "src/pipelines"
   output_directory: "output"
-  log_level: "INFO"
+  log_level: "DEBUG"
   test_mode: false
 
-# Web server configuration
+# Plugin-specific configurations
 plugin_configs:
+  # Web server configuration (only used in the new version)
   SimpleWebServer:
     port: 8080
     host: ""  # Empty string for all interfaces
-  
+
   # Context manager configuration
   ContextManager:
     log_context_changes: true  # Log when context is modified

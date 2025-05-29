@@ -6,98 +6,86 @@
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![Documentation](https://img.shields.io/badge/docs-Documentation.md-green)](Documentation.md)
 
-## Overview
+## POC: BBC News Report Generator
 
-Mimir-AIP (Artificial Intelligence Platform) is a powerful open-source framework designed to seamlessly connect data inputs and outputs with AI systems. Built with modularity and flexibility at its core, it enables rapid development of AI-powered data pipelines.
+This branch contains two versions of a Proof of Concept (POC) for generating BBC news reports. The pipeline:
 
-### Key Features
+1. Fetches news stories from the BBC News RSS feed
+2. Processes each story to determine its importance
+3. For important stories (score > 7):
+   - Generates a section prompt
+   - Creates a section summary
+   - Collects the data
+4. Writes all section summaries to a file
+5. Loads the summaries and generates an HTML report
 
-- 🔌 **Modular Plugin System**: Easily extend functionality with plugins for:
-  - Data input from various sources (APIs, databases, files)
-  - AI/ML processing with both local and cloud models
-  - Custom output formats and destinations
-  - Data transformation and analysis
-  - Interactive web interface with real-time updates
-
-- 🤖 **LLM Integration**: 
-  - Support for both local and cloud-hosted LLMs
-  - Easy integration with OpenAI, OpenRouter, and other providers
-  - Flexible prompt management and response handling
-
-- 📊 **Advanced Processing**:
-  - Video and image processing capabilities
-  - Real-time data streaming
-  - Customizable data transformation pipelines
-  - Report generation with multiple formats
-  - **Context Management**:
-    - Thread-safe operations using locking
-    - Versioning via snapshots
-    - Configurable conflict resolution (overwrite/keep/merge)
-    - Dictionary merging support
-
-- 🛠️ **Developer-Friendly**:
-  - YAML-based pipeline configuration
-  - Comprehensive testing support
-  - Detailed logging and error handling
-  - Environment-based configuration
-
-## Quick Start
-
-1. Clone the repository:
-```bash
-git clone https://github.com/Mimir-AIP/Mimir-AIP.git
-cd Mimir-AIP
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Configure your environment:
-```bash
-cp src/Plugins/AIModels/AzureAI/.env.template .env
-# Edit .env with your API keys
-```
-
-4. Run your first pipeline:
-```bash
-python src/main.py
-```
-
-## Architecture
+### Original Version Flowchart
 
 ```mermaid
-flowchart TD
-    subgraph subGraph0["Input Plugins"]
-        A["Data Connection sources and plugins"]
-    end
-    subgraph subGraph1["Output Plugins"]
-        E["Output plugins for graphs & visuals"]
-    end
-    A -->D["Data_Processing Plugins"]
-    D-->B["LLM and other AI models"]
-    B --> C["Storage"] & E
-    C --> B
+graph TD
+    Fetch_BBC_News_RSS_Feed[Fetch BBC News RSS Feed]
+    Fetch_BBC_News_RSS_Feed --> Process_Stories
+    Process_Stories[Process Stories]
+    Determine_Importance[Determine Importance]
+    Determine_Importance --> Process_Important_Story
+    Process_Important_Story[Process Important Story]
+    Generate_Search_Queries[Generate Search Queries]
+    Generate_Search_Queries --> Fetch_Search_Results
+    Fetch_Search_Results[Fetch Search Results]
+    Fetch_Search_Results --> Scrape_Web_Results
+    Scrape_Web_Results[Scrape Web Results]
+    Scrape_Web_Results --> Generate_Report
+    Generate_Report[Generate Report]
+    Process_Important_Story_end[End]
+    Generate_Report --> Process_Important_Story_end
+    Process_Important_Story --> Process_Important_Story_end
+    Process_Stories_end[End]
+    Process_Important_Story --> Process_Stories_end
+    Process_Stories --> Process_Stories_end
+    Process_Stories --> Combine_Reports
+    Combine_Reports[Combine Reports]
+    Combine_Reports --> Generate_HTML_Report
+    Generate_HTML_Report[Generate HTML Report]
 ```
 
-## Documentation
+### API Key Setup
 
-- [Full Documentation](Documentation.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
+The pipeline uses the OpenRouter plugin, which requires API keys. Follow these steps to set up your API keys:
 
-## Community & Support
+1. Create a `.env` file in the `src/Plugins/AIModels/OpenRouter/` directory
+2. Add your OpenRouter API key to the `.env` file:
+   ```
+   OPENROUTER_API_KEY=your_api_key_here
+   ```
 
-- 🌟 Star this repository to show your support
-- 🐛 Report issues via [GitHub Issues](https://github.com/Mimir-AIP/Mimir-AIP/issues)
-- 💡 Submit feature requests through [GitHub Discussions](https://github.com/Mimir-AIP/Mimir-AIP/discussions)
-- 🤝 Contribute via [Pull Requests](https://github.com/Mimir-AIP/Mimir-AIP/pulls)
+### Configuration
 
-## Star History
+The `config.yaml` file controls which pipelines are enabled. You can configure it to run either the original or V2 version of the POC pipeline.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Mimir-AIP/Mimir-AIP&type=Date)](https://www.star-history.com/#Mimir-AIP/Mimir-AIP&Date)
+In this branch I have enabled both pipelines and you run the desired one via command line.
 
-## License
+### Run Instructions
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+#### For Original Version
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Run:
+   ```bash
+   python src/main.py --pipeline "BBC News Report Generator (Old)"
+   ```
+
+#### For V2 Version
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Run:
+   ```bash
+   python src/main.py --pipeline "BBC News Report Generator (V2)"
+   ```
+
+Both versions will generate:
+- `section_summaries.json` with the collected data
+- `report.html` in the output directory

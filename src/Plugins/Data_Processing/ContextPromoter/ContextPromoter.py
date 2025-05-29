@@ -29,12 +29,23 @@ class ContextPromoter(BasePlugin):
         source = step_config["source"]
         target = step_config["target"]
         value = None
+        # Validate source expression before evaluation
+        if not isinstance(source, str) or not source.strip():
+            logger.warning(f"[ContextPromoter] Invalid source expression: {source}")
+            value = context.get(source)
+            return {target: value}
+            
         try:
+            # Parse and validate AST first
+            ast.parse(source, mode='eval')
             value = eval(source, {}, context)
             logger.info(f"[ContextPromoter] Evaluated source '{source}' to value: {value}")
-        except Exception as e:
+        except SyntaxError as e:
+            logger.warning(f"[ContextPromoter] Syntax error in source '{source}': {e}")
             value = context.get(source)
+        except Exception as e:
             logger.warning(f"[ContextPromoter] Exception evaluating '{source}': {e}. Fallback value: {value}")
+            value = context.get(source)
         logger.info(f"[ContextPromoter] Context keys at promotion: {list(context.keys())}")
         # Generic nested assignment logic
         try:

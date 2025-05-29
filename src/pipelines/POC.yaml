@@ -1,5 +1,5 @@
 pipelines:
-  - name: "BBC News Report Generator"
+  - name: "BBC News Report Generator (Old)"
     description: "Generates reports for important news stories from BBC News RSS feed"
     steps:
       - name: "Fetch BBC News RSS Feed"
@@ -10,7 +10,7 @@ pipelines:
         output: "feed_BBC_News"
 
       - name: "Process Stories"
-        iterate: "context.get('feed_BBC_News', [])"
+        iterate: "context.get('feed_BBC_News', [])[:5]"  # Limit to 5 stories
         steps:
           - name: "Delay Before Importance"
             plugin: "Data_Processing.Delay"
@@ -32,88 +32,145 @@ pipelines:
             input: "item['title']"
             output: "importance_score"
 
+          - name: "Convert Importance Score to Dictionary"
+            plugin: "Data_Processing.FormatConverter"
+            config:
+              input_key: "importance_score"
+              output_key: "importance_score"
+              conversion_type: "string_to_dict"
+              strict_json: false
+
           - name: "Process Important Story"
-            condition: "importance_score['score'] > 7"
-            steps:
-              - name: "Delay Before Section Prompt"
-                plugin: "Data_Processing.Delay"
-                config:
-                  seconds: 5
-                output: "delay_before_section_prompt"
+            plugin: "Data_Processing.RuleEngine"
+            config:
+              operation: "evaluate"
+              input_key: "importance_score"
+              condition: "eval(context['importance_score'])['score'] > 7"
+            output: "rule_engine_result"
+          - name: "Delay Before Section Prompt"
+            plugin: "Data_Processing.Delay"
+            config:
+              seconds: 5
+            output: "delay_before_section_prompt"
 
-              - name: "Generate Section Prompt"
-                plugin: "Data_Processing.LLMFunction"
-                config:
-                  plugin: "OpenRouter"
-                  model: "meta-llama/llama-4-maverick:free"
-                  function: |
-                    You are a program block that generates a single, strong prompt for summarizing a news story. Your ONLY output should be a single valid Python dictionary in the format {'section_prompt': <prompt_string>}.
-                    Do not include any explanation, commentary, or extra text. Only output the dictionary.
-                    The prompt should instruct an LLM to write a concise, well-structured summary section for a news report, including all available details (title, description, link), and enforce output as a Python dict with a 'section_summary' key.
-                  format: "response"
-                  mock_response: {"section_prompt": "Write a summary for this news item."}
-                input: "item"
-                output: "section_prompt"
+          - name: "Generate Section Prompt"
+            plugin: "Data_Processing.LLMFunction"
+            config:
+              plugin: "OpenRouter"
+              model: "meta-llama/llama-4-maverick:free"
+              function: |
+                You are a program block that generates a single, strong prompt for summarizing a news story. Your ONLY output should be a single valid Python dictionary in the format {'section_prompt': <prompt_string>}.
+                Do not include any explanation, commentary, or extra text. Only output the dictionary.
+                The prompt should instruct an LLM to write a concise, well-structured summary section for a news report, including all available details (title, description, link), and enforce output as a Python dict with a 'section_summary' key.
+              format: "response"
+              mock_response: {"section_prompt": "Write a summary for this news item."}
+            input: "item"
+            output: "section_prompt"
 
-              - name: "Generate Section Summary"
-                plugin: "Data_Processing.LLMFunction"
-                config:
-                  plugin: "OpenRouter"
-                  model: "meta-llama/llama-4-maverick:free"
-                  function: |
-                    You are a program block that generates a concise, informative section summary for a news story. Use the following details:
-                    - Title: {title}
-                    - Description: {description}
-                    - Link: {link}
-                    Use the provided prompt for additional guidance: {section_prompt.section_prompt}
-                    Output ONLY a valid Python dictionary in the format: {'section_summary': <summary text>}.
-                    Do not add any explanation or commentary. Your output MUST be a Python dict with a single key 'section_summary'.
-                  format: "response"
-                  mock_response: {"section_summary": "This is a mock section summary for testing."}
-                input: "{'title': item['title'], 'description': item.get('description', ''), 'link': item.get('link', ''), 'section_prompt': section_prompt}"
-                output: "section_summary"
+          - name: "Convert Section Prompt to Dictionary"
+            plugin: "Data_Processing.FormatConverter"
+            config:
+              input_key: "section_prompt"
+              output_key: "section_prompt"
+              conversion_type: "string_to_dict"
+              strict_json: false
 
-              - name: "Build Section Data"
-                plugin: "Data_Processing.ContextPromoter"
-                source: "item"
-                target: "section_data"
+          - name: "Generate Section Summary"
+            plugin: "Data_Processing.LLMFunction"
+            config:
+              plugin: "OpenRouter"
+              model: "meta-llama/llama-4-maverick:free"
+              function: |
+                You are a program block that generates a concise, informative section summary for a news story. Use the following details:
+                - Title: {title}
+                - Description: {description}
+                - Link: {link}
+                Use the provided prompt for additional guidance: {section_prompt.section_prompt}
+                Output ONLY a valid Python dictionary in the format: {'section_summary': <summary text>}.
+                Do not add any explanation or commentary. Your output MUST be a Python dict with a single key 'section_summary'.
+              format: "response"
+              mock_response: {"section_summary": "This is a mock section summary for testing."}
+            input: "{'title': item['title'], 'description': item.get('description', ''), 'link': item.get('link', ''), 'section_prompt': section_prompt}"
+            output: "section_summary"
 
-              - name: "Add Importance and Summary to Section Data"
-                plugin: "Data_Processing.ContextPromoter"
-                source: "importance_score['score']"
-                target: "section_data['importance']"
+          - name: "Convert Section Summary to Dictionary"
+            plugin: "Data_Processing.FormatConverter"
+            config:
+              input_key: "section_summary"
+              output_key: "section_summary"
+              conversion_type: "string_to_dict"
+              strict_json: false
 
-              - name: "Add Section Summary to Section Data"
-                plugin: "Data_Processing.ContextPromoter"
-                source: "section_summary['section_summary']"
-                target: "section_data['section_summary']"
+          - name: "Build Section Data"
+            plugin: "Data_Processing.ContextPromoter"
+            source: "item"
+            target: "section_data"
 
-              - name: "Collect Section Data"
-                plugin: "Data_Processing.ContextAggregator"
-                key: "section_summaries"
-                value: "section_data"
-                required_keys:
-                  - title
-                  - importance
-                  - description
-                  - link
-                  - section_summary
-                output: "section_summaries"
+          - name: "Add Importance and Summary to Section Data"
+            plugin: "Data_Processing.ContextPromoter"
+            source: "importance_score"
+            target: "section_data['importance']"
 
-      - name: "Write All Section Summaries to File"
-        plugin: "Data_Processing.ContextToFile"
-        config:
-          variable: "section_summaries"
-          filename: "section_summaries.json"
-          append: false
-        output: "written_section_summaries"
+          - name: "Add Section Summary to Section Data"
+            plugin: "Data_Processing.ContextPromoter"
+            source: "section_summary"
+            target: "section_data['section_summary']"
 
-      - name: "Load Section Summaries"
-        plugin: "Data_Processing.FileToContext"
-        config:
-          filename: "section_summaries.json"
-          variable: "section_summaries"
-        output: "section_summaries"
+          - name: "Ensure All Fields Have Valid Values"
+            plugin: "Data_Processing.ContextPromoter"
+            source: |
+              # Get section_data from context or use a default
+              s = context.get('section_data', {})
+              if s is None:
+                  # If section_data is None, create a new dict with required fields
+                  s = {
+                      'title': context.get('item', {}).get('title', 'No title available'),
+                      'description': context.get('item', {}).get('description', 'No description available'),
+                      'link': context.get('item', {}).get('link', 'No link available'),
+                      'importance': context.get('importance_score', {}).get('score', 'N/A'),
+                      'section_summary': context.get('section_summary', {}).get('section_summary', 'No summary available')
+                  }
+              else:
+                  # Otherwise, copy and process the existing data
+                  s = s.copy()
+                  importance = s.get('importance', {})
+                  if isinstance(importance, dict):
+                      importance_score = importance.get('score', 'N/A')
+                  else:
+                      importance_score = str(importance) if importance is not None else 'N/A'
+                  s['importance'] = str(importance_score)
+
+                  section_summary = s.get('section_summary', {})
+                  if isinstance(section_summary, dict):
+                      summary = section_summary.get('section_summary', 'No summary available')
+                  else:
+                      summary = str(section_summary) if section_summary is not None else 'No summary available'
+                  s['section_summary'] = summary
+
+                  s['description'] = s.get('description', 'No description available')
+              s
+            target: "section_data"
+          - name: "Log Context After Ensure Fields"
+            plugin: "Data_Processing.ContextLogger"
+            config:
+              log_values: true
+
+          - name: "Collect Section Data"
+            plugin: "Data_Processing.ContextAggregator"
+            config:
+              key: "section_summaries"
+              value: "section_data"
+              required_keys:
+                - title
+                - importance
+                - description
+                - link
+                - section_summary
+            output: "section_summaries"
+          - name: "Log Context Before Generating HTML"
+            plugin: "Data_Processing.ContextLogger"
+            config:
+              log_values: true
 
       - name: "Generate HTML Report"
         plugin: "Output.HTMLReport"
@@ -124,7 +181,7 @@ pipelines:
               {
                 'heading': s['title'],
                 'text': (
-                  '<b>Importance:</b> ' + str(s['importance']) +
+                  '<b>Importance:</b> ' + s['importance'] +
                   '<br><b>Description:</b> ' + s['description'] +
                   '<br><b>Link:</b> <a href="' + s['link'] + '">' + s['link'] + '</a>' +
                   '<br><b>Summary:</b> ' + s['section_summary']

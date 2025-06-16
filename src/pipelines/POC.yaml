@@ -45,7 +45,7 @@ pipelines:
             config:
               operation: "evaluate"
               input_key: "importance_score"
-              condition: "eval(context['importance_score'])['score'] > 7"
+              condition: "eval(context['importance_score'])['score'] > 7" # Bad practice, overhaul needs to deal with context to avoid having to do things like this
             output: "rule_engine_result"
           - name: "Delay Before Section Prompt"
             plugin: "Data_Processing.Delay"
@@ -61,7 +61,7 @@ pipelines:
               function: |
                 You are a program block that generates a single, strong prompt for summarizing a news story. Your ONLY output should be a single valid Python dictionary in the format {'section_prompt': <prompt_string>}.
                 Do not include any explanation, commentary, or extra text. Only output the dictionary.
-                The prompt should instruct an LLM to write a concise, well-structured summary section for a news report, including all available details (title, description, link), and enforce output as a Python dict with a 'section_summary' key.
+                The prompt should instruct an LLM to write a concise, well-structured summary section for a news report, including all available details (title, description, link), and enforce output as a Python dict with a 'section_prompt' key.
               format: "response"
               mock_response: {"section_prompt": "Write a summary for this news item."}
             input: "item"

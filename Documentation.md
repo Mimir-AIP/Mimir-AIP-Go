@@ -66,7 +66,7 @@ Mimir-AIP/
 
 ### Context System
 
-The ContextManager provides centralized state management with thread-safe operations.
+The ContextService provides centralized state management with thread-safe operations, now including internal access control.
 
 #### Features
 - **Thread Safety**: All operations protected by threading.Lock()
@@ -79,12 +79,43 @@ The ContextManager provides centralized state management with thread-safe operat
 
 #### API Reference
 ```python
-get_context(key=None) -> Any
-set_context(key, value, overwrite=True) -> bool
-merge_context(new_context, conflict_strategy='overwrite') -> Dict
-snapshot_context() -> int
-restore_context(snapshot_id) -> bool
-clear_context() -> None
+get_context(namespace: str, key: Optional[str] = None, enforce_access: bool = True, actor: str = "system") -> Any
+set_context(namespace: str, key: str, value: Any, overwrite: bool = True, enforce_access: bool = True, schema_id: Optional[str] = None, actor: str = "system") -> bool
+merge_context(namespace: str, new_context: Dict[str, Any], conflict_strategy: str = 'overwrite', enforce_access: bool = True, schema_id: Optional[str] = None, actor: str = "system") -> Dict[str, Any]
+snapshot_context(namespace: str, enforce_access: bool = True, actor: str = "system") -> int
+restore_context(snapshot_id: int, enforce_access: bool = True, actor: str = "system") -> bool
+delete_context(namespace: str, key: Optional[str] = None, enforce_access: bool = True, actor: str = "system") -> bool
+list_namespaces(enforce_access: bool = True, actor: str = "system") -> List[str]
+clear_all_context(enforce_access: bool = True, actor: str = "system") -> None
+```
+
+#### Access Control
+
+The `ContextService` now incorporates a policy-based access control mechanism, primarily for internal system and pipeline components. This ensures that different parts of the system interact with context data according to predefined permissions, enhancing system integrity and preventing unintended data manipulation.
+
+- **Roles**: Access is granted based on predefined internal roles (e.g., "system", "pipeline_executor", "admin_tool").
+- **Resources**: Context keys or namespaces are treated as resources, with support for regex patterns (e.g., `data.*` for all keys under the `data` namespace).
+- **Actions**: Supported actions include `read`, `write`, `delete`, `snapshot`, and `restore`.
+- **Policies**: Defined in `config.yaml`, policies specify which roles can perform which actions on which resources. A "deny" effect takes precedence over "allow".
+- **`actor` Parameter**: All context manipulation methods now accept an `actor` parameter (defaulting to "system") to identify the entity requesting access.
+
+**Configuration Example (`config.yaml`):**
+```yaml
+access_control:
+  enabled: true
+  policies:
+    - role: "system"
+      resource_pattern: ".*"
+      actions: ["read", "write", "delete", "snapshot", "restore"]
+      effect: "allow"
+    - role: "pipeline_executor"
+      resource_pattern: "pipeline_data.*"
+      actions: ["read", "write"]
+      effect: "allow"
+    - role: "pipeline_executor"
+      resource_pattern: "all_namespaces"
+      actions: ["delete"]
+      effect: "deny"
 ```
 
 #### Example Usage

@@ -1,6 +1,15 @@
-# Configuration for POC Pipelines
-# This configuration enables both versions of the BBC News Report Generator POC pipeline
-# Only the plugins used in the POC pipeline are enabled to keep the configuration minimal
+##############################################################################
+# Mimir-AIP Configuration
+#
+# This file configures the Mimir-AIP pipeline execution environment.
+# All paths are relative to the project root unless otherwise specified.
+##############################################################################
+
+# Pipeline Definitions
+# -------------------
+# List of available pipelines with their configurations.
+# Each pipeline must have a unique name, a file path, and an enabled status.
+# Only enabled pipelines will be available for execution.
 
 pipelines:
   - name: "BBC News Report Generator (Old)"
@@ -9,6 +18,11 @@ pipelines:
   - name: "BBC News Report Generator (V2)"
     file: "src/pipelines/POC_v2.yaml"
     enabled: true
+
+# Plugin Definitions
+# -----------------
+# List of enabled plugins for the Mimir-AIP environment.
+# Plugins can be categorized into data processing, AI models, input, and output.
 
 plugins:
   enabled:
@@ -35,19 +49,128 @@ plugins:
     # Output plugins
     - Output.HTMLReport
 
+# Global Settings
+# --------------
+# Core configuration for the Mimir-AIP execution environment.
+
 settings:
+  # Directory containing pipeline definition files (.yaml)
   pipeline_directory: "src/pipelines"
+  
+  # Directory where output files will be saved
   output_directory: "output"
+  
+  # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
   log_level: "DEBUG"
+  
+  # Test mode (when true, uses mock responses where available)
   test_mode: false
+  
+  # Visual Debugging Configuration
+  # ------------------------------
+  # Configure visual debugging features for pipeline execution.
+  visual_debugging:
+    enabled: true                    # Enable/disable visual debugging
+    output_dir: "debug_output"       # Directory to save debug output files
+    ascii_tree: true                # Generate ASCII tree visualization
+    log_level: "DEBUG"              # Debug output verbosity
+    
+    # Additional debug options
+    options:
+      enable_state_logging: true    # Log state changes to file
+      max_log_entries: 1000          # Maximum number of log entries to keep
+      
+    # Debug output formats (set to true to enable)
+    output_formats:
+      json: true                    # Save execution state as JSON
+      text: true                    # Save human-readable text summary
+      dot: false                    # Generate Graphviz DOT format
+      
+    # Real-time monitoring options
+    monitoring:
+      enabled: false               # Enable real-time monitoring
+      port: 5000                    # WebSocket port for real-time updates
+      update_interval: 1.0          # Seconds between updates
 
-# Plugin-specific configurations
+# Plugin Configuration
+# -------------------
+# Global settings for all plugins. These can be overridden in individual
+# pipeline definitions or plugin configurations.
+
+# Context Service Configuration
+# --------------------------
+# Configuration for the ContextService, including persistence settings.
+context_service:
+  # Binary data handling configuration
+  binary:
+    memory_threshold: 10485760      # 10MB - Size threshold for in-memory vs external storage
+    storage_backend: "filesystem"  # Storage backend for large binary files (filesystem, s3, etc.)
+    temp_directory: "/tmp/mimir_binary"  # Temporary directory for binary file operations
+
+    # Filesystem storage configuration
+    filesystem:
+      base_path: "binary_data"     # Base directory for storing binary files
+
+    # S3-compatible storage configuration
+    s3:
+      enabled: false                # Enable S3 storage for binary data
+      endpoint: "s3.amazonaws.com" # S3 endpoint (AWS or compatible service)
+      bucket: "mimir-binary-store" # S3 bucket name
+      access_key: ""               # AWS access key (leave empty for IAM roles)
+      secret_key: ""               # AWS secret key (leave empty for IAM roles)
+      region: "us-east-1"          # AWS region
+
+  # Storage configuration for persisting context data
+  storage:
+    enabled: true                  # Enable/disable persistent storage
+    backend: "filesystem"          # Storage backend to use (currently only 'filesystem' is supported)
+    base_path: "context_data"      # Base directory for storing context data (for filesystem backend)
+
+    # Future backends (e.g., SQLite, Redis) would be configured here
+    # sqlite:
+    #   db_path: "context.db"
+    #   table_name: "context_store"
+
+    # redis:
+    #   host: "localhost"
+    #   port: 6379
+    #   db: 0
+    #   key_prefix: "mimir:context:"
+
+# Access Control Configuration
+# --------------------------
+# Configuration for internal access control policies.
+access_control:
+ enabled: true # Set to false to disable access control (for backwards compatibility)
+ policies:
+   - role: "system"
+     resource_pattern: ".*" # System can access all context keys and namespaces
+     actions: ["read", "write", "delete", "snapshot", "restore"]
+     effect: "allow"
+   - role: "pipeline_executor"
+     resource_pattern: "pipeline_data.*" # Pipeline executors can read/write specific data
+     actions: ["read", "write"]
+     effect: "allow"
+   - role: "admin_tool"
+     resource_pattern: ".*" # Admin tools have full access
+     actions: ["read", "write", "delete", "snapshot", "restore"]
+     effect: "allow"
+   - role: "pipeline_executor"
+     resource_pattern: "all_namespaces" # Pipeline executors are explicitly denied clearing all context
+     actions: ["delete"]
+     effect: "deny"
+
+# Plugin-Specific Configurations
+# ---------------------------
+# Configuration for individual plugins. Each plugin can define its own
+# configuration structure. Refer to plugin documentation for details.
+
 plugin_configs:
-  # Web server configuration (only used in the new version)
-  SimpleWebServer:
-    port: 8080
-    host: ""  # Empty string for all interfaces
+ # Web server configuration (only used in the new version)
+ SimpleWebServer:
+   port: 8080
+   host: ""  # Empty string for all interfaces
 
-  # Context manager configuration
-  ContextManager:
-    log_context_changes: true  # Log when context is modified
+ # Context manager configuration
+ ContextManager:
+   log_context_changes: true  # Log when context is modified

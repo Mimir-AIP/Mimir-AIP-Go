@@ -1,0 +1,40 @@
+[run]
+branch = True
+source = src
+omit =
+    */tests/*
+    */migrations/*
+    */templates/*
+    */static/*
+    */__init__.py
+    */setup.py
+    */conftest.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    pass
+    raise ImportError
+    except ImportError:
+    def main()
+    if TYPE_CHECKING:
+
+[html]
+directory = coverage_html
+title = Test Coverage Report
+
+[xml]
+output = coverage.xml
+
+[paths]
+source =
+    src/
+    */site-packages/
+
+[json]
+output = coverage.json
+pretty_print = true

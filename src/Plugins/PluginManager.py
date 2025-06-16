@@ -8,8 +8,10 @@ import os
 import sys
 import inspect
 from abc import ABC
-from typing import Dict, Set
+from typing import Dict, Set, Optional, Any
 import logging
+
+from src.ContextService import ContextService # Import ContextService
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger(__name__).info(f"[PluginManager:Startup] CWD: {os.getcwd()}, Python exec: {sys.executable}")
@@ -21,20 +23,25 @@ class PluginManager:
         plugins_path (str): Path to the plugins directory.
         plugins (Dict[str, Dict[str, object]]): Dictionary of loaded plugins, where keys are plugin types and values are dictionaries of plugin instances.
         warnings (Set[str]): Set of warnings encountered during plugin loading.
+        context_service (Optional[ContextService]): Reference to the ContextService instance for schema registration.
     '''
 
-    def __init__(self, plugins_path="Plugins", config=None):
+    def __init__(self, plugins_path: str = "Plugins", config: Optional[Dict[str, Any]] = None,
+                 context_service: Optional[ContextService] = None):
         '''Initializes the PluginManager instance.
 
         Args:
             plugins_path (str): Path to the plugins directory. Defaults to "Plugins".
-            config (dict): Optional configuration containing plugin enable/disable lists
+            config (dict): Optional configuration containing plugin enable/disable lists.
+            context_service (Optional[ContextService]): An optional instance of ContextService
+                                                        to register plugin schemas with.
         '''
         self.plugins_path = plugins_path
         self.plugins: Dict[str, Dict[str, object]] = {}
         self.plugin_types = ["AIModels", "Data_Processing", "Input", "Output", "Web"]
         self.warnings: Set[str] = set()
         self.config = config or {}
+        self.context_service = context_service # Store the ContextService instance
         print(f"[DEBUG PluginManager] self.config on init: {self.config}")
         
         # Add src directory to Python path for imports
@@ -155,83 +162,101 @@ class PluginManager:
                     if not module:
                         raise ImportError(f"Could not import module from any of: {module_names}")
                     logging.getLogger(__name__).info(f"[PluginManager] Attempting to import {module_name} from {plugin_file}")
-                    try:
-                        module = importlib.import_module(module_name)
-                        logging.getLogger(__name__).info(f"[PluginManager] Imported module {module_name} from {module.__file__}")
-                        # Debug: print out module namespace for diagnosis
-                        logging.getLogger(__name__).debug(f"dir({module_name}): {dir(module)}")
-                        # Try different class name formats
-                        # Try both the folder name and any class names defined in __all__
-                        base_name = folder.replace('-', '_')
-                        possible_names = [base_name]
-                        if hasattr(module, '__all__'):
-                            possible_names.extend(module.__all__)
-                        class_names = [
-                            *[name for name in possible_names],  # Try all possible names
-                            ''.join(word.capitalize() for word in base_name.split('_')),  # PascalCase
-                            ''.join(word.capitalize() for word in base_name.split('_')) + 'Plugin',  # PascalCasePlugin
-                            folder,  # Original folder name (preserves case)
-                            folder + 'Plugin',  # Original folder name + 'Plugin'
-                        ]
+                    
+                    # This try-except block was incorrectly nested and caused indentation issues.
+                    # The inner try-except for module import is handled above.
+                    # The instantiation and schema registration should be within the outer try.
+                    module = importlib.import_module(module_name)
+                    logging.getLogger(__name__).info(f"[PluginManager] Imported module {module_name} from {module.__file__}")
+                    # Debug: print out module namespace for diagnosis
+                    logging.getLogger(__name__).debug(f"dir({module_name}): {dir(module)}")
+                    # Try different class name formats
+                    # Try both the folder name and any class names defined in __all__
+                    base_name = folder.replace('-', '_')
+                    possible_names = [base_name]
+                    if hasattr(module, '__all__'):
+                        possible_names.extend(module.__all__)
+                    class_names = [
+                        *[name for name in possible_names],  # Try all possible names
+                        ''.join(word.capitalize() for word in base_name.split('_')),  # PascalCase
+                        ''.join(word.capitalize() for word in base_name.split('_')) + 'Plugin',  # PascalCasePlugin
+                        folder,  # Original folder name (preserves case)
+                        folder + 'Plugin',  # Original folder name + 'Plugin'
+                    ]
 
-                        plugin_class = None
-                        for class_name in class_names:
-                            if hasattr(module, class_name):
-                                attr = getattr(module, class_name)
-                                # Debug: log plugin_type and abstract status
-                                plugin_type_val = getattr(attr, 'plugin_type', None)
-                                is_abstract = inspect.isclass(attr) and inspect.isabstract(attr)
-                                logging.getLogger(__name__).debug(
-                                    f"Checking class '{class_name}': plugin_type={plugin_type_val}, is_abstract={is_abstract}"
-                                )
-                                # Skip abstract base classes (ABC) and classes with abstract methods
-                                if inspect.isclass(attr) and not inspect.isabstract(attr):
-                                    if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
-                                        plugin_class = attr
-                                        logging.getLogger(__name__).debug(f"Found valid plugin class: {plugin_class}")
-                                        break
-                        
-                        if not plugin_class:
-                            all_classes = [name for name, obj in inspect.getmembers(module) if inspect.isclass(obj)]
-                            logging.getLogger(__name__).debug(f"No valid plugin class found in {module.__name__}. Classes found: {all_classes}")
-                            logging.getLogger(__name__).debug(f"Looking for plugin_type: {plugin_type} in module: {module.__name__}")
-                            for name, obj in inspect.getmembers(module):
-                                if inspect.isclass(obj):
-                                    logging.getLogger(__name__).debug(f"Class: {name}, plugin_type: {getattr(obj, 'plugin_type', 'N/A')}, is_abstract: {inspect.isabstract(obj)}")
+                    plugin_class = None
+                    for class_name in class_names:
+                        if hasattr(module, class_name):
+                            attr = getattr(module, class_name)
+                            # Debug: log plugin_type and abstract status
+                            plugin_type_val = getattr(attr, 'plugin_type', None)
+                            is_abstract = inspect.isclass(attr) and inspect.isabstract(attr)
+                            logging.getLogger(__name__).debug(
+                                f"Checking class '{class_name}': plugin_type={plugin_type_val}, is_abstract={is_abstract}"
+                            )
+                            # Skip abstract base classes (ABC) and classes with abstract methods
+                            if inspect.isclass(attr) and not inspect.isabstract(attr):
+                                if hasattr(attr, 'plugin_type') and attr.plugin_type == plugin_type:
+                                    plugin_class = attr
+                                    logging.getLogger(__name__).debug(f"Found valid plugin class: {plugin_class}")
+                                    break
+                    
+                    if not plugin_class:
+                        all_classes = [name for name, obj in inspect.getmembers(module) if inspect.isclass(obj)]
+                        logging.getLogger(__name__).debug(f"No valid plugin class found in {module.__name__}. Classes found: {all_classes}")
+                        logging.getLogger(__name__).debug(f"Looking for plugin_type: {plugin_type} in module: {module.__name__}")
+                        for name, obj in inspect.getmembers(module):
+                            if inspect.isclass(obj):
+                                logging.getLogger(__name__).debug(f"Class: {name}, plugin_type: {getattr(obj, 'plugin_type', 'N/A')}, is_abstract: {inspect.isabstract(obj)}")
 
-                        if plugin_class:
-                            try:
-                                # Handle plugins that need dependencies
-                                if plugin_type == "Data_Processing" and folder == "LLMFunction":
-                                    # Get the first available AI Model plugin and pass plugin_manager for dynamic selection
-                                    ai_plugins = self.get_plugins("AIModels")
-                                    if ai_plugins:
-                                        first_ai_plugin = next(iter(ai_plugins.values()))
-                                        plugin_instance = plugin_class(llm_plugin=first_ai_plugin, plugin_manager=self)
-                                    else:
-                                        self.warnings.add(f"Error instantiating plugin {folder}: No AI Model plugins available")
-                                        continue
-                                elif plugin_type == "Web" and folder == "WebInterface":
-                                    # Always use port from config for WebInterface
-                                    web_cfg = self.config.get("settings", {}).get("webinterface", {})
-                                    logging.getLogger(__name__).info(f"[PluginManager] WebInterface config for port: {web_cfg}")
-                                    port = 8080
-                                    if isinstance(web_cfg, dict) and "port" in web_cfg:
-                                        port = int(web_cfg["port"])
-                                    logging.getLogger(__name__).info(f"[PluginManager] Passing port={port} to WebInterface plugin {folder}")
-                                    plugin_instance = plugin_class(port=port)
+                    if plugin_class:
+                        try: # This try block is for plugin instantiation
+                            # Handle plugins that need dependencies
+                            if plugin_type == "Data_Processing" and folder == "LLMFunction":
+                                # Get the first available AI Model plugin and pass plugin_manager for dynamic selection
+                                ai_plugins = self.get_plugins("AIModels")
+                                if ai_plugins:
+                                    first_ai_plugin = next(iter(ai_plugins.values()))
+                                    plugin_instance = plugin_class(llm_plugin=first_ai_plugin, plugin_manager=self)
                                 else:
-                                    plugin_instance = plugin_class()
-                                logging.getLogger(__name__).info(f"[PluginManager] Instantiated {plugin_class} from {plugin_file}")
-                                self.plugins.setdefault(plugin_type, {})[folder] = plugin_instance
-                                logging.getLogger(__name__).info(f"Successfully loaded plugin: {folder}")  
-                            except Exception as e:
-                                self.warnings.add(f"Error instantiating plugin {folder}: {str(e)}")
+                                    self.warnings.add(f"Error instantiating plugin {folder}: No AI Model plugins available")
+                                    continue
+                            elif plugin_type == "Web" and folder == "WebInterface":
+                                # Always use port from config for WebInterface
+                                web_cfg = self.config.get("settings", {}).get("webinterface", {})
+                                logging.getLogger(__name__).info(f"[PluginManager] WebInterface config for port: {web_cfg}")
+                                port = 8080
+                                if isinstance(web_cfg, dict) and "port" in web_cfg:
+                                    port = int(web_cfg["port"])
+                                logging.getLogger(__name__).info(f"[PluginManager] Passing port={port} to WebInterface plugin {folder}")
+                                plugin_instance = plugin_class(port=port)
+                            else:
+                                plugin_instance = plugin_class()
+                            
+                            logging.getLogger(__name__).info(f"[PluginManager] Instantiated {plugin_class} from {plugin_file}")
+                            self.plugins.setdefault(plugin_type, {})[folder] = plugin_instance
+                            logging.getLogger(__name__).info(f"Successfully loaded plugin: {folder}")
 
-                    except ImportError as e:
-                        self.warnings.add(f"Error importing module {module_name}: {str(e)}")
+                            # Register plugin's input and output schemas with ContextService
+                            if self.context_service:
+                                if hasattr(plugin_class, '_input_context_schema') and plugin_class._input_context_schema:
+                                    schema_id = f"{plugin_base_name}_input"
+                                    self.context_service.register_context_schema(schema_id, plugin_class._input_context_schema)
+                                    logging.getLogger(__name__).debug(f"Registered input schema for {plugin_base_name} as '{schema_id}'")
+                                if hasattr(plugin_class, '_output_context_schema') and plugin_class._output_context_schema:
+                                    schema_id = f"{plugin_base_name}_output"
+                                    self.context_service.register_context_schema(schema_id, plugin_class._output_context_schema)
+                                    logging.getLogger(__name__).debug(f"Registered output schema for {plugin_base_name} as '{schema_id}'")
+                            else:
+                                logging.getLogger(__name__).debug(f"No ContextService provided to PluginManager. Skipping schema registration for {plugin_base_name}.")
 
-                except Exception as e:
+                        except Exception as e: # Catch exceptions during plugin instantiation
+                            self.warnings.add(f"Error instantiating plugin {folder}: {str(e)}")
+
+                except ImportError as e: # Catch exceptions during module import
+                    self.warnings.add(f"Error importing module {module_name}: {str(e)}")
+
+                except Exception as e: # Catch any other general exceptions during loading
                     self.warnings.add(f"Error loading plugin {folder}: {str(e)}")
 
     def get_plugins(self, plugin_type=None):

@@ -1,0 +1,257 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mimir-AIP Pipeline Configuration Schema",
+  "description": "Schema for validating Mimir-AIP pipeline YAML configurations.",
+  "type": "object",
+  "required": ["pipelines"],
+  "properties": {
+    "pipelines": {
+      "type": "array",
+      "description": "A list of pipeline definitions.",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "steps"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The unique name of the pipeline."
+          },
+          "description": {
+            "type": "string",
+            "description": "A brief description of what the pipeline does."
+          },
+          "version": {
+            "type": "string",
+            "description": "The version of the pipeline.",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the pipeline is enabled for execution.",
+            "default": false
+          },
+          "execution_mode": {
+            "type": "string",
+            "description": "The execution mode of the pipeline (single, continuous, scheduled).",
+            "enum": ["single", "continuous", "scheduled"],
+            "default": "single"
+          },
+          "plugin_manager_required": {
+            "type": "boolean",
+            "description": "Indicates if the plugin manager instance should be passed to plugins."
+          },
+          "schedule": {
+            "type": "string",
+            "description": "Cron schedule string for scheduled execution mode.",
+            "pattern": "^(?:\\*|\\d+(?:-\\d+)?(?:,\\d+(?:-\\d+)?)*)(?:\\s(?:\\*|\\d+(?:-\\d+)?(?:,\\d+(?:-\\d+)?)*)){4}$"
+          },
+          "steps": {
+            "type": "array",
+            "description": "A list of steps to be executed in the pipeline.",
+            "items": {
+              "$ref": "#/definitions/step"
+            },
+            "minItems": 1
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "execution_mode": { "const": "scheduled" } } },
+            "then": { "required": ["schedule"] }
+          }
+        ]
+      },
+      "minItems": 1
+    }
+  },
+  "definitions": {
+    "step": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the pipeline step."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of step (plugin, conditional, jump).",
+          "default": "plugin",
+          "enum": ["plugin", "conditional", "jump", "set_context", "load_context", "append_context", "save_context", "context_operation"]
+              },
+              "plugin": {
+                "type": "string",
+                "description": "The plugin to be used for this step (e.g., 'Input.rss_feed').",
+                "pattern": "^[A-Za-z]+\\.[A-Za-z]+$"
+              },
+              "config": {
+                "type": "object",
+                "description": "Plugin-specific configuration parameters.",
+                "additionalProperties": true
+              },
+              "method_name": {
+                "type": "string",
+                "description": "The name of the ContextService method to call."
+              },
+              "method_args": {
+                "type": "object",
+                "description": "The arguments to pass to the ContextService method.",
+                "additionalProperties": true
+              },
+        "input": {
+          "type": "string",
+          "description": "Context key or expression for input data."
+        },
+        "output": {
+          "type": "string",
+          "description": "Context key for output data."
+        },
+        "label": {
+          "type": "string",
+          "description": "Unique identifier for jump targets."
+        },
+        "iterate": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Context key or expression to iterate over (deprecated)."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "items": {
+                  "type": "string",
+                  "description": "Context key for iterable collection."
+                },
+                "as": {
+                  "type": "string",
+                  "description": "Variable name for current item.",
+                  "default": "item"
+                },
+                "index": {
+                  "type": "string",
+                  "description": "Variable name for current index."
+                }
+              },
+              "required": ["items", "as"]
+            }
+          ],
+          "description": "Iteration configuration."
+        },
+        "use_plugin_manager": {
+          "type": "boolean",
+          "description": "Whether to pass the plugin manager to this specific plugin."
+        },
+        "steps": {
+          "type": "array",
+          "description": "Nested steps for iteration or conditional branches.",
+          "items": {
+            "$ref": "#/definitions/step"
+          },
+          "minItems": 1
+        },
+        "condition": {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "description": "JavaScript-like expression to evaluate."
+            },
+            "on_true": {
+              "type": "string",
+              "enum": ["continue", "jump"],
+              "description": "Action when condition is true.",
+              "default": "continue"
+            },
+            "on_false": {
+              "type": "string",
+              "enum": ["continue", "jump"],
+              "description": "Action when condition is false.",
+              "default": "continue"
+            },
+            "jump_target": {
+              "type": "string",
+              "description": "Label to jump to when jump action is specified."
+            }
+          },
+          "required": ["expression"]
+        },
+        "path": {
+          "type": "string",
+          "description": "Context path (e.g., 'namespace.key')."
+        },
+        "value": {
+          "description": "Value to set or append to context."
+        },
+        "overwrite": {
+          "type": "boolean",
+          "description": "Whether to overwrite existing context path (for set_context).",
+          "default": true
+        },
+        "create_if_missing": {
+          "type": "boolean",
+          "description": "Whether to create list if path doesn't exist (for append_context).",
+          "default": false
+        },
+        "source": {
+          "type": "string",
+          "description": "Source of context (e.g., 'file', 'database')."
+        },
+        "destination": {
+          "type": "string",
+          "description": "Destination for saving context (e.g., 'file', 'database')."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "plugin" } } },
+          "then": { "required": ["plugin"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "conditional" } } },
+          "then": {
+            "required": ["condition"],
+            "properties": {
+              "condition": { "type": "object" },
+              "plugin": { "type": "string", "enum": [] }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "jump" } } },
+          "then": {
+            "required": ["to"],
+            "properties": {
+              "to": { "type": "string" },
+              "plugin": { "type": "string", "enum": [] }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "set_context" } } },
+          "then": { "required": ["path", "value"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "load_context" } } },
+          "then": { "required": ["path", "source", "config"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "append_context" } } },
+          "then": { "required": ["path", "value"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "save_context" } } },
+          "then": { "required": ["path", "destination", "config"] }
+        },
+        {
+              "if": { "properties": { "iterate": { "type": "string" } } },
+              "then": { "required": ["steps"] }
+            },
+            {
+              "if": { "properties": { "type": { "const": "context_operation" } } },
+              "then": { "required": ["method_name", "method_args"] }
+            }
+          ]
+        }
+  }
+}

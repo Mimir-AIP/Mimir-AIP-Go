@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![Documentation](https://img.shields.io/badge/docs-Documentation.md-green)](Documentation.md)
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/Mimir-AIP/Mimir-AIP?utm_source=oss&utm_medium=github&utm_campaign=Mimir-AIP%2FMimir-AIP&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 ## Overview
 

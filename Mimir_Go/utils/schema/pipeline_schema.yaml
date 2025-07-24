@@ -1,0 +1,70 @@
+# MIMIR AIP Pipeline Schema (YAML, backwards-compatible with old configs)
+
+type: object
+required:
+  - pipelines
+properties:
+  pipelines:
+    type: array
+    items:
+      type: object
+      required:
+        - name
+        - steps
+      properties:
+        name:
+          type: string
+        enabled:
+          type: boolean
+        description:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+              plugin:
+                type: string
+              config:
+                type: object
+                additionalProperties: true
+              output:
+                type:
+                  - string
+                  - "null"
+              iterate:
+                type: string
+              condition:
+                type: string
+              steps:
+                type: array
+                items:
+                  type: object
+                  # Nested steps (for loops/conditionals)
+                  additionalProperties: true
+              source:
+                type: string
+              target:
+                type: string
+              variable:
+                type: string
+              filename:
+                type: string
+              append:
+                type: boolean
+              input:
+                type: string
+              required_keys:
+                type: array
+                items:
+                  type: string
+              # Allow any other plugin-specific fields
+              additionalProperties: true
+        # Allow any other pipeline-level fields
+        additionalProperties: true
+# Allow any other top-level fields
+additionalProperties: true

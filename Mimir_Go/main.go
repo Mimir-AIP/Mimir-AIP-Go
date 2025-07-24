@@ -20,6 +20,11 @@ func main() {
 			os.Exit(1)
 		}
 		for _, pipeline := range pipelines {
+			// Parse the pipeline before running
+			if err := utils.ParsePipeline(pipeline); err != nil {
+				fmt.Fprintf(os.Stderr, "Error parsing pipeline %s: %v\n", pipeline, err)
+				continue
+			}
 			if err := utils.RunPipeline(pipeline); err != nil {
 				fmt.Fprintf(os.Stderr, "Error running pipeline %s: %v\n", pipeline, err)
 			}
@@ -40,6 +45,11 @@ func main() {
 			os.Exit(1)
 		}
 		pipeline := args[1]
+		// Parse the pipeline before running
+		if err := utils.ParsePipeline(pipeline); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing pipeline %s: %v\n", pipeline, err)
+			os.Exit(1)
+		}
 		if err := utils.RunPipeline(pipeline); err != nil {
 			fmt.Fprintf(os.Stderr, "Error running pipeline %s: %v\n", pipeline, err)
 			os.Exit(1)

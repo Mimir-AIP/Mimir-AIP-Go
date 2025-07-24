@@ -43,11 +43,24 @@ func ValidatePipelineConfig(pipelineFilePath string) (bool, error) {
 	if err := yaml.Unmarshal(pipelineFile, &pipelineConfig); err != nil {
 		return false, fmt.Errorf("failed to unmarshal pipeline config: %w", err)
 	}
-
-	// TODO Add validation logic against the schema
 	if len(pipelineConfig) == 0 {
 		return false, fmt.Errorf("pipeline config is empty")
 	}
+
+	// Basic validation: check that all required top-level keys in the schema exist in the pipeline config
+	requiredKeys, ok := schema["required"].([]interface{})
+	if ok {
+		for _, key := range requiredKeys {
+			keyStr, ok := key.(string)
+			if !ok {
+				continue
+			}
+			if _, exists := pipelineConfig[keyStr]; !exists {
+				return false, fmt.Errorf("missing required key: %s", keyStr)
+			}
+		}
+	}
+	//TODO add advanced validation
 
 	return true, nil
 }

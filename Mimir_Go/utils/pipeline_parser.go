@@ -8,8 +8,22 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	"gopkg.in/yaml.v3"
 )
+
+// PipelineConfig represents a parsed pipeline configuration
+type PipelineConfig struct {
+	Name        string                 `yaml:"name"`
+	Enabled     bool                   `yaml:"enabled"`
+	Steps       []pipelines.StepConfig `yaml:"steps"`
+	Description string                 `yaml:"description,omitempty"`
+}
+
+// ConfigFile represents the top-level configuration file structure
+type ConfigFile struct {
+	Pipelines []PipelineConfig `yaml:"pipelines"`
+}
 
 // Validate config against the schema(Legacy configs may not have schema defined)
 func getSchema() (map[string]interface{}, error) {
@@ -63,4 +77,85 @@ func ValidatePipelineConfig(pipelineFilePath string) (bool, error) {
 	//TODO add advanced validation
 
 	return true, nil
+}
+
+// ParsePipeline parses a pipeline configuration file
+func ParsePipeline(pipelinePath string) (*PipelineConfig, error) {
+	// Read the pipeline file
+	data, err := os.ReadFile(pipelinePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read pipeline file: %w", err)
+	}
+
+	// Try to parse as a single pipeline first
+	var singlePipeline PipelineConfig
+	if err := yaml.Unmarshal(data, &singlePipeline); err == nil && singlePipeline.Name != "" {
+		return &singlePipeline, nil
+	}
+
+	// If that fails, try to parse as a config file with multiple pipelines
+	var configFile ConfigFile
+	if err := yaml.Unmarshal(data, &configFile); err != nil {
+		return nil, fmt.Errorf("failed to parse pipeline YAML: %w", err)
+	}
+
+	// If it's a config file, look for the first enabled pipeline
+	for _, pipeline := range configFile.Pipelines {
+		if pipeline.Enabled {
+			return &pipeline, nil
+		}
+	}
+
+	// If no enabled pipeline found, return the first one
+	if len(configFile.Pipelines) > 0 {
+		return &configFile.Pipelines[0], nil
+	}
+
+	return nil, fmt.Errorf("no pipelines found in config file")
+}
+
+// GetPipelineName extracts the name of a pipeline from its file
+func GetPipelineName(pipelinePath string) (string, error) {
+	config, err := ParsePipeline(pipelinePath)
+	if err != nil {
+		return "", err
+	}
+	return config.Name, nil
+}
+
+// GetEnabledPipelines reads the config file and returns enabled pipelines
+func GetEnabledPipelines(configPath string) ([]string, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var configFile ConfigFile
+	if err := yaml.Unmarshal(data, &configFile); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	var enabledPipelines []string
+	for _, pipeline := range configFile.Pipelines {
+		if pipeline.Enabled {
+			enabledPipelines = append(enabledPipelines, pipeline.Name)
+		}
+	}
+
+	return enabledPipelines, nil
+}
+
+// ParseAllPipelines parses all pipelines from a config file
+func ParseAllPipelines(configPath string) ([]PipelineConfig, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var configFile ConfigFile
+	if err := yaml.Unmarshal(data, &configFile); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	return configFile.Pipelines, nil
 }

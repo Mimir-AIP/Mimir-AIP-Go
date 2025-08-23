@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
@@ -18,6 +19,8 @@ type Server struct {
 	router    *mux.Router
 	registry  *pipelines.PluginRegistry
 	mcpServer *MCPServer
+	scheduler *utils.Scheduler
+	monitor   *utils.JobMonitor
 }
 
 // PipelineExecutionRequest represents a request to execute a pipeline
@@ -50,11 +53,18 @@ func NewServer() *Server {
 		router:    mux.NewRouter(),
 		registry:  registry,
 		mcpServer: NewMCPServer(registry),
+		scheduler: utils.NewScheduler(registry),
+		monitor:   utils.NewJobMonitor(1000), // Keep last 1000 executions
 	}
 
 	s.registerDefaultPlugins()
 	s.setupRoutes()
 	s.mcpServer.Initialize()
+
+	// Start the scheduler
+	if err := s.scheduler.Start(); err != nil {
+		log.Printf("Failed to start scheduler: %v", err)
+	}
 
 	return s
 }
@@ -91,6 +101,28 @@ func (s *Server) setupRoutes() {
 
 	// MCP endpoints
 	s.router.PathPrefix("/mcp").Handler(s.mcpServer)
+
+	// Scheduler endpoints
+	s.router.HandleFunc("/api/v1/scheduler/jobs", s.handleListJobs).Methods("GET")
+	s.router.HandleFunc("/api/v1/scheduler/jobs/{id}", s.handleGetJob).Methods("GET")
+	s.router.HandleFunc("/api/v1/scheduler/jobs", s.handleCreateJob).Methods("POST")
+	s.router.HandleFunc("/api/v1/scheduler/jobs/{id}", s.handleDeleteJob).Methods("DELETE")
+	s.router.HandleFunc("/api/v1/scheduler/jobs/{id}/enable", s.handleEnableJob).Methods("POST")
+	s.router.HandleFunc("/api/v1/scheduler/jobs/{id}/disable", s.handleDisableJob).Methods("POST")
+
+	// Visualization endpoints
+	s.router.HandleFunc("/api/v1/visualize/pipeline", s.handleVisualizePipeline).Methods("POST")
+	s.router.HandleFunc("/api/v1/visualize/status", s.handleVisualizeStatus).Methods("GET")
+	s.router.HandleFunc("/api/v1/visualize/scheduler", s.handleVisualizeScheduler).Methods("GET")
+	s.router.HandleFunc("/api/v1/visualize/plugins", s.handleVisualizePlugins).Methods("GET")
+
+	// Job monitoring endpoints
+	s.router.HandleFunc("/api/v1/jobs", s.handleListJobExecutions).Methods("GET")
+	s.router.HandleFunc("/api/v1/jobs/{id}", s.handleGetJobExecution).Methods("GET")
+	s.router.HandleFunc("/api/v1/jobs/running", s.handleGetRunningJobs).Methods("GET")
+	s.router.HandleFunc("/api/v1/jobs/recent", s.handleGetRecentJobs).Methods("GET")
+	s.router.HandleFunc("/api/v1/jobs/export", s.handleExportJobs).Methods("GET")
+	s.router.HandleFunc("/api/v1/jobs/statistics", s.handleGetJobStatistics).Methods("GET")
 }
 
 // Start starts the HTTP server
@@ -279,4 +311,272 @@ func (s *Server) handleAgentExecute(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNotImplemented)
 	json.NewEncoder(w).Encode(response)
+}
+
+// Scheduler endpoint handlers
+
+// handleListJobs handles requests to list all scheduled jobs
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	jobs := s.scheduler.GetJobs()
+	json.NewEncoder(w).Encode(jobs)
+}
+
+// handleGetJob handles requests to get a specific scheduled job
+func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	jobID := vars["id"]
+
+	job, err := s.scheduler.GetJob(jobID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Job not found: %v", err), http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(job)
+}
+
+// handleCreateJob handles requests to create a new scheduled job
+func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Pipeline string `json:"pipeline"`
+		CronExpr string `json:"cron_expr"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.ID == "" || req.Name == "" || req.Pipeline == "" || req.CronExpr == "" {
+		http.Error(w, "Missing required fields: id, name, pipeline, cron_expr", http.StatusBadRequest)
+		return
+	}
+
+	err := s.scheduler.AddJob(req.ID, req.Name, req.Pipeline, req.CronExpr)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create job: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Job created successfully",
+		"job_id":  req.ID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleDeleteJob handles requests to delete a scheduled job
+func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	jobID := vars["id"]
+
+	err := s.scheduler.RemoveJob(jobID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete job: %v", err), http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Job deleted successfully",
+		"job_id":  jobID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleEnableJob handles requests to enable a scheduled job
+func (s *Server) handleEnableJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	jobID := vars["id"]
+
+	err := s.scheduler.EnableJob(jobID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to enable job: %v", err), http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Job enabled successfully",
+		"job_id":  jobID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleDisableJob handles requests to disable a scheduled job
+func (s *Server) handleDisableJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	jobID := vars["id"]
+
+	err := s.scheduler.DisableJob(jobID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to disable job: %v", err), http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Job disabled successfully",
+		"job_id":  jobID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Visualization endpoint handlers
+
+// handleVisualizePipeline handles requests to visualize a pipeline
+func (s *Server) handleVisualizePipeline(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	var req struct {
+		PipelineFile string `json:"pipeline_file"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.PipelineFile == "" {
+		http.Error(w, "pipeline_file is required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse pipeline configuration
+	config, err := utils.ParsePipeline(req.PipelineFile)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse pipeline: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Generate visualization
+	visualizer := utils.NewASCIIVisualizer()
+	visualization := visualizer.VisualizePipeline(config)
+
+	w.Write([]byte(visualization))
+}
+
+// Job monitoring endpoint handlers
+
+// handleListJobExecutions handles requests to list all job executions
+func (s *Server) handleListJobExecutions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	executions := s.monitor.GetAllExecutions()
+	json.NewEncoder(w).Encode(executions)
+}
+
+// handleGetJobExecution handles requests to get a specific job execution
+func (s *Server) handleGetJobExecution(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	executionID := vars["id"]
+
+	execution, err := s.monitor.GetExecution(executionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Execution not found: %v", err), http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(execution)
+}
+
+// handleGetRunningJobs handles requests to get currently running jobs
+func (s *Server) handleGetRunningJobs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	running := s.monitor.GetRunningExecutions()
+	json.NewEncoder(w).Encode(running)
+}
+
+// handleGetJobStatistics handles requests to get job statistics
+func (s *Server) handleGetJobStatistics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	stats := s.monitor.GetStatistics()
+	json.NewEncoder(w).Encode(stats)
+}
+
+// handleGetRecentJobs handles requests to get recent job executions
+func (s *Server) handleGetRecentJobs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	limit := 10 // Default limit
+	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
+		if l, err := fmt.Sscanf(limitParam, "%d", &limit); err != nil || l != 1 {
+			limit = 10
+		}
+	}
+
+	recent := s.monitor.GetRecentExecutions(limit)
+	json.NewEncoder(w).Encode(recent)
+}
+
+// handleExportJobs handles requests to export job data
+func (s *Server) handleExportJobs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	data, err := s.monitor.ExportToJSON()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to export data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(data)
+}
+
+// handleVisualizeStatus handles requests to visualize system status
+func (s *Server) handleVisualizeStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	visualizer := utils.NewASCIIVisualizer()
+
+	var output strings.Builder
+
+	// System overview
+	output.WriteString(visualizer.VisualizePluginRegistry(s.registry))
+	output.WriteString("\n")
+
+	// Scheduler status
+	jobs := s.scheduler.GetJobs()
+	output.WriteString(visualizer.VisualizeSchedulerJobs(jobs))
+
+	w.Write([]byte(output.String()))
+}
+
+// handleVisualizeScheduler handles requests to visualize scheduler status
+func (s *Server) handleVisualizeScheduler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	jobs := s.scheduler.GetJobs()
+	visualizer := utils.NewASCIIVisualizer()
+	visualization := visualizer.VisualizeSchedulerJobs(jobs)
+
+	w.Write([]byte(visualization))
+}
+
+// handleVisualizePlugins handles requests to visualize available plugins
+func (s *Server) handleVisualizePlugins(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	visualizer := utils.NewASCIIVisualizer()
+	visualization := visualizer.VisualizePluginRegistry(s.registry)
+
+	w.Write([]byte(visualization))
 }

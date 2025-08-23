@@ -93,6 +93,11 @@ func (s *Server) registerDefaultPlugins() {
 
 // setupRoutes sets up the HTTP routes
 func (s *Server) setupRoutes() {
+	// Add middleware
+	s.router.Use(s.loggingMiddleware)
+	s.router.Use(s.errorRecoveryMiddleware)
+	s.router.Use(s.corsMiddleware)
+
 	// Health check
 	s.router.HandleFunc("/health", s.handleHealth).Methods("GET")
 
@@ -329,6 +334,101 @@ func (s *Server) handleAgentExecute(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNotImplemented)
 	json.NewEncoder(w).Encode(response)
+}
+
+// Middleware functions
+
+// loggingMiddleware logs HTTP requests and responses
+func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Create a response writer wrapper to capture status code
+		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		// Generate request ID
+		requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+
+		// Add request ID to context
+		ctx := context.WithValue(r.Context(), "request_id", requestID)
+		r = r.WithContext(ctx)
+
+		// Log request
+		utils.GetLogger().Info("HTTP Request",
+			utils.String("method", r.Method),
+			utils.String("path", r.URL.Path),
+			utils.String("remote_addr", r.RemoteAddr),
+			utils.String("user_agent", r.Header.Get("User-Agent")),
+			utils.RequestID(requestID),
+			utils.Component("http"))
+
+		// Call next handler
+		next.ServeHTTP(rw, r)
+
+		// Log response
+		duration := time.Since(start)
+		utils.GetLogger().Info("HTTP Response",
+			utils.String("method", r.Method),
+			utils.String("path", r.URL.Path),
+			utils.Int("status", rw.statusCode),
+			utils.Float("duration_ms", duration.Seconds()*1000),
+			utils.RequestID(requestID),
+			utils.Component("http"))
+	})
+}
+
+// errorRecoveryMiddleware recovers from panics and logs errors
+func (s *Server) errorRecoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				// Log the panic
+				utils.GetLogger().Error("Panic recovered",
+					fmt.Errorf("panic: %v", err),
+					utils.String("method", r.Method),
+					utils.String("path", r.URL.Path),
+					utils.Component("http"))
+
+				// Return 500 error
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+		}()
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// corsMiddleware handles CORS headers
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		config := s.config.GetConfig()
+
+		if config.Server.EnableCORS {
+			// Set CORS headers
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+			// Handle preflight requests
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }
 
 // Scheduler endpoint handlers

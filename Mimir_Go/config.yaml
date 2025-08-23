@@ -1,0 +1,53 @@
+# Mimir AIP Configuration File
+# This file contains all configurable options for the Mimir AIP server
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30
+  write_timeout: 30
+  enable_cors: true
+  max_requests: 1000
+
+plugins:
+  directories:
+    - "./pipelines"
+    - "./plugins"
+  auto_discovery: true
+  timeout: 60
+  max_concurrency: 10
+  plugin_configs:
+    api:
+      default_timeout: 30
+      max_retries: 3
+    html:
+      default_template: "simple"
+      include_timestamp: true
+
+scheduler:
+  enabled: true
+  max_jobs: 100
+  default_timeout: 300
+  history_retention: 30
+  working_directory: "./"
+
+logging:
+  level: "info"
+  format: "text"
+  output: "stdout"
+  file_path: "./logs/mimir.log"
+  max_size: 100
+  max_backups: 3
+  max_age: 30
+  compress: true
+
+security:
+  enable_auth: false
+  jwt_secret: "change-me-in-production"
+  token_expiry: 24
+  allowed_origins:
+    - "*"
+  rate_limit: 1000
+  enable_https: false
+  cert_file: ""
+  key_file: ""

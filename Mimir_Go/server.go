@@ -21,6 +21,7 @@ type Server struct {
 	mcpServer *MCPServer
 	scheduler *utils.Scheduler
 	monitor   *utils.JobMonitor
+	config    *utils.ConfigManager
 }
 
 // PipelineExecutionRequest represents a request to execute a pipeline
@@ -55,15 +56,26 @@ func NewServer() *Server {
 		mcpServer: NewMCPServer(registry),
 		scheduler: utils.NewScheduler(registry),
 		monitor:   utils.NewJobMonitor(1000), // Keep last 1000 executions
+		config:    utils.GetConfigManager(),
 	}
 
 	s.registerDefaultPlugins()
 	s.setupRoutes()
 	s.mcpServer.Initialize()
 
+	// Load configuration
+	if err := utils.LoadGlobalConfig(); err != nil {
+		log.Printf("Failed to load configuration: %v", err)
+	}
+
+	// Initialize logging
+	if err := utils.InitLogger(s.config.GetConfig().Logging); err != nil {
+		log.Printf("Failed to initialize logger: %v", err)
+	}
+
 	// Start the scheduler
 	if err := s.scheduler.Start(); err != nil {
-		log.Printf("Failed to start scheduler: %v", err)
+		utils.GetLogger().Error("Failed to start scheduler", err, utils.Component("server"))
 	}
 
 	return s
@@ -123,6 +135,12 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/api/v1/jobs/recent", s.handleGetRecentJobs).Methods("GET")
 	s.router.HandleFunc("/api/v1/jobs/export", s.handleExportJobs).Methods("GET")
 	s.router.HandleFunc("/api/v1/jobs/statistics", s.handleGetJobStatistics).Methods("GET")
+
+	// Configuration endpoints
+	s.router.HandleFunc("/api/v1/config", s.handleGetConfig).Methods("GET")
+	s.router.HandleFunc("/api/v1/config", s.handleUpdateConfig).Methods("PUT")
+	s.router.HandleFunc("/api/v1/config/reload", s.handleReloadConfig).Methods("POST")
+	s.router.HandleFunc("/api/v1/config/save", s.handleSaveConfig).Methods("POST")
 }
 
 // Start starts the HTTP server
@@ -469,6 +487,117 @@ func (s *Server) handleVisualizePipeline(w http.ResponseWriter, r *http.Request)
 	visualization := visualizer.VisualizePipeline(config)
 
 	w.Write([]byte(visualization))
+}
+
+// Configuration endpoint handlers
+
+// handleGetConfig handles requests to get current configuration
+func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	config := s.config.GetConfig()
+	json.NewEncoder(w).Encode(config)
+}
+
+// handleUpdateConfig handles requests to update configuration
+func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var updates utils.Config
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	err := s.config.UpdateConfig(&updates)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update configuration: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Configuration updated successfully",
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleReloadConfig handles requests to reload configuration from file
+func (s *Server) handleReloadConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	configPath := s.config.GetConfigPath()
+	if configPath == "" {
+		http.Error(w, "No configuration file loaded", http.StatusBadRequest)
+		return
+	}
+
+	err := s.config.LoadFromFile(configPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to reload configuration: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Also reload environment variables
+	err = s.config.LoadFromEnvironment()
+	if err != nil {
+		log.Printf("Warning: Failed to reload environment config: %v", err)
+	}
+
+	response := map[string]interface{}{
+		"message": "Configuration reloaded successfully",
+		"file":    configPath,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleSaveConfig handles requests to save current configuration to file
+func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		FilePath string `json:"file_path,omitempty"`
+		Format   string `json:"format,omitempty"` // "yaml" or "json"
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// If no body provided, use default values
+		req.Format = "yaml"
+	}
+
+	if req.FilePath == "" {
+		req.FilePath = "config.yaml"
+	}
+
+	if req.Format == "" {
+		if strings.HasSuffix(req.FilePath, ".json") {
+			req.Format = "json"
+		} else {
+			req.Format = "yaml"
+		}
+	}
+
+	// Ensure file has correct extension
+	if req.Format == "json" && !strings.HasSuffix(req.FilePath, ".json") {
+		req.FilePath += ".json"
+	} else if req.Format == "yaml" && !strings.HasSuffix(req.FilePath, ".yaml") && !strings.HasSuffix(req.FilePath, ".yml") {
+		req.FilePath += ".yaml"
+	}
+
+	err := s.config.SaveToFile(req.FilePath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to save configuration: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Configuration saved successfully",
+		"file":    req.FilePath,
+		"format":  req.Format,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 // Job monitoring endpoint handlers

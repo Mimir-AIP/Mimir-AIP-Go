@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -38,7 +39,7 @@ func BenchmarkPipelineExecution(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := utils.ExecutePipeline(context.Background(), config)
+		_, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 		if err != nil {
 			b.Fatalf("Pipeline execution failed: %v", err)
 		}
@@ -101,7 +102,7 @@ func BenchmarkConcurrentPipelineExecution(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err := utils.ExecutePipeline(context.Background(), config)
+			_, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 			if err != nil {
 				b.Fatalf("Pipeline execution failed: %v", err)
 			}
@@ -115,13 +116,14 @@ func BenchmarkPluginRegistry(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		plugin := NewMockPlugin("benchmark_plugin", "Data_Processing", false)
+		pluginName := fmt.Sprintf("benchmark_plugin_%d", i)
+		plugin := NewMockPlugin(pluginName, "Data_Processing", false)
 		err := registry.RegisterPlugin(plugin)
 		if err != nil {
 			b.Fatalf("Plugin registration failed: %v", err)
 		}
 
-		_, err = registry.GetPlugin("Data_Processing", "benchmark_plugin")
+		_, err = registry.GetPlugin("Data_Processing", pluginName)
 		if err != nil {
 			b.Fatalf("Plugin retrieval failed: %v", err)
 		}
@@ -299,7 +301,7 @@ func TestPerformanceComparison(t *testing.T) {
 	iterations := 100
 
 	for i := 0; i < iterations; i++ {
-		_, err := utils.ExecutePipeline(context.Background(), config)
+		_, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 		if err != nil {
 			t.Fatalf("Pipeline execution failed: %v", err)
 		}
@@ -342,7 +344,7 @@ func TestOptimizedVsRegularExecution(t *testing.T) {
 
 	// Test regular execution
 	start := time.Now()
-	_, err := utils.ExecutePipeline(context.Background(), config)
+	_, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 	regularTime := time.Since(start)
 	if err != nil {
 		t.Fatalf("Regular execution failed: %v", err)

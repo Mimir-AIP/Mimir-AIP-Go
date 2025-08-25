@@ -83,6 +83,32 @@ func ExecutePipeline(ctx context.Context, config *PipelineConfig) (*PipelineExec
 	return result, nil
 }
 
+// ExecutePipelineWithRegistry executes a parsed pipeline configuration with a specific registry
+func ExecutePipelineWithRegistry(ctx context.Context, config *PipelineConfig, registry *pipelines.PluginRegistry) (*PipelineExecutionResult, error) {
+	result := &PipelineExecutionResult{
+		Success:    true,
+		Context:    make(pipelines.PluginContext),
+		ExecutedAt: time.Now().Format(time.RFC3339),
+	}
+
+	// Execute each step
+	for i, step := range config.Steps {
+		stepResult, err := executeStep(ctx, registry, step, result.Context)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("step %d (%s) failed: %v", i+1, step.Name, err)
+			return result, fmt.Errorf("pipeline execution failed: %w", err)
+		}
+
+		// Merge step results into global context
+		for key, value := range stepResult {
+			result.Context[key] = value
+		}
+	}
+
+	return result, nil
+}
+
 // executeStep executes a single pipeline step
 func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step pipelines.StepConfig, context pipelines.PluginContext) (pipelines.PluginContext, error) {
 	// Parse plugin reference (e.g., "Input.api" -> type: "Input", name: "api")
@@ -100,8 +126,16 @@ func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step p
 		return nil, fmt.Errorf("failed to get plugin %s: %w", step.Plugin, err)
 	}
 
+	// Validate configuration
+	if err := plugin.ValidateConfig(step.Config); err != nil {
+		return nil, fmt.Errorf("configuration validation failed for plugin %s: %w", step.Plugin, err)
+	}
+
+	// Use the provided context (timeout handling can be added later)
+	stepCtx := ctx
+
 	// Execute the step
-	stepResult, err := plugin.ExecuteStep(ctx, step, context)
+	stepResult, err := plugin.ExecuteStep(stepCtx, step, context)
 	if err != nil {
 		return nil, fmt.Errorf("plugin execution failed: %w", err)
 	}

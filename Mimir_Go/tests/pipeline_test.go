@@ -30,7 +30,13 @@ func NewMockPlugin(name, pluginType string, shouldFail bool) *MockPlugin {
 
 func (mp *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
 	if mp.executionTime > 0 {
-		time.Sleep(mp.executionTime)
+		select {
+		case <-time.After(mp.executionTime):
+			// Execution completed normally
+		case <-ctx.Done():
+			// Context was cancelled (timeout or cancellation)
+			return nil, fmt.Errorf("PLUGIN_EXECUTION_TIMEOUT: Mock plugin execution timed out")
+		}
 	}
 
 	if mp.shouldFail {
@@ -83,7 +89,7 @@ func TestPipelineExecution_Success(t *testing.T) {
 	pluginRegistry.RegisterPlugin(mockPlugin)
 
 	// Execute pipeline
-	result, err := utils.ExecutePipeline(context.Background(), config)
+	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 
 	// Assertions
 	if err != nil {
@@ -137,7 +143,7 @@ func TestPipelineExecution_Failure(t *testing.T) {
 	pluginRegistry.RegisterPlugin(NewMockPlugin("mock_fail", "Data_Processing", true))
 
 	// Execute pipeline
-	result, err := utils.ExecutePipeline(context.Background(), config)
+	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 
 	// Assertions
 	if err == nil {
@@ -178,8 +184,10 @@ func TestPipelineExecution_Timeout(t *testing.T) {
 	pluginRegistry := pipelines.NewPluginRegistry()
 	pluginRegistry.RegisterPlugin(slowPlugin)
 
-	// Execute pipeline
-	result, err := utils.ExecutePipeline(context.Background(), config)
+	// Execute pipeline with timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	result, err := utils.ExecutePipelineWithRegistry(ctx, config, pluginRegistry)
 
 	// Assertions
 	if err == nil {
@@ -238,7 +246,7 @@ func TestPipelineExecution_ContextPropagation(t *testing.T) {
 	pluginRegistry.RegisterPlugin(dataProcessor)
 
 	// Execute pipeline
-	result, err := utils.ExecutePipeline(context.Background(), config)
+	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 
 	// Assertions
 	if err != nil {
@@ -283,7 +291,7 @@ func TestPipelineExecution_ParallelSteps(t *testing.T) {
 	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
 
 	// Execute pipeline
-	result, err := utils.ExecutePipeline(context.Background(), config)
+	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 
 	// Assertions
 	if err != nil {
@@ -324,7 +332,7 @@ func TestPipelineExecution_ConfigurationValidation(t *testing.T) {
 	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
 
 	// Execute pipeline
-	result, err := utils.ExecutePipeline(context.Background(), config)
+	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 
 	// Assertions
 	if err == nil {

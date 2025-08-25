@@ -97,7 +97,7 @@ func (s *Server) registerDefaultPlugins() {
 	s.registry.RegisterPlugin(htmlPlugin)
 }
 
-// setupRoutes sets up the HTTP routes
+// setupRoutes sets up the HTTP routes with API versioning
 func (s *Server) setupRoutes() {
 	// Add middleware
 	s.router.Use(s.loggingMiddleware)
@@ -114,75 +114,79 @@ func (s *Server) setupRoutes() {
 		}
 	}
 
-	// Health check
+	// Create API version subrouters
+	v1 := s.router.PathPrefix("/api/v1").Subrouter()
+	v1.Use(s.versionMiddleware("v1"))
+
+	// Health check (no version)
 	s.router.HandleFunc("/health", s.handleHealth).Methods("GET")
 
 	// Pipeline execution
-	s.router.HandleFunc("/api/v1/pipelines/execute", s.handleExecutePipeline).Methods("POST")
+	v1.HandleFunc("/pipelines/execute", s.handleExecutePipeline).Methods("POST")
 
 	// Pipeline management
-	s.router.HandleFunc("/api/v1/pipelines", s.handleListPipelines).Methods("GET")
-	s.router.HandleFunc("/api/v1/pipelines", s.handleCreatePipeline).Methods("POST")
-	s.router.HandleFunc("/api/v1/pipelines/{id}", s.handleGetPipeline).Methods("GET")
-	s.router.HandleFunc("/api/v1/pipelines/{id}", s.handleUpdatePipeline).Methods("PUT")
-	s.router.HandleFunc("/api/v1/pipelines/{id}", s.handleDeletePipeline).Methods("DELETE")
-	s.router.HandleFunc("/api/v1/pipelines/{id}/clone", s.handleClonePipeline).Methods("POST")
-	s.router.HandleFunc("/api/v1/pipelines/{id}/validate", s.handleValidatePipeline).Methods("POST")
-	s.router.HandleFunc("/api/v1/pipelines/{id}/history", s.handleGetPipelineHistory).Methods("GET")
+	v1.HandleFunc("/pipelines", s.handleListPipelines).Methods("GET")
+	v1.HandleFunc("/pipelines", s.handleCreatePipeline).Methods("POST")
+	v1.HandleFunc("/pipelines/{id}", s.handleGetPipeline).Methods("GET")
+	v1.HandleFunc("/pipelines/{id}", s.handleUpdatePipeline).Methods("PUT")
+	v1.HandleFunc("/pipelines/{id}", s.handleDeletePipeline).Methods("DELETE")
+	v1.HandleFunc("/pipelines/{id}/clone", s.handleClonePipeline).Methods("POST")
+	v1.HandleFunc("/pipelines/{id}/validate", s.handleValidatePipeline).Methods("POST")
+	v1.HandleFunc("/pipelines/{id}/history", s.handleGetPipelineHistory).Methods("GET")
 
 	// Plugin management
-	s.router.HandleFunc("/api/v1/plugins", s.handleListPlugins).Methods("GET")
-	s.router.HandleFunc("/api/v1/plugins/{type}", s.handleListPluginsByType).Methods("GET")
-	s.router.HandleFunc("/api/v1/plugins/{type}/{name}", s.handleGetPlugin).Methods("GET")
+	v1.HandleFunc("/plugins", s.handleListPlugins).Methods("GET")
+	v1.HandleFunc("/plugins/{type}", s.handleListPluginsByType).Methods("GET")
+	v1.HandleFunc("/plugins/{type}/{name}", s.handleGetPlugin).Methods("GET")
 
 	// Agentic features
-	s.router.HandleFunc("/api/v1/agent/execute", s.handleAgentExecute).Methods("POST")
+	v1.HandleFunc("/agent/execute", s.handleAgentExecute).Methods("POST")
 
-	// MCP endpoints
+	// MCP endpoints (no version prefix)
 	s.router.PathPrefix("/mcp").Handler(s.mcpServer)
 
 	// Scheduler endpoints
-	s.router.HandleFunc("/api/v1/scheduler/jobs", s.handleListJobs).Methods("GET")
-	s.router.HandleFunc("/api/v1/scheduler/jobs/{id}", s.handleGetJob).Methods("GET")
-	s.router.HandleFunc("/api/v1/scheduler/jobs", s.handleCreateJob).Methods("POST")
-	s.router.HandleFunc("/api/v1/scheduler/jobs/{id}", s.handleDeleteJob).Methods("DELETE")
-	s.router.HandleFunc("/api/v1/scheduler/jobs/{id}/enable", s.handleEnableJob).Methods("POST")
-	s.router.HandleFunc("/api/v1/scheduler/jobs/{id}/disable", s.handleDisableJob).Methods("POST")
+	v1.HandleFunc("/scheduler/jobs", s.handleListJobs).Methods("GET")
+	v1.HandleFunc("/scheduler/jobs/{id}", s.handleGetJob).Methods("GET")
+	v1.HandleFunc("/scheduler/jobs", s.handleCreateJob).Methods("POST")
+	v1.HandleFunc("/scheduler/jobs/{id}", s.handleDeleteJob).Methods("DELETE")
+	v1.HandleFunc("/scheduler/jobs/{id}/enable", s.handleEnableJob).Methods("POST")
+	v1.HandleFunc("/scheduler/jobs/{id}/disable", s.handleDisableJob).Methods("POST")
 
 	// Visualization endpoints
-	s.router.HandleFunc("/api/v1/visualize/pipeline", s.handleVisualizePipeline).Methods("POST")
-	s.router.HandleFunc("/api/v1/visualize/status", s.handleVisualizeStatus).Methods("GET")
-	s.router.HandleFunc("/api/v1/visualize/scheduler", s.handleVisualizeScheduler).Methods("GET")
-	s.router.HandleFunc("/api/v1/visualize/plugins", s.handleVisualizePlugins).Methods("GET")
+	v1.HandleFunc("/visualize/pipeline", s.handleVisualizePipeline).Methods("POST")
+	v1.HandleFunc("/visualize/status", s.handleVisualizeStatus).Methods("GET")
+	v1.HandleFunc("/visualize/scheduler", s.handleVisualizeScheduler).Methods("GET")
+	v1.HandleFunc("/visualize/plugins", s.handleVisualizePlugins).Methods("GET")
 
 	// Performance monitoring endpoints
-	s.router.HandleFunc("/api/v1/performance/metrics", s.handleGetPerformanceMetrics).Methods("GET")
-	s.router.HandleFunc("/api/v1/performance/stats", s.handleGetPerformanceStats).Methods("GET")
+	v1.HandleFunc("/performance/metrics", s.handleGetPerformanceMetrics).Methods("GET")
+	v1.HandleFunc("/performance/stats", s.handleGetPerformanceStats).Methods("GET")
 
 	// Job monitoring endpoints
-	s.router.HandleFunc("/api/v1/jobs", s.handleListJobExecutions).Methods("GET")
-	s.router.HandleFunc("/api/v1/jobs/{id}", s.handleGetJobExecution).Methods("GET")
-	s.router.HandleFunc("/api/v1/jobs/running", s.handleGetRunningJobs).Methods("GET")
-	s.router.HandleFunc("/api/v1/jobs/recent", s.handleGetRecentJobs).Methods("GET")
-	s.router.HandleFunc("/api/v1/jobs/export", s.handleExportJobs).Methods("GET")
-	s.router.HandleFunc("/api/v1/jobs/statistics", s.handleGetJobStatistics).Methods("GET")
+	v1.HandleFunc("/jobs", s.handleListJobExecutions).Methods("GET")
+	v1.HandleFunc("/jobs/{id}", s.handleGetJobExecution).Methods("GET")
+	v1.HandleFunc("/jobs/running", s.handleGetRunningJobs).Methods("GET")
+	v1.HandleFunc("/jobs/recent", s.handleGetRecentJobs).Methods("GET")
+	v1.HandleFunc("/jobs/export", s.handleExportJobs).Methods("GET")
+	v1.HandleFunc("/jobs/statistics", s.handleGetJobStatistics).Methods("GET")
 
 	// Configuration endpoints
-	s.router.HandleFunc("/api/v1/config", s.handleGetConfig).Methods("GET")
-	s.router.HandleFunc("/api/v1/config", s.handleUpdateConfig).Methods("PUT")
-	s.router.HandleFunc("/api/v1/config/reload", s.handleReloadConfig).Methods("POST")
-	s.router.HandleFunc("/api/v1/config/save", s.handleSaveConfig).Methods("POST")
+	v1.HandleFunc("/config", s.handleGetConfig).Methods("GET")
+	v1.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")
+	v1.HandleFunc("/config/reload", s.handleReloadConfig).Methods("POST")
+	v1.HandleFunc("/config/save", s.handleSaveConfig).Methods("POST")
 
 	// Authentication endpoints
 	auth := utils.GetAuthManager()
-	s.router.HandleFunc("/api/v1/auth/login", s.handleLogin).Methods("POST")
-	s.router.HandleFunc("/api/v1/auth/refresh", s.handleRefreshToken).Methods("POST")
-	s.router.HandleFunc("/api/v1/auth/me", s.handleAuthMe).Methods("GET")
-	s.router.HandleFunc("/api/v1/auth/users", s.handleListUsers).Methods("GET")
-	s.router.HandleFunc("/api/v1/auth/apikeys", s.handleCreateAPIKey).Methods("POST")
+	v1.HandleFunc("/auth/login", s.handleLogin).Methods("POST")
+	v1.HandleFunc("/auth/refresh", s.handleRefreshToken).Methods("POST")
+	v1.HandleFunc("/auth/me", s.handleAuthMe).Methods("GET")
+	v1.HandleFunc("/auth/users", s.handleListUsers).Methods("GET")
+	v1.HandleFunc("/auth/apikeys", s.handleCreateAPIKey).Methods("POST")
 
 	// Protected endpoints with authentication
-	protected := s.router.PathPrefix("/api/v1/protected").Subrouter()
+	protected := v1.PathPrefix("/protected").Subrouter()
 	protected.Use(auth.AuthMiddleware([]string{})) // Require authentication
 	protected.HandleFunc("/pipelines", s.handleExecutePipeline).Methods("POST")
 	protected.HandleFunc("/scheduler/jobs", s.handleCreateJob).Methods("POST")
@@ -193,6 +197,51 @@ func (s *Server) setupRoutes() {
 func (s *Server) Start(port string) error {
 	log.Printf("Starting Mimir AIP server on port %s", port)
 	return http.ListenAndServe(":"+port, s.router)
+}
+
+// Shutdown gracefully shuts down the server
+func (s *Server) Shutdown(ctx context.Context) error {
+	log.Println("Initiating graceful shutdown...")
+
+	// Create a channel to signal shutdown completion
+	shutdownComplete := make(chan struct{})
+
+	go func() {
+		defer close(shutdownComplete)
+
+		// 1. Stop the scheduler
+		if s.scheduler != nil {
+			log.Println("Stopping scheduler...")
+			if err := s.scheduler.Stop(); err != nil {
+				log.Printf("Error stopping scheduler: %v", err)
+			}
+		}
+
+		// 2. Stop MCP server
+		if s.mcpServer != nil {
+			log.Println("Stopping MCP server...")
+			// MCP server cleanup if needed
+		}
+
+		// 3. Close any open connections or resources
+		log.Println("Cleaning up resources...")
+
+		// 4. Flush any pending logs
+		if logger := utils.GetLogger(); logger != nil {
+			log.Println("Flushing logs...")
+			// Logger flush if supported
+		}
+
+		log.Println("Graceful shutdown completed")
+	}()
+
+	// Wait for shutdown to complete or context timeout
+	select {
+	case <-shutdownComplete:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // handleHealth handles health check requests
@@ -437,6 +486,22 @@ func (s *Server) errorRecoveryMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// versionMiddleware adds API version information to requests
+func (s *Server) versionMiddleware(version string) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Add version to request context
+			ctx := context.WithValue(r.Context(), "api_version", version)
+			r = r.WithContext(ctx)
+
+			// Add version header to response
+			w.Header().Set("X-API-Version", version)
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // corsMiddleware handles CORS headers

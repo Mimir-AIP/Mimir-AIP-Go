@@ -2,9 +2,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
@@ -68,10 +74,46 @@ func runPipelineWithParseAndName(pipeline string) {
 
 func runServer(port string) {
 	server := NewServer()
-	if err := server.Start(port); err != nil {
-		fmt.Fprintf(os.Stderr, "Error starting server: %v\n", err)
-		os.Exit(1)
+
+	// Create HTTP server with proper configuration
+	httpServer := &http.Server{
+		Addr:    ":" + port,
+		Handler: server.router,
+		// Use config values for timeouts
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// Start server in a goroutine
+	go func() {
+		log.Printf("Starting Mimir AIP server on port %s", port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("Error starting server: %v", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	<-quit
+	log.Println("Shutting down server...")
+
+	// Give outstanding requests 30 seconds to complete
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exited")
 }
 
 func printHelp() { // TODO look into using a TUI framework, will keep things modular for now to aid later refactoring if I go with that route

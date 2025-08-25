@@ -28,24 +28,24 @@ func NewMockPlugin(name, pluginType string, shouldFail bool) *MockPlugin {
 	}
 }
 
-func (mp *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (mp *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	if mp.executionTime > 0 {
 		select {
 		case <-time.After(mp.executionTime):
 			// Execution completed normally
 		case <-ctx.Done():
 			// Context was cancelled (timeout or cancellation)
-			return nil, fmt.Errorf("PLUGIN_EXECUTION_TIMEOUT: Mock plugin execution timed out")
+			return pipelines.NewPluginContext(), fmt.Errorf("PLUGIN_EXECUTION_TIMEOUT: Mock plugin execution timed out")
 		}
 	}
 
 	if mp.shouldFail {
-		return nil, fmt.Errorf("PLUGIN_EXECUTION_FAILED: Mock plugin execution failed")
+		return pipelines.NewPluginContext(), fmt.Errorf("PLUGIN_EXECUTION_FAILED: Mock plugin execution failed")
 	}
 
-	return pipelines.PluginContext{
-		stepConfig.Output: mp.result,
-	}, nil
+	result := pipelines.NewPluginContext()
+	result.Set(stepConfig.Output, mp.result)
+	return result, nil
 }
 
 func (mp *MockPlugin) GetPluginType() string {
@@ -109,10 +109,10 @@ func TestPipelineExecution_Success(t *testing.T) {
 	}
 
 	// Check that context contains expected outputs
-	if result.Context["step1_output"] == nil {
+	if _, exists := result.Context.Get("step1_output"); !exists {
 		t.Fatal("Expected step1_output in context")
 	}
-	if result.Context["step2_output"] == nil {
+	if _, exists := result.Context.Get("step2_output"); !exists {
 		t.Fatal("Expected step2_output in context")
 	}
 }
@@ -258,10 +258,10 @@ func TestPipelineExecution_ContextPropagation(t *testing.T) {
 	}
 
 	// Check that data was passed between steps
-	if result.Context["generated_data"] == nil {
+	if _, exists := result.Context.Get("generated_data"); !exists {
 		t.Fatal("Expected generated_data in context")
 	}
-	if result.Context["processed_data"] == nil {
+	if _, exists := result.Context.Get("processed_data"); !exists {
 		t.Fatal("Expected processed_data in context")
 	}
 }
@@ -303,10 +303,10 @@ func TestPipelineExecution_ParallelSteps(t *testing.T) {
 	}
 
 	// Check that both outputs are present
-	if result.Context["output1"] == nil {
+	if _, exists := result.Context.Get("output1"); !exists {
 		t.Fatal("Expected output1 in context")
 	}
-	if result.Context["output2"] == nil {
+	if _, exists := result.Context.Get("output2"); !exists {
 		t.Fatal("Expected output2 in context")
 	}
 }

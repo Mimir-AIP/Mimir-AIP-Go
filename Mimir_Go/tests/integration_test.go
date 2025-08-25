@@ -32,13 +32,18 @@ func NewMockServer() *MockServer {
 	// Create a simple router for testing
 	router := mux.NewRouter()
 
+	// Add CORS middleware
+	router.Use(corsMiddleware())
+
 	// Add API versioning middleware
 	v1 := router.PathPrefix("/api/v1").Subrouter()
+	v1.Use(corsMiddleware())
 	v1.Use(versionMiddleware("v1"))
 
 	// Add basic routes for testing
 	router.HandleFunc("/health", handleTestHealth).Methods("GET")
-	v1.HandleFunc("/pipelines", handleTestListPipelines).Methods("GET")
+	v1.HandleFunc("/pipelines", handleTestListPipelines).Methods("GET", "OPTIONS")
+	v1.HandleFunc("/pipelines/execute", handleTestPipelineExecute).Methods("POST")
 	v1.HandleFunc("/plugins", handleTestListPlugins).Methods("GET")
 	v1.HandleFunc("/performance/metrics", handleTestPerformanceMetrics).Methods("GET")
 	v1.HandleFunc("/jobs", handleTestListJobs).Methods("GET")
@@ -55,6 +60,26 @@ func versionMiddleware(version string) mux.MiddlewareFunc {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Add version header to response
 			w.Header().Set("X-API-Version", version)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// corsMiddleware adds CORS headers to responses
+func corsMiddleware() mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Add CORS headers
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+			// Handle preflight requests
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -126,6 +151,16 @@ func handleTestListSchedulerJobs(w http.ResponseWriter, r *http.Request) {
 func handleTestVisualizeStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte("System Status Visualization\n=======================\nAll systems operational"))
+}
+
+func handleTestPipelineExecute(w http.ResponseWriter, r *http.Request) {
+	// This endpoint should return 405 for POST requests in the mock server
+	// as it's not implemented in the test mock
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"error": "Method not allowed",
+	})
 }
 
 // TestHealthEndpoint tests the health check endpoint

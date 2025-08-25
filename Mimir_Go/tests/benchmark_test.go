@@ -153,7 +153,8 @@ func BenchmarkPerformanceMonitor(b *testing.B) {
 // BenchmarkPluginCache benchmarks plugin cache performance
 func BenchmarkPluginCache(b *testing.B) {
 	cache := utils.GetPluginCache()
-	testResult := pipelines.PluginContext{"result": "test"}
+	testResult := pipelines.NewPluginContext()
+	testResult.Set("result", "test")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -222,22 +223,23 @@ func BenchmarkJSONProcessing(b *testing.B) {
 
 // BenchmarkContextPropagation benchmarks context propagation
 func BenchmarkContextPropagation(b *testing.B) {
-	context := pipelines.PluginContext{
-		"data1": "value1",
-		"data2": "value2",
-		"data3": "value3",
-	}
+	context := pipelines.NewPluginContext()
+	context.Set("data1", "value1")
+	context.Set("data2", "value2")
+	context.Set("data3", "value3")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Simulate context copying
-		newContext := make(pipelines.PluginContext)
-		for k, v := range context {
-			newContext[k] = v
+		newContext := pipelines.NewPluginContext()
+		for _, k := range context.Keys() {
+			if v, exists := context.Get(k); exists {
+				newContext.Set(k, v)
+			}
 		}
 
 		// Add new data
-		newContext["new_key_"+string(rune(i%100))] = "new_value"
+		newContext.Set("new_key_"+string(rune(i%100)), "new_value")
 	}
 }
 

@@ -15,6 +15,9 @@ import (
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
 
+const mimirVersion = "v0.0.1"
+
+// TODO- Add a endpoint to the server to return the version
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
@@ -34,6 +37,9 @@ func main() {
 	switch args[0] {
 	case "-h", "--help", "help":
 		printHelp()
+		return
+	case "--version", "-v":
+		fmt.Println("Mimir version:", mimirVersion)
 		return
 	case "--pipeline":
 		if len(args) < 2 {
@@ -122,4 +128,5 @@ func printHelp() { // TODO look into using a TUI framework, will keep things mod
 	fmt.Println("  --server [port]                        Start HTTP server (default port: 8080)")
 	fmt.Println("  (no arguments)                        Run enabled pipelines from config.yaml")
 	fmt.Println("  -h, --help, help                      Show this help message")
+	fmt.Println("  -v, --version                        Show Mimir version")
 }

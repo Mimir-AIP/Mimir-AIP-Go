@@ -1,4 +1,4 @@
-package main
+package mockaimodel
 
 import (
 	"context"
@@ -52,7 +52,7 @@ func NewMockCreativeModel() *MockCreativeModel {
 }
 
 // ExecuteStep for MockEchoModel
-func (m *MockEchoModel) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (m *MockEchoModel) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	config := stepConfig.Config
 
 	// Get input text
@@ -89,22 +89,21 @@ func (m *MockEchoModel) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 		response = m.generateCreativeResponse(input, maxTokens)
 	}
 
-	result := map[string]interface{}{
+	result := pipelines.NewPluginContext()
+	result.Set(stepConfig.Output, map[string]interface{}{
 		"response":        response,
 		"model":           "mock-echo-v1",
 		"processing_time": processingTime.Seconds(),
 		"tokens_used":     len(strings.Fields(response)),
 		"temperature":     temperature,
 		"finish_reason":   "stop",
-	}
+	})
 
-	return pipelines.PluginContext{
-		stepConfig.Output: result,
-	}, nil
+	return result, nil
 }
 
 // ExecuteStep for MockSummaryModel
-func (m *MockSummaryModel) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (m *MockSummaryModel) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	config := stepConfig.Config
 
 	// Get input text
@@ -120,22 +119,21 @@ func (m *MockSummaryModel) ExecuteStep(ctx context.Context, stepConfig pipelines
 	// Generate mock summary
 	summary := m.generateSummary(input)
 
-	result := map[string]interface{}{
+	result := pipelines.NewPluginContext()
+	result.Set(stepConfig.Output, map[string]interface{}{
 		"response":        summary,
 		"model":           "mock-summary-v1",
 		"processing_time": processingTime.Seconds(),
 		"tokens_used":     len(strings.Fields(summary)),
 		"summary_length":  len(strings.Fields(summary)),
 		"finish_reason":   "stop",
-	}
+	})
 
-	return pipelines.PluginContext{
-		stepConfig.Output: result,
-	}, nil
+	return result, nil
 }
 
 // ExecuteStep for MockCreativeModel
-func (m *MockCreativeModel) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (m *MockCreativeModel) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	config := stepConfig.Config
 
 	// Get input text
@@ -157,18 +155,17 @@ func (m *MockCreativeModel) ExecuteStep(ctx context.Context, stepConfig pipeline
 	// Generate creative response
 	creativeResponse := m.generateCreativeWriting(input, style)
 
-	result := map[string]interface{}{
+	result := pipelines.NewPluginContext()
+	result.Set(stepConfig.Output, map[string]interface{}{
 		"response":        creativeResponse,
 		"model":           "mock-creative-v1",
 		"processing_time": processingTime.Seconds(),
 		"tokens_used":     len(strings.Fields(creativeResponse)),
 		"style":           style,
 		"finish_reason":   "stop",
-	}
+	})
 
-	return pipelines.PluginContext{
-		stepConfig.Output: result,
-	}, nil
+	return result, nil
 }
 
 // Plugin interface implementations for MockEchoModel

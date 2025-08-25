@@ -29,7 +29,7 @@ func NewJSONOutputPlugin() *JSONOutputPlugin {
 }
 
 // ExecuteStep writes data to JSON files
-func (p *JSONOutputPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (p *JSONOutputPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	fmt.Printf("Executing %s step: %s\n", p.name, stepConfig.Name)
 
 	config := stepConfig.Config
@@ -60,9 +60,9 @@ func (p *JSONOutputPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines
 		return nil, fmt.Errorf("failed to write JSON file: %w", err)
 	}
 
-	return pipelines.PluginContext{
-		stepConfig.Output: result,
-	}, nil
+	context := pipelines.NewPluginContext()
+	context.Set(stepConfig.Output, result)
+	return context, nil
 }
 
 // GetPluginType returns the plugin type
@@ -89,10 +89,10 @@ func (p *JSONOutputPlugin) ValidateConfig(config map[string]interface{}) error {
 }
 
 // getOutputData extracts data to be written
-func (p *JSONOutputPlugin) getOutputData(config map[string]interface{}, context pipelines.PluginContext) interface{} {
+func (p *JSONOutputPlugin) getOutputData(config map[string]interface{}, context *pipelines.PluginContext) interface{} {
 	// Check if input is specified
 	if inputKey, ok := config["input"].(string); ok {
-		if data, exists := context[inputKey]; exists {
+		if data, exists := context.Get(inputKey); exists {
 			return data
 		}
 	}

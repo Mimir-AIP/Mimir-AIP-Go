@@ -66,7 +66,7 @@ func NewOpenAIPlugin() *OpenAIPlugin {
 }
 
 // ExecuteStep executes AI model operations
-func (p *OpenAIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (p *OpenAIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	fmt.Printf("Executing %s step: %s\n", p.name, stepConfig.Name)
 
 	config := stepConfig.Config
@@ -145,7 +145,7 @@ func (p *OpenAIPlugin) getAPIKey(config map[string]interface{}) string {
 }
 
 // executeChat executes a chat completion
-func (p *OpenAIPlugin) executeChat(ctx context.Context, config map[string]interface{}, outputKey string) (pipelines.PluginContext, error) {
+func (p *OpenAIPlugin) executeChat(ctx context.Context, config map[string]interface{}, outputKey string) (*pipelines.PluginContext, error) {
 	// Build messages
 	var messages []OpenAIMessage
 
@@ -212,22 +212,21 @@ func (p *OpenAIPlugin) executeChat(ctx context.Context, config map[string]interf
 	}
 
 	// Build result
-	result := map[string]interface{}{
+	result := pipelines.NewPluginContext()
+	result.Set(outputKey, map[string]interface{}{
 		"content":       content,
 		"model":         openaiResp.Object,
 		"usage":         openaiResp.Usage,
 		"finish_reason": openaiResp.Choices[0].FinishReason,
 		"request_id":    openaiResp.ID,
 		"timestamp":     time.Now().Format(time.RFC3339),
-	}
+	})
 
-	return pipelines.PluginContext{
-		outputKey: result,
-	}, nil
+	return result, nil
 }
 
 // executeCompletion executes a text completion (legacy)
-func (p *OpenAIPlugin) executeCompletion(ctx context.Context, config map[string]interface{}, outputKey string) (pipelines.PluginContext, error) {
+func (p *OpenAIPlugin) executeCompletion(ctx context.Context, config map[string]interface{}, outputKey string) (*pipelines.PluginContext, error) {
 	// Implementation for completion API
 	// This would be similar to chat but use the completions endpoint
 	return nil, fmt.Errorf("completion operation not implemented in this example")

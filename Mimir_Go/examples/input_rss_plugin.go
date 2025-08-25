@@ -49,7 +49,7 @@ func NewRSSPlugin() *RSSPlugin {
 }
 
 // ExecuteStep fetches RSS feed data
-func (p *RSSPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (p *RSSPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	fmt.Printf("Executing %s step: %s\n", p.name, stepConfig.Name)
 
 	config := stepConfig.Config
@@ -92,9 +92,9 @@ func (p *RSSPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepCo
 		"source_url":       url,
 	}
 
-	return pipelines.PluginContext{
-		stepConfig.Output: result,
-	}, nil
+	context := pipelines.NewPluginContext()
+	context.Set(stepConfig.Output, result)
+	return context, nil
 }
 
 // GetPluginType returns the plugin type

@@ -29,7 +29,7 @@ func NewTransformerPlugin() *TransformerPlugin {
 }
 
 // ExecuteStep performs data transformation operations
-func (p *TransformerPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (p *TransformerPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	fmt.Printf("Executing %s step: %s\n", p.name, stepConfig.Name)
 
 	config := stepConfig.Config
@@ -51,9 +51,9 @@ func (p *TransformerPlugin) ExecuteStep(ctx context.Context, stepConfig pipeline
 		return nil, fmt.Errorf("data transformation failed: %w", err)
 	}
 
-	return pipelines.PluginContext{
-		stepConfig.Output: result,
-	}, nil
+	context := pipelines.NewPluginContext()
+	context.Set(stepConfig.Output, result)
+	return context, nil
 }
 
 // GetPluginType returns the plugin type
@@ -81,10 +81,10 @@ func (p *TransformerPlugin) ValidateConfig(config map[string]interface{}) error 
 }
 
 // getInputData extracts input data from context or config
-func (p *TransformerPlugin) getInputData(config map[string]interface{}, context pipelines.PluginContext) interface{} {
+func (p *TransformerPlugin) getInputData(config map[string]interface{}, context *pipelines.PluginContext) interface{} {
 	// Check if input is specified in config
 	if inputKey, ok := config["input"].(string); ok {
-		if data, exists := context[inputKey]; exists {
+		if data, exists := context.Get(inputKey); exists {
 			return data
 		}
 	}

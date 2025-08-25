@@ -143,15 +143,15 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 		Output: getStringValue(params.StepConfig, "output"),
 	}
 
-	globalContext := pipelines.PluginContext{}
+	globalContext := pipelines.NewPluginContext()
 	if params.Context != nil {
 		for k, v := range params.Context {
-			globalContext[k] = v
+			globalContext.Set(k, v)
 		}
 	}
 
 	// Execute the plugin
-	result, err := plugin.ExecuteStep(context.Background(), stepConfig, globalContext)
+	result, err := plugin.ExecuteStep(context.Background(), stepConfig, *globalContext)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Plugin execution failed: %v", err), http.StatusInternalServerError)
 		return

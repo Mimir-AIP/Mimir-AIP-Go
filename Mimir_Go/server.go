@@ -34,10 +34,10 @@ type PipelineExecutionRequest struct {
 
 // PipelineExecutionResponse represents the response from pipeline execution
 type PipelineExecutionResponse struct {
-	Success    bool                    `json:"success"`
-	Error      string                  `json:"error,omitempty"`
-	Context    pipelines.PluginContext `json:"context,omitempty"`
-	ExecutedAt string                  `json:"executed_at"`
+	Success    bool                     `json:"success"`
+	Error      string                   `json:"error,omitempty"`
+	Context    *pipelines.PluginContext `json:"context,omitempty"`
+	ExecutedAt string                   `json:"executed_at"`
 }
 
 // PluginInfo represents information about a plugin
@@ -284,10 +284,10 @@ func (s *Server) handleExecutePipeline(w http.ResponseWriter, r *http.Request) {
 
 	// Initialize context
 	ctx := context.Background()
-	globalContext := make(pipelines.PluginContext)
+	globalContext := pipelines.NewPluginContext()
 	if req.Context != nil {
 		for k, v := range req.Context {
-			globalContext[k] = v
+			globalContext.Set(k, v)
 		}
 	}
 

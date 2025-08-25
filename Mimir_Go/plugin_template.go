@@ -33,7 +33,7 @@ func NewTemplatePlugin() *TemplatePlugin {
 }
 
 // ExecuteStep executes a single pipeline step
-func (p *TemplatePlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (p *TemplatePlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Log the step execution
 	fmt.Printf("Executing %s step: %s\n", p.name, stepConfig.Name)
 
@@ -42,19 +42,19 @@ func (p *TemplatePlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.S
 
 	// Validate required configuration
 	if err := p.ValidateConfig(config); err != nil {
-		return nil, fmt.Errorf("configuration validation failed: %w", err)
+		return pipelines.NewPluginContext(), fmt.Errorf("configuration validation failed: %w", err)
 	}
 
 	// Process the step
 	result, err := p.processStep(config, globalContext)
 	if err != nil {
-		return nil, fmt.Errorf("step processing failed: %w", err)
+		return pipelines.NewPluginContext(), fmt.Errorf("step processing failed: %w", err)
 	}
 
 	// Return updated context
-	return pipelines.PluginContext{
-		stepConfig.Output: result,
-	}, nil
+	context := pipelines.NewPluginContext()
+	context.Set(stepConfig.Output, result)
+	return context, nil
 }
 
 // GetPluginType returns the plugin type
@@ -95,10 +95,17 @@ func (p *TemplatePlugin) processStep(config map[string]interface{}, context pipe
 	}
 
 	// Process the input
+	timestamp := "unknown"
+	if ts, exists := context.Get("timestamp"); exists {
+		if tsStr, ok := ts.(string); ok {
+			timestamp = tsStr
+		}
+	}
+
 	result := map[string]interface{}{
 		"original":       input,
 		"processed":      fmt.Sprintf("PROCESSED_%s", input),
-		"timestamp":      fmt.Sprintf("%d", context["timestamp"]),
+		"timestamp":      timestamp,
 		"plugin_version": p.version,
 	}
 

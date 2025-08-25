@@ -1,0 +1,403 @@
+package tests
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
+)
+
+// MockPlugin is a test implementation of the BasePlugin interface
+type MockPlugin struct {
+	name          string
+	pluginType    string
+	shouldFail    bool
+	executionTime time.Duration
+	result        interface{}
+}
+
+func NewMockPlugin(name, pluginType string, shouldFail bool) *MockPlugin {
+	return &MockPlugin{
+		name:       name,
+		pluginType: pluginType,
+		shouldFail: shouldFail,
+		result:     map[string]interface{}{"status": "success"},
+	}
+}
+
+func (mp *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+	if mp.executionTime > 0 {
+		time.Sleep(mp.executionTime)
+	}
+
+	if mp.shouldFail {
+		return nil, fmt.Errorf("PLUGIN_EXECUTION_FAILED: Mock plugin execution failed")
+	}
+
+	return pipelines.PluginContext{
+		stepConfig.Output: mp.result,
+	}, nil
+}
+
+func (mp *MockPlugin) GetPluginType() string {
+	return mp.pluginType
+}
+
+func (mp *MockPlugin) GetPluginName() string {
+	return mp.name
+}
+
+func (mp *MockPlugin) ValidateConfig(config map[string]interface{}) error {
+	if config["invalid"] != nil {
+		return fmt.Errorf("VALIDATION_ERROR: Invalid configuration")
+	}
+	return nil
+}
+
+func TestPipelineExecution_Success(t *testing.T) {
+	// Create a simple pipeline configuration
+	config := &utils.PipelineConfig{
+		Name: "Test Pipeline",
+		Steps: []pipelines.StepConfig{
+			{
+				Name:   "Step 1",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{},
+				Output: "step1_output",
+			},
+			{
+				Name:   "Step 2",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{},
+				Output: "step2_output",
+			},
+		},
+	}
+
+	// Register mock plugins
+	pluginRegistry := pipelines.NewPluginRegistry()
+	mockPlugin := NewMockPlugin("mock", "Data_Processing", false)
+	pluginRegistry.RegisterPlugin(mockPlugin)
+
+	// Execute pipeline
+	result, err := utils.ExecutePipeline(context.Background(), config)
+
+	// Assertions
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected result, got nil")
+	}
+
+	if !result.Success {
+		t.Fatal("Expected pipeline to succeed")
+	}
+
+	if result.ExecutedAt == "" {
+		t.Fatal("Expected execution timestamp")
+	}
+
+	// Check that context contains expected outputs
+	if result.Context["step1_output"] == nil {
+		t.Fatal("Expected step1_output in context")
+	}
+	if result.Context["step2_output"] == nil {
+		t.Fatal("Expected step2_output in context")
+	}
+}
+
+func TestPipelineExecution_Failure(t *testing.T) {
+	// Create a pipeline configuration with a failing step
+	config := &utils.PipelineConfig{
+		Name: "Test Pipeline",
+		Steps: []pipelines.StepConfig{
+			{
+				Name:   "Step 1",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{},
+				Output: "step1_output",
+			},
+			{
+				Name:   "Failing Step",
+				Plugin: "Data_Processing.mock_fail",
+				Config: map[string]interface{}{},
+				Output: "failing_output",
+			},
+		},
+	}
+
+	// Register plugins
+	pluginRegistry := pipelines.NewPluginRegistry()
+	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
+	pluginRegistry.RegisterPlugin(NewMockPlugin("mock_fail", "Data_Processing", true))
+
+	// Execute pipeline
+	result, err := utils.ExecutePipeline(context.Background(), config)
+
+	// Assertions
+	if err == nil {
+		t.Fatal("Expected error, got nil")
+	}
+
+	if result == nil {
+		t.Fatal("Expected result, got nil")
+	}
+
+	if result.Success {
+		t.Fatal("Expected pipeline to fail")
+	}
+
+	if result.Error == "" {
+		t.Fatal("Expected error message")
+	}
+}
+
+func TestPipelineExecution_Timeout(t *testing.T) {
+	// Create a pipeline with a slow step
+	slowPlugin := NewMockPlugin("slow_mock", "Data_Processing", false)
+	slowPlugin.executionTime = 2 * time.Second
+
+	config := &utils.PipelineConfig{
+		Name: "Test Pipeline",
+		Steps: []pipelines.StepConfig{
+			{
+				Name:   "Slow Step",
+				Plugin: "Data_Processing.slow_mock",
+				Config: map[string]interface{}{},
+				Output: "slow_output",
+			},
+		},
+	}
+
+	// Register plugin
+	pluginRegistry := pipelines.NewPluginRegistry()
+	pluginRegistry.RegisterPlugin(slowPlugin)
+
+	// Execute pipeline
+	result, err := utils.ExecutePipeline(context.Background(), config)
+
+	// Assertions
+	if err == nil {
+		t.Fatal("Expected timeout error, got nil")
+	}
+
+	if result == nil {
+		t.Fatal("Expected result, got nil")
+	}
+
+	if result.Success {
+		t.Fatal("Expected pipeline to fail due to timeout")
+	}
+}
+
+func TestPipelineExecution_ContextPropagation(t *testing.T) {
+	// Create a pipeline that passes data between steps
+	config := &utils.PipelineConfig{
+		Name: "Test Pipeline",
+		Steps: []pipelines.StepConfig{
+			{
+				Name:   "Generate Data",
+				Plugin: "Data_Processing.data_generator",
+				Config: map[string]interface{}{
+					"data": "test_data",
+				},
+				Output: "generated_data",
+			},
+			{
+				Name:   "Process Data",
+				Plugin: "Data_Processing.data_processor",
+				Config: map[string]interface{}{},
+				Output: "processed_data",
+			},
+		},
+	}
+
+	// Create plugins that use context
+	dataGenerator := &MockPlugin{
+		name:       "data_generator",
+		pluginType: "Data_Processing",
+		shouldFail: false,
+		result:     "test_data",
+	}
+
+	dataProcessor := &MockPlugin{
+		name:       "data_processor",
+		pluginType: "Data_Processing",
+		shouldFail: false,
+		result:     "processed_test_data",
+	}
+
+	// Register plugins
+	pluginRegistry := pipelines.NewPluginRegistry()
+	pluginRegistry.RegisterPlugin(dataGenerator)
+	pluginRegistry.RegisterPlugin(dataProcessor)
+
+	// Execute pipeline
+	result, err := utils.ExecutePipeline(context.Background(), config)
+
+	// Assertions
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if !result.Success {
+		t.Fatal("Expected pipeline to succeed")
+	}
+
+	// Check that data was passed between steps
+	if result.Context["generated_data"] == nil {
+		t.Fatal("Expected generated_data in context")
+	}
+	if result.Context["processed_data"] == nil {
+		t.Fatal("Expected processed_data in context")
+	}
+}
+
+func TestPipelineExecution_ParallelSteps(t *testing.T) {
+	// Create a pipeline with parallel steps
+	config := &utils.PipelineConfig{
+		Name: "Test Pipeline",
+		Steps: []pipelines.StepConfig{
+			{
+				Name:   "Parallel Step 1",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{},
+				Output: "output1",
+			},
+			{
+				Name:   "Parallel Step 2",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{},
+				Output: "output2",
+			},
+		},
+	}
+
+	// Register plugin
+	pluginRegistry := pipelines.NewPluginRegistry()
+	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
+
+	// Execute pipeline
+	result, err := utils.ExecutePipeline(context.Background(), config)
+
+	// Assertions
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if !result.Success {
+		t.Fatal("Expected pipeline to succeed")
+	}
+
+	// Check that both outputs are present
+	if result.Context["output1"] == nil {
+		t.Fatal("Expected output1 in context")
+	}
+	if result.Context["output2"] == nil {
+		t.Fatal("Expected output2 in context")
+	}
+}
+
+func TestPipelineExecution_ConfigurationValidation(t *testing.T) {
+	// Create a pipeline with invalid configuration
+	config := &utils.PipelineConfig{
+		Name: "Test Pipeline",
+		Steps: []pipelines.StepConfig{
+			{
+				Name:   "Invalid Step",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{
+					"invalid": true,
+				},
+				Output: "invalid_output",
+			},
+		},
+	}
+
+	// Register plugin
+	pluginRegistry := pipelines.NewPluginRegistry()
+	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
+
+	// Execute pipeline
+	result, err := utils.ExecutePipeline(context.Background(), config)
+
+	// Assertions
+	if err == nil {
+		t.Fatal("Expected validation error, got nil")
+	}
+
+	if result == nil {
+		t.Fatal("Expected result, got nil")
+	}
+
+	if result.Success {
+		t.Fatal("Expected pipeline to fail due to validation error")
+	}
+}
+
+func BenchmarkPipelineExecution(b *testing.B) {
+	// Create a simple pipeline for benchmarking
+	config := &utils.PipelineConfig{
+		Name: "Benchmark Pipeline",
+		Steps: []pipelines.StepConfig{
+			{
+				Name:   "Benchmark Step",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{},
+				Output: "benchmark_output",
+			},
+		},
+	}
+
+	// Register plugin
+	pluginRegistry := pipelines.NewPluginRegistry()
+	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := utils.ExecutePipeline(context.Background(), config)
+		if err != nil {
+			b.Fatalf("Benchmark failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkPipelineExecution_Parallel(b *testing.B) {
+	// Create a pipeline for parallel benchmarking
+	config := &utils.PipelineConfig{
+		Name: "Benchmark Pipeline",
+		Steps: []pipelines.StepConfig{
+			{
+				Name:   "Benchmark Step 1",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{},
+				Output: "benchmark_output1",
+			},
+			{
+				Name:   "Benchmark Step 2",
+				Plugin: "Data_Processing.mock",
+				Config: map[string]interface{}{},
+				Output: "benchmark_output2",
+			},
+		},
+	}
+
+	// Register plugin
+	pluginRegistry := pipelines.NewPluginRegistry()
+	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := utils.ExecutePipeline(context.Background(), config)
+			if err != nil {
+				b.Fatalf("Benchmark failed: %v", err)
+			}
+		}
+	})
+}

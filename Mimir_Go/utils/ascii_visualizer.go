@@ -76,9 +76,9 @@ func (av *ASCIIVisualizer) VisualizeExecution(result *PipelineExecutionResult, d
 	output.WriteString("\n")
 
 	// Context summary
-	if len(result.Context) > 0 {
+	if result.Context.Size() > 0 {
 		output.WriteString("Context Summary:\n")
-		output.WriteString(av.createContextSummary(result.Context))
+		output.WriteString(av.createContextSummary(*result.Context))
 	}
 
 	return output.String()
@@ -207,12 +207,14 @@ func (av *ASCIIVisualizer) createPipelineFlow(steps []pipelines.StepConfig) stri
 func (av *ASCIIVisualizer) createContextSummary(context pipelines.PluginContext) string {
 	var output strings.Builder
 
-	for key, value := range context {
-		valueStr := fmt.Sprintf("%v", value)
-		if len(valueStr) > 50 {
-			valueStr = valueStr[:47] + "..."
+	for _, key := range context.Keys() {
+		if value, exists := context.Get(key); exists {
+			valueStr := fmt.Sprintf("%v", value)
+			if len(valueStr) > 50 {
+				valueStr = valueStr[:47] + "..."
+			}
+			output.WriteString(fmt.Sprintf("  %s: %s\n", key, valueStr))
 		}
-		output.WriteString(fmt.Sprintf("  %s: %s\n", key, valueStr))
 	}
 
 	return output.String()

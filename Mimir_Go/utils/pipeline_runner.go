@@ -16,10 +16,10 @@ import (
 
 // PipelineExecutionResult represents the result of a pipeline execution
 type PipelineExecutionResult struct {
-	Success    bool                    `json:"success"`
-	Error      string                  `json:"error,omitempty"`
-	Context    pipelines.PluginContext `json:"context,omitempty"`
-	ExecutedAt string                  `json:"executed_at"`
+	Success    bool                     `json:"success"`
+	Error      string                   `json:"error,omitempty"`
+	Context    *pipelines.PluginContext `json:"context,omitempty"`
+	ExecutedAt string                   `json:"executed_at"`
 }
 
 // RunPipeline executes a pipeline by name or file path
@@ -54,7 +54,7 @@ func RunPipeline(pipeline string, args ...string) error {
 func ExecutePipeline(ctx context.Context, config *PipelineConfig) (*PipelineExecutionResult, error) {
 	result := &PipelineExecutionResult{
 		Success: true,
-		Context: make(pipelines.PluginContext),
+		Context: pipelines.NewPluginContext(),
 	}
 
 	// Get plugin registry (this should be injected or globally available)
@@ -67,7 +67,7 @@ func ExecutePipeline(ctx context.Context, config *PipelineConfig) (*PipelineExec
 
 	// Execute each step
 	for i, step := range config.Steps {
-		stepResult, err := executeStep(ctx, registry, step, result.Context)
+		stepResult, err := executeStep(ctx, registry, step, *result.Context)
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Sprintf("step %d (%s) failed: %v", i+1, step.Name, err)
@@ -75,8 +75,10 @@ func ExecutePipeline(ctx context.Context, config *PipelineConfig) (*PipelineExec
 		}
 
 		// Merge step results into global context
-		for key, value := range stepResult {
-			result.Context[key] = value
+		for _, key := range stepResult.Keys() {
+			if value, exists := stepResult.Get(key); exists {
+				result.Context.Set(key, value)
+			}
 		}
 	}
 
@@ -87,13 +89,13 @@ func ExecutePipeline(ctx context.Context, config *PipelineConfig) (*PipelineExec
 func ExecutePipelineWithRegistry(ctx context.Context, config *PipelineConfig, registry *pipelines.PluginRegistry) (*PipelineExecutionResult, error) {
 	result := &PipelineExecutionResult{
 		Success:    true,
-		Context:    make(pipelines.PluginContext),
+		Context:    pipelines.NewPluginContext(),
 		ExecutedAt: time.Now().Format(time.RFC3339),
 	}
 
 	// Execute each step
 	for i, step := range config.Steps {
-		stepResult, err := executeStep(ctx, registry, step, result.Context)
+		stepResult, err := executeStep(ctx, registry, step, *result.Context)
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Sprintf("step %d (%s) failed: %v", i+1, step.Name, err)
@@ -101,8 +103,10 @@ func ExecutePipelineWithRegistry(ctx context.Context, config *PipelineConfig, re
 		}
 
 		// Merge step results into global context
-		for key, value := range stepResult {
-			result.Context[key] = value
+		for _, key := range stepResult.Keys() {
+			if value, exists := stepResult.Get(key); exists {
+				result.Context.Set(key, value)
+			}
 		}
 	}
 
@@ -110,11 +114,11 @@ func ExecutePipelineWithRegistry(ctx context.Context, config *PipelineConfig, re
 }
 
 // executeStep executes a single pipeline step
-func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step pipelines.StepConfig, context pipelines.PluginContext) (pipelines.PluginContext, error) {
+func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step pipelines.StepConfig, context pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Parse plugin reference (e.g., "Input.api" -> type: "Input", name: "api")
 	pluginParts := strings.Split(step.Plugin, ".")
 	if len(pluginParts) != 2 {
-		return nil, fmt.Errorf("invalid plugin reference format: %s, expected 'Type.Name'", step.Plugin)
+		return pipelines.NewPluginContext(), fmt.Errorf("invalid plugin reference format: %s, expected 'Type.Name'", step.Plugin)
 	}
 
 	pluginType := pluginParts[0]
@@ -123,12 +127,12 @@ func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step p
 	// Get the plugin
 	plugin, err := registry.GetPlugin(pluginType, pluginName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get plugin %s: %w", step.Plugin, err)
+		return pipelines.NewPluginContext(), fmt.Errorf("failed to get plugin %s: %w", step.Plugin, err)
 	}
 
 	// Validate configuration
 	if err := plugin.ValidateConfig(step.Config); err != nil {
-		return nil, fmt.Errorf("configuration validation failed for plugin %s: %w", step.Plugin, err)
+		return pipelines.NewPluginContext(), fmt.Errorf("configuration validation failed for plugin %s: %w", step.Plugin, err)
 	}
 
 	// Use the provided context (timeout handling can be added later)
@@ -137,7 +141,7 @@ func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step p
 	// Execute the step
 	stepResult, err := plugin.ExecuteStep(stepCtx, step, context)
 	if err != nil {
-		return nil, fmt.Errorf("plugin execution failed: %w", err)
+		return pipelines.NewPluginContext(), fmt.Errorf("plugin execution failed: %w", err)
 	}
 
 	return stepResult, nil
@@ -166,7 +170,7 @@ func registerDefaultPlugins(registry *pipelines.PluginRegistry) error {
 // RealAPIPlugin implements actual HTTP requests
 type RealAPIPlugin struct{}
 
-func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	config := stepConfig.Config
 
 	// Extract configuration
@@ -248,24 +252,32 @@ func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 	}
 
 	// Build result
-	result := map[string]interface{}{
+	result := pipelines.NewPluginContext()
+	result.Set(stepConfig.Output, map[string]interface{}{
 		"url":         resp.Request.URL.String(),
 		"status_code": resp.StatusCode,
 		"headers":     make(map[string]string),
 		"body":        jsonData,
 		"timestamp":   time.Now().Format(time.RFC3339),
-	}
+	})
 
 	// Convert headers
+	headers := make(map[string]string)
 	for key, values := range resp.Header {
 		if len(values) > 0 {
-			result["headers"].(map[string]string)[key] = values[0]
+			headers[key] = values[0]
 		}
 	}
 
-	return pipelines.PluginContext{
-		stepConfig.Output: result,
-	}, nil
+	// Update the headers in the result
+	if existing, exists := result.Get(stepConfig.Output); exists {
+		if resultMap, ok := existing.(map[string]interface{}); ok {
+			resultMap["headers"] = headers
+			result.Set(stepConfig.Output, resultMap)
+		}
+	}
+
+	return result, nil
 }
 
 func (p *RealAPIPlugin) GetPluginType() string { return "Input" }
@@ -280,11 +292,11 @@ func (p *RealAPIPlugin) ValidateConfig(config map[string]interface{}) error {
 // MockHTMLPlugin is a temporary mock implementation for testing
 type MockHTMLPlugin struct{}
 
-func (p *MockHTMLPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (p *MockHTMLPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Mock implementation - in real implementation this would generate HTML reports
-	return pipelines.PluginContext{
-		"report_generated": true,
-	}, nil
+	result := pipelines.NewPluginContext()
+	result.Set("report_generated", true)
+	return result, nil
 }
 
 func (p *MockHTMLPlugin) GetPluginType() string { return "Output" }

@@ -169,7 +169,7 @@ type OptimizedPluginCache struct {
 }
 
 type cacheEntry struct {
-	result   pipelines.PluginContext
+	result   *pipelines.PluginContext
 	expireAt time.Time
 }
 
@@ -187,24 +187,24 @@ func NewOptimizedPluginCache(ttl time.Duration) *OptimizedPluginCache {
 }
 
 // Get retrieves a cached result
-func (opc *OptimizedPluginCache) Get(key string) (pipelines.PluginContext, bool) {
+func (opc *OptimizedPluginCache) Get(key string) (*pipelines.PluginContext, bool) {
 	opc.mutex.RLock()
 	defer opc.mutex.RUnlock()
 
 	entry, exists := opc.cache[key]
 	if !exists {
-		return nil, false
+		return pipelines.NewPluginContext(), false
 	}
 
 	if time.Now().After(entry.expireAt) {
-		return nil, false
+		return pipelines.NewPluginContext(), false
 	}
 
 	return entry.result, true
 }
 
 // Set stores a result in the cache
-func (opc *OptimizedPluginCache) Set(key string, result pipelines.PluginContext) {
+func (opc *OptimizedPluginCache) Set(key string, result *pipelines.PluginContext) {
 	opc.mutex.Lock()
 	defer opc.mutex.Unlock()
 
@@ -316,12 +316,12 @@ func NewOptimizedPipelineExecutor(registry *pipelines.PluginRegistry, workers in
 func (ope *OptimizedPipelineExecutor) ExecutePipelineOptimized(ctx context.Context, config *PipelineConfig) (*PipelineExecutionResult, error) {
 	result := &PipelineExecutionResult{
 		Success: true,
-		Context: make(pipelines.PluginContext),
+		Context: pipelines.NewPluginContext(),
 	}
 
 	// Execute each step
 	for i, step := range config.Steps {
-		stepResult, err := ope.executeStepOptimized(ctx, step, result.Context)
+		stepResult, err := ope.executeStepOptimized(ctx, step, *result.Context)
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Sprintf("step %d (%s) failed: %v", i+1, step.Name, err)
@@ -329,8 +329,10 @@ func (ope *OptimizedPipelineExecutor) ExecutePipelineOptimized(ctx context.Conte
 		}
 
 		// Merge step results into global context
-		for key, value := range stepResult {
-			result.Context[key] = value
+		for _, key := range stepResult.Keys() {
+			if value, exists := stepResult.Get(key); exists {
+				result.Context.Set(key, value)
+			}
 		}
 	}
 
@@ -338,7 +340,7 @@ func (ope *OptimizedPipelineExecutor) ExecutePipelineOptimized(ctx context.Conte
 }
 
 // executeStepOptimized executes a single pipeline step with optimizations
-func (ope *OptimizedPipelineExecutor) executeStepOptimized(ctx context.Context, step pipelines.StepConfig, context pipelines.PluginContext) (pipelines.PluginContext, error) {
+func (ope *OptimizedPipelineExecutor) executeStepOptimized(ctx context.Context, step pipelines.StepConfig, context pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Create cache key from step configuration
 	cacheKey := createCacheKey(step, context)
 
@@ -380,9 +382,11 @@ func createCacheKey(step pipelines.StepConfig, context pipelines.PluginContext) 
 	key := fmt.Sprintf("%s:%s:%v", step.Plugin, step.Name, step.Config)
 
 	// Include relevant context values
-	for k, v := range context {
-		if str, ok := v.(string); ok && len(str) < 100 { // Only include short string values
-			key += fmt.Sprintf(":%s=%s", k, str)
+	for _, k := range context.Keys() {
+		if value, exists := context.Get(k); exists {
+			if str, ok := value.(string); ok && len(str) < 100 { // Only include short string values
+				key += fmt.Sprintf(":%s=%s", k, str)
+			}
 		}
 	}
 

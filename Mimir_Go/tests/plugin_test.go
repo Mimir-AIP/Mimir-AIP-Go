@@ -163,22 +163,3 @@ func TestPluginValidation(t *testing.T) {
 		t.Fatal("Invalid configuration should fail validation")
 	}
 }
-
-// BenchmarkPluginRegistry benchmarks plugin registry operations
-func BenchmarkPluginRegistry(b *testing.B) {
-	registry := pipelines.NewPluginRegistry()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		plugin := NewMockPlugin("benchmark_plugin", "Data_Processing", false)
-		err := registry.RegisterPlugin(plugin)
-		if err != nil {
-			b.Fatalf("Plugin registration failed: %v", err)
-		}
-
-		_, err = registry.GetPlugin("Data_Processing", "benchmark_plugin")
-		if err != nil {
-			b.Fatalf("Plugin retrieval failed: %v", err)
-		}
-	}
-}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -73,6 +74,11 @@ func NewServer() *Server {
 		log.Printf("Failed to initialize logger: %v", err)
 	}
 
+	// Initialize pipeline store
+	if err := utils.InitializeGlobalPipelineStore("./pipelines"); err != nil {
+		log.Printf("Failed to initialize pipeline store: %v", err)
+	}
+
 	// Start the scheduler
 	if err := s.scheduler.Start(); err != nil {
 		utils.GetLogger().Error("Failed to start scheduler", err, utils.Component("server"))
@@ -97,6 +103,16 @@ func (s *Server) setupRoutes() {
 	s.router.Use(s.loggingMiddleware)
 	s.router.Use(s.errorRecoveryMiddleware)
 	s.router.Use(s.corsMiddleware)
+	s.router.Use(utils.SecurityHeadersMiddleware)
+	s.router.Use(utils.InputValidationMiddleware)
+	s.router.Use(utils.PerformanceMiddleware)
+
+	// Initialize authentication if enabled
+	if s.config.GetConfig().Security.EnableAuth {
+		if err := utils.InitAuthManager(s.config.GetConfig().Security); err != nil {
+			utils.GetLogger().Error("Failed to initialize authentication", err, utils.Component("server"))
+		}
+	}
 
 	// Health check
 	s.router.HandleFunc("/health", s.handleHealth).Methods("GET")
@@ -106,7 +122,13 @@ func (s *Server) setupRoutes() {
 
 	// Pipeline management
 	s.router.HandleFunc("/api/v1/pipelines", s.handleListPipelines).Methods("GET")
-	s.router.HandleFunc("/api/v1/pipelines/{name}", s.handleGetPipeline).Methods("GET")
+	s.router.HandleFunc("/api/v1/pipelines", s.handleCreatePipeline).Methods("POST")
+	s.router.HandleFunc("/api/v1/pipelines/{id}", s.handleGetPipeline).Methods("GET")
+	s.router.HandleFunc("/api/v1/pipelines/{id}", s.handleUpdatePipeline).Methods("PUT")
+	s.router.HandleFunc("/api/v1/pipelines/{id}", s.handleDeletePipeline).Methods("DELETE")
+	s.router.HandleFunc("/api/v1/pipelines/{id}/clone", s.handleClonePipeline).Methods("POST")
+	s.router.HandleFunc("/api/v1/pipelines/{id}/validate", s.handleValidatePipeline).Methods("POST")
+	s.router.HandleFunc("/api/v1/pipelines/{id}/history", s.handleGetPipelineHistory).Methods("GET")
 
 	// Plugin management
 	s.router.HandleFunc("/api/v1/plugins", s.handleListPlugins).Methods("GET")
@@ -133,6 +155,10 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/api/v1/visualize/scheduler", s.handleVisualizeScheduler).Methods("GET")
 	s.router.HandleFunc("/api/v1/visualize/plugins", s.handleVisualizePlugins).Methods("GET")
 
+	// Performance monitoring endpoints
+	s.router.HandleFunc("/api/v1/performance/metrics", s.handleGetPerformanceMetrics).Methods("GET")
+	s.router.HandleFunc("/api/v1/performance/stats", s.handleGetPerformanceStats).Methods("GET")
+
 	// Job monitoring endpoints
 	s.router.HandleFunc("/api/v1/jobs", s.handleListJobExecutions).Methods("GET")
 	s.router.HandleFunc("/api/v1/jobs/{id}", s.handleGetJobExecution).Methods("GET")
@@ -146,6 +172,21 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/api/v1/config", s.handleUpdateConfig).Methods("PUT")
 	s.router.HandleFunc("/api/v1/config/reload", s.handleReloadConfig).Methods("POST")
 	s.router.HandleFunc("/api/v1/config/save", s.handleSaveConfig).Methods("POST")
+
+	// Authentication endpoints
+	auth := utils.GetAuthManager()
+	s.router.HandleFunc("/api/v1/auth/login", s.handleLogin).Methods("POST")
+	s.router.HandleFunc("/api/v1/auth/refresh", s.handleRefreshToken).Methods("POST")
+	s.router.HandleFunc("/api/v1/auth/me", s.handleAuthMe).Methods("GET")
+	s.router.HandleFunc("/api/v1/auth/users", s.handleListUsers).Methods("GET")
+	s.router.HandleFunc("/api/v1/auth/apikeys", s.handleCreateAPIKey).Methods("POST")
+
+	// Protected endpoints with authentication
+	protected := s.router.PathPrefix("/api/v1/protected").Subrouter()
+	protected.Use(auth.AuthMiddleware([]string{})) // Require authentication
+	protected.HandleFunc("/pipelines", s.handleExecutePipeline).Methods("POST")
+	protected.HandleFunc("/scheduler/jobs", s.handleCreateJob).Methods("POST")
+	protected.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")
 }
 
 // Start starts the HTTP server
@@ -492,6 +533,207 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// Pipeline CRUD endpoint handlers
+
+// handleCreatePipeline handles requests to create a new pipeline
+func (s *Server) handleCreatePipeline(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Metadata utils.PipelineMetadata `json:"metadata"`
+		Config   utils.PipelineConfig   `json:"config"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Get user from context
+	user, ok := utils.GetUserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	store := utils.GetPipelineStore()
+	pipeline, err := store.CreatePipeline(req.Metadata, req.Config, user.Username)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create pipeline: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message":  "Pipeline created successfully",
+		"pipeline": pipeline,
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleUpdatePipeline handles requests to update an existing pipeline
+func (s *Server) handleUpdatePipeline(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	pipelineID := vars["id"]
+
+	var req struct {
+		Metadata *utils.PipelineMetadata `json:"metadata,omitempty"`
+		Config   *utils.PipelineConfig   `json:"config,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Get user from context
+	user, ok := utils.GetUserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	store := utils.GetPipelineStore()
+	pipeline, err := store.UpdatePipeline(pipelineID, req.Metadata, req.Config, user.Username)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update pipeline: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message":  "Pipeline updated successfully",
+		"pipeline": pipeline,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleDeletePipeline handles requests to delete a pipeline
+func (s *Server) handleDeletePipeline(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	pipelineID := vars["id"]
+
+	store := utils.GetPipelineStore()
+	err := store.DeletePipeline(pipelineID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete pipeline: %v", err), http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Pipeline deleted successfully",
+		"id":      pipelineID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleClonePipeline handles requests to clone a pipeline
+func (s *Server) handleClonePipeline(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	pipelineID := vars["id"]
+
+	var req struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		http.Error(w, "Pipeline name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get user from context
+	user, ok := utils.GetUserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	store := utils.GetPipelineStore()
+	clonedPipeline, err := store.ClonePipeline(pipelineID, req.Name, user.Username)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to clone pipeline: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	response := map[string]interface{}{
+		"message":  "Pipeline cloned successfully",
+		"pipeline": clonedPipeline,
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleValidatePipeline handles requests to validate a pipeline
+func (s *Server) handleValidatePipeline(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	pipelineID := vars["id"]
+
+	store := utils.GetPipelineStore()
+	pipeline, err := store.GetPipeline(pipelineID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Pipeline not found: %v", err), http.StatusNotFound)
+		return
+	}
+
+	err = store.ValidatePipeline(pipeline)
+	if err != nil {
+		response := map[string]interface{}{
+			"valid":       false,
+			"errors":      []string{err.Error()},
+			"pipeline_id": pipelineID,
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	response := map[string]interface{}{
+		"valid":       true,
+		"errors":      []string{},
+		"pipeline_id": pipelineID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleGetPipelineHistory handles requests to get pipeline history
+func (s *Server) handleGetPipelineHistory(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	pipelineID := vars["id"]
+
+	store := utils.GetPipelineStore()
+	history, err := store.GetPipelineHistory(pipelineID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get pipeline history: %v", err), http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"pipeline_id": pipelineID,
+		"history":     history,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
 // handleDeleteJob handles requests to delete a scheduled job
 func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -587,6 +829,175 @@ func (s *Server) handleVisualizePipeline(w http.ResponseWriter, r *http.Request)
 	visualization := visualizer.VisualizePipeline(config)
 
 	w.Write([]byte(visualization))
+}
+
+// Authentication endpoint handlers
+
+// handleLogin handles user login
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	auth := utils.GetAuthManager()
+	user, err := auth.AuthenticateUser(req.Username, req.Password)
+	if err != nil {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := auth.GenerateJWT(user)
+	if err != nil {
+		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"token":      token,
+		"user":       user.Username,
+		"roles":      user.Roles,
+		"expires_in": auth.GetTokenExpiry().Seconds(),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleRefreshToken handles token refresh
+func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Token string `json:"token"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	auth := utils.GetAuthManager()
+	claims, err := auth.ValidateJWT(req.Token)
+	if err != nil {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	// Find user
+	var user *utils.User
+	users := auth.GetUsers()
+	for _, u := range users {
+		if u.ID == claims.UserID {
+			user = u
+			break
+		}
+	}
+
+	if user == nil {
+		http.Error(w, "User not found", http.StatusUnauthorized)
+		return
+	}
+
+	// Generate new token
+	newToken, err := auth.GenerateJWT(user)
+	if err != nil {
+		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"token":      newToken,
+		"expires_in": auth.GetTokenExpiry().Seconds(),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleAuthMe returns current user information
+func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	user, ok := utils.GetUserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":       user.ID,
+		"username": user.Username,
+		"roles":    user.Roles,
+		"active":   user.Active,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleListUsers lists all users (admin only)
+func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	auth := utils.GetAuthManager()
+	var users []map[string]interface{}
+
+	allUsers := auth.GetUsers()
+	for _, user := range allUsers {
+		users = append(users, map[string]interface{}{
+			"id":       user.ID,
+			"username": user.Username,
+			"roles":    user.Roles,
+			"active":   user.Active,
+		})
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"users": users})
+}
+
+// handleCreateAPIKey creates a new API key for the authenticated user
+func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	user, ok := utils.GetUserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		req.Name = "API Key"
+	}
+
+	auth := utils.GetAuthManager()
+	apiKey, err := auth.CreateAPIKey(user.ID, req.Name)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create API key: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"key":     apiKey.Key,
+		"name":    apiKey.Name,
+		"user_id": apiKey.UserID,
+		"created": apiKey.Created,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 // Configuration endpoint handlers
@@ -698,6 +1109,38 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+// Performance monitoring endpoint handlers
+
+// handleGetPerformanceMetrics handles requests to get performance metrics
+func (s *Server) handleGetPerformanceMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	monitor := utils.GetPerformanceMonitor()
+	metrics := monitor.GetMetrics()
+
+	json.NewEncoder(w).Encode(metrics)
+}
+
+// handleGetPerformanceStats handles requests to get performance statistics
+func (s *Server) handleGetPerformanceStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	monitor := utils.GetPerformanceMonitor()
+	metrics := monitor.GetMetrics()
+
+	// Add additional system stats
+	stats := map[string]interface{}{
+		"performance": metrics,
+		"system": map[string]interface{}{
+			"go_version":     runtime.Version(),
+			"num_cpu":        runtime.NumCPU(),
+			"num_goroutines": runtime.NumGoroutine(),
+		},
+	}
+
+	json.NewEncoder(w).Encode(stats)
 }
 
 // Job monitoring endpoint handlers

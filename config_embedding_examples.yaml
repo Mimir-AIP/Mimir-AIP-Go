@@ -1,0 +1,114 @@
+# Embedding Configuration Examples
+# Add this to your main config.yaml file
+
+# ==========================================
+# CLOUD-BASED EMBEDDING PROVIDERS
+# ==========================================
+
+# OpenAI (Cloud - Most Popular)
+embedding:
+  provider: "openai"
+  api_key: "${OPENAI_API_KEY}"  # Environment variable
+  model: "text-embedding-3-small"  # Options: ada-002, 3-small, 3-large
+  dimensions: 1536
+
+# Cohere (Cloud - High Quality)
+embedding:
+  provider: "cohere"
+  api_key: "${COHERE_API_KEY}"
+  model: "embed-multilingual-v2.0"
+  dimensions: 768
+
+# Jina AI (Cloud - Specialized)
+embedding:
+  provider: "jina"
+  api_key: "${JINA_API_KEY}"
+  model: "jina-embeddings-v2-base-en"
+  dimensions: 768
+
+# Mistral (Cloud - Open Source Models)
+embedding:
+  provider: "mistral"
+  api_key: "${MISTRAL_API_KEY}"
+  model: "mistral-embed"
+  dimensions: 1024
+
+# Google Vertex AI (Cloud - Enterprise)
+embedding:
+  provider: "vertex"
+  api_key: "${VERTEX_API_KEY}"
+  project: "your-gcp-project"
+  model: "textembedding-gecko@003"
+  dimensions: 768
+
+# ==========================================
+# LOCAL EMBEDDING PROVIDERS
+# ==========================================
+
+# Ollama (Local - Most Popular)
+embedding:
+  provider: "ollama"
+  base_url: "http://localhost:11434"  # Default Ollama URL
+  model: "nomic-embed-text"  # Options: nomic-embed-text, all-MiniLM-L6-v2
+  dimensions: 768
+
+# LocalAI (Local - GPU Accelerated)
+embedding:
+  provider: "localai"
+  base_url: "http://localhost:8080"  # Default LocalAI URL
+  model: "bert-cpp"  # Options: bert-cpp, other LocalAI models
+  dimensions: 384
+
+# ==========================================
+# USAGE EXAMPLES
+# ==========================================
+
+# Example 1: Development with Ollama (Free, Local)
+storage:
+  type: "chromem"
+  chromem:
+    collection_name: "dev_collection"
+    embedding_provider: "ollama"
+
+# Example 2: Production with OpenAI (High Quality, Cloud)
+storage:
+  type: "chromem"
+  chromem:
+    collection_name: "prod_collection"
+    embedding_provider: "openai"
+
+# Example 3: Enterprise with Vertex AI (Managed, Enterprise)
+storage:
+  type: "chromem"
+  chromem:
+    collection_name: "enterprise_collection"
+    embedding_provider: "vertex"
+
+# ==========================================
+# SETUP INSTRUCTIONS
+# ==========================================
+
+# Ollama Setup (Local):
+# 1. Install Ollama: https://ollama.com/
+# 2. Pull embedding model: ollama pull nomic-embed-text
+# 3. Start Ollama: ollama serve
+# 4. Use configuration above
+
+# LocalAI Setup (Local):
+# 1. Install LocalAI: https://localai.io/
+# 2. Start LocalAI server
+# 3. Use configuration above
+
+# OpenAI Setup (Cloud):
+# 1. Get API key from: https://platform.openai.com/api-keys
+# 2. Set environment variable: export OPENAI_API_KEY=your_key
+# 3. Use configuration above
+
+# ==========================================
+# PERFORMANCE COMPARISON
+# ==========================================
+
+# Speed: LocalAI > Ollama > OpenAI
+# Quality: OpenAI > Vertex > Cohere > Ollama > LocalAI
+# Cost: Ollama/LocalAI (Free) < OpenAI < Vertex < Cohere
+# Privacy: Ollama/LocalAI (Local) > OpenAI > Vertex > Cohere

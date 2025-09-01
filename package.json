@@ -1,0 +1,9 @@
+{
+  "dependencies": {},
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "scripts": {
+    "dev": "bunx concurrently \"go run .\" \"bun run dev --cwd mimir-aip-frontend\""
+  }
+}

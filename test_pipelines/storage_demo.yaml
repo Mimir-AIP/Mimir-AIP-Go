@@ -1,0 +1,117 @@
+name: "Storage System Demo Pipeline"
+description: "Demonstrates the complete storage system with Chromem backend"
+
+steps:
+  - name: "Initialize Storage"
+    plugin: "Storage.vector"
+    config:
+      operation: "create_collection"
+      name: "demo_collection"
+    output: "init_result"
+
+  - name: "Store Knowledge Documents"
+    plugin: "Storage.vector"
+    config:
+      operation: "store"
+      collection: "demo_collection"
+      documents:
+        - id: "physics_001"
+          content: "Quantum mechanics describes the behavior of matter and energy at atomic and subatomic scales"
+          metadata:
+            subject: "physics"
+            difficulty: "advanced"
+            tags: ["quantum", "mechanics", "physics"]
+        - id: "biology_001"
+          content: "Photosynthesis is the process by which green plants convert light energy into chemical energy"
+          metadata:
+            subject: "biology"
+            difficulty: "intermediate"
+            tags: ["photosynthesis", "plants", "energy"]
+        - id: "ai_001"
+          content: "Machine learning algorithms learn patterns from data without being explicitly programmed"
+          metadata:
+            subject: "computer_science"
+            difficulty: "intermediate"
+            tags: ["AI", "machine_learning", "algorithms"]
+    output: "store_result"
+
+  - name: "Query Physics Knowledge"
+    plugin: "Storage.vector"
+    config:
+      operation: "query"
+      collection: "demo_collection"
+      query: "How does quantum mechanics work?"
+      limit: 2
+    output: "physics_query"
+
+  - name: "Query Biology Knowledge"
+    plugin: "Storage.vector"
+    config:
+      operation: "query"
+      collection: "demo_collection"
+      query: "What is photosynthesis?"
+      limit: 2
+    output: "biology_query"
+
+  - name: "Query AI Knowledge"
+    plugin: "Storage.vector"
+    config:
+      operation: "query"
+      collection: "demo_collection"
+      query: "What is machine learning?"
+      limit: 2
+    output: "ai_query"
+
+  - name: "Get Specific Document"
+    plugin: "Storage.vector"
+    config:
+      operation: "get"
+      collection: "demo_collection"
+      id: "physics_001"
+    output: "specific_doc"
+
+  - name: "List All Collections"
+    plugin: "Storage.vector"
+    config:
+      operation: "list_collections"
+    output: "collections_list"
+
+expected_outputs:
+  init_result:
+    operation: "create_collection"
+    name: "demo_collection"
+    successful: true
+
+  store_result:
+    operation: "store"
+    collection: "demo_collection"
+    count: 3
+    successful: true
+
+  physics_query:
+    operation: "query"
+    collection: "demo_collection"
+    query: "How does quantum mechanics work?"
+    count: 1  # Should find physics_001
+
+  biology_query:
+    operation: "query"
+    collection: "demo_collection"
+    query: "What is photosynthesis?"
+    count: 1  # Should find biology_001
+
+  ai_query:
+    operation: "query"
+    collection: "demo_collection"
+    query: "What is machine learning?"
+    count: 1  # Should find ai_001
+
+  specific_doc:
+    id: "physics_001"
+    content: "Quantum mechanics describes the behavior of matter and energy at atomic and subatomic scales"
+    metadata:
+      subject: "physics"
+      difficulty: "advanced"
+
+  collections_list:
+    - "demo_collection"

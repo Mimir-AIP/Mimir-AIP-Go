@@ -1,0 +1,146 @@
+name: "Cross-Pipeline Storage Test"
+description: "Test storing data in one pipeline and querying it from another"
+
+# Pipeline 1: Data Collection Pipeline
+data_collection_pipeline:
+  name: "Data Collection Pipeline"
+  description: "Collect and store knowledge data"
+
+  steps:
+    - name: "Collect Science Facts"
+      plugin: "Input.api"
+      config:
+        url: "https://api.example.com/science-facts"
+        method: "GET"
+      output: "science_data"
+
+    - name: "Process Science Data"
+      plugin: "Data_Processing.transform"
+      config:
+        operation: "extract_facts"
+        fields: ["fact", "category", "source"]
+      output: "processed_facts"
+
+    - name: "Store Science Knowledge"
+      plugin: "Storage.vector"
+      config:
+        operation: "store"
+        collection: "shared_knowledge_base"
+        documents: []  # Will be populated from processed_facts
+      output: "store_result"
+
+# Pipeline 2: Query Pipeline
+query_pipeline:
+  name: "Query Pipeline"
+  description: "Query stored knowledge and generate insights"
+
+  steps:
+    - name: "User Query Input"
+      plugin: "Input.api"
+      config:
+        url: "https://api.example.com/user-query"
+        method: "GET"
+      output: "user_query"
+
+    - name: "Query Knowledge Base"
+      plugin: "Storage.vector"
+      config:
+        operation: "query"
+        collection: "shared_knowledge_base"
+        query: ""  # Will be populated from user_query
+        limit: 5
+      output: "relevant_facts"
+
+    - name: "Generate Insights"
+      plugin: "AI.openai"
+      config:
+        operation: "generate_insights"
+        model: "gpt-4"
+        prompt_template: |
+          Based on the following facts, provide insights about: {user_query}
+
+          Facts:
+          {relevant_facts}
+
+          Please provide:
+          1. Key insights
+          2. Connections between facts
+          3. Potential implications
+      output: "insights"
+
+    - name: "Store Insights"
+      plugin: "Storage.vector"
+      config:
+        operation: "store"
+        collection: "insights_collection"
+        documents:
+          - id: "insight_{timestamp}"
+            content: ""  # Will be populated from insights
+            metadata:
+              query: ""  # Will be populated from user_query
+              timestamp: "{timestamp}"
+              source: "ai_generated"
+      output: "insight_store_result"
+
+# Pipeline 3: Analytics Pipeline
+analytics_pipeline:
+  name: "Analytics Pipeline"
+  description: "Analyze stored data and generate reports"
+
+  steps:
+    - name: "Query All Insights"
+      plugin: "Storage.vector"
+      config:
+        operation: "query"
+        collection: "insights_collection"
+        query: "all insights"
+        limit: 100
+      output: "all_insights"
+
+    - name: "Analyze Patterns"
+      plugin: "Data_Processing.analyze"
+      config:
+        operation: "pattern_analysis"
+        data: ""  # Will be populated from all_insights
+      output: "patterns"
+
+    - name: "Generate Report"
+      plugin: "Output.json"
+      config:
+        filename: "knowledge_analytics_report.json"
+        data:
+          total_facts: ""  # From shared_knowledge_base stats
+          total_insights: ""  # From insights_collection stats
+          patterns: ""  # From patterns analysis
+          generated_at: "{timestamp}"
+      output: "report"
+
+test_scenarios:
+  - name: "Complete Workflow Test"
+    description: "Test the complete data collection → storage → query → insights → analytics workflow"
+
+    steps:
+      1. Run data_collection_pipeline
+      2. Verify data is stored in shared_knowledge_base
+      3. Run query_pipeline with a test query
+      4. Verify insights are generated and stored
+      5. Run analytics_pipeline
+      6. Verify report is generated with correct statistics
+
+  - name: "Concurrent Access Test"
+    description: "Test multiple pipelines accessing the same collections concurrently"
+
+    steps:
+      1. Start multiple instances of query_pipeline with different queries
+      2. Verify all queries complete successfully
+      3. Verify no data corruption or race conditions
+      4. Check that all insights are properly stored
+
+  - name: "Data Persistence Test"
+    description: "Test that data persists between pipeline runs"
+
+    steps:
+      1. Run data_collection_pipeline
+      2. Stop and restart the system
+      3. Run query_pipeline
+      4. Verify previously stored data is still accessible

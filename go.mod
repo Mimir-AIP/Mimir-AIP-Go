@@ -8,6 +8,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/gorilla/mux v1.8.1
 	github.com/philippgille/chromem-go v0.7.0
+	github.com/rs/cors v1.11.1
 	github.com/stretchr/testify v1.9.0
 	gopkg.in/yaml.v3 v3.0.1
 )

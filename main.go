@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
+	"github.com/rs/cors"
 )
 
 const mimirVersion = "v0.0.1"
@@ -82,10 +83,16 @@ func runServer(port string) {
 	server := NewServer()
 
 	// Create HTTP server with proper configuration
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:8080", "*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
+	})
+
 	httpServer := &http.Server{
-		Addr:    ":" + port,
-		Handler: server.router,
-		// Use config values for timeouts
+		Addr:         ":" + port,
+		Handler:      c.Handler(server.router),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

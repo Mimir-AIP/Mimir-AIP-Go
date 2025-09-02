@@ -102,7 +102,6 @@ func (s *Server) setupRoutes() {
 	// Add middleware
 	s.router.Use(s.loggingMiddleware)
 	s.router.Use(s.errorRecoveryMiddleware)
-	s.router.Use(s.corsMiddleware)
 	s.router.Use(utils.SecurityHeadersMiddleware)
 	s.router.Use(utils.InputValidationMiddleware)
 	s.router.Use(utils.PerformanceMiddleware)
@@ -503,28 +502,6 @@ func (s *Server) versionMiddleware(version string) mux.MiddlewareFunc {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-// corsMiddleware handles CORS headers
-func (s *Server) corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		config := s.config.GetConfig()
-
-		if config.Server.EnableCORS {
-			// Set CORS headers
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-			// Handle preflight requests
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-		}
-
-		next.ServeHTTP(w, r)
-	})
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code

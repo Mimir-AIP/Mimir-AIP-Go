@@ -8,3 +8,6 @@ README (2).md - A duplicate of readme created by accident which must be merged a
 Please complete the PROJECT_STATUS tasks, ensure system is fully tested and functional. Once all tasks are completed, update the project documentation to reflect the final state of the project and any relevant information for future reference. If you encounter tasks that must be added to the project status, please do so accordingly but remember to document these in the relevent planning documents.
 
 If you encounter any blockers or open questions during this process, please document them in the current/ directory for further review and resolution.
+
+
+When each task has been completed, run the test suite to ensure everything is functioning as expected. Then commit all changes to the repository with clear and descriptive commit messages. When all tasks are completed and committed, please notify the team for a final review before considering the project development complete.

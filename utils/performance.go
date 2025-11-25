@@ -365,7 +365,7 @@ func (ope *OptimizedPipelineExecutor) executeStepOptimized(ctx context.Context, 
 	}
 
 	// Execute the step
-	stepResult, err := plugin.ExecuteStep(ctx, step, context)
+	stepResult, err := plugin.ExecuteStep(ctx, step, &context)
 	if err != nil {
 		return nil, fmt.Errorf("plugin execution failed: %w", err)
 	}

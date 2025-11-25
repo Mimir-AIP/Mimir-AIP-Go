@@ -155,7 +155,7 @@ type StepConfig struct {
 // BasePlugin defines the interface that all plugins must implement
 type BasePlugin interface {
 	// ExecuteStep executes a single pipeline step
-	ExecuteStep(ctx context.Context, stepConfig StepConfig, globalContext PluginContext) (*PluginContext, error)
+	ExecuteStep(ctx context.Context, stepConfig StepConfig, globalContext *PluginContext) (*PluginContext, error)
 
 	// GetPluginType returns the type of plugin (Input, Data_Processing, AIModels, Output)
 	GetPluginType() string

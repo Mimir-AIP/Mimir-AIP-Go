@@ -67,7 +67,7 @@ func ExecutePipeline(ctx context.Context, config *PipelineConfig) (*PipelineExec
 
 	// Execute each step
 	for i, step := range config.Steps {
-		stepResult, err := executeStep(ctx, registry, step, *result.Context)
+		stepResult, err := executeStep(ctx, registry, step, result.Context)
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Sprintf("step %d (%s) failed: %v", i+1, step.Name, err)
@@ -95,7 +95,7 @@ func ExecutePipelineWithRegistry(ctx context.Context, config *PipelineConfig, re
 
 	// Execute each step
 	for i, step := range config.Steps {
-		stepResult, err := executeStep(ctx, registry, step, *result.Context)
+		stepResult, err := executeStep(ctx, registry, step, result.Context)
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Sprintf("step %d (%s) failed: %v", i+1, step.Name, err)
@@ -114,7 +114,7 @@ func ExecutePipelineWithRegistry(ctx context.Context, config *PipelineConfig, re
 }
 
 // executeStep executes a single pipeline step
-func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step pipelines.StepConfig, context pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step pipelines.StepConfig, context *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Parse plugin reference (e.g., "Input.api" -> type: "Input", name: "api")
 	pluginParts := strings.Split(step.Plugin, ".")
 	if len(pluginParts) != 2 {
@@ -170,7 +170,7 @@ func registerDefaultPlugins(registry *pipelines.PluginRegistry) error {
 // RealAPIPlugin implements actual HTTP requests
 type RealAPIPlugin struct{}
 
-func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	config := stepConfig.Config
 
 	// Extract configuration
@@ -292,7 +292,7 @@ func (p *RealAPIPlugin) ValidateConfig(config map[string]interface{}) error {
 // MockHTMLPlugin is a temporary mock implementation for testing
 type MockHTMLPlugin struct{}
 
-func (p *MockHTMLPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (p *MockHTMLPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Mock implementation - in real implementation this would generate HTML reports
 	result := pipelines.NewPluginContext()
 	result.Set("report_generated", true)

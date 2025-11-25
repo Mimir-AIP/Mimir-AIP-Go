@@ -28,7 +28,7 @@ func NewMockPlugin(name, pluginType string, shouldFail bool) *MockPlugin {
 	}
 }
 
-func (mp *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (mp *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	if mp.executionTime > 0 {
 		select {
 		case <-time.After(mp.executionTime):

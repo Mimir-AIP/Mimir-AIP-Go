@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -86,14 +87,10 @@ func (pm *PerformanceMonitor) GetMetrics() *PerformanceMetrics {
 		sortedLatencies := make([]time.Duration, len(pm.latencies))
 		copy(sortedLatencies, pm.latencies)
 
-		// Simple sort for percentile calculation
-		for i := 0; i < len(sortedLatencies)-1; i++ {
-			for j := i + 1; j < len(sortedLatencies); j++ {
-				if sortedLatencies[i] > sortedLatencies[j] {
-					sortedLatencies[i], sortedLatencies[j] = sortedLatencies[j], sortedLatencies[i]
-				}
-			}
-		}
+		// Use efficient sort for percentile calculation
+		sort.Slice(sortedLatencies, func(i, j int) bool {
+			return sortedLatencies[i] < sortedLatencies[j]
+		})
 
 		p95Index := int(float64(len(sortedLatencies)) * 0.95)
 		p99Index := int(float64(len(sortedLatencies)) * 0.99)

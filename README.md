@@ -671,6 +671,5 @@ Version 1.2.0. GitHub Repository: https://github.com/Mimir-AIP/Mimir-AIP-Go
 
 ---
 
-**Technical Contact**: development@mimir-aip.com  
-**Project Repository**: https://github.com/Mimir-AIP/Mimir-AIP-Go  
-**Documentation**: https://docs.mimir-aip.com
+**Project Repository**: https://github.com/Mimir-AIP/Mimir-AIP-Go
+**Documentation**: https://mimir-aip.github.io/wiki/wiki.html (TODO- Update docs site to include Go version)

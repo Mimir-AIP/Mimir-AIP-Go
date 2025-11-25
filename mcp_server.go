@@ -151,7 +151,7 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Execute the plugin
-	result, err := plugin.ExecuteStep(context.Background(), stepConfig, *globalContext)
+	result, err := plugin.ExecuteStep(context.Background(), stepConfig, globalContext)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Plugin execution failed: %v", err), http.StatusInternalServerError)
 		return

@@ -1,0 +1,101 @@
+package main
+
+import (
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
+)
+
+// setupRoutes sets up the HTTP routes with API versioning
+func (s *Server) setupRoutes() {
+	// Add middleware
+	s.router.Use(s.loggingMiddleware)
+	s.router.Use(s.errorRecoveryMiddleware)
+	s.router.Use(utils.SecurityHeadersMiddleware)
+	s.router.Use(utils.InputValidationMiddleware)
+	s.router.Use(utils.PerformanceMiddleware)
+
+	// Initialize authentication if enabled
+	if s.config.GetConfig().Security.EnableAuth {
+		if err := utils.InitAuthManager(s.config.GetConfig().Security); err != nil {
+			utils.GetLogger().Error("Failed to initialize authentication", err, utils.Component("server"))
+		}
+	}
+
+	// Create API version subrouters
+	v1 := s.router.PathPrefix("/api/v1").Subrouter()
+	v1.Use(s.versionMiddleware("v1"))
+
+	// Health check (no version)
+	s.router.HandleFunc("/health", s.handleHealth).Methods("GET")
+
+	// Pipeline execution
+	v1.HandleFunc("/pipelines/execute", s.handleExecutePipeline).Methods("POST")
+
+	// Pipeline management
+	v1.HandleFunc("/pipelines", s.handleListPipelines).Methods("GET")
+	v1.HandleFunc("/pipelines", s.handleCreatePipeline).Methods("POST")
+	v1.HandleFunc("/pipelines/{id}", s.handleGetPipeline).Methods("GET")
+	v1.HandleFunc("/pipelines/{id}", s.handleUpdatePipeline).Methods("PUT")
+	v1.HandleFunc("/pipelines/{id}", s.handleDeletePipeline).Methods("DELETE")
+	v1.HandleFunc("/pipelines/{id}/clone", s.handleClonePipeline).Methods("POST")
+	v1.HandleFunc("/pipelines/{id}/validate", s.handleValidatePipeline).Methods("POST")
+	v1.HandleFunc("/pipelines/{id}/history", s.handleGetPipelineHistory).Methods("GET")
+
+	// Plugin management
+	v1.HandleFunc("/plugins", s.handleListPlugins).Methods("GET")
+	v1.HandleFunc("/plugins/{type}", s.handleListPluginsByType).Methods("GET")
+	v1.HandleFunc("/plugins/{type}/{name}", s.handleGetPlugin).Methods("GET")
+
+	// Agentic features
+	v1.HandleFunc("/agent/execute", s.handleAgentExecute).Methods("POST")
+
+	// MCP endpoints (no version prefix)
+	s.router.PathPrefix("/mcp").Handler(s.mcpServer)
+
+	// Scheduler endpoints
+	v1.HandleFunc("/scheduler/jobs", s.handleListJobs).Methods("GET")
+	v1.HandleFunc("/scheduler/jobs/{id}", s.handleGetJob).Methods("GET")
+	v1.HandleFunc("/scheduler/jobs", s.handleCreateJob).Methods("POST")
+	v1.HandleFunc("/scheduler/jobs/{id}", s.handleDeleteJob).Methods("DELETE")
+	v1.HandleFunc("/scheduler/jobs/{id}/enable", s.handleEnableJob).Methods("POST")
+	v1.HandleFunc("/scheduler/jobs/{id}/disable", s.handleDisableJob).Methods("POST")
+
+	// Visualization endpoints
+	v1.HandleFunc("/visualize/pipeline", s.handleVisualizePipeline).Methods("POST")
+	v1.HandleFunc("/visualize/status", s.handleVisualizeStatus).Methods("GET")
+	v1.HandleFunc("/visualize/scheduler", s.handleVisualizeScheduler).Methods("GET")
+	v1.HandleFunc("/visualize/plugins", s.handleVisualizePlugins).Methods("GET")
+
+	// Performance monitoring endpoints
+	v1.HandleFunc("/performance/metrics", s.handleGetPerformanceMetrics).Methods("GET")
+	v1.HandleFunc("/performance/stats", s.handleGetPerformanceStats).Methods("GET")
+
+	// Job monitoring endpoints
+	v1.HandleFunc("/jobs", s.handleListJobExecutions).Methods("GET")
+	v1.HandleFunc("/jobs/{id}", s.handleGetJobExecution).Methods("GET")
+	v1.HandleFunc("/jobs/running", s.handleGetRunningJobs).Methods("GET")
+	v1.HandleFunc("/jobs/recent", s.handleGetRecentJobs).Methods("GET")
+	v1.HandleFunc("/jobs/export", s.handleExportJobs).Methods("GET")
+	v1.HandleFunc("/jobs/statistics", s.handleGetJobStatistics).Methods("GET")
+	v1.HandleFunc("/jobs/{id}/stop", s.handleStopJobExecution).Methods("POST")
+
+	// Configuration endpoints
+	v1.HandleFunc("/config", s.handleGetConfig).Methods("GET")
+	v1.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")
+	v1.HandleFunc("/config/reload", s.handleReloadConfig).Methods("POST")
+	v1.HandleFunc("/config/save", s.handleSaveConfig).Methods("POST")
+
+	// Authentication endpoints
+	auth := utils.GetAuthManager()
+	v1.HandleFunc("/auth/login", s.handleLogin).Methods("POST")
+	v1.HandleFunc("/auth/refresh", s.handleRefreshToken).Methods("POST")
+	v1.HandleFunc("/auth/me", s.handleAuthMe).Methods("GET")
+	v1.HandleFunc("/auth/users", s.handleListUsers).Methods("GET")
+	v1.HandleFunc("/auth/apikeys", s.handleCreateAPIKey).Methods("POST")
+
+	// Protected endpoints with authentication
+	protected := v1.PathPrefix("/protected").Subrouter()
+	protected.Use(auth.AuthMiddleware([]string{})) // Require authentication
+	protected.HandleFunc("/pipelines", s.handleExecutePipeline).Methods("POST")
+	protected.HandleFunc("/scheduler/jobs", s.handleCreateJob).Methods("POST")
+	protected.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")
+}

@@ -31,14 +31,20 @@ type Scheduler struct {
 	jobsMutex sync.RWMutex
 	running   bool
 	stopChan  chan struct{}
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
 	registry  *pipelines.PluginRegistry
 }
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler(registry *pipelines.PluginRegistry) *Scheduler {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
 		jobs:     make(map[string]*ScheduledJob),
 		stopChan: make(chan struct{}),
+		ctx:      ctx,
+		cancel:   cancel,
 		registry: registry,
 	}
 }
@@ -53,6 +59,7 @@ func (s *Scheduler) Start() error {
 	}
 
 	s.running = true
+	s.wg.Add(1)
 	go s.run()
 
 	log.Printf("Scheduler started with %d jobs", len(s.jobs))
@@ -69,10 +76,24 @@ func (s *Scheduler) Stop() error {
 	}
 
 	s.running = false
+	s.cancel() // Cancel context to stop all running jobs
 	close(s.stopChan)
 
-	log.Printf("Scheduler stopped")
-	return nil
+	// Wait for all goroutines to finish
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Printf("Scheduler stopped gracefully")
+		return nil
+	case <-time.After(30 * time.Second):
+		log.Printf("Scheduler stop timeout - forcing shutdown")
+		return fmt.Errorf("scheduler stop timeout")
+	}
 }
 
 // AddJob adds a new scheduled job
@@ -183,11 +204,15 @@ func (s *Scheduler) GetJob(id string) (*ScheduledJob, error) {
 
 // run is the main scheduler loop
 func (s *Scheduler) run() {
+	defer s.wg.Done()
+
 	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-s.stopChan:
 			return
 		case <-ticker.C:
@@ -209,6 +234,7 @@ func (s *Scheduler) checkAndExecuteJobs() {
 		}
 
 		if job.NextRun != nil && now.After(*job.NextRun) {
+			s.wg.Add(1)
 			go s.executeJob(job)
 			s.updateNextRun(job)
 		}
@@ -217,19 +243,23 @@ func (s *Scheduler) checkAndExecuteJobs() {
 
 // executeJob executes a scheduled job
 func (s *Scheduler) executeJob(job *ScheduledJob) {
+	defer s.wg.Done()
+
 	log.Printf("Executing scheduled job: %s", job.Name)
 
-	// Execute the pipeline
-	result, err := ExecutePipeline(context.Background(), &PipelineConfig{
+	// Execute pipeline with scheduler context for proper cancellation
+	result, err := ExecutePipeline(s.ctx, &PipelineConfig{
 		Name:  job.Name,
-		Steps: []pipelines.StepConfig{}, // This would need to be loaded from the pipeline file
+		Steps: []pipelines.StepConfig{}, // This would need to be loaded from pipeline file
 	})
 
-	// Update job status
+	// Update job status (need to acquire lock for this)
+	s.jobsMutex.Lock()
 	now := time.Now()
 	job.LastRun = &now
 	job.LastResult = result
 	job.UpdatedAt = now
+	s.jobsMutex.Unlock()
 
 	if err != nil {
 		log.Printf("Scheduled job %s failed: %v", job.Name, err)

@@ -1563,10 +1563,92 @@ const client = new MimirClient('http://localhost:8080', 'your-api-key');
 // Execute pipeline
 const result = await client.executePipeline(pipelineConfig);
 ```
-
 ## Best Practices
 
+## Testing Best Practices
+
+### 1. How to Run Tests
+- All core and plugin tests are located in the `tests/` directory and within plugin folders.
+- Run all tests using:
+  ```bash
+  go test ./...
+  ```
+- For coverage:
+  ```bash
+  go test -cover ./...
+  ```
+- To run a specific test file:
+  ```bash
+  go test ./tests/data_model_test.go
+  ```
+- For integration tests, use:
+  ```bash
+  go test ./tests/integration_test.go
+  ```
+
+### 2. How to Add New Tests
+- Place new unit tests in the relevant `*_test.go` file in the corresponding package or plugin directory.
+- Use Go’s standard `testing` package:
+  ```go
+  func TestMyFeature(t *testing.T) {
+      // ... test logic ...
+  }
+  ```
+- For plugins, add tests in the plugin’s folder (e.g., `ai_openai_plugin_test.go`).
+- For pipelines, add YAML-based tests in `test_pipelines/` and use the pipeline runner to validate.
+
+### 3. Coverage Expectations
+- **Core:** All major functions, error paths, and configuration logic should be covered.
+- **Plugins:** Each plugin should have tests for normal operation, error handling, and edge cases.
+- **Error Handling:** Simulate and assert error responses for invalid configs, plugin failures, and network issues.
+- **Config:** Test config loading, validation, and environment overrides.
+- **Edge Cases:** Add tests for boundary values, empty inputs, and large data sets.
+
+### 4. Simulating Failures and Edge Cases
+- Use Go’s mocking libraries (e.g., `github.com/stretchr/testify/mock`) to simulate plugin and API failures.
+- Inject errors by passing invalid configs or using mock implementations.
+- For LLM/agentic plugins, mock LLM responses and simulate timeouts or malformed outputs.
+- Use table-driven tests to cover multiple scenarios.
+
+### 5. Environment Setup for Tests
+- Set required environment variables in your shell or use a `.env` file for integration tests.
+- Example:
+  ```bash
+  export MIMIR_API_KEY=test-key
+  export MIMIR_SERVER_PORT=8081
+  ```
+- Ensure dependencies (e.g., databases, external APIs) are available or mocked.
+- Use Docker or local services for integration tests if needed.
+
+### 6. Additional Resources
+- See `tests/` and `test_pipelines/` for examples.
+- Refer to Go’s [testing documentation](https://pkg.go.dev/testing) for advanced usage.
+- For plugin-specific testing, see `PLUGIN_DEVELOPMENT_GUIDE.md`.
+
+---
+
+
 ### 1. Error Handling
+
+#### Go Example: Structured Error Logging
+
+```go
+import "github.com/Mimir-AIP/Mimir-AIP-Go/utils"
+
+logger := utils.GetLogger()
+err := doSomething()
+if err != nil {
+    logger.Error("Failed to do something", err, utils.Component("my-component"), utils.RequestID("req-123"))
+}
+```
+
+#### Best Practices
+- Always use the structured logger for all error and info logs.
+- Include context fields (component, request/user/trace IDs) for traceability.
+- Log errors with stack traces for debugging (automatically included).
+- Use panic recovery middleware to log stack traces and request context.
+- Prefer JSON format for log aggregation and analysis in production.
+- Use log levels appropriately (debug/info/warn/error/fatal).
 
 ```javascript
 try {
@@ -1635,6 +1717,37 @@ class PipelineMonitor {
 ```
 
 ### 4. Configuration Management
+
+#### Go Example: Using ConfigManager and Watcher
+
+```go
+import "github.com/Mimir-AIP/Mimir-AIP-Go/utils"
+
+// Get the global config manager
+cm := utils.GetConfigManager()
+
+// Load config from file and environment
+err := utils.LoadGlobalConfig()
+if err != nil {
+    log.Fatal("Failed to load config:", err)
+}
+
+// Add a watcher for live reload
+cm.AddWatcher(&MyConfigWatcher{})
+
+type MyConfigWatcher struct{}
+func (w *MyConfigWatcher) OnConfigChange(oldConfig, newConfig *utils.Config) {
+    log.Printf("Config changed! Reloading subsystems...")
+    // Reload any subsystems that depend on config here
+}
+```
+
+#### Best Practices
+- Always use the ConfigManager for all config access and updates.
+- Use watchers to reload subsystems on config changes (hot-reload).
+- Validate config on startup and after updates.
+- Prefer environment variable overrides for secrets and deployment-specific settings.
+- Document all config options in config.yaml and API docs.
 
 ```javascript
 // Load configuration with validation

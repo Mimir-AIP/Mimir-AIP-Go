@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
@@ -40,10 +41,10 @@ type StepExecutionRecord struct {
 
 // JobStatistics represents aggregated job statistics
 type JobStatistics struct {
-	TotalJobs       int           `json:"total_jobs"`
-	RunningJobs     int           `json:"running_jobs"`
-	SuccessfulJobs  int           `json:"successful_jobs"`
-	FailedJobs      int           `json:"failed_jobs"`
+	TotalJobs       int64         `json:"total_jobs"`
+	RunningJobs     int64         `json:"running_jobs"`
+	SuccessfulJobs  int64         `json:"successful_jobs"`
+	FailedJobs      int64         `json:"failed_jobs"`
 	AverageDuration time.Duration `json:"average_duration"`
 	SuccessRate     float64       `json:"success_rate"`
 	LastUpdated     time.Time     `json:"last_updated"`
@@ -276,15 +277,24 @@ func (jm *JobMonitor) GetStatistics() JobStatistics {
 	jm.mutex.RLock()
 	defer jm.mutex.RUnlock()
 
-	return jm.stats
+	// Return a copy with atomic loads for thread safety
+	return JobStatistics{
+		TotalJobs:       atomic.LoadInt64(&jm.stats.TotalJobs),
+		RunningJobs:     atomic.LoadInt64(&jm.stats.RunningJobs),
+		SuccessfulJobs:  atomic.LoadInt64(&jm.stats.SuccessfulJobs),
+		FailedJobs:      atomic.LoadInt64(&jm.stats.FailedJobs),
+		AverageDuration: jm.stats.AverageDuration,
+		SuccessRate:     jm.stats.SuccessRate,
+		LastUpdated:     jm.stats.LastUpdated,
+	}
 }
 
 // updateStats recalculates job statistics
 func (jm *JobMonitor) updateStats() {
-	jm.stats.TotalJobs = len(jm.executions)
-	jm.stats.RunningJobs = 0
-	jm.stats.SuccessfulJobs = 0
-	jm.stats.FailedJobs = 0
+	atomic.StoreInt64(&jm.stats.TotalJobs, int64(len(jm.executions)))
+	atomic.StoreInt64(&jm.stats.RunningJobs, 0)
+	atomic.StoreInt64(&jm.stats.SuccessfulJobs, 0)
+	atomic.StoreInt64(&jm.stats.FailedJobs, 0)
 
 	var totalDuration time.Duration
 	var completedCount int
@@ -292,11 +302,11 @@ func (jm *JobMonitor) updateStats() {
 	for _, record := range jm.executions {
 		switch record.Status {
 		case "running":
-			jm.stats.RunningJobs++
+			atomic.AddInt64(&jm.stats.RunningJobs, 1)
 		case "success":
-			jm.stats.SuccessfulJobs++
+			atomic.AddInt64(&jm.stats.SuccessfulJobs, 1)
 		case "failed":
-			jm.stats.FailedJobs++
+			atomic.AddInt64(&jm.stats.FailedJobs, 1)
 		}
 
 		if record.Status != "running" && record.Duration != nil {
@@ -309,9 +319,11 @@ func (jm *JobMonitor) updateStats() {
 		jm.stats.AverageDuration = totalDuration / time.Duration(completedCount)
 	}
 
-	totalCompleted := jm.stats.SuccessfulJobs + jm.stats.FailedJobs
+	successful := atomic.LoadInt64(&jm.stats.SuccessfulJobs)
+	failed := atomic.LoadInt64(&jm.stats.FailedJobs)
+	totalCompleted := successful + failed
 	if totalCompleted > 0 {
-		jm.stats.SuccessRate = float64(jm.stats.SuccessfulJobs) / float64(totalCompleted)
+		jm.stats.SuccessRate = float64(successful) / float64(totalCompleted)
 	}
 
 	jm.stats.LastUpdated = time.Now()

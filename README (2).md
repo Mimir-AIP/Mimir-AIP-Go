@@ -569,39 +569,25 @@ curl http://localhost:8080/health/detailed
 
 ## Deployment
 
+### Quick Start with Docker
+
+```bash
+# Clone repository
+git clone https://github.com/Mimir-AIP/Mimir-AIP-Go.git
+cd Mimir-AIP-Go
+
+# Start with Docker Compose
+docker-compose up -d
+```
+
 ### Production Deployment
 
-1. **Build Optimized Binary**
-```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o mimir ./cmd/mimir
-```
+For comprehensive deployment instructions, see [Deployment Guide](docs/DEPLOYMENT.md):
 
-2. **Docker Production Image**
-```dockerfile
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY mimir .
-EXPOSE 8080
-CMD ["./mimir"]
-```
-
-3. **Systemd Service**
-```ini
-[Unit]
-Description=Mimir AIP Service
-After=network.target
-
-[Service]
-Type=simple
-User=mimir
-ExecStart=/usr/local/bin/mimir
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
+- **Docker & Docker Compose** - Containerized deployment with examples
+- **Kubernetes** - Production-grade orchestration with autoscaling
+- **Security & Monitoring** - Best practices for production
+- **Troubleshooting** - Common issues and solutions
 
 ### Scaling
 

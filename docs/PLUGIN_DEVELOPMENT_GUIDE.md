@@ -457,6 +457,31 @@ func (p *MyPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepCon
 }
 ```
 
+### 4. Plugin Testing and CI Integration
+
+- Write unit and integration tests for all plugin logic.
+- Use Go’s `testing` package and assert libraries.
+- Example:
+
+```go
+func TestMyPlugin_ExecuteStep(t *testing.T) {
+    plugin := NewMyPlugin()
+    stepConfig := pipelines.StepConfig{
+        Name:   "test_step",
+        Plugin: "Data_Processing.my_plugin",
+        Config: map[string]interface{}{"param1": "value1"},
+        Output: "result",
+    }
+    context := pipelines.PluginContext{}
+    result, err := plugin.ExecuteStep(context.Background(), stepConfig, context)
+    assert.NoError(t, err)
+    assert.Contains(t, result, "result")
+}
+```
+
+- Integrate plugin tests into CI pipelines (GitHub Actions, etc.)
+- Ensure all plugins pass tests before merging or releasing.
+
 ### 2. Streaming Data
 
 ```go

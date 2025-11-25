@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
 
 // BenchmarkSuite runs comprehensive performance benchmarks
@@ -59,7 +58,16 @@ func benchmarkPluginExecution() {
 	// Warm up
 	for i := 0; i < 10; i++ {
 		plugin, _ := registry.GetPlugin("Data_Processing", "test1")
-		plugin.ExecuteStep(context.Background(), stepConfig, *pipelines.NewPluginContext())
+		plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
+	}
+
+	// Benchmark
+	start := time.Now()
+	iterations := 1000
+
+	for i := 0; i < iterations; i++ {
+		plugin, _ := registry.GetPlugin("Data_Processing", "test1")
+		plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
 	}
 
 	// Benchmark
@@ -84,9 +92,9 @@ func benchmarkPluginExecution() {
 func benchmarkPipelineExecution() {
 	fmt.Println("=== Pipeline Execution Benchmark ===")
 
-	config := &utils.PipelineConfig{
+	config := &pipelines.PipelineConfig{
 		Name: "Benchmark Pipeline",
-		Steps: []utils.StepConfig{
+		Steps: []pipelines.StepConfig{
 			{
 				Name:   "Step 1",
 				Plugin: "Data_Processing.transform",
@@ -153,7 +161,7 @@ func benchmarkMemoryUsage() {
 	plugin, _ := registry.GetPlugin("Data_Processing", "memory_test")
 
 	for i := 0; i < 1000; i++ {
-		plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
+		plugin.ExecuteStep(context.Background(), stepConfig, *pipelines.NewPluginContext())
 	}
 
 	// Peak memory
@@ -198,7 +206,7 @@ func benchmarkConcurrentLoad() {
 			go func() {
 				plugin, _ := registry.GetPlugin("Data_Processing", "concurrent_test")
 				for j := 0; j < 100; j++ {
-					plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
+					plugin.ExecuteStep(context.Background(), stepConfig, *pipelines.NewPluginContext())
 				}
 				done <- true
 			}()
@@ -228,7 +236,7 @@ type MockPlugin struct {
 	pluginType string
 }
 
-func (p *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (p *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Simulate some work
 	time.Sleep(100 * time.Microsecond)
 

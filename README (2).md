@@ -481,6 +481,19 @@ The repository includes comprehensive examples:
 - **AI Models**: OpenAI integration, custom model support
 - **Output Plugins**: JSON writer, HTML generator
 
+#### LLM Integration Examples
+
+- **Go Example**: See `examples/llm_integration_example.go` for direct plugin usage
+- **Agentic Workflow**: See `test_pipelines/agentic_workflow_example.yaml` for LLM + transform
+- **LLM Chain**: See `test_pipelines/llm_chain_example.yaml` for multi-step LLM pipelines
+- **Documentation**: See `examples/README.md` for detailed usage instructions
+
+#### Testing
+
+- **Testing Best Practices**: See `docs/API_REFERENCE.md#testing-best-practices`
+- **Run Tests**: `go test ./...`
+- **Coverage**: `go test -cover ./...`
+
 ## API Reference
 
 ### REST API Endpoints

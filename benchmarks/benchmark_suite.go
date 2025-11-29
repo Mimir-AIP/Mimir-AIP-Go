@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
 
 // BenchmarkSuite runs comprehensive performance benchmarks
@@ -71,8 +72,8 @@ func benchmarkPluginExecution() {
 	}
 
 	// Benchmark
-	start := time.Now()
-	iterations := 1000
+	start = time.Now()
+	iterations = 1000
 
 	for i := 0; i < iterations; i++ {
 		plugin, _ := registry.GetPlugin("Data_Processing", "test1")
@@ -92,7 +93,7 @@ func benchmarkPluginExecution() {
 func benchmarkPipelineExecution() {
 	fmt.Println("=== Pipeline Execution Benchmark ===")
 
-	config := &pipelines.PipelineConfig{
+	config := &utils.PipelineConfig{
 		Name: "Benchmark Pipeline",
 		Steps: []pipelines.StepConfig{
 			{
@@ -161,7 +162,7 @@ func benchmarkMemoryUsage() {
 	plugin, _ := registry.GetPlugin("Data_Processing", "memory_test")
 
 	for i := 0; i < 1000; i++ {
-		plugin.ExecuteStep(context.Background(), stepConfig, *pipelines.NewPluginContext())
+		plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
 	}
 
 	// Peak memory
@@ -206,7 +207,7 @@ func benchmarkConcurrentLoad() {
 			go func() {
 				plugin, _ := registry.GetPlugin("Data_Processing", "concurrent_test")
 				for j := 0; j < 100; j++ {
-					plugin.ExecuteStep(context.Background(), stepConfig, *pipelines.NewPluginContext())
+					plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
 				}
 				done <- true
 			}()

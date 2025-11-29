@@ -1,0 +1,70 @@
+# .dockerignore - Optimize Docker build context
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+docs/
+agent-docs/
+
+# Dependencies
+vendor/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test files
+*_test.go
+test-results/
+coverage.out
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+mimir-aip
+mimir-aip-server
+utils.test
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Node modules (if any frontend)
+node_modules/
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Docker files (except the ones we need)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Backup files
+*.bak
+*.backup

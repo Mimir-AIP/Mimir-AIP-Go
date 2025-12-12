@@ -103,7 +103,7 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 
 	var req struct {
-		ToolName  string                 `json:"tool_name"`
+		ToolName  string         `json:"tool_name"`
 		Arguments map[string]any `json:"arguments"`
 	}
 
@@ -136,7 +136,7 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 	}
 
 	if argsJSON, err := json.Marshal(req.Arguments); err == nil {
-		json.Unmarshal(argsJSON, &params)
+		_ = json.Unmarshal(argsJSON, &params)
 	}
 
 	// Convert to plugin types

@@ -88,7 +88,7 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 	pipelines, err := utils.ParseAllPipelines(configPath)
 	if err != nil {
 		// If config.yaml doesn't exist, return empty array
-		json.NewEncoder(w).Encode([]utils.PipelineConfig{})
+		_ = json.NewEncoder(w).Encode([]utils.PipelineConfig{})
 		return
 	}
 
@@ -551,7 +551,7 @@ func (s *Server) handleVisualizePipeline(w http.ResponseWriter, r *http.Request)
 	visualizer := utils.NewASCIIVisualizer()
 	visualization := visualizer.VisualizePipeline(config)
 
-	w.Write([]byte(visualization))
+	_, _ = w.Write([]byte(visualization))
 }
 
 // Authentication endpoint handlers
@@ -965,7 +965,7 @@ func (s *Server) handleExportJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 // handleVisualizeStatus handles requests to visualize system status
@@ -984,7 +984,7 @@ func (s *Server) handleVisualizeStatus(w http.ResponseWriter, r *http.Request) {
 	jobs := s.scheduler.GetJobs()
 	output.WriteString(visualizer.VisualizeSchedulerJobs(jobs))
 
-	w.Write([]byte(output.String()))
+	_, _ = w.Write([]byte(output.String()))
 }
 
 // handleVisualizeScheduler handles requests to visualize scheduler status
@@ -995,7 +995,7 @@ func (s *Server) handleVisualizeScheduler(w http.ResponseWriter, r *http.Request
 	visualizer := utils.NewASCIIVisualizer()
 	visualization := visualizer.VisualizeSchedulerJobs(jobs)
 
-	w.Write([]byte(visualization))
+	_, _ = w.Write([]byte(visualization))
 }
 
 // handleVisualizePlugins handles requests to visualize available plugins
@@ -1005,5 +1005,5 @@ func (s *Server) handleVisualizePlugins(w http.ResponseWriter, r *http.Request) 
 	visualizer := utils.NewASCIIVisualizer()
 	visualization := visualizer.VisualizePluginRegistry(s.registry)
 
-	w.Write([]byte(visualization))
+	_, _ = w.Write([]byte(visualization))
 }

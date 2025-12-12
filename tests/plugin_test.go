@@ -51,9 +51,9 @@ func TestPluginRegistry_DuplicateRegistration(t *testing.T) {
 func TestPluginRegistry_GetPluginsByType(t *testing.T) {
 	registry := pipelines.NewPluginRegistry()
 	// Register multiple plugins of different types
-	registry.RegisterPlugin(NewMockPlugin("data_plugin1", "Data_Processing", false))
-	registry.RegisterPlugin(NewMockPlugin("data_plugin2", "Data_Processing", false))
-	registry.RegisterPlugin(NewMockPlugin("input_plugin1", "Input", false))
+	_ = registry.RegisterPlugin(NewMockPlugin("data_plugin1", "Data_Processing", false))
+	_ = registry.RegisterPlugin(NewMockPlugin("data_plugin2", "Data_Processing", false))
+	_ = registry.RegisterPlugin(NewMockPlugin("input_plugin1", "Input", false))
 	// Get Data_Processing plugins
 	dataPlugins := registry.GetPluginsByType("Data_Processing")
 	if len(dataPlugins) != 2 {
@@ -173,8 +173,8 @@ type panicPlugin struct{}
 func (p *panicPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	panic("simulated plugin panic")
 }
-func (p *panicPlugin) GetPluginType() string                              { return "Test" }
-func (p *panicPlugin) GetPluginName() string                              { return "panic_plugin" }
+func (p *panicPlugin) GetPluginType() string                      { return "Test" }
+func (p *panicPlugin) GetPluginName() string                      { return "panic_plugin" }
 func (p *panicPlugin) ValidateConfig(config map[string]any) error { return nil }
 
 // TestPluginExecution_Panic tests that plugin panics are handled gracefully
@@ -194,7 +194,7 @@ func TestPluginExecution_Panic(t *testing.T) {
 	}()
 	// Direct call to ExecuteStep to simulate pipeline execution
 	plugin, _ := registry.GetPlugin("Test", "panic_plugin")
-	plugin.ExecuteStep(context.Background(), *config, pipelines.NewPluginContext())
+	_, _ = plugin.ExecuteStep(context.Background(), *config, pipelines.NewPluginContext())
 }
 
 // TestPluginExecution_RealPlugin tests successful execution of a real plugin
@@ -263,8 +263,8 @@ func (p *MockOpenAIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines
 	})
 	return result, nil
 }
-func (p *MockOpenAIPlugin) GetPluginType() string                              { return "AIModels" }
-func (p *MockOpenAIPlugin) GetPluginName() string                              { return "openai" }
+func (p *MockOpenAIPlugin) GetPluginType() string                      { return "AIModels" }
+func (p *MockOpenAIPlugin) GetPluginName() string                      { return "openai" }
 func (p *MockOpenAIPlugin) ValidateConfig(config map[string]any) error { return nil }
 
 // TestOpenAIPlugin_ChatSuccess tests successful chat completion
@@ -420,8 +420,8 @@ type networkErrorPlugin struct{}
 func (p *networkErrorPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	return nil, fmt.Errorf("network error: unable to reach endpoint")
 }
-func (p *networkErrorPlugin) GetPluginType() string                              { return "Test" }
-func (p *networkErrorPlugin) GetPluginName() string                              { return "network_error_plugin" }
+func (p *networkErrorPlugin) GetPluginType() string                      { return "Test" }
+func (p *networkErrorPlugin) GetPluginName() string                      { return "network_error_plugin" }
 func (p *networkErrorPlugin) ValidateConfig(config map[string]any) error { return nil }
 
 // TestPluginExecution_NetworkError tests network error handling

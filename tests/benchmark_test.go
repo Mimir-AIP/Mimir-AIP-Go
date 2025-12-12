@@ -35,7 +35,7 @@ func BenchmarkPipelineExecution(b *testing.B) {
 	// Register mock plugins
 	pluginRegistry := pipelines.NewPluginRegistry()
 	mockPlugin := NewMockPlugin("mock", "Data_Processing", false)
-	pluginRegistry.RegisterPlugin(mockPlugin)
+	_ = pluginRegistry.RegisterPlugin(mockPlugin)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -66,7 +66,7 @@ func BenchmarkPipelineExecutionWithCache(b *testing.B) {
 	// Register plugins
 	pluginRegistry := pipelines.NewPluginRegistry()
 	cachedPlugin := NewMockPlugin("cached_mock", "Data_Processing", false)
-	pluginRegistry.RegisterPlugin(cachedPlugin)
+	_ = pluginRegistry.RegisterPlugin(cachedPlugin)
 
 	// Create optimized executor with cache
 	executor := utils.NewOptimizedPipelineExecutor(pluginRegistry, 4)
@@ -97,7 +97,7 @@ func BenchmarkConcurrentPipelineExecution(b *testing.B) {
 	// Register plugins
 	pluginRegistry := pipelines.NewPluginRegistry()
 	mockPlugin := NewMockPlugin("mock", "Data_Processing", false)
-	pluginRegistry.RegisterPlugin(mockPlugin)
+	_ = pluginRegistry.RegisterPlugin(mockPlugin)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -296,7 +296,7 @@ func TestPerformanceComparison(t *testing.T) {
 	// Register plugins
 	pluginRegistry := pipelines.NewPluginRegistry()
 	mockPlugin := NewMockPlugin("mock", "Data_Processing", false)
-	pluginRegistry.RegisterPlugin(mockPlugin)
+	_ = pluginRegistry.RegisterPlugin(mockPlugin)
 
 	// Run performance test
 	start := time.Now()
@@ -342,7 +342,7 @@ func TestOptimizedVsRegularExecution(t *testing.T) {
 	// Register plugins
 	pluginRegistry := pipelines.NewPluginRegistry()
 	mockPlugin := NewMockPlugin("mock", "Data_Processing", false)
-	pluginRegistry.RegisterPlugin(mockPlugin)
+	_ = pluginRegistry.RegisterPlugin(mockPlugin)
 
 	// Test regular execution
 	start := time.Now()

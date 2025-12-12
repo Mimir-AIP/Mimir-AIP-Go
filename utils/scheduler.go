@@ -324,7 +324,7 @@ func parseCronExpression(cronExpr string) (time.Time, error) {
 	} else if strings.HasPrefix(minute, "*/") {
 		// Every N minutes
 		interval := 1 // default
-		fmt.Sscanf(minute, "*/%d", &interval)
+		_, _ = fmt.Sscanf(minute, "*/%d", &interval)
 
 		// Find next minute that matches the interval
 		currentMinute := now.Minute()
@@ -338,7 +338,7 @@ func parseCronExpression(cronExpr string) (time.Time, error) {
 	} else {
 		// Specific minute
 		var min int
-		fmt.Sscanf(minute, "%d", &min)
+		_, _ = fmt.Sscanf(minute, "%d", &min)
 
 		nextTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), min, 0, 0, now.Location())
 		if nextTime.Before(now) || nextTime.Equal(now) {

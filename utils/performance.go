@@ -405,7 +405,6 @@ type ConnectionPool struct {
 	factory     func() any
 	closeFunc   func(any)
 	maxSize     int
-	mutex       sync.Mutex
 }
 
 // NewConnectionPool creates a new connection pool

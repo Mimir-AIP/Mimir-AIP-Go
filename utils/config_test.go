@@ -599,7 +599,7 @@ plugins:
 
 	// Change working directory to temp dir
 	originalWd, _ := os.Getwd()
-	defer os.Chdir(originalWd)
+	defer func() { _ = os.Chdir(originalWd) }()
 
 	err = os.Chdir(tempDir)
 	require.NoError(t, err)

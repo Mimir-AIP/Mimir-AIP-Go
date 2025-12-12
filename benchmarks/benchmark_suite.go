@@ -46,8 +46,8 @@ func benchmarkPluginExecution() {
 	registry := pipelines.NewPluginRegistry()
 
 	// Register mock plugins
-	registry.RegisterPlugin(&MockPlugin{name: "test1", pluginType: "Data_Processing"})
-	registry.RegisterPlugin(&MockPlugin{name: "test2", pluginType: "Data_Processing"})
+	_ = registry.RegisterPlugin(&MockPlugin{name: "test1", pluginType: "Data_Processing"})
+	_ = registry.RegisterPlugin(&MockPlugin{name: "test2", pluginType: "Data_Processing"})
 
 	stepConfig := pipelines.StepConfig{
 		Name:   "Benchmark Step",
@@ -59,25 +59,16 @@ func benchmarkPluginExecution() {
 	// Warm up
 	for i := 0; i < 10; i++ {
 		plugin, _ := registry.GetPlugin("Data_Processing", "test1")
-		plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
+		_, _ = plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
 	}
 
 	// Benchmark
-	start := time.Now()
 	iterations := 1000
+	start := time.Now()
 
 	for i := 0; i < iterations; i++ {
 		plugin, _ := registry.GetPlugin("Data_Processing", "test1")
-		plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
-	}
-
-	// Benchmark
-	start = time.Now()
-	iterations = 1000
-
-	for i := 0; i < iterations; i++ {
-		plugin, _ := registry.GetPlugin("Data_Processing", "test1")
-		plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
+		_, _ = plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
 	}
 
 	duration := time.Since(start)
@@ -119,7 +110,7 @@ func benchmarkPipelineExecution() {
 
 	// Warm up
 	for i := 0; i < 5; i++ {
-		utils.ExecutePipeline(context.Background(), config)
+		_, _ = utils.ExecutePipeline(context.Background(), config)
 	}
 
 	// Benchmark
@@ -127,7 +118,7 @@ func benchmarkPipelineExecution() {
 	iterations := 100
 
 	for i := 0; i < iterations; i++ {
-		utils.ExecutePipeline(context.Background(), config)
+		_, _ = utils.ExecutePipeline(context.Background(), config)
 	}
 
 	duration := time.Since(start)
@@ -150,7 +141,7 @@ func benchmarkMemoryUsage() {
 
 	// Execute operations
 	registry := pipelines.NewPluginRegistry()
-	registry.RegisterPlugin(&MockPlugin{name: "memory_test", pluginType: "Data_Processing"})
+	_ = registry.RegisterPlugin(&MockPlugin{name: "memory_test", pluginType: "Data_Processing"})
 
 	stepConfig := pipelines.StepConfig{
 		Name:   "Memory Test",
@@ -162,7 +153,7 @@ func benchmarkMemoryUsage() {
 	plugin, _ := registry.GetPlugin("Data_Processing", "memory_test")
 
 	for i := 0; i < 1000; i++ {
-		plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
+		_, _ = plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
 	}
 
 	// Peak memory
@@ -186,7 +177,7 @@ func benchmarkConcurrentLoad() {
 	fmt.Println("=== Concurrent Load Benchmark ===")
 
 	registry := pipelines.NewPluginRegistry()
-	registry.RegisterPlugin(&MockPlugin{name: "concurrent_test", pluginType: "Data_Processing"})
+	_ = registry.RegisterPlugin(&MockPlugin{name: "concurrent_test", pluginType: "Data_Processing"})
 
 	stepConfig := pipelines.StepConfig{
 		Name:   "Concurrent Test",
@@ -207,7 +198,7 @@ func benchmarkConcurrentLoad() {
 			go func() {
 				plugin, _ := registry.GetPlugin("Data_Processing", "concurrent_test")
 				for j := 0; j < 100; j++ {
-					plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
+					_, _ = plugin.ExecuteStep(context.Background(), stepConfig, pipelines.NewPluginContext())
 				}
 				done <- true
 			}()
@@ -250,6 +241,6 @@ func (p *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepC
 	return result, nil
 }
 
-func (p *MockPlugin) GetPluginType() string                              { return p.pluginType }
-func (p *MockPlugin) GetPluginName() string                              { return p.name }
+func (p *MockPlugin) GetPluginType() string                      { return p.pluginType }
+func (p *MockPlugin) GetPluginName() string                      { return p.name }
 func (p *MockPlugin) ValidateConfig(config map[string]any) error { return nil }

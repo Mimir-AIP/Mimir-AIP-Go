@@ -22,8 +22,8 @@ type Server struct {
 
 // PipelineExecutionRequest represents a request to execute a pipeline
 type PipelineExecutionRequest struct {
-	PipelineName string                 `json:"pipeline_name,omitempty"`
-	PipelineFile string                 `json:"pipeline_file,omitempty"`
+	PipelineName string         `json:"pipeline_name,omitempty"`
+	PipelineFile string         `json:"pipeline_file,omitempty"`
 	Context      map[string]any `json:"context,omitempty"`
 }
 
@@ -57,7 +57,7 @@ func NewServer() *Server {
 
 	s.registerDefaultPlugins()
 	s.setupRoutes()
-	s.mcpServer.Initialize()
+	_ = s.mcpServer.Initialize()
 
 	// Load configuration
 	if err := utils.LoadGlobalConfig(); err != nil {
@@ -88,8 +88,8 @@ func (s *Server) registerDefaultPlugins() {
 	apiPlugin := &utils.RealAPIPlugin{}
 	htmlPlugin := &utils.MockHTMLPlugin{}
 
-	s.registry.RegisterPlugin(apiPlugin)
-	s.registry.RegisterPlugin(htmlPlugin)
+	_ = s.registry.RegisterPlugin(apiPlugin)
+	_ = s.registry.RegisterPlugin(htmlPlugin)
 }
 
 // Start starts the HTTP server

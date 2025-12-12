@@ -7,7 +7,7 @@ import (
 )
 
 func setupPluginDir() {
-	os.Mkdir("./pipelines", 0755)
+	_ = os.Mkdir("./pipelines", 0755)
 }
 func teardownPluginDir() {
 	os.Remove("./pipelines")
@@ -25,7 +25,7 @@ logging:
   format: "json"
   output: "stdout"
 `
-	os.WriteFile("test_config.yaml", []byte(configYaml), 0644)
+	_ = os.WriteFile("test_config.yaml", []byte(configYaml), 0644)
 	defer os.Remove("test_config.yaml")
 	if err := cm.LoadFromFile("test_config.yaml"); err != nil {
 		t.Fatalf("Failed to load valid config: %v", err)
@@ -47,14 +47,14 @@ func TestConfigManager_ReloadConfig(t *testing.T) {
   host: "127.0.0.1"
   port: 9000
 `
-	os.WriteFile("test_config.yaml", []byte(configYaml), 0644)
+	_ = os.WriteFile("test_config.yaml", []byte(configYaml), 0644)
 	defer os.Remove("test_config.yaml")
-	cm.LoadFromFile("test_config.yaml")
+	_ = cm.LoadFromFile("test_config.yaml")
 	configYaml2 := `server:
   host: "192.168.1.1"
   port: 8000
 `
-	os.WriteFile("test_config.yaml", []byte(configYaml2), 0644)
+	_ = os.WriteFile("test_config.yaml", []byte(configYaml2), 0644)
 	if err := cm.LoadFromFile("test_config.yaml"); err != nil {
 		t.Fatalf("Failed to reload config: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestConfigManager_LoadFromEnvironment(t *testing.T) {
 	defer os.Unsetenv("MIMIR_PORT")
 	defer os.Unsetenv("MIMIR_LOG_LEVEL")
 	defer os.Unsetenv("MIMIR_JWT_SECRET")
-	cm.LoadFromEnvironment()
+	_ = cm.LoadFromEnvironment()
 	cfg := cm.GetConfig()
 	if cfg.Server.Host != "envhost" || cfg.Server.Port != 12345 {
 		t.Errorf("Env override failed: %+v", cfg.Server)
@@ -93,7 +93,7 @@ func TestConfigManager_LoadFromFile_Invalid(t *testing.T) {
 	setupPluginDir()
 	defer teardownPluginDir()
 	cm := utils.NewConfigManager()
-	os.WriteFile("invalid_config.yaml", []byte("not: valid: yaml: :"), 0644)
+	_ = os.WriteFile("invalid_config.yaml", []byte("not: valid: yaml: :"), 0644)
 	defer os.Remove("invalid_config.yaml")
 	if err := cm.LoadFromFile("invalid_config.yaml"); err == nil {
 		t.Error("Expected error for invalid config file, got nil")

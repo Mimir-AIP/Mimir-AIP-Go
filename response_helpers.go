@@ -32,30 +32,9 @@ func writeSuccessResponse(w http.ResponseWriter, data any) {
 	})
 }
 
-// writeCreatedResponse writes a 201 Created response with the given data
-func writeCreatedResponse(w http.ResponseWriter, data any) {
-	writeJSONResponse(w, http.StatusCreated, map[string]any{
-		"success": true,
-		"data":    data,
-	})
-}
-
-// writeNotFoundResponse writes a 404 Not Found response
-func writeNotFoundResponse(w http.ResponseWriter, resource string) {
-	writeErrorResponse(w, http.StatusNotFound, resource+" not found")
-}
-
 // writeBadRequestResponse writes a 400 Bad Request response
 func writeBadRequestResponse(w http.ResponseWriter, message string) {
 	writeErrorResponse(w, http.StatusBadRequest, message)
-}
-
-// writeUnauthorizedResponse writes a 401 Unauthorized response
-func writeUnauthorizedResponse(w http.ResponseWriter, message string) {
-	if message == "" {
-		message = "Unauthorized"
-	}
-	writeErrorResponse(w, http.StatusUnauthorized, message)
 }
 
 // writeInternalServerErrorResponse writes a 500 Internal Server Error response
@@ -64,12 +43,4 @@ func writeInternalServerErrorResponse(w http.ResponseWriter, message string) {
 		message = "Internal Server Error"
 	}
 	writeErrorResponse(w, http.StatusInternalServerError, message)
-}
-
-// writeNotImplementedResponse writes a 501 Not Implemented response
-func writeNotImplementedResponse(w http.ResponseWriter, message string) {
-	if message == "" {
-		message = "Not Implemented"
-	}
-	writeErrorResponse(w, http.StatusNotImplemented, message)
 }

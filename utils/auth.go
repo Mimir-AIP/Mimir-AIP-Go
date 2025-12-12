@@ -369,14 +369,14 @@ func InputValidationMiddleware(next http.Handler) http.Handler {
 // generateID generates a random ID
 func generateID() string {
 	bytes := make([]byte, 16)
-	rand.Read(bytes)
+	_, _ = rand.Read(bytes)
 	return hex.EncodeToString(bytes)
 }
 
 // generateAPIKey generates a random API key
 func generateAPIKey() string {
 	bytes := make([]byte, 32)
-	rand.Read(bytes)
+	_, _ = rand.Read(bytes)
 	return base64.URLEncoding.EncodeToString(bytes)
 }
 

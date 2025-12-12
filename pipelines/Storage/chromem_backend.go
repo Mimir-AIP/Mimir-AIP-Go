@@ -102,11 +102,7 @@ func (cb *ChromemBackend) Store(ctx context.Context, collectionName string, docu
 		return fmt.Errorf("failed to store documents: %w", err)
 	}
 
-	// Auto-save if persistence is enabled
-	if cb.config != nil && cb.config.EnablePersistence && cb.config.PersistencePath != "" {
-		// Note: With NewPersistentDB, changes are automatically persisted
-		// But we can still manually save if needed
-	}
+	// Note: With NewPersistentDB, changes are automatically persisted
 
 	return nil
 }

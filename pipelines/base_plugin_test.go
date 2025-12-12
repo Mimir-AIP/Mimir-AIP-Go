@@ -295,9 +295,9 @@ func TestPluginRegistryGetPluginsByType(t *testing.T) {
 	plugin2 := &MockPlugin{pluginType: "Input", pluginName: "test2"}
 	plugin3 := &MockPlugin{pluginType: "Output", pluginName: "test3"}
 
-	registry.RegisterPlugin(plugin1)
-	registry.RegisterPlugin(plugin2)
-	registry.RegisterPlugin(plugin3)
+	_ = registry.RegisterPlugin(plugin1)
+	_ = registry.RegisterPlugin(plugin2)
+	_ = registry.RegisterPlugin(plugin3)
 
 	// Get plugins by type
 	inputPlugins := registry.GetPluginsByType("Input")
@@ -321,8 +321,8 @@ func TestPluginRegistryGetAllPlugins(t *testing.T) {
 	plugin1 := &MockPlugin{pluginType: "Input", pluginName: "test1"}
 	plugin2 := &MockPlugin{pluginType: "Output", pluginName: "test2"}
 
-	registry.RegisterPlugin(plugin1)
-	registry.RegisterPlugin(plugin2)
+	_ = registry.RegisterPlugin(plugin1)
+	_ = registry.RegisterPlugin(plugin2)
 
 	// Get all plugins
 	allPlugins := registry.GetAllPlugins()
@@ -342,9 +342,9 @@ func TestPluginRegistryListPluginTypes(t *testing.T) {
 	plugin2 := &MockPlugin{pluginType: "Output", pluginName: "test2"}
 	plugin3 := &MockPlugin{pluginType: "Processing", pluginName: "test3"}
 
-	registry.RegisterPlugin(plugin1)
-	registry.RegisterPlugin(plugin2)
-	registry.RegisterPlugin(plugin3)
+	_ = registry.RegisterPlugin(plugin1)
+	_ = registry.RegisterPlugin(plugin2)
+	_ = registry.RegisterPlugin(plugin3)
 
 	// List types
 	types := registry.ListPluginTypes()

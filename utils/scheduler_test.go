@@ -356,7 +356,7 @@ func TestSchedulerConcurrentAccess(t *testing.T) {
 	// Start scheduler
 	err := scheduler.Start()
 	require.NoError(t, err)
-	defer scheduler.Stop()
+	defer func() { _ = scheduler.Stop() }()
 
 	// Test concurrent job operations
 	done := make(chan bool, 10)

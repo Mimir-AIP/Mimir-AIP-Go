@@ -86,7 +86,7 @@ func TestPipelineExecution_Success(t *testing.T) {
 	// Register mock plugins
 	pluginRegistry := pipelines.NewPluginRegistry()
 	mockPlugin := NewMockPlugin("mock", "Data_Processing", false)
-	pluginRegistry.RegisterPlugin(mockPlugin)
+	_ = pluginRegistry.RegisterPlugin(mockPlugin)
 
 	// Execute pipeline
 	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
@@ -139,8 +139,8 @@ func TestPipelineExecution_Failure(t *testing.T) {
 
 	// Register plugins
 	pluginRegistry := pipelines.NewPluginRegistry()
-	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
-	pluginRegistry.RegisterPlugin(NewMockPlugin("mock_fail", "Data_Processing", true))
+	_ = pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
+	_ = pluginRegistry.RegisterPlugin(NewMockPlugin("mock_fail", "Data_Processing", true))
 
 	// Execute pipeline
 	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
@@ -182,7 +182,7 @@ func TestPipelineExecution_Timeout(t *testing.T) {
 
 	// Register plugin
 	pluginRegistry := pipelines.NewPluginRegistry()
-	pluginRegistry.RegisterPlugin(slowPlugin)
+	_ = pluginRegistry.RegisterPlugin(slowPlugin)
 
 	// Execute pipeline with timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -242,8 +242,8 @@ func TestPipelineExecution_ContextPropagation(t *testing.T) {
 
 	// Register plugins
 	pluginRegistry := pipelines.NewPluginRegistry()
-	pluginRegistry.RegisterPlugin(dataGenerator)
-	pluginRegistry.RegisterPlugin(dataProcessor)
+	_ = pluginRegistry.RegisterPlugin(dataGenerator)
+	_ = pluginRegistry.RegisterPlugin(dataProcessor)
 
 	// Execute pipeline
 	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
@@ -288,7 +288,7 @@ func TestPipelineExecution_ParallelSteps(t *testing.T) {
 
 	// Register plugin
 	pluginRegistry := pipelines.NewPluginRegistry()
-	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
+	_ = pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
 
 	// Execute pipeline
 	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
@@ -329,7 +329,7 @@ func TestPipelineExecution_ConfigurationValidation(t *testing.T) {
 
 	// Register plugin
 	pluginRegistry := pipelines.NewPluginRegistry()
-	pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
+	_ = pluginRegistry.RegisterPlugin(NewMockPlugin("mock", "Data_Processing", false))
 
 	// Execute pipeline
 	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)

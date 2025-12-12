@@ -177,8 +177,8 @@ func TestTimeSeriesDataInterface(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, len(tsData.Points), len(newData.Points))
 	// Metadata may be nil after deserialization if empty, so handle both cases
-	if tsData.Metadata == nil || len(tsData.Metadata) == 0 {
-		assert.True(t, newData.Metadata == nil || len(newData.Metadata) == 0)
+	if len(tsData.Metadata) == 0 {
+		assert.True(t, len(newData.Metadata) == 0)
 	} else {
 		assert.Equal(t, tsData.Metadata, newData.Metadata)
 	}

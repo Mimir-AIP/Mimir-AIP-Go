@@ -27,7 +27,7 @@ func NewMockServer() *MockServer {
 	defer os.RemoveAll(tempDir)
 
 	// Initialize pipeline store with temp directory
-	utils.InitializeGlobalPipelineStore(tempDir)
+	_ = utils.InitializeGlobalPipelineStore(tempDir)
 
 	// Create a simple router for testing
 	router := mux.NewRouter()
@@ -94,7 +94,7 @@ func (ms *MockServer) Start() *httptest.Server {
 
 func handleTestHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status": "healthy",
 		"time":   "2025-08-25T12:30:00Z",
 	})
@@ -102,7 +102,7 @@ func handleTestHealth(w http.ResponseWriter, r *http.Request) {
 
 func handleTestListPipelines(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode([]utils.PipelineConfig{})
+	_ = json.NewEncoder(w).Encode([]utils.PipelineConfig{})
 }
 
 func handleTestListPlugins(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +111,7 @@ func handleTestListPlugins(w http.ResponseWriter, r *http.Request) {
 		{"type": "Input", "name": "api", "description": "API input plugin"},
 		{"type": "Output", "name": "html", "description": "HTML output plugin"},
 	}
-	json.NewEncoder(w).Encode(plugins)
+	_ = json.NewEncoder(w).Encode(plugins)
 }
 
 func handleTestPerformanceMetrics(w http.ResponseWriter, r *http.Request) {
@@ -121,12 +121,12 @@ func handleTestPerformanceMetrics(w http.ResponseWriter, r *http.Request) {
 		"average_latency":     5000000, // 5ms in nanoseconds
 		"requests_per_second": 20.5,
 	}
-	json.NewEncoder(w).Encode(metrics)
+	_ = json.NewEncoder(w).Encode(metrics)
 }
 
 func handleTestListJobs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode([]map[string]any{})
+	_ = json.NewEncoder(w).Encode([]map[string]any{})
 }
 
 func handleTestGetConfig(w http.ResponseWriter, r *http.Request) {
@@ -140,17 +140,17 @@ func handleTestGetConfig(w http.ResponseWriter, r *http.Request) {
 			Level: "info",
 		},
 	}
-	json.NewEncoder(w).Encode(config)
+	_ = json.NewEncoder(w).Encode(config)
 }
 
 func handleTestListSchedulerJobs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode([]utils.ScheduledJob{})
+	_ = json.NewEncoder(w).Encode([]utils.ScheduledJob{})
 }
 
 func handleTestVisualizeStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte("System Status Visualization\n=======================\nAll systems operational"))
+	_, _ = w.Write([]byte("System Status Visualization\n=======================\nAll systems operational"))
 }
 
 func handleTestPipelineExecute(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +158,7 @@ func handleTestPipelineExecute(w http.ResponseWriter, r *http.Request) {
 	// as it's not implemented in the test mock
 	w.WriteHeader(http.StatusMethodNotAllowed)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"error": "Method not allowed",
 	})
 }
@@ -566,8 +566,8 @@ func TestServerShutdown(t *testing.T) {
 
 // PipelineExecutionRequest represents a request to execute a pipeline
 type PipelineExecutionRequest struct {
-	PipelineName string                 `json:"pipeline_name,omitempty"`
-	PipelineFile string                 `json:"pipeline_file,omitempty"`
+	PipelineName string         `json:"pipeline_name,omitempty"`
+	PipelineFile string         `json:"pipeline_file,omitempty"`
 	Context      map[string]any `json:"context,omitempty"`
 }
 

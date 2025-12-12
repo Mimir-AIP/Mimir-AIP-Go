@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mimir AIP - Loading...</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            background: #0a0f1e;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+        .logo {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        h1 {
+            color: #60a5fa;
+            margin-bottom: 0.5rem;
+        }
+        p {
+            color: #9ca3af;
+            margin-bottom: 2rem;
+        }
+        .links {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            background: #2563eb;
+            color: white;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #1d4ed8;
+        }
+        .btn-secondary {
+            background: #374151;
+        }
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        .status {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #1f2937;
+            border-radius: 0.5rem;
+            border-left: 4px solid #10b981;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🔮</div>
+        <h1>Mimir AIP</h1>
+        <p>AI Pipeline Orchestration Platform</p>
+        
+        <div class="status">
+            <strong>✓ Server Running</strong>
+            <p style="margin-top: 0.5rem; font-size: 0.875rem;">API is available at <code style="background: #374151; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">/api/v1</code></p>
+        </div>
+        
+        <div class="links" style="margin-top: 2rem;">
+            <a href="/api/v1/pipelines" class="btn">View Pipelines API</a>
+            <a href="/api/v1/plugins" class="btn">View Plugins API</a>
+            <a href="/health" class="btn btn-secondary">Health Check</a>
+        </div>
+        
+        <p style="margin-top: 3rem; font-size: 0.875rem;">
+            <strong>Note:</strong> This is the unified Docker deployment.<br>
+            For the full web interface, please run the frontend development server separately<br>
+            or deploy the frontend to a static hosting service.
+        </p>
+        
+        <div style="margin-top: 2rem; padding: 1rem; background: #1f2937; border-radius: 0.5rem; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;">
+            <h3 style="margin-top: 0;">Quick Start</h3>
+            <pre style="background: #111827; padding: 1rem; border-radius: 0.25rem; overflow-x: auto;"><code># List all pipelines
+curl http://localhost:8080/api/v1/pipelines
+
+# Get pipeline by ID
+curl http://localhost:8080/api/v1/pipelines/{id}
+
+# Execute a pipeline
+curl -X POST http://localhost:8080/api/v1/pipelines/{id}/execute</code></pre>
+        </div>
+    </div>
+</body>
+</html>

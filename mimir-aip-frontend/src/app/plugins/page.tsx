@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { getPlugins } from "@/lib/api";
+import { getPlugins, type Plugin } from "@/lib/api";
 
 export default function PluginsPage() {
-  const [plugins, setPlugins] = useState<any[]>([]);
+  const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,8 +14,8 @@ export default function PluginsPage() {
         setLoading(true);
         const data = await getPlugins();
         setPlugins(data);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
         setLoading(false);
       }

@@ -139,7 +139,8 @@ type Plugin interface {
 
 ### Prerequisites
 
-- **Go Runtime**: Version 1.21 or later
+- **Go Runtime**: Version 1.23 or later
+- **Docker**: Docker Engine 20.10+ (for containerized deployment)
 - **Operating System**: Linux, macOS, or Windows
 - **Memory**: Minimum 512MB RAM, recommended 2GB+
 - **Storage**: Minimum 100MB available disk space
@@ -157,47 +158,66 @@ cd Mimir-AIP-Go
 go mod download
 
 # Application compilation
-go build -o mimir-aip ./cmd/server
+go build -o mimir-aip-server .
 
 # Binary execution
-./mimir-aip
+./mimir-aip-server --server
 ```
 
-#### Containerized Deployment
+#### Docker Deployment (Recommended)
 
-```dockerfile
-# Dockerfile
-FROM golang:1.21-alpine AS builder
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN go build -o mimir-aip ./cmd/server
+**Quick Start:**
+```bash
+# Build and run with Docker Compose
+cd docker
+docker compose up -d
 
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/mimir-aip .
-EXPOSE 8080
-CMD ["./mimir-aip"]
+# Or run single container
+docker run -d --name mimir-aip -p 8080:8080 mimir-aip:latest
 ```
 
-```yaml
-# Docker Compose configuration
-version: '3.8'
-services:
-  mimir-aip:
-    build: .
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./config:/app/config
-      - ./plugins:/app/plugins
-      - ./logs:/app/logs
-    environment:
-      - MIMIR_LOG_LEVEL=info
-      - MIMIR_SERVER_HOST=0.0.0.0
+**Production Deployment:**
+```bash
+# Using optimized build script
+./docker/scripts/build.sh
+
+# Production Docker Compose
+cd docker
+docker compose -f docker-compose.yml up -d
+
+# With persistent storage
+docker run -d \
+  --name mimir-aip-prod \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v mimir_data:/app/data \
+  -v mimir_logs:/app/logs \
+  -v mimir_config:/app/config \
+  -e MIMIR_LOG_LEVEL=INFO \
+  mimir-aip:latest
 ```
+
+**Features:**
+- ✅ **Optimized Image**: 9.34MB multi-stage build
+- ✅ **Security Hardened**: Non-root user, distroless base
+- ✅ **Health Monitoring**: Built-in health checks
+- ✅ **Multi-Platform**: AMD64 and ARM64 support
+- ✅ **Production Ready**: Volume management, environment variables
+
+**Docker Compose Options:**
+- `docker-compose.yml` - Production deployment with Redis
+- `docker-compose.dev.yml` - Development with hot reload
+
+**Health Check:**
+```bash
+# Verify deployment
+curl http://localhost:8080/health
+
+# Using health check script
+./docker/scripts/health-check.sh
+```
+
+**For detailed deployment guide, see:** [DOCKER_DEPLOYMENT_GUIDE.md](docs/DOCKER_DEPLOYMENT_GUIDE.md)
 
 ## Configuration Management
 

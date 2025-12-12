@@ -44,6 +44,7 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/pipelines/{id}/clone", s.handleClonePipeline).Methods("POST")
 	v1.HandleFunc("/pipelines/{id}/validate", s.handleValidatePipeline).Methods("POST")
 	v1.HandleFunc("/pipelines/{id}/history", s.handleGetPipelineHistory).Methods("GET")
+	v1.HandleFunc("/pipelines/{id}/logs", s.handleGetPipelineLogs).Methods("GET")
 
 	// Plugin management
 	v1.HandleFunc("/plugins", s.handleListPlugins).Methods("GET")
@@ -60,9 +61,15 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/scheduler/jobs", s.handleListJobs).Methods("GET")
 	v1.HandleFunc("/scheduler/jobs/{id}", s.handleGetJob).Methods("GET")
 	v1.HandleFunc("/scheduler/jobs", s.handleCreateJob).Methods("POST")
+	v1.HandleFunc("/scheduler/jobs/{id}", s.handleUpdateJob).Methods("PUT")
 	v1.HandleFunc("/scheduler/jobs/{id}", s.handleDeleteJob).Methods("DELETE")
 	v1.HandleFunc("/scheduler/jobs/{id}/enable", s.handleEnableJob).Methods("POST")
 	v1.HandleFunc("/scheduler/jobs/{id}/disable", s.handleDisableJob).Methods("POST")
+	v1.HandleFunc("/scheduler/jobs/{id}/logs", s.handleGetJobLogs).Methods("GET")
+
+	// Execution logs endpoints
+	v1.HandleFunc("/logs/executions", s.handleListExecutionLogs).Methods("GET")
+	v1.HandleFunc("/logs/executions/{id}", s.handleGetExecutionLog).Methods("GET")
 
 	// Visualization endpoints
 	v1.HandleFunc("/visualize/pipeline", s.handleVisualizePipeline).Methods("POST")

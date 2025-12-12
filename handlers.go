@@ -532,6 +532,140 @@ func (s *Server) handleDisableJob(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// handleUpdateJob handles requests to update a scheduled job
+func (s *Server) handleUpdateJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	jobID := vars["id"]
+
+	var req struct {
+		Name     *string `json:"name,omitempty"`
+		Pipeline *string `json:"pipeline,omitempty"`
+		CronExpr *string `json:"cron_expr,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	err := s.scheduler.UpdateJob(jobID, req.Name, req.Pipeline, req.CronExpr)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update job: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	response := map[string]any{
+		"message": "Job updated successfully",
+		"job_id":  jobID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// Logging endpoint handlers
+
+// handleGetExecutionLog handles requests to get execution log for a specific execution
+func (s *Server) handleGetExecutionLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	executionID := vars["id"]
+
+	logger := utils.GetExecutionLogger()
+	log, err := logger.GetExecutionLog(executionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get execution log: %v", err), http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(log)
+}
+
+// handleListExecutionLogs handles requests to list execution logs with optional filtering
+func (s *Server) handleListExecutionLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	jobID := r.URL.Query().Get("job_id")
+	pipelineID := r.URL.Query().Get("pipeline_id")
+	limit := 100 // default
+
+	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
+		if l, err := fmt.Sscanf(limitParam, "%d", &limit); err != nil || l != 1 {
+			limit = 100
+		}
+	}
+
+	logger := utils.GetExecutionLogger()
+	logs, err := logger.ListLogs(jobID, pipelineID, limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list execution logs: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(logs)
+}
+
+// handleGetPipelineLogs handles requests to get all logs for a specific pipeline
+func (s *Server) handleGetPipelineLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	pipelineID := vars["id"]
+
+	limit := 50 // default
+	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
+		if l, err := fmt.Sscanf(limitParam, "%d", &limit); err != nil || l != 1 {
+			limit = 50
+		}
+	}
+
+	logger := utils.GetExecutionLogger()
+	logs, err := logger.ListLogs("", pipelineID, limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get pipeline logs: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]any{
+		"pipeline_id": pipelineID,
+		"logs":        logs,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleGetJobLogs handles requests to get all logs for a specific job
+func (s *Server) handleGetJobLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	jobID := vars["id"]
+
+	limit := 50 // default
+	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
+		if l, err := fmt.Sscanf(limitParam, "%d", &limit); err != nil || l != 1 {
+			limit = 50
+		}
+	}
+
+	logger := utils.GetExecutionLogger()
+	logs, err := logger.ListLogs(jobID, "", limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get job logs: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]any{
+		"job_id": jobID,
+		"logs":   logs,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+
 // Visualization endpoint handlers
 
 // handleVisualizePipeline handles requests to visualize a pipeline

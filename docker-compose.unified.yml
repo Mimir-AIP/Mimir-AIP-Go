@@ -1,0 +1,83 @@
+# =====================================================
+# Unified Docker Compose for Mimir AIP
+# Single container serving both backend API and frontend
+# =====================================================
+version: '3.8'
+
+services:
+  mimir-aip-unified:
+    build:
+      context: ..
+      dockerfile: Dockerfile.unified
+    image: mimir-aip:unified-latest
+    container_name: mimir-aip-unified
+    restart: unless-stopped
+    
+    # Port mapping - single port for both API and UI
+    ports:
+      - "8080:8080"  # Backend API + Frontend UI
+    
+    # Environment variables
+    environment:
+      - MIMIR_PORT=8080
+      - MIMIR_LOG_LEVEL=INFO
+      - MIMIR_DATA_DIR=/app/data
+      - MIMIR_LOG_DIR=/app/logs
+      - MIMIR_PLUGIN_DIR=/app/plugins
+      - NEXTJS_URL=http://localhost:3000
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # Don't set NEXT_PUBLIC_API_URL - use relative paths from root
+    
+    # Volume mounts for persistence
+    volumes:
+      - mimir_data:/app/data
+      - mimir_logs:/app/logs
+      - mimir_config:/app/config
+      - mimir_plugins:/app/plugins
+      - mimir_pipelines:/app/pipelines
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "/app/mimir-aip-server", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: false  # Must be false to write logs/data
+    
+    # Network
+    networks:
+      - mimir-network
+
+# Named volumes
+volumes:
+  mimir_data:
+    driver: local
+  mimir_logs:
+    driver: local
+  mimir_config:
+    driver: local
+  mimir_plugins:
+    driver: local
+  mimir_pipelines:
+    driver: local
+
+# Networks
+networks:
+  mimir-network:
+    driver: bridge

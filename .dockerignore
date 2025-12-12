@@ -7,8 +7,11 @@
 
 # Documentation
 README.md
+*.md
 docs/
 agent-docs/
+LICENSE
+CODE_OF_CONDUCT.md
 
 # Dependencies
 vendor/
@@ -24,14 +27,29 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs and data
 *.log
 logs/
+data/
+./pipelines/*.yaml
+./pipelines/*.yml
 
 # Test files
 *_test.go
+tests/
 test-results/
 coverage.out
+test_pipelines/
+test_pipeline.yaml
+benchmarks/
+
+# Frontend test files
+mimir-aip-frontend/**/*.test.ts
+mimir-aip-frontend/**/*.test.tsx
+mimir-aip-frontend/**/*.spec.ts
+mimir-aip-frontend/**/*.spec.tsx
+mimir-aip-frontend/coverage/
+mimir-aip-frontend/src/test/
 
 # Build artifacts
 *.exe
@@ -47,19 +65,25 @@ tmp/
 temp/
 *.tmp
 
-# Node modules (if any frontend)
+# Node modules
 node_modules/
 npm-debug.log*
+mimir-aip-frontend/node_modules/
+mimir-aip-frontend/.next/
+mimir-aip-frontend/out/
+mimir-aip-frontend/.turbo/
 
 # Environment files
 .env
 .env.local
 .env.*.local
+mimir-aip-frontend/.env*.local
 
-# Docker files (except the ones we need)
-Dockerfile*
-docker-compose*
-.dockerignore
+# Docker files
+Dockerfile
+Dockerfile.*
+docker-compose*.yml
+docker/
 
 # CI/CD
 .github/
@@ -68,3 +92,10 @@ docker-compose*
 # Backup files
 *.bak
 *.backup
+
+# Examples and CLI
+examples/
+mimir-aip-cli/
+
+# Config examples (keep main config.yaml)
+config_*.yaml

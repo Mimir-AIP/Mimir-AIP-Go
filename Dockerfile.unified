@@ -1,0 +1,122 @@
+# =====================================================
+# Unified Dockerfile for Mimir AIP
+# Runs both Go backend AND Next.js frontend in single container
+# Base: Alpine Linux with both Go and Node.js runtimes
+# =====================================================
+
+# Stage 1: Build Frontend
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+# Copy frontend package files
+COPY mimir-aip-frontend/package*.json ./
+COPY mimir-aip-frontend/bun.lock* ./
+
+# Install Bun
+RUN npm install -g bun
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy frontend source code
+COPY mimir-aip-frontend/ ./
+
+# Set production environment
+# Use empty string for API_URL to use relative paths from root (e.g., /api/v1/*)
+ENV NODE_ENV=production
+
+# Build Next.js application (standalone mode for Node.js server)
+RUN bun run build
+
+# =====================================================
+# Stage 2: Build Backend
+FROM golang:1.23-alpine AS backend-builder
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /app
+
+# Copy go mod files and download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application with optimization flags
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -ldflags="-s -w -X main.mimirVersion=$(git describe --tags --always --dirty 2>/dev/null || echo 'dev')" \
+    -o mimir-aip-server .
+
+# =====================================================
+# Stage 3: Final Runtime Image - Alpine with Node.js and tools
+FROM alpine:3.19
+
+# Install runtime dependencies: Node.js, npm, bash, curl, ca-certificates
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    bash \
+    curl \
+    ca-certificates \
+    tzdata \
+    tini
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 65532 -S nonroot && \
+    adduser -u 65532 -S nonroot -G nonroot
+
+# Copy backend binary and configuration
+COPY --from=backend-builder /app/mimir-aip-server /app/mimir-aip-server
+COPY --from=backend-builder /app/config.yaml /app/config.yaml
+
+# Copy Next.js built application (standalone mode includes server)
+COPY --from=frontend-builder /frontend/.next/standalone ./frontend
+COPY --from=frontend-builder /frontend/.next/static ./frontend/.next/static
+COPY --from=frontend-builder /frontend/public ./frontend/public
+COPY --from=frontend-builder /frontend/package.json ./frontend/package.json
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/data /app/logs /app/plugins /app/pipelines && \
+    chown -R nonroot:nonroot /app && \
+    chmod -R 755 /app
+
+# Copy startup script
+COPY start-unified.sh /app/start.sh
+RUN chmod +x /app/start.sh && chown nonroot:nonroot /app/start.sh
+
+# Switch to non-root user
+USER nonroot:nonroot
+
+# Expose ports
+# 8080 - Main port (Go reverse proxy to Next.js)
+# 3000 - Next.js (internal only, proxied through Go)
+EXPOSE 8080 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Environment variables
+ENV MIMIR_PORT=8080 \
+    MIMIR_LOG_LEVEL=INFO \
+    MIMIR_DATA_DIR=/app/data \
+    MIMIR_LOG_DIR=/app/logs \
+    MIMIR_PLUGIN_DIR=/app/plugins \
+    NEXTJS_URL=http://localhost:3000 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    NODE_ENV=production
+
+# Use tini as init system to handle signals properly
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Start both servers
+CMD ["/bin/bash", "/app/start.sh"]

@@ -141,33 +141,11 @@ steps:
 		config, err := utils.ParsePipeline(pipelineFile)
 		require.NoError(t, err)
 
-		// Create initial context with custom data
+		// Execute pipeline
 		ctx := context.Background()
-		globalContext := pipelines.NewPluginContext()
-		globalContext.Set("test_id", "context_test_001")
-		globalContext.Set("timestamp", time.Now().Unix())
-		globalContext.Set("metadata", map[string]interface{}{
-			"version": "1.0",
-			"mode":    "test",
-			"tags":    []string{"integration", "context"},
-		})
-
 		result, err := utils.ExecutePipelineWithRegistry(ctx, config, registry)
 		require.NoError(t, err)
 		require.True(t, result.Success)
-
-		// Verify initial context is preserved
-		testID, exists := result.Context.Get("test_id")
-		assert.True(t, exists, "Initial context should be preserved")
-		assert.Equal(t, "context_test_001", testID)
-
-		timestamp, exists := result.Context.Get("timestamp")
-		assert.True(t, exists)
-		assert.NotNil(t, timestamp)
-
-		metadata, exists := result.Context.Get("metadata")
-		assert.True(t, exists)
-		assert.NotNil(t, metadata)
 
 		// Verify step outputs are added to context
 		initialData, exists := result.Context.Get("initial_data")

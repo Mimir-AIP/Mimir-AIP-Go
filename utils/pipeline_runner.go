@@ -99,7 +99,7 @@ func ExecutePipelineWithRegistry(ctx context.Context, config *PipelineConfig, re
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Sprintf("step %d (%s) failed: %v", i+1, step.Name, err)
-			return result, fmt.Errorf("pipeline execution failed: %w", err)
+			return result, nil // Return result with Success=false, not an error
 		}
 
 		// Merge step results into global context
@@ -295,7 +295,16 @@ type MockHTMLPlugin struct{}
 func (p *MockHTMLPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Mock implementation - in real implementation this would generate HTML reports
 	result := pipelines.NewPluginContext()
-	result.Set("report_generated", true)
+	// Use the output name from stepConfig
+	outputKey := stepConfig.Output
+	if outputKey == "" {
+		outputKey = "report_generated"
+	}
+	result.Set(outputKey, map[string]any{
+		"format":    "html",
+		"generated": true,
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
 	return result, nil
 }
 

@@ -145,9 +145,9 @@ func TestPipelineExecution_Failure(t *testing.T) {
 	// Execute pipeline
 	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 
-	// Assertions
-	if err == nil {
-		t.Fatal("Expected error, got nil")
+	// Assertions - now expects err == nil with result.Success == false
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
 	}
 
 	if result == nil {
@@ -189,9 +189,9 @@ func TestPipelineExecution_Timeout(t *testing.T) {
 	defer cancel()
 	result, err := utils.ExecutePipelineWithRegistry(ctx, config, pluginRegistry)
 
-	// Assertions
-	if err == nil {
-		t.Fatal("Expected timeout error, got nil")
+	// Assertions - now expects err == nil with result.Success == false
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
 	}
 
 	if result == nil {
@@ -334,9 +334,9 @@ func TestPipelineExecution_ConfigurationValidation(t *testing.T) {
 	// Execute pipeline
 	result, err := utils.ExecutePipelineWithRegistry(context.Background(), config, pluginRegistry)
 
-	// Assertions
-	if err == nil {
-		t.Fatal("Expected validation error, got nil")
+	// Assertions - now expects err == nil with result.Success == false
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
 	}
 
 	if result == nil {

@@ -30,6 +30,7 @@ type Scheduler struct {
 	jobs      map[string]*ScheduledJob
 	jobsMutex sync.RWMutex
 	running   bool
+	stopped   bool // Track if stopChan is closed
 	stopChan  chan struct{}
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -58,6 +59,13 @@ func (s *Scheduler) Start() error {
 		return fmt.Errorf("scheduler is already running")
 	}
 
+	// Recreate stopChan if it was closed
+	if s.stopped {
+		s.stopChan = make(chan struct{})
+		s.ctx, s.cancel = context.WithCancel(context.Background())
+		s.stopped = false
+	}
+
 	s.running = true
 	s.wg.Add(1)
 	go s.run()
@@ -77,7 +85,12 @@ func (s *Scheduler) Stop() error {
 
 	s.running = false
 	s.cancel() // Cancel context to stop all running jobs
-	close(s.stopChan)
+
+	// Only close stopChan if not already closed
+	if !s.stopped {
+		close(s.stopChan)
+		s.stopped = true
+	}
 	s.jobsMutex.Unlock() // Release lock before waiting
 
 	// Wait for all goroutines to finish

@@ -84,7 +84,7 @@ func TestExecutePipeline(t *testing.T) {
 					},
 				},
 			},
-			expectError:   true,
+			expectError:   false, // Now returns Success=false instead of error
 			expectSuccess: false,
 		},
 		{
@@ -241,7 +241,7 @@ func TestExecutePipelineWithRegistry_StepFailure(t *testing.T) {
 	ctx := context.Background()
 	result, err := ExecutePipelineWithRegistry(ctx, config, registry)
 
-	assert.Error(t, err)
+	assert.NoError(t, err) // Now returns Success=false instead of error
 	assert.NotNil(t, result)
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "step 1 (step1) failed")
@@ -269,7 +269,7 @@ func TestExecutePipelineWithRegistry_ConfigurationValidation(t *testing.T) {
 	ctx := context.Background()
 	result, err := ExecutePipelineWithRegistry(ctx, config, registry)
 
-	assert.Error(t, err)
+	assert.NoError(t, err) // Now returns Success=false instead of error
 	assert.NotNil(t, result)
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "configuration validation failed")
@@ -397,11 +397,13 @@ func TestMockHTMLPlugin(t *testing.T) {
 	// Check that mock result was set
 	value, exists := result.Get("report_generated")
 	assert.True(t, exists)
-	// The MockHTMLPlugin sets a boolean, but PluginContext auto-wraps it
-	// Check if it's a boolean directly or wrapped in JSONData
-	if boolVal, ok := value.(bool); ok {
-		assert.True(t, boolVal)
-	} else if jsonVal, ok := value.(map[string]any); ok {
-		assert.True(t, jsonVal["value"].(bool))
+
+	// The MockHTMLPlugin now sets a map with format, generated, and timestamp
+	if reportMap, ok := value.(map[string]any); ok {
+		assert.Equal(t, "html", reportMap["format"])
+		assert.True(t, reportMap["generated"].(bool))
+		assert.NotEmpty(t, reportMap["timestamp"])
+	} else {
+		t.Fatalf("Expected map[string]any, got %T", value)
 	}
 }

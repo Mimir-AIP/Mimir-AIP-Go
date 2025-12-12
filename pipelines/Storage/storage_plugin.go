@@ -30,7 +30,7 @@ func NewStoragePluginWithEmbedding(backend StorageBackend, embeddingService Embe
 }
 
 // ExecuteStep executes a storage operation based on the step configuration
-func (sp *StoragePlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (sp *StoragePlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	operation, ok := stepConfig.Config["operation"].(string)
 	if !ok {
 		return pipelines.NewPluginContext(), fmt.Errorf("operation is required and must be a string")
@@ -57,7 +57,7 @@ func (sp *StoragePlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.S
 }
 
 // handleStore stores documents in the specified collection
-func (sp *StoragePlugin) handleStore(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (sp *StoragePlugin) handleStore(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	collection, ok := stepConfig.Config["collection"].(string)
 	if !ok || collection == "" {
 		return pipelines.NewPluginContext(), fmt.Errorf("collection is required and must be a string")
@@ -109,7 +109,7 @@ func (sp *StoragePlugin) handleStore(ctx context.Context, stepConfig pipelines.S
 }
 
 // handleQuery performs a similarity search
-func (sp *StoragePlugin) handleQuery(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (sp *StoragePlugin) handleQuery(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	collection, ok := stepConfig.Config["collection"].(string)
 	if !ok || collection == "" {
 		return pipelines.NewPluginContext(), fmt.Errorf("collection is required and must be a string")
@@ -162,7 +162,7 @@ func (sp *StoragePlugin) handleQuery(ctx context.Context, stepConfig pipelines.S
 }
 
 // handleBatchStore handles batch storage operations
-func (sp *StoragePlugin) handleBatchStore(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (sp *StoragePlugin) handleBatchStore(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	collection, ok := stepConfig.Config["collection"].(string)
 	if !ok || collection == "" {
 		return pipelines.NewPluginContext(), fmt.Errorf("collection is required and must be a string")
@@ -200,7 +200,7 @@ func (sp *StoragePlugin) handleBatchStore(ctx context.Context, stepConfig pipeli
 }
 
 // handleDelete removes documents from storage
-func (sp *StoragePlugin) handleDelete(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (sp *StoragePlugin) handleDelete(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	collection, ok := stepConfig.Config["collection"].(string)
 	if !ok || collection == "" {
 		return pipelines.NewPluginContext(), fmt.Errorf("collection is required and must be a string")
@@ -243,7 +243,7 @@ func (sp *StoragePlugin) handleDelete(ctx context.Context, stepConfig pipelines.
 }
 
 // handleGet retrieves a single document by ID
-func (sp *StoragePlugin) handleGet(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (sp *StoragePlugin) handleGet(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	collection, ok := stepConfig.Config["collection"].(string)
 	if !ok || collection == "" {
 		return pipelines.NewPluginContext(), fmt.Errorf("collection is required and must be a string")
@@ -270,7 +270,7 @@ func (sp *StoragePlugin) handleGet(ctx context.Context, stepConfig pipelines.Ste
 }
 
 // handleCreateCollection creates a new collection
-func (sp *StoragePlugin) handleCreateCollection(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (sp *StoragePlugin) handleCreateCollection(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	name, ok := stepConfig.Config["name"].(string)
 	if !ok || name == "" {
 		return pipelines.NewPluginContext(), fmt.Errorf("name is required and must be a string")
@@ -299,7 +299,7 @@ func (sp *StoragePlugin) handleCreateCollection(ctx context.Context, stepConfig 
 }
 
 // handleListCollections lists all collections
-func (sp *StoragePlugin) handleListCollections(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (sp *StoragePlugin) handleListCollections(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	collections, err := sp.backend.ListCollections(ctx)
 	if err != nil {
 		return pipelines.NewPluginContext(), fmt.Errorf("failed to list collections: %w", err)

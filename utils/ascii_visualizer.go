@@ -78,7 +78,7 @@ func (av *ASCIIVisualizer) VisualizeExecution(result *PipelineExecutionResult, d
 	// Context summary
 	if result.Context.Size() > 0 {
 		output.WriteString("Context Summary:\n")
-		output.WriteString(av.createContextSummary(*result.Context))
+		output.WriteString(av.createContextSummary(result.Context))
 	}
 
 	return output.String()
@@ -204,7 +204,7 @@ func (av *ASCIIVisualizer) createPipelineFlow(steps []pipelines.StepConfig) stri
 }
 
 // createContextSummary creates a summary of the execution context
-func (av *ASCIIVisualizer) createContextSummary(context pipelines.PluginContext) string {
+func (av *ASCIIVisualizer) createContextSummary(context *pipelines.PluginContext) string {
 	var output strings.Builder
 
 	for _, key := range context.Keys() {

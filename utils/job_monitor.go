@@ -13,30 +13,30 @@ import (
 
 // JobExecutionRecord represents a single job execution
 type JobExecutionRecord struct {
-	ID          string                  `json:"id"`
-	JobID       string                  `json:"job_id"`
-	Pipeline    string                  `json:"pipeline"`
-	StartTime   time.Time               `json:"start_time"`
-	EndTime     *time.Time              `json:"end_time,omitempty"`
-	Duration    *time.Duration          `json:"duration,omitempty"`
-	Status      string                  `json:"status"` // "running", "success", "failed", "cancelled"
-	Error       string                  `json:"error,omitempty"`
-	Context     pipelines.PluginContext `json:"context,omitempty"`
-	Steps       []StepExecutionRecord   `json:"steps,omitempty"`
-	TriggeredBy string                  `json:"triggered_by"` // "scheduler", "api", "manual"
+	ID          string                   `json:"id"`
+	JobID       string                   `json:"job_id"`
+	Pipeline    string                   `json:"pipeline"`
+	StartTime   time.Time                `json:"start_time"`
+	EndTime     *time.Time               `json:"end_time,omitempty"`
+	Duration    *time.Duration           `json:"duration,omitempty"`
+	Status      string                   `json:"status"` // "running", "success", "failed", "cancelled"
+	Error       string                   `json:"error,omitempty"`
+	Context     *pipelines.PluginContext `json:"context,omitempty"`
+	Steps       []StepExecutionRecord    `json:"steps,omitempty"`
+	TriggeredBy string                   `json:"triggered_by"` // "scheduler", "api", "manual"
 }
 
 // StepExecutionRecord represents execution of a single pipeline step
 type StepExecutionRecord struct {
-	StepName  string                  `json:"step_name"`
-	Plugin    string                  `json:"plugin"`
-	StartTime time.Time               `json:"start_time"`
-	EndTime   *time.Time              `json:"end_time,omitempty"`
-	Duration  *time.Duration          `json:"duration,omitempty"`
-	Status    string                  `json:"status"`
-	Error     string                  `json:"error,omitempty"`
-	Input     pipelines.PluginContext `json:"input,omitempty"`
-	Output    pipelines.PluginContext `json:"output,omitempty"`
+	StepName  string                   `json:"step_name"`
+	Plugin    string                   `json:"plugin"`
+	StartTime time.Time                `json:"start_time"`
+	EndTime   *time.Time               `json:"end_time,omitempty"`
+	Duration  *time.Duration           `json:"duration,omitempty"`
+	Status    string                   `json:"status"`
+	Error     string                   `json:"error,omitempty"`
+	Input     *pipelines.PluginContext `json:"input,omitempty"`
+	Output    *pipelines.PluginContext `json:"output,omitempty"`
 }
 
 // JobStatistics represents aggregated job statistics
@@ -98,7 +98,7 @@ func (jm *JobMonitor) StartJob(jobID, pipeline, triggeredBy string) string {
 }
 
 // StartStep starts tracking a pipeline step execution
-func (jm *JobMonitor) StartStep(executionID, stepName, plugin string, input pipelines.PluginContext) {
+func (jm *JobMonitor) StartStep(executionID, stepName, plugin string, input *pipelines.PluginContext) {
 	jm.mutex.Lock()
 	defer jm.mutex.Unlock()
 
@@ -120,7 +120,7 @@ func (jm *JobMonitor) StartStep(executionID, stepName, plugin string, input pipe
 }
 
 // CompleteStep completes tracking of a pipeline step execution
-func (jm *JobMonitor) CompleteStep(executionID, stepName string, success bool, err error, output pipelines.PluginContext) {
+func (jm *JobMonitor) CompleteStep(executionID, stepName string, success bool, err error, output *pipelines.PluginContext) {
 	jm.mutex.Lock()
 	defer jm.mutex.Unlock()
 
@@ -153,7 +153,7 @@ func (jm *JobMonitor) CompleteStep(executionID, stepName string, success bool, e
 }
 
 // CompleteJob completes tracking of a job execution
-func (jm *JobMonitor) CompleteJob(executionID string, success bool, err error, context pipelines.PluginContext) {
+func (jm *JobMonitor) CompleteJob(executionID string, success bool, err error, context *pipelines.PluginContext) {
 	jm.mutex.Lock()
 	defer jm.mutex.Unlock()
 

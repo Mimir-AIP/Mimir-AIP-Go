@@ -350,7 +350,7 @@ func TestExecuteStepOptimized(t *testing.T) {
 
 	pluginContext := pipelines.NewPluginContext()
 
-	result, err := executor.executeStepOptimized(context.Background(), stepConfig, *pluginContext)
+	result, err := executor.executeStepOptimized(context.Background(), stepConfig, pluginContext)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -367,7 +367,7 @@ func TestExecuteStepOptimizedInvalidPlugin(t *testing.T) {
 
 	pluginContext := pipelines.NewPluginContext()
 
-	_, err := executor.executeStepOptimized(context.Background(), stepConfig, *pluginContext)
+	_, err := executor.executeStepOptimized(context.Background(), stepConfig, pluginContext)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid plugin reference format")
 }
@@ -384,7 +384,7 @@ func TestExecuteStepOptimizedNonExistentPlugin(t *testing.T) {
 
 	pluginContext := pipelines.NewPluginContext()
 
-	_, err := executor.executeStepOptimized(context.Background(), stepConfig, *pluginContext)
+	_, err := executor.executeStepOptimized(context.Background(), stepConfig, pluginContext)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Plugin not found")
 }
@@ -402,7 +402,7 @@ func TestCreateCacheKey(t *testing.T) {
 	context := pipelines.NewPluginContext()
 	context.Set("context_key", "context_value")
 
-	key := createCacheKey(stepConfig, *context)
+	key := createCacheKey(stepConfig, context)
 
 	assert.NotEmpty(t, key)
 	assert.Contains(t, key, "Input.test")

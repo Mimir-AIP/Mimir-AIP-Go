@@ -72,7 +72,7 @@ func TestJobMonitorStartStep(t *testing.T) {
 	inputContext := pipelines.NewPluginContext()
 	inputContext.Set("test_input", "test_value")
 
-	monitor.StartStep(executionID, "step1", "Input.test", *inputContext)
+	monitor.StartStep(executionID, "step1", "Input.test", inputContext)
 
 	// Verify step record
 	record, err := monitor.GetExecution(executionID)
@@ -88,7 +88,7 @@ func TestJobMonitorStartStep(t *testing.T) {
 	assert.Nil(t, step.Duration)
 
 	// Test with non-existent execution ID
-	monitor.StartStep("nonexistent", "step2", "Output.test", *inputContext)
+	monitor.StartStep("nonexistent", "step2", "Output.test", inputContext)
 	// Should not panic, just log a warning
 }
 
@@ -101,8 +101,8 @@ func TestJobMonitorCompleteStep(t *testing.T) {
 	outputContext.Set("test_output", "output_value")
 
 	// Start and complete a step successfully
-	monitor.StartStep(executionID, "step1", "Input.test", *inputContext)
-	monitor.CompleteStep(executionID, "step1", true, nil, *outputContext)
+	monitor.StartStep(executionID, "step1", "Input.test", inputContext)
+	monitor.CompleteStep(executionID, "step1", true, nil, outputContext)
 
 	// Verify step completion
 	record, err := monitor.GetExecution(executionID)
@@ -116,9 +116,9 @@ func TestJobMonitorCompleteStep(t *testing.T) {
 	assert.True(t, step.Duration.Nanoseconds() > 0)
 
 	// Test step completion with error
-	monitor.StartStep(executionID, "step2", "Output.test", *inputContext)
+	monitor.StartStep(executionID, "step2", "Output.test", inputContext)
 	testErr := assert.AnError
-	monitor.CompleteStep(executionID, "step2", false, testErr, *outputContext)
+	monitor.CompleteStep(executionID, "step2", false, testErr, outputContext)
 
 	record, err = monitor.GetExecution(executionID)
 	assert.NoError(t, err)
@@ -129,11 +129,11 @@ func TestJobMonitorCompleteStep(t *testing.T) {
 	assert.Equal(t, testErr.Error(), step2.Error)
 
 	// Test completing non-existent step
-	monitor.CompleteStep(executionID, "nonexistent", true, nil, *outputContext)
+	monitor.CompleteStep(executionID, "nonexistent", true, nil, outputContext)
 	// Should not panic
 
 	// Test with non-existent execution
-	monitor.CompleteStep("nonexistent", "step1", true, nil, *outputContext)
+	monitor.CompleteStep("nonexistent", "step1", true, nil, outputContext)
 	// Should not panic
 }
 
@@ -145,7 +145,7 @@ func TestJobMonitorCompleteJob(t *testing.T) {
 	finalContext.Set("final_result", "success")
 
 	// Complete job successfully
-	monitor.CompleteJob(executionID, true, nil, *finalContext)
+	monitor.CompleteJob(executionID, true, nil, finalContext)
 
 	// Verify job completion
 	record, err := monitor.GetExecution(executionID)
@@ -158,7 +158,7 @@ func TestJobMonitorCompleteJob(t *testing.T) {
 	// Test job completion with error
 	executionID2 := monitor.StartJob("job2", "test-pipeline", "api")
 	testErr := assert.AnError
-	monitor.CompleteJob(executionID2, false, testErr, *finalContext)
+	monitor.CompleteJob(executionID2, false, testErr, finalContext)
 
 	record2, err := monitor.GetExecution(executionID2)
 	assert.NoError(t, err)
@@ -166,7 +166,7 @@ func TestJobMonitorCompleteJob(t *testing.T) {
 	assert.Equal(t, testErr.Error(), record2.Error)
 
 	// Test with non-existent execution
-	monitor.CompleteJob("nonexistent", true, nil, *finalContext)
+	monitor.CompleteJob("nonexistent", true, nil, finalContext)
 	// Should not panic
 }
 
@@ -255,7 +255,7 @@ func TestJobMonitorGetRunningExecutions(t *testing.T) {
 	assert.Contains(t, running, id2)
 
 	// Complete one execution
-	monitor.CompleteJob(id1, true, nil, *pipelines.NewPluginContext())
+	monitor.CompleteJob(id1, true, nil, pipelines.NewPluginContext())
 
 	running = monitor.GetRunningExecutions()
 	assert.Len(t, running, 1)
@@ -315,8 +315,8 @@ func TestJobMonitorGetStatistics(t *testing.T) {
 	monitor.StartJob("job3", "pipeline3", "manual")
 
 	// Complete some jobs
-	monitor.CompleteJob(id1, true, nil, *pipelines.NewPluginContext())
-	monitor.CompleteJob(id2, false, assert.AnError, *pipelines.NewPluginContext())
+	monitor.CompleteJob(id1, true, nil, pipelines.NewPluginContext())
+	monitor.CompleteJob(id2, false, assert.AnError, pipelines.NewPluginContext())
 	// one job remains running
 
 	stats = monitor.GetStatistics()
@@ -337,8 +337,8 @@ func TestJobMonitorCleanupOldRecords(t *testing.T) {
 	id3 := monitor.StartJob("job3", "pipeline3", "manual")
 
 	// Complete first two jobs
-	monitor.CompleteJob(id1, true, nil, *pipelines.NewPluginContext())
-	monitor.CompleteJob(id2, true, nil, *pipelines.NewPluginContext())
+	monitor.CompleteJob(id1, true, nil, pipelines.NewPluginContext())
+	monitor.CompleteJob(id2, true, nil, pipelines.NewPluginContext())
 
 	// Add another job to trigger cleanup
 	id4 := monitor.StartJob("job4", "pipeline4", "scheduler")
@@ -358,9 +358,9 @@ func TestJobMonitorExportToJSON(t *testing.T) {
 
 	// Add some data
 	id1 := monitor.StartJob("job1", "pipeline1", "scheduler")
-	monitor.StartStep(id1, "step1", "Input.test", *pipelines.NewPluginContext())
-	monitor.CompleteStep(id1, "step1", true, nil, *pipelines.NewPluginContext())
-	monitor.CompleteJob(id1, true, nil, *pipelines.NewPluginContext())
+	monitor.StartStep(id1, "step1", "Input.test", pipelines.NewPluginContext())
+	monitor.CompleteStep(id1, "step1", true, nil, pipelines.NewPluginContext())
+	monitor.CompleteJob(id1, true, nil, pipelines.NewPluginContext())
 
 	// Export to JSON
 	data, err := monitor.ExportToJSON()
@@ -406,9 +406,9 @@ func TestJobMonitorConcurrentAccess(t *testing.T) {
 			jobID := fmt.Sprintf("job%d", id)
 			executionID := monitor.StartJob(jobID, "pipeline", "scheduler")
 
-			monitor.StartStep(executionID, "step1", "Input.test", *pipelines.NewPluginContext())
-			monitor.CompleteStep(executionID, "step1", true, nil, *pipelines.NewPluginContext())
-			monitor.CompleteJob(executionID, true, nil, *pipelines.NewPluginContext())
+			monitor.StartStep(executionID, "step1", "Input.test", pipelines.NewPluginContext())
+			monitor.CompleteStep(executionID, "step1", true, nil, pipelines.NewPluginContext())
+			monitor.CompleteJob(executionID, true, nil, pipelines.NewPluginContext())
 
 			done <- true
 		}(i)
@@ -435,10 +435,10 @@ func TestJobStatisticsAtomicOperations(t *testing.T) {
 
 	// Complete jobs concurrently
 	go func() {
-		monitor.CompleteJob(id1, true, nil, *pipelines.NewPluginContext())
+		monitor.CompleteJob(id1, true, nil, pipelines.NewPluginContext())
 	}()
 	go func() {
-		monitor.CompleteJob(id2, false, assert.AnError, *pipelines.NewPluginContext())
+		monitor.CompleteJob(id2, false, assert.AnError, pipelines.NewPluginContext())
 	}()
 
 	// Wait a bit for completion

@@ -119,7 +119,7 @@ func (opc *OptimizedPluginContext) ToPluginContext() PluginContext {
 }
 
 // FromPluginContext creates an optimized context from the original
-func FromPluginContext(pc PluginContext) *OptimizedPluginContext {
+func FromPluginContext(pc *PluginContext) *OptimizedPluginContext {
 	pc.mutex.RLock()
 	defer pc.mutex.RUnlock()
 

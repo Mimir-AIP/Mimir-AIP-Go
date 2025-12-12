@@ -318,7 +318,7 @@ func (ope *OptimizedPipelineExecutor) ExecutePipelineOptimized(ctx context.Conte
 
 	// Execute each step
 	for i, step := range config.Steps {
-		stepResult, err := ope.executeStepOptimized(ctx, step, *result.Context)
+		stepResult, err := ope.executeStepOptimized(ctx, step, result.Context)
 		if err != nil {
 			result.Success = false
 			result.Error = fmt.Sprintf("step %d (%s) failed: %v", i+1, step.Name, err)
@@ -337,7 +337,7 @@ func (ope *OptimizedPipelineExecutor) ExecutePipelineOptimized(ctx context.Conte
 }
 
 // executeStepOptimized executes a single pipeline step with optimizations
-func (ope *OptimizedPipelineExecutor) executeStepOptimized(ctx context.Context, step pipelines.StepConfig, context pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (ope *OptimizedPipelineExecutor) executeStepOptimized(ctx context.Context, step pipelines.StepConfig, context *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Create cache key from step configuration
 	cacheKey := createCacheKey(step, context)
 
@@ -362,7 +362,7 @@ func (ope *OptimizedPipelineExecutor) executeStepOptimized(ctx context.Context, 
 	}
 
 	// Execute the step
-	stepResult, err := plugin.ExecuteStep(ctx, step, &context)
+	stepResult, err := plugin.ExecuteStep(ctx, step, context)
 	if err != nil {
 		return nil, fmt.Errorf("plugin execution failed: %w", err)
 	}
@@ -374,7 +374,7 @@ func (ope *OptimizedPipelineExecutor) executeStepOptimized(ctx context.Context, 
 }
 
 // createCacheKey creates a cache key from step configuration and context
-func createCacheKey(step pipelines.StepConfig, context pipelines.PluginContext) string {
+func createCacheKey(step pipelines.StepConfig, context *pipelines.PluginContext) string {
 	// Create a deterministic cache key
 	key := fmt.Sprintf("%s:%s:%v", step.Plugin, step.Name, step.Config)
 

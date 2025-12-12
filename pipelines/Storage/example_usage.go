@@ -88,7 +88,7 @@ func ExampleUsage() {
 		Output: "store_result",
 	}
 
-	_, err = storagePlugin.ExecuteStep(ctx, stepConfig, *pipelines.NewPluginContext())
+	_, err = storagePlugin.ExecuteStep(ctx, stepConfig, pipelines.NewPluginContext())
 	if err != nil {
 		log.Fatalf("Failed to store documents: %v", err)
 	}
@@ -110,7 +110,7 @@ func ExampleUsage() {
 		Output: "query_result",
 	}
 
-	queryResult, err := storagePlugin.ExecuteStep(ctx, queryStepConfig, *pipelines.NewPluginContext())
+	queryResult, err := storagePlugin.ExecuteStep(ctx, queryStepConfig, pipelines.NewPluginContext())
 	if err != nil {
 		log.Fatalf("Failed to query documents: %v", err)
 	}
@@ -146,7 +146,7 @@ func ExampleUsage() {
 		Output: "document",
 	}
 
-	getResult, err := storagePlugin.ExecuteStep(ctx, getStepConfig, *pipelines.NewPluginContext())
+	getResult, err := storagePlugin.ExecuteStep(ctx, getStepConfig, pipelines.NewPluginContext())
 	if err != nil {
 		log.Fatalf("Failed to get document: %v", err)
 	}
@@ -169,7 +169,7 @@ func ExampleUsage() {
 		Output: "collections",
 	}
 
-	listResult, err := storagePlugin.ExecuteStep(ctx, listStepConfig, *pipelines.NewPluginContext())
+	listResult, err := storagePlugin.ExecuteStep(ctx, listStepConfig, pipelines.NewPluginContext())
 	if err != nil {
 		log.Fatalf("Failed to list collections: %v", err)
 	}
@@ -307,7 +307,7 @@ func ExamplePersistenceAndPerformance() {
 		Output: "store_result",
 	}
 
-	_, err = plugin.ExecuteStep(ctx, stepConfig, *pipelines.NewPluginContext())
+	_, err = plugin.ExecuteStep(ctx, stepConfig, pipelines.NewPluginContext())
 	if err != nil {
 		log.Fatalf("Failed to store documents: %v", err)
 	}

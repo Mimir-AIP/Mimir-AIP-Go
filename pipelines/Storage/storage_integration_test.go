@@ -100,7 +100,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 		Output: "store_result",
 	}
 
-	result, err := plugin.ExecuteStep(ctx, stepConfig, *pipelines.NewPluginContext())
+	result, err := plugin.ExecuteStep(ctx, stepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	// Verify storage result
@@ -127,7 +127,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 		Output: "document",
 	}
 
-	getResult, err := plugin.ExecuteStep(ctx, getStepConfig, *pipelines.NewPluginContext())
+	getResult, err := plugin.ExecuteStep(ctx, getStepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	docResult, exists := getResult.Get("document")
@@ -152,7 +152,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 		Output: "delete_result",
 	}
 
-	deleteResult, err := plugin.ExecuteStep(ctx, deleteStepConfig, *pipelines.NewPluginContext())
+	deleteResult, err := plugin.ExecuteStep(ctx, deleteStepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	deleteResultMap, exists := deleteResult.Get("delete_result")
@@ -213,7 +213,7 @@ func testQueryOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 		Output: "store_result",
 	}
 
-	_, err := plugin.ExecuteStep(ctx, storeStepConfig, *pipelines.NewPluginContext())
+	_, err := plugin.ExecuteStep(ctx, storeStepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	// Test semantic search
@@ -229,7 +229,7 @@ func testQueryOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 		Output: "query_result",
 	}
 
-	queryResult, err := plugin.ExecuteStep(ctx, queryStepConfig, *pipelines.NewPluginContext())
+	queryResult, err := plugin.ExecuteStep(ctx, queryStepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	queryResultMap, exists := queryResult.Get("query_result")
@@ -288,7 +288,7 @@ func testBatchOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 		Output: "batch_result",
 	}
 
-	batchResult, err := plugin.ExecuteStep(ctx, batchStepConfig, *pipelines.NewPluginContext())
+	batchResult, err := plugin.ExecuteStep(ctx, batchStepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	batchResultMap, exists := batchResult.Get("batch_result")
@@ -316,7 +316,7 @@ func testCollectionManagement(t *testing.T, ctx context.Context, plugin *Storage
 		Output: "create_result",
 	}
 
-	createResult, err := plugin.ExecuteStep(ctx, createStepConfig, *pipelines.NewPluginContext())
+	createResult, err := plugin.ExecuteStep(ctx, createStepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	createResultMap, exists := createResult.Get("create_result")
@@ -345,7 +345,7 @@ func testCollectionManagement(t *testing.T, ctx context.Context, plugin *Storage
 		},
 		Output: "store_result",
 	}
-	_, err = plugin.ExecuteStep(ctx, storeStepConfig, *pipelines.NewPluginContext())
+	_, err = plugin.ExecuteStep(ctx, storeStepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	// Test collection listing
@@ -358,7 +358,7 @@ func testCollectionManagement(t *testing.T, ctx context.Context, plugin *Storage
 		Output: "collections",
 	}
 
-	listResult, err := plugin.ExecuteStep(ctx, listStepConfig, *pipelines.NewPluginContext())
+	listResult, err := plugin.ExecuteStep(ctx, listStepConfig, pipelines.NewPluginContext())
 	require.NoError(t, err)
 
 	collections, exists := listResult.Get("collections")
@@ -407,7 +407,7 @@ func testErrorHandling(t *testing.T, ctx context.Context, plugin *StoragePlugin)
 		Output: "query_result",
 	}
 
-	_, err := plugin.ExecuteStep(ctx, queryStepConfig, *pipelines.NewPluginContext())
+	_, err := plugin.ExecuteStep(ctx, queryStepConfig, pipelines.NewPluginContext())
 	// This should return an error for non-existent collection
 	assert.Error(t, err)
 
@@ -423,7 +423,7 @@ func testErrorHandling(t *testing.T, ctx context.Context, plugin *StoragePlugin)
 		Output: "document",
 	}
 
-	_, err = plugin.ExecuteStep(ctx, getStepConfig, *pipelines.NewPluginContext())
+	_, err = plugin.ExecuteStep(ctx, getStepConfig, pipelines.NewPluginContext())
 	assert.Error(t, err)
 
 	// Test invalid operation
@@ -436,7 +436,7 @@ func testErrorHandling(t *testing.T, ctx context.Context, plugin *StoragePlugin)
 		Output: "result",
 	}
 
-	_, err = plugin.ExecuteStep(ctx, invalidStepConfig, *pipelines.NewPluginContext())
+	_, err = plugin.ExecuteStep(ctx, invalidStepConfig, pipelines.NewPluginContext())
 	assert.Error(t, err)
 }
 
@@ -616,7 +616,7 @@ func BenchmarkStorageOperations(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = plugin.ExecuteStep(ctx, stepConfig, *pipelines.NewPluginContext())
+			_, _ = plugin.ExecuteStep(ctx, stepConfig, pipelines.NewPluginContext())
 		}
 	})
 
@@ -636,7 +636,7 @@ func BenchmarkStorageOperations(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = plugin.ExecuteStep(ctx, stepConfig, *pipelines.NewPluginContext())
+			_, _ = plugin.ExecuteStep(ctx, stepConfig, pipelines.NewPluginContext())
 		}
 	})
 }

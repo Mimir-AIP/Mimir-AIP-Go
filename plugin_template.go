@@ -33,7 +33,7 @@ func NewTemplatePlugin() *TemplatePlugin {
 }
 
 // ExecuteStep executes a single pipeline step
-func (p *TemplatePlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext pipelines.PluginContext) (*pipelines.PluginContext, error) {
+func (p *TemplatePlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Log the step execution
 	fmt.Printf("Executing %s step: %s\n", p.name, stepConfig.Name)
 
@@ -83,7 +83,7 @@ func (p *TemplatePlugin) ValidateConfig(config map[string]interface{}) error {
 }
 
 // processStep contains the main plugin logic
-func (p *TemplatePlugin) processStep(config map[string]interface{}, context pipelines.PluginContext) (interface{}, error) {
+func (p *TemplatePlugin) processStep(config map[string]interface{}, context *pipelines.PluginContext) (interface{}, error) {
 	// Implement your plugin logic here
 
 	// Example: Simple data transformation

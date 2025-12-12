@@ -69,15 +69,16 @@ func (s *Scheduler) Start() error {
 // Stop stops the scheduler
 func (s *Scheduler) Stop() error {
 	s.jobsMutex.Lock()
-	defer s.jobsMutex.Unlock()
 
 	if !s.running {
+		s.jobsMutex.Unlock()
 		return fmt.Errorf("scheduler is not running")
 	}
 
 	s.running = false
 	s.cancel() // Cancel context to stop all running jobs
 	close(s.stopChan)
+	s.jobsMutex.Unlock() // Release lock before waiting
 
 	// Wait for all goroutines to finish
 	done := make(chan struct{})
@@ -172,20 +173,23 @@ func (s *Scheduler) DisableJob(id string) error {
 	}
 
 	job.Enabled = false
+	job.NextRun = nil // Clear next run when disabled
 	job.UpdatedAt = time.Now()
 
 	log.Printf("Disabled scheduled job: %s", id)
 	return nil
 }
 
-// GetJobs returns all scheduled jobs
+// GetJobs returns all scheduled jobs (as copies to prevent external modification)
 func (s *Scheduler) GetJobs() map[string]*ScheduledJob {
 	s.jobsMutex.RLock()
 	defer s.jobsMutex.RUnlock()
 
 	jobs := make(map[string]*ScheduledJob)
 	for id, job := range s.jobs {
-		jobs[id] = job
+		// Create a copy of the job
+		jobCopy := *job
+		jobs[id] = &jobCopy
 	}
 	return jobs
 }
@@ -205,6 +209,13 @@ func (s *Scheduler) GetJob(id string) (*ScheduledJob, error) {
 // run is the main scheduler loop
 func (s *Scheduler) run() {
 	defer s.wg.Done()
+	defer func() {
+		// Ensure running flag is cleared when goroutine exits
+		// This handles both Stop() being called and context cancellation
+		s.jobsMutex.Lock()
+		s.running = false
+		s.jobsMutex.Unlock()
+	}()
 
 	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
 	defer ticker.Stop()

@@ -11,13 +11,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/gorilla/mux"
 )
 
 // MockServer represents a test server instance
 type MockServer struct {
-	router *mux.Router
+	router   *mux.Router
+	registry *pipelines.PluginRegistry
+}
+
+// GetRegistry returns the mock server's plugin registry
+func (ms *MockServer) GetRegistry() *pipelines.PluginRegistry {
+	return ms.registry
 }
 
 // NewMockServer creates a new test server with basic routes
@@ -28,6 +35,9 @@ func NewMockServer() *MockServer {
 
 	// Initialize pipeline store with temp directory
 	_ = utils.InitializeGlobalPipelineStore(tempDir)
+
+	// Create plugin registry
+	registry := pipelines.NewPluginRegistry()
 
 	// Create a simple router for testing
 	router := mux.NewRouter()
@@ -51,7 +61,11 @@ func NewMockServer() *MockServer {
 	v1.HandleFunc("/scheduler/jobs", handleTestListSchedulerJobs).Methods("GET")
 	v1.HandleFunc("/visualize/status", handleTestVisualizeStatus).Methods("GET")
 
-	return &MockServer{router: router}
+	// Add MCP routes
+	router.HandleFunc("/mcp/tools", handleMCPToolDiscovery(registry)).Methods("GET")
+	router.HandleFunc("/mcp/tools/execute", handleMCPToolExecution(registry)).Methods("POST")
+
+	return &MockServer{router: router, registry: registry}
 }
 
 // versionMiddleware adds API version information to requests
@@ -576,4 +590,75 @@ type PluginInfo struct {
 	Type        string `json:"type"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+}
+
+// MCP handler functions for mock server
+
+func handleMCPToolDiscovery(registry *pipelines.PluginRegistry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		allPlugins := registry.GetAllPlugins()
+		tools := make([]map[string]any, 0)
+
+		for pluginType, pluginsOfType := range allPlugins {
+			for pluginName := range pluginsOfType {
+				tools = append(tools, map[string]any{
+					"name":        pluginType + "." + pluginName,
+					"type":        pluginType,
+					"plugin_name": pluginName,
+					"description": "Tool for " + pluginName,
+					"inputSchema": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"step_config": map[string]any{
+								"type": "object",
+							},
+							"context": map[string]any{
+								"type": "object",
+							},
+						},
+					},
+				})
+			}
+		}
+
+		response := map[string]any{
+			"tools": tools,
+		}
+
+		_ = json.NewEncoder(w).Encode(response)
+	}
+}
+
+func handleMCPToolExecution(registry *pipelines.PluginRegistry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": "Invalid JSON",
+			})
+			return
+		}
+
+		toolName, ok := request["tool_name"].(string)
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": "Missing tool_name",
+			})
+			return
+		}
+
+		// Execute tool (simplified)
+		response := map[string]any{
+			"success": true,
+			"result":  "Tool " + toolName + " executed successfully",
+		}
+
+		_ = json.NewEncoder(w).Encode(response)
+	}
 }

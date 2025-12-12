@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +39,10 @@ func NewMockServer() *MockServer {
 
 	// Create plugin registry
 	registry := pipelines.NewPluginRegistry()
+
+	// Register default plugins for testing
+	_ = registry.RegisterPlugin(&utils.RealAPIPlugin{})
+	_ = registry.RegisterPlugin(&utils.MockHTMLPlugin{})
 
 	// Create a simple router for testing
 	router := mux.NewRouter()
@@ -653,7 +658,30 @@ func handleMCPToolExecution(registry *pipelines.PluginRegistry) http.HandlerFunc
 			return
 		}
 
-		// Execute tool (simplified)
+		// Parse tool name (e.g., "Input.api" -> type: "Input", name: "api")
+		parts := strings.Split(toolName, ".")
+		if len(parts) != 2 {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": "Invalid tool name format, expected 'Type.Name'",
+			})
+			return
+		}
+
+		pluginType := parts[0]
+		pluginName := parts[1]
+
+		// Check if tool exists in registry
+		_, err := registry.GetPlugin(pluginType, pluginName)
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error": "Tool not found: " + toolName,
+			})
+			return
+		}
+
+		// Execute tool (simplified - just return success for now)
 		response := map[string]any{
 			"success": true,
 			"result":  "Tool " + toolName + " executed successfully",

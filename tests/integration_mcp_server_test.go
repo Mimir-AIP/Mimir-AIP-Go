@@ -6,22 +6,14 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestMCPServerToolDiscovery tests MCP tool discovery endpoint
 func TestMCPServerToolDiscovery(t *testing.T) {
-	// Create MCP server using mock implementation
+	// Create MCP server using mock implementation (already has default plugins)
 	ms := NewMockServer()
-
-	// Register test plugins on the mock server's registry
-	registry := ms.GetRegistry()
-	err := registry.RegisterPlugin(&utils.RealAPIPlugin{})
-	require.NoError(t, err)
-	err = registry.RegisterPlugin(&utils.MockHTMLPlugin{})
-	require.NoError(t, err)
 
 	testServer := ms.Start()
 	defer testServer.Close()
@@ -184,14 +176,8 @@ func TestMCPServerToolExecution(t *testing.T) {
 
 // TestMCPServerPluginRegistry tests integration with plugin registry
 func TestMCPServerPluginRegistry(t *testing.T) {
+	// Create MCP server using mock implementation (already has default plugins)
 	ms := NewMockServer()
-
-	// Register multiple plugins on the mock server's registry
-	registry := ms.GetRegistry()
-	err := registry.RegisterPlugin(&utils.RealAPIPlugin{})
-	require.NoError(t, err)
-	err = registry.RegisterPlugin(&utils.MockHTMLPlugin{})
-	require.NoError(t, err)
 
 	testServer := ms.Start()
 	defer testServer.Close()

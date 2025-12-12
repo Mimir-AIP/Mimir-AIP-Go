@@ -191,7 +191,7 @@ func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 	}
 
 	// Add headers
-	if headers, ok := config["headers"].(map[string]interface{}); ok {
+	if headers, ok := config["headers"].(map[string]any); ok {
 		for key, value := range headers {
 			if strValue, ok := value.(string); ok {
 				req.Header.Set(key, strValue)
@@ -205,7 +205,7 @@ func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 	}
 
 	// Add query parameters
-	if params, ok := config["params"].(map[string]interface{}); ok {
+	if params, ok := config["params"].(map[string]any); ok {
 		q := req.URL.Query()
 		for key, value := range params {
 			if strValue, ok := value.(string); ok {
@@ -217,7 +217,7 @@ func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 
 	// Add request body for POST/PUT
 	if method == "POST" || method == "PUT" {
-		if data, ok := config["data"].(map[string]interface{}); ok {
+		if data, ok := config["data"].(map[string]any); ok {
 			jsonData, err := json.Marshal(data)
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal request data: %w", err)
@@ -245,7 +245,7 @@ func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 	}
 
 	// Parse JSON response if possible
-	var jsonData interface{}
+	var jsonData any
 	if err := json.Unmarshal(body, &jsonData); err != nil {
 		// If not JSON, use raw body
 		jsonData = string(body)
@@ -253,7 +253,7 @@ func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 
 	// Build result
 	result := pipelines.NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"url":         resp.Request.URL.String(),
 		"status_code": resp.StatusCode,
 		"headers":     make(map[string]string),
@@ -271,7 +271,7 @@ func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 
 	// Update the headers in the result
 	if existing, exists := result.Get(stepConfig.Output); exists {
-		if resultMap, ok := existing.(map[string]interface{}); ok {
+		if resultMap, ok := existing.(map[string]any); ok {
 			resultMap["headers"] = headers
 			result.Set(stepConfig.Output, resultMap)
 		}
@@ -282,7 +282,7 @@ func (p *RealAPIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 
 func (p *RealAPIPlugin) GetPluginType() string { return "Input" }
 func (p *RealAPIPlugin) GetPluginName() string { return "api" }
-func (p *RealAPIPlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *RealAPIPlugin) ValidateConfig(config map[string]any) error {
 	if _, ok := config["url"]; !ok {
 		return fmt.Errorf("url is required")
 	}
@@ -301,6 +301,6 @@ func (p *MockHTMLPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.S
 
 func (p *MockHTMLPlugin) GetPluginType() string { return "Output" }
 func (p *MockHTMLPlugin) GetPluginName() string { return "html" }
-func (p *MockHTMLPlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *MockHTMLPlugin) ValidateConfig(config map[string]any) error {
 	return nil // Mock validation
 }

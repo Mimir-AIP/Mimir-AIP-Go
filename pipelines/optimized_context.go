@@ -7,7 +7,7 @@ import (
 // OptimizedPluginContext implements copy-on-write semantics for better performance
 type OptimizedPluginContext struct {
 	data     map[string]DataValue
-	metadata map[string]interface{}
+	metadata map[string]any
 	mutex    sync.RWMutex
 	version  int64 // For copy-on-write optimization
 }
@@ -16,7 +16,7 @@ type OptimizedPluginContext struct {
 func NewOptimizedPluginContext() *OptimizedPluginContext {
 	return &OptimizedPluginContext{
 		data:     make(map[string]DataValue),
-		metadata: make(map[string]interface{}),
+		metadata: make(map[string]any),
 		version:  0,
 	}
 }
@@ -50,7 +50,7 @@ func (opc *OptimizedPluginContext) Clone() *OptimizedPluginContext {
 		dataCopy[k] = v
 	}
 
-	metadataCopy := make(map[string]interface{}, len(opc.metadata))
+	metadataCopy := make(map[string]any, len(opc.metadata))
 	for k, v := range opc.metadata {
 		metadataCopy[k] = v
 	}
@@ -92,7 +92,7 @@ func (opc *OptimizedPluginContext) Clear() {
 	defer opc.mutex.Unlock()
 
 	opc.data = make(map[string]DataValue)
-	opc.metadata = make(map[string]interface{})
+	opc.metadata = make(map[string]any)
 	opc.version++
 }
 
@@ -106,7 +106,7 @@ func (opc *OptimizedPluginContext) ToPluginContext() PluginContext {
 		dataCopy[k] = v
 	}
 
-	metadataCopy := make(map[string]interface{}, len(opc.metadata))
+	metadataCopy := make(map[string]any, len(opc.metadata))
 	for k, v := range opc.metadata {
 		metadataCopy[k] = v
 	}
@@ -128,7 +128,7 @@ func FromPluginContext(pc *PluginContext) *OptimizedPluginContext {
 		dataCopy[k] = v
 	}
 
-	metadataCopy := make(map[string]interface{}, len(pc.metadata))
+	metadataCopy := make(map[string]any, len(pc.metadata))
 	for k, v := range pc.metadata {
 		metadataCopy[k] = v
 	}

@@ -71,7 +71,7 @@ func (p *TemplatePlugin) GetPluginName() string {
 }
 
 // ValidateConfig validates the plugin configuration
-func (p *TemplatePlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *TemplatePlugin) ValidateConfig(config map[string]any) error {
 	// Add your configuration validation logic here
 
 	// Example validation:
@@ -83,7 +83,7 @@ func (p *TemplatePlugin) ValidateConfig(config map[string]interface{}) error {
 }
 
 // processStep contains the main plugin logic
-func (p *TemplatePlugin) processStep(config map[string]interface{}, context *pipelines.PluginContext) (interface{}, error) {
+func (p *TemplatePlugin) processStep(config map[string]any, context *pipelines.PluginContext) (any, error) {
 	// Implement your plugin logic here
 
 	// Example: Simple data transformation
@@ -102,7 +102,7 @@ func (p *TemplatePlugin) processStep(config map[string]interface{}, context *pip
 		}
 	}
 
-	result := map[string]interface{}{
+	result := map[string]any{
 		"original":       input,
 		"processed":      fmt.Sprintf("PROCESSED_%s", input),
 		"timestamp":      timestamp,

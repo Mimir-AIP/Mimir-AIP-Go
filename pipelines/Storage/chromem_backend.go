@@ -67,7 +67,7 @@ func (cb *ChromemBackend) Store(ctx context.Context, collectionName string, docu
 	// Convert our documents to chromem documents
 	chromemDocs := make([]chromem.Document, len(documents))
 	for i, doc := range documents {
-		// Convert metadata from interface{} to string map
+		// Convert metadata from any to string map
 		metadata := make(map[string]string)
 		for k, v := range doc.Metadata {
 			if str, ok := v.(string); ok {
@@ -112,7 +112,7 @@ func (cb *ChromemBackend) Store(ctx context.Context, collectionName string, docu
 }
 
 // Query performs a similarity search on the collection
-func (cb *ChromemBackend) Query(ctx context.Context, collectionName string, queryVector []float32, limit int, filters map[string]interface{}) ([]QueryResult, error) {
+func (cb *ChromemBackend) Query(ctx context.Context, collectionName string, queryVector []float32, limit int, filters map[string]any) ([]QueryResult, error) {
 	// Ensure we're using the correct collection
 	if collectionName != cb.collection.Name {
 		collection, err := cb.db.GetOrCreateCollection(collectionName, nil, cb.embedder)
@@ -144,8 +144,8 @@ func (cb *ChromemBackend) Query(ctx context.Context, collectionName string, quer
 	// Convert results to our format
 	queryResults := make([]QueryResult, len(results))
 	for i, result := range results {
-		// Convert metadata back to interface{}
-		metadata := make(map[string]interface{})
+		// Convert metadata back to any
+		metadata := make(map[string]any)
 		for k, v := range result.Metadata {
 			metadata[k] = v
 		}
@@ -238,7 +238,7 @@ func (cb *ChromemBackend) GetDocument(ctx context.Context, collectionName string
 	}
 
 	// Convert metadata
-	metadata := make(map[string]interface{})
+	metadata := make(map[string]any)
 	for k, v := range doc.Metadata {
 		metadata[k] = v
 	}
@@ -251,7 +251,7 @@ func (cb *ChromemBackend) GetDocument(ctx context.Context, collectionName string
 }
 
 // UpdateMetadata updates the metadata of a document
-func (cb *ChromemBackend) UpdateMetadata(ctx context.Context, collectionName string, id string, metadata map[string]interface{}) error {
+func (cb *ChromemBackend) UpdateMetadata(ctx context.Context, collectionName string, id string, metadata map[string]any) error {
 	// Chromem doesn't have a direct update metadata method
 	// We need to delete and re-add the document
 	doc, err := cb.GetDocument(ctx, collectionName, id)
@@ -314,19 +314,19 @@ func (cb *ChromemBackend) Stats(ctx context.Context) (StorageStats, error) {
 }
 
 // GetPerformanceStats returns detailed performance statistics
-func (cb *ChromemBackend) GetPerformanceStats() map[string]interface{} {
-	stats := make(map[string]interface{})
+func (cb *ChromemBackend) GetPerformanceStats() map[string]any {
+	stats := make(map[string]any)
 
 	collections := cb.db.ListCollections()
 	stats["total_collections"] = len(collections)
 
 	totalDocs := 0
-	collectionStats := make(map[string]interface{})
+	collectionStats := make(map[string]any)
 
 	for name, collection := range collections {
 		count := collection.Count()
 		totalDocs += count
-		collectionStats[name] = map[string]interface{}{
+		collectionStats[name] = map[string]any{
 			"document_count": count,
 			"name":           name,
 		}

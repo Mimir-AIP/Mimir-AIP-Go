@@ -68,11 +68,11 @@ func (p *DataModelExamplePlugin) ExecuteStep(ctx context.Context, stepConfig pip
 // createJSONDataExample demonstrates JSON data handling
 func (p *DataModelExamplePlugin) createJSONDataExample(result *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Create structured JSON data
-	userData := pipelines.NewJSONData(map[string]interface{}{
+	userData := pipelines.NewJSONData(map[string]any{
 		"user_id": 12345,
 		"name":    "John Doe",
 		"email":   "john.doe@example.com",
-		"preferences": map[string]interface{}{
+		"preferences": map[string]any{
 			"theme":         "dark",
 			"language":      "en",
 			"notifications": true,
@@ -82,13 +82,13 @@ func (p *DataModelExamplePlugin) createJSONDataExample(result *pipelines.PluginC
 	})
 
 	// Create product data
-	productData := pipelines.NewJSONData(map[string]interface{}{
+	productData := pipelines.NewJSONData(map[string]any{
 		"product_id": 789,
 		"name":       "Advanced Analytics Platform",
 		"category":   "Software",
 		"price":      299.99,
 		"features":   []string{"AI", "ML", "Real-time", "Scalable"},
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"version": "2.1.0",
 			"license": "Enterprise",
 		},
@@ -127,7 +127,7 @@ func (p *DataModelExamplePlugin) createTimeSeriesExample(result *pipelines.Plugi
 	tsData := pipelines.NewTimeSeriesData()
 
 	// Add metadata
-	tsData.Metadata = map[string]interface{}{
+	tsData.Metadata = map[string]any{
 		"metric_name": "cpu_usage",
 		"unit":        "percentage",
 		"server":      "web-server-01",
@@ -218,7 +218,7 @@ func (p *DataModelExamplePlugin) processMixedDataExample(input *pipelines.Plugin
 				avg := sum / float64(len(timeSeries.Points))
 
 				// Create statistics JSON
-				stats := pipelines.NewJSONData(map[string]interface{}{
+				stats := pipelines.NewJSONData(map[string]any{
 					"count":   len(timeSeries.Points),
 					"average": avg,
 					"minimum": min,
@@ -254,7 +254,7 @@ func (p *DataModelExamplePlugin) processMixedDataExample(input *pipelines.Plugin
 			}
 
 			// Convert to JSON structure
-			var records []map[string]interface{}
+			var records []map[string]any
 			if len(lines) > 1 {
 				headers := []string{}
 				// Parse header
@@ -268,14 +268,14 @@ func (p *DataModelExamplePlugin) processMixedDataExample(input *pipelines.Plugin
 				}
 
 				// For simplicity, create a basic structure
-				records = append(records, map[string]interface{}{
+				records = append(records, map[string]any{
 					"total_lines": len(lines),
 					"headers":     []string{"id", "name", "value", "timestamp"},
 					"sample_data": lines[0],
 				})
 			}
 
-			jsonRecords := pipelines.NewJSONData(map[string]interface{}{
+			jsonRecords := pipelines.NewJSONData(map[string]any{
 				"records":    records,
 				"total_size": len(csvContent),
 			})
@@ -324,7 +324,7 @@ func (p *DataModelExamplePlugin) GetPluginName() string {
 }
 
 // ValidateConfig validates the plugin configuration
-func (p *DataModelExamplePlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *DataModelExamplePlugin) ValidateConfig(config map[string]any) error {
 	operation, exists := config["operation"]
 	if !exists {
 		return fmt.Errorf("operation is required")

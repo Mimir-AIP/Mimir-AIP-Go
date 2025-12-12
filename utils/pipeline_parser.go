@@ -26,14 +26,14 @@ type ConfigFile struct {
 }
 
 // Validate config against the schema(Legacy configs may not have schema defined)
-func getSchema() (map[string]interface{}, error) {
+func getSchema() (map[string]any, error) {
 	schemaPath := filepath.Join("schema", "pipeline_schema.yaml")
 	schemaFile, err := os.ReadFile(schemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read schema file: %w", err)
 	}
 
-	var schema map[string]interface{}
+	var schema map[string]any
 	if err := yaml.Unmarshal(schemaFile, &schema); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal schema: %w", err)
 	}
@@ -53,7 +53,7 @@ func ValidatePipelineConfig(pipelineFilePath string) (bool, error) {
 		return false, fmt.Errorf("failed to read pipeline file: %w", err)
 	}
 
-	var pipelineConfig map[string]interface{}
+	var pipelineConfig map[string]any
 	if err := yaml.Unmarshal(pipelineFile, &pipelineConfig); err != nil {
 		return false, fmt.Errorf("failed to unmarshal pipeline config: %w", err)
 	}
@@ -62,7 +62,7 @@ func ValidatePipelineConfig(pipelineFilePath string) (bool, error) {
 	}
 
 	// Basic validation: check that all required top-level keys in the schema exist in the pipeline config
-	requiredKeys, ok := schema["required"].([]interface{})
+	requiredKeys, ok := schema["required"].([]any)
 	if ok {
 		for _, key := range requiredKeys {
 			keyStr, ok := key.(string)

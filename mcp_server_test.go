@@ -28,7 +28,7 @@ func (m *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepC
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"plugin":  m.pluginName,
 		"success": true,
 	})
@@ -37,7 +37,7 @@ func (m *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepC
 
 func (m *MockPlugin) GetPluginType() string { return m.pluginType }
 func (m *MockPlugin) GetPluginName() string { return m.pluginName }
-func (m *MockPlugin) ValidateConfig(config map[string]interface{}) error {
+func (m *MockPlugin) ValidateConfig(config map[string]any) error {
 	if m.shouldFail {
 		return assert.AnError
 	}
@@ -73,7 +73,7 @@ func TestMCPServerServeHTTP(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var response map[string]interface{}
+	var response map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.Contains(t, response, "tools")
@@ -124,18 +124,18 @@ func TestMCPServerHandleToolDiscovery(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var response map[string]interface{}
+	var response map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.Contains(t, response, "tools")
 
-	tools, ok := response["tools"].([]interface{})
+	tools, ok := response["tools"].([]any)
 	assert.True(t, ok)
 	assert.Len(t, tools, 2) // Two plugins registered
 
 	// Check tool structure
 	for _, tool := range tools {
-		toolMap, ok := tool.(map[string]interface{})
+		toolMap, ok := tool.(map[string]any)
 		assert.True(t, ok)
 		assert.Contains(t, toolMap, "name")
 		assert.Contains(t, toolMap, "description")
@@ -153,17 +153,17 @@ func TestMCPServerHandleToolExecution(t *testing.T) {
 	server := NewMCPServer(registry)
 
 	// Prepare request body
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"tool_name": "Input.test",
-		"arguments": map[string]interface{}{
-			"step_config": map[string]interface{}{
+		"arguments": map[string]any{
+			"step_config": map[string]any{
 				"name": "test-step",
-				"config": map[string]interface{}{
+				"config": map[string]any{
 					"param1": "value1",
 				},
 				"output": "test-output",
 			},
-			"context": map[string]interface{}{
+			"context": map[string]any{
 				"existing_key": "existing_value",
 			},
 		},
@@ -180,7 +180,7 @@ func TestMCPServerHandleToolExecution(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var response map[string]interface{}
+	var response map[string]any
 	err = json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.True(t, response["success"].(bool))
@@ -205,10 +205,10 @@ func TestMCPServerHandleToolExecutionInvalidToolName(t *testing.T) {
 	server := NewMCPServer(registry)
 
 	// Invalid tool name format
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"tool_name": "invalid", // Missing dot separator
-		"arguments": map[string]interface{}{
-			"step_config": map[string]interface{}{
+		"arguments": map[string]any{
+			"step_config": map[string]any{
 				"name": "test-step",
 			},
 		},
@@ -230,10 +230,10 @@ func TestMCPServerHandleToolExecutionNonExistentPlugin(t *testing.T) {
 	server := NewMCPServer(registry)
 
 	// Non-existent plugin
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"tool_name": "Nonexistent.plugin",
-		"arguments": map[string]interface{}{
-			"step_config": map[string]interface{}{
+		"arguments": map[string]any{
+			"step_config": map[string]any{
 				"name": "test-step",
 			},
 		},
@@ -259,10 +259,10 @@ func TestMCPServerHandleToolExecutionPluginError(t *testing.T) {
 
 	server := NewMCPServer(registry)
 
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"tool_name": "Input.failing",
-		"arguments": map[string]interface{}{
-			"step_config": map[string]interface{}{
+		"arguments": map[string]any{
+			"step_config": map[string]any{
 				"name": "test-step",
 			},
 		},
@@ -282,25 +282,25 @@ func TestMCPServerHandleToolExecutionPluginError(t *testing.T) {
 func TestGetStringValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		data     map[string]interface{}
+		data     map[string]any
 		key      string
 		expected string
 	}{
 		{
 			name:     "existing string value",
-			data:     map[string]interface{}{"key": "value"},
+			data:     map[string]any{"key": "value"},
 			key:      "key",
 			expected: "value",
 		},
 		{
 			name:     "non-string value",
-			data:     map[string]interface{}{"key": 123},
+			data:     map[string]any{"key": 123},
 			key:      "key",
 			expected: "",
 		},
 		{
 			name:     "non-existent key",
-			data:     map[string]interface{}{"other": "value"},
+			data:     map[string]any{"other": "value"},
 			key:      "key",
 			expected: "",
 		},
@@ -323,33 +323,33 @@ func TestGetStringValue(t *testing.T) {
 func TestGetMapValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		data     map[string]interface{}
+		data     map[string]any
 		key      string
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		{
 			name:     "existing map value",
-			data:     map[string]interface{}{"key": map[string]interface{}{"nested": "value"}},
+			data:     map[string]any{"key": map[string]any{"nested": "value"}},
 			key:      "key",
-			expected: map[string]interface{}{"nested": "value"},
+			expected: map[string]any{"nested": "value"},
 		},
 		{
 			name:     "non-map value",
-			data:     map[string]interface{}{"key": "string"},
+			data:     map[string]any{"key": "string"},
 			key:      "key",
-			expected: map[string]interface{}{},
+			expected: map[string]any{},
 		},
 		{
 			name:     "non-existent key",
-			data:     map[string]interface{}{"other": "value"},
+			data:     map[string]any{"other": "value"},
 			key:      "key",
-			expected: map[string]interface{}{},
+			expected: map[string]any{},
 		},
 		{
 			name:     "nil data",
 			data:     nil,
 			key:      "key",
-			expected: map[string]interface{}{},
+			expected: map[string]any{},
 		},
 	}
 
@@ -372,11 +372,11 @@ func TestMCPServerToolDiscoveryEmptyRegistry(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var response map[string]interface{}
+	var response map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	tools, ok := response["tools"].([]interface{})
+	tools, ok := response["tools"].([]any)
 	assert.True(t, ok)
 	assert.Len(t, tools, 0) // No plugins registered
 }
@@ -391,23 +391,23 @@ func TestMCPServerToolExecutionWithComplexArguments(t *testing.T) {
 	server := NewMCPServer(registry)
 
 	// Complex request with nested arguments
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"tool_name": "Input.test",
-		"arguments": map[string]interface{}{
-			"step_config": map[string]interface{}{
+		"arguments": map[string]any{
+			"step_config": map[string]any{
 				"name": "complex-step",
-				"config": map[string]interface{}{
-					"nested_param": map[string]interface{}{
+				"config": map[string]any{
+					"nested_param": map[string]any{
 						"sub_param": "sub_value",
 						"number":    42,
 						"boolean":   true,
 					},
-					"array_param": []interface{}{"item1", "item2", "item3"},
+					"array_param": []any{"item1", "item2", "item3"},
 				},
 				"output": "complex-output",
 			},
-			"context": map[string]interface{}{
-				"existing_data": map[string]interface{}{
+			"context": map[string]any{
+				"existing_data": map[string]any{
 					"key1": "value1",
 					"key2": 123,
 				},
@@ -426,7 +426,7 @@ func TestMCPServerToolExecutionWithComplexArguments(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var response map[string]interface{}
+	var response map[string]any
 	err = json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.True(t, response["success"].(bool))
@@ -442,11 +442,11 @@ func TestMCPServerToolExecutionMissingRequiredFields(t *testing.T) {
 	server := NewMCPServer(registry)
 
 	// Missing step_config name
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"tool_name": "Input.test",
-		"arguments": map[string]interface{}{
-			"step_config": map[string]interface{}{
-				"config": map[string]interface{}{},
+		"arguments": map[string]any{
+			"step_config": map[string]any{
+				"config": map[string]any{},
 				// Missing "name" field
 			},
 		},
@@ -485,18 +485,18 @@ func TestMCPServerMultiplePlugins(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var response map[string]interface{}
+	var response map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	tools, ok := response["tools"].([]interface{})
+	tools, ok := response["tools"].([]any)
 	assert.True(t, ok)
 	assert.Len(t, tools, 3) // Three plugins registered
 
 	// Check that all plugin types are represented
 	toolNames := make([]string, 0, 3)
 	for _, tool := range tools {
-		toolMap := tool.(map[string]interface{})
+		toolMap := tool.(map[string]any)
 		toolNames = append(toolNames, toolMap["name"].(string))
 	}
 
@@ -553,10 +553,10 @@ func TestMCPServerContentTypeHeaders(t *testing.T) {
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
 	// Test tool execution
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"tool_name": "Input.test",
-		"arguments": map[string]interface{}{
-			"step_config": map[string]interface{}{
+		"arguments": map[string]any{
+			"step_config": map[string]any{
 				"name": "test-step",
 			},
 		},

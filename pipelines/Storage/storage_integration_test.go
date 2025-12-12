@@ -64,7 +64,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 		{
 			ID:      "test_doc_1",
 			Content: "This is a test document about artificial intelligence",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"category": "technology",
 				"tags":     []string{"AI", "ML"},
 			},
@@ -72,7 +72,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 		{
 			ID:      "test_doc_2",
 			Content: "Machine learning is a subset of AI that focuses on algorithms",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"category": "technology",
 				"tags":     []string{"ML", "algorithms"},
 			},
@@ -80,9 +80,9 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 	}
 
 	// Convert documents to the format expected by the plugin
-	docMaps := make([]map[string]interface{}, len(documents))
+	docMaps := make([]map[string]any, len(documents))
 	for i, doc := range documents {
-		docMaps[i] = map[string]interface{}{
+		docMaps[i] = map[string]any{
 			"id":       doc.ID,
 			"content":  doc.Content,
 			"metadata": doc.Metadata,
@@ -92,7 +92,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 	stepConfig := pipelines.StepConfig{
 		Name:   "Store Test Documents",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "store",
 			"collection": "test_collection",
 			"documents":  docMaps,
@@ -107,7 +107,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 	storeResult, exists := result.Get("store_result")
 	require.True(t, exists)
 
-	resultMap, ok := storeResult.(map[string]interface{})
+	resultMap, ok := storeResult.(map[string]any)
 	require.True(t, ok)
 
 	assert.Equal(t, "store", resultMap["operation"])
@@ -119,7 +119,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 	getStepConfig := pipelines.StepConfig{
 		Name:   "Get Test Document",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "get",
 			"collection": "test_collection",
 			"id":         "test_doc_1",
@@ -133,18 +133,18 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 	docResult, exists := getResult.Get("document")
 	require.True(t, exists)
 
-	docMap, ok := docResult.(map[string]interface{})
+	docMap, ok := docResult.(map[string]any)
 	require.True(t, ok)
 
 	assert.Equal(t, "test_doc_1", docMap["id"])
 	assert.Equal(t, "This is a test document about artificial intelligence", docMap["content"])
-	assert.Equal(t, "technology", docMap["metadata"].(map[string]interface{})["category"])
+	assert.Equal(t, "technology", docMap["metadata"].(map[string]any)["category"])
 
 	// Test document deletion
 	deleteStepConfig := pipelines.StepConfig{
 		Name:   "Delete Test Document",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "delete",
 			"collection": "test_collection",
 			"ids":        []string{"test_doc_1"},
@@ -158,7 +158,7 @@ func testBasicCRUDOperations(t *testing.T, ctx context.Context, plugin *StorageP
 	deleteResultMap, exists := deleteResult.Get("delete_result")
 	require.True(t, exists)
 
-	deleteMap, ok := deleteResultMap.(map[string]interface{})
+	deleteMap, ok := deleteResultMap.(map[string]any)
 	require.True(t, ok)
 
 	assert.Equal(t, "delete", deleteMap["operation"])
@@ -172,30 +172,30 @@ func testQueryOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 		{
 			ID:      "query_doc_1",
 			Content: "The weather is beautiful today with clear blue skies",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"topic": "weather",
 			},
 		},
 		{
 			ID:      "query_doc_2",
 			Content: "Machine learning algorithms can predict weather patterns",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"topic": "technology",
 			},
 		},
 		{
 			ID:      "query_doc_3",
 			Content: "Blue is a primary color in the visible light spectrum",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"topic": "science",
 			},
 		},
 	}
 
 	// Convert documents to the format expected by the plugin
-	docMaps := make([]map[string]interface{}, len(documents))
+	docMaps := make([]map[string]any, len(documents))
 	for i, doc := range documents {
-		docMaps[i] = map[string]interface{}{
+		docMaps[i] = map[string]any{
 			"id":       doc.ID,
 			"content":  doc.Content,
 			"metadata": doc.Metadata,
@@ -205,7 +205,7 @@ func testQueryOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 	storeStepConfig := pipelines.StepConfig{
 		Name:   "Store Query Test Documents",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "store",
 			"collection": "query_test_collection",
 			"documents":  docMaps,
@@ -220,7 +220,7 @@ func testQueryOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 	queryStepConfig := pipelines.StepConfig{
 		Name:   "Query Weather Documents",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "query",
 			"collection": "query_test_collection",
 			"query":      "What is the weather like?",
@@ -235,7 +235,7 @@ func testQueryOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 	queryResultMap, exists := queryResult.Get("query_result")
 	require.True(t, exists)
 
-	resultMap, ok := queryResultMap.(map[string]interface{})
+	resultMap, ok := queryResultMap.(map[string]any)
 	require.True(t, ok)
 
 	assert.Equal(t, "query", resultMap["operation"])
@@ -243,12 +243,12 @@ func testQueryOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 	assert.Equal(t, "What is the weather like?", resultMap["query"])
 	assert.Equal(t, float64(2), resultMap["limit"])
 
-	results, ok := resultMap["results"].([]interface{})
+	results, ok := resultMap["results"].([]any)
 	require.True(t, ok)
 	assert.True(t, len(results) > 0)
 
 	// The first result should be about weather
-	firstResult, ok := results[0].(map[string]interface{})
+	firstResult, ok := results[0].(map[string]any)
 	require.True(t, ok)
 	assert.Contains(t, []string{"query_doc_1", "query_doc_2"}, firstResult["id"])
 }
@@ -260,7 +260,7 @@ func testBatchOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 		documents[i] = Document{
 			ID:      fmt.Sprintf("batch_doc_%d", i),
 			Content: fmt.Sprintf("This is batch document number %d with some content", i),
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"batch": i,
 				"type":  "test",
 			},
@@ -268,9 +268,9 @@ func testBatchOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 	}
 
 	// Convert documents to the format expected by the plugin
-	docMaps := make([]map[string]interface{}, len(documents))
+	docMaps := make([]map[string]any, len(documents))
 	for i, doc := range documents {
-		docMaps[i] = map[string]interface{}{
+		docMaps[i] = map[string]any{
 			"id":       doc.ID,
 			"content":  doc.Content,
 			"metadata": doc.Metadata,
@@ -280,7 +280,7 @@ func testBatchOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 	batchStepConfig := pipelines.StepConfig{
 		Name:   "Batch Store Documents",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "batch_store",
 			"collection": "batch_test_collection",
 			"documents":  docMaps,
@@ -294,7 +294,7 @@ func testBatchOperations(t *testing.T, ctx context.Context, plugin *StoragePlugi
 	batchResultMap, exists := batchResult.Get("batch_result")
 	require.True(t, exists)
 
-	resultMap, ok := batchResultMap.(map[string]interface{})
+	resultMap, ok := batchResultMap.(map[string]any)
 	require.True(t, ok)
 
 	assert.Equal(t, "store", resultMap["operation"])
@@ -309,7 +309,7 @@ func testCollectionManagement(t *testing.T, ctx context.Context, plugin *Storage
 	createStepConfig := pipelines.StepConfig{
 		Name:   "Create Test Collection",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation": "create_collection",
 			"name":      collectionName,
 		},
@@ -322,7 +322,7 @@ func testCollectionManagement(t *testing.T, ctx context.Context, plugin *Storage
 	createResultMap, exists := createResult.Get("create_result")
 	require.True(t, exists)
 
-	resultMap, ok := createResultMap.(map[string]interface{})
+	resultMap, ok := createResultMap.(map[string]any)
 	require.True(t, ok)
 
 	assert.Equal(t, "create_collection", resultMap["operation"])
@@ -330,18 +330,18 @@ func testCollectionManagement(t *testing.T, ctx context.Context, plugin *Storage
 	assert.True(t, resultMap["successful"].(bool))
 
 	// Insert a dummy document to force collection registration
-	dummyDoc := map[string]interface{}{
+	dummyDoc := map[string]any{
 		"id":       "dummy_id",
 		"content":  "dummy content",
-		"metadata": map[string]interface{}{"type": "dummy"},
+		"metadata": map[string]any{"type": "dummy"},
 	}
 	storeStepConfig := pipelines.StepConfig{
 		Name:   "Store Dummy Document",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "store",
 			"collection": collectionName,
-			"documents":  []map[string]interface{}{dummyDoc},
+			"documents":  []map[string]any{dummyDoc},
 		},
 		Output: "store_result",
 	}
@@ -352,7 +352,7 @@ func testCollectionManagement(t *testing.T, ctx context.Context, plugin *Storage
 	listStepConfig := pipelines.StepConfig{
 		Name:   "List Collections",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation": "list_collections",
 		},
 		Output: "collections",
@@ -369,18 +369,18 @@ func testCollectionManagement(t *testing.T, ctx context.Context, plugin *Storage
 	switch v := collections.(type) {
 	case []string:
 		colSlice = v
-	case []interface{}:
+	case []any:
 		for _, c := range v {
 			if s, ok := c.(string); ok {
 				colSlice = append(colSlice, s)
 			}
 		}
-	case map[string]interface{}:
+	case map[string]any:
 		if val, ok := v["value"]; ok {
 			switch vv := val.(type) {
 			case []string:
 				colSlice = vv
-			case []interface{}:
+			case []any:
 				for _, c := range vv {
 					if s, ok := c.(string); ok {
 						colSlice = append(colSlice, s)
@@ -399,7 +399,7 @@ func testErrorHandling(t *testing.T, ctx context.Context, plugin *StoragePlugin)
 	queryStepConfig := pipelines.StepConfig{
 		Name:   "Query Non-existent Collection",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "query",
 			"collection": "non_existent_collection",
 			"query":      "test query",
@@ -415,7 +415,7 @@ func testErrorHandling(t *testing.T, ctx context.Context, plugin *StoragePlugin)
 	getStepConfig := pipelines.StepConfig{
 		Name:   "Get Non-existent Document",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "get",
 			"collection": "test_collection",
 			"id":         "non_existent_doc",
@@ -430,7 +430,7 @@ func testErrorHandling(t *testing.T, ctx context.Context, plugin *StoragePlugin)
 	invalidStepConfig := pipelines.StepConfig{
 		Name:   "Invalid Operation",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation": "invalid_operation",
 		},
 		Output: "result",
@@ -597,7 +597,7 @@ func BenchmarkStorageOperations(b *testing.B) {
 			{
 				ID:      "bench_doc",
 				Content: "This is a benchmark document for performance testing",
-				Metadata: map[string]interface{}{
+				Metadata: map[string]any{
 					"type": "benchmark",
 				},
 			},
@@ -606,7 +606,7 @@ func BenchmarkStorageOperations(b *testing.B) {
 		stepConfig := pipelines.StepConfig{
 			Name:   "Benchmark Store",
 			Plugin: "Storage.vector",
-			Config: map[string]interface{}{
+			Config: map[string]any{
 				"operation":  "store",
 				"collection": "benchmark_collection",
 				"documents":  documents,
@@ -625,7 +625,7 @@ func BenchmarkStorageOperations(b *testing.B) {
 		stepConfig := pipelines.StepConfig{
 			Name:   "Benchmark Query",
 			Plugin: "Storage.vector",
-			Config: map[string]interface{}{
+			Config: map[string]any{
 				"operation":  "query",
 				"collection": "benchmark_collection",
 				"query":      "benchmark document",

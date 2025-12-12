@@ -21,7 +21,7 @@ func (m *MockPlugin) ExecuteStep(ctx context.Context, stepConfig StepConfig, glo
 	}
 
 	result := NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"plugin":  m.pluginName,
 		"success": true,
 	})
@@ -30,7 +30,7 @@ func (m *MockPlugin) ExecuteStep(ctx context.Context, stepConfig StepConfig, glo
 
 func (m *MockPlugin) GetPluginType() string { return m.pluginType }
 func (m *MockPlugin) GetPluginName() string { return m.pluginName }
-func (m *MockPlugin) ValidateConfig(config map[string]interface{}) error {
+func (m *MockPlugin) ValidateConfig(config map[string]any) error {
 	if m.shouldFail {
 		return assert.AnError
 	}
@@ -50,7 +50,7 @@ func TestPluginContextSetAndGet(t *testing.T) {
 	ctx := NewPluginContext()
 
 	// Test setting and getting a value
-	testData := map[string]interface{}{"key": "value"}
+	testData := map[string]any{"key": "value"}
 	ctx.Set("test_key", testData)
 
 	value, exists := ctx.Get("test_key")
@@ -62,7 +62,7 @@ func TestPluginContextSetAndGetTyped(t *testing.T) {
 	ctx := NewPluginContext()
 
 	// Test setting and getting typed data
-	jsonData := NewJSONData(map[string]interface{}{"key": "value"})
+	jsonData := NewJSONData(map[string]any{"key": "value"})
 	ctx.SetTyped("typed_key", jsonData)
 
 	retrievedData, exists := ctx.GetTyped("typed_key")
@@ -147,7 +147,7 @@ func TestPluginContextClone(t *testing.T) {
 	ctx := NewPluginContext()
 
 	// Add some data
-	testData := map[string]interface{}{"key": "value"}
+	testData := map[string]any{"key": "value"}
 	ctx.Set("key1", testData)
 	ctx.SetMetadata("meta1", "meta_value")
 
@@ -198,7 +198,7 @@ func TestPluginContextAutoWrapping(t *testing.T) {
 	ctx := NewPluginContext()
 
 	// Test auto-wrapping of different types
-	ctx.Set("map_key", map[string]interface{}{"key": "value"})
+	ctx.Set("map_key", map[string]any{"key": "value"})
 	ctx.Set("bytes_key", []byte("test data"))
 	ctx.Set("string_key", "test string")
 	ctx.Set("int_key", 42)
@@ -358,7 +358,7 @@ func TestStepConfig(t *testing.T) {
 	config := StepConfig{
 		Name:   "test-step",
 		Plugin: "Input.test",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"param1": "value1",
 			"param2": 42,
 		},
@@ -380,7 +380,7 @@ func TestBasePluginInterface(t *testing.T) {
 	assert.Equal(t, "mock", plugin.GetPluginName())
 
 	// Test validation
-	err := plugin.ValidateConfig(map[string]interface{}{})
+	err := plugin.ValidateConfig(map[string]any{})
 	assert.NoError(t, err)
 
 	// Test execution
@@ -428,9 +428,9 @@ func TestPluginContextComplexDataTypes(t *testing.T) {
 	ctx := NewPluginContext()
 
 	// Test with complex nested data
-	complexData := map[string]interface{}{
-		"nested": map[string]interface{}{
-			"array":  []interface{}{1, 2, 3},
+	complexData := map[string]any{
+		"nested": map[string]any{
+			"array":  []any{1, 2, 3},
 			"string": "test",
 		},
 		"number": 42,

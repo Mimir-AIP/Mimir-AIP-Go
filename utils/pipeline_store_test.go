@@ -63,7 +63,7 @@ func TestPipelineStoreCreatePipeline(t *testing.T) {
 			{
 				Name:   "step1",
 				Plugin: "Input.test",
-				Config: map[string]interface{}{"param": "value"},
+				Config: map[string]any{"param": "value"},
 			},
 		},
 	}
@@ -189,20 +189,20 @@ func TestPipelineStoreListPipelines(t *testing.T) {
 	assert.Equal(t, 3, len(allPipelines))
 
 	// List only enabled pipelines
-	enabledFilter := map[string]interface{}{"enabled": true}
+	enabledFilter := map[string]any{"enabled": true}
 	enabledPipelines, err := store.ListPipelines(enabledFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(enabledPipelines)) // pipeline-0 and pipeline-2
 
 	// Filter by name
-	nameFilter := map[string]interface{}{"name": "pipeline-1"}
+	nameFilter := map[string]any{"name": "pipeline-1"}
 	namePipelines, err := store.ListPipelines(nameFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(namePipelines))
 	assert.Equal(t, "pipeline-1", namePipelines[0].Metadata.Name)
 
 	// Filter by tags
-	tagFilter := map[string]interface{}{"tags": []string{"tag-0"}}
+	tagFilter := map[string]any{"tags": []string{"tag-0"}}
 	tagPipelines, err := store.ListPipelines(tagFilter)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(tagPipelines))

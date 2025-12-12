@@ -50,7 +50,7 @@ type OpenAIResponse struct {
 	Object  string                 `json:"object"`
 	Created int64                  `json:"created"`
 	Choices []OpenAIChoice         `json:"choices"`
-	Usage   map[string]interface{} `json:"usage"`
+	Usage   map[string]any `json:"usage"`
 }
 
 // NewOpenAIPlugin creates a new OpenAI plugin instance
@@ -111,7 +111,7 @@ func (p *OpenAIPlugin) GetPluginName() string {
 }
 
 // ValidateConfig validates the plugin configuration
-func (p *OpenAIPlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *OpenAIPlugin) ValidateConfig(config map[string]any) error {
 	operation, _ := config["operation"].(string)
 	if operation == "" {
 		operation = "chat"
@@ -132,7 +132,7 @@ func (p *OpenAIPlugin) ValidateConfig(config map[string]interface{}) error {
 }
 
 // getAPIKey retrieves the API key from config or environment
-func (p *OpenAIPlugin) getAPIKey(config map[string]interface{}) string {
+func (p *OpenAIPlugin) getAPIKey(config map[string]any) string {
 	// Check config first
 	if key, ok := config["api_key"].(string); ok && key != "" {
 		return key
@@ -145,14 +145,14 @@ func (p *OpenAIPlugin) getAPIKey(config map[string]interface{}) string {
 }
 
 // executeChat executes a chat completion
-func (p *OpenAIPlugin) executeChat(ctx context.Context, config map[string]interface{}, outputKey string) (*pipelines.PluginContext, error) {
+func (p *OpenAIPlugin) executeChat(ctx context.Context, config map[string]any, outputKey string) (*pipelines.PluginContext, error) {
 	// Build messages
 	var messages []OpenAIMessage
 
 	// Check if messages are provided directly
-	if msgs, ok := config["messages"].([]interface{}); ok {
+	if msgs, ok := config["messages"].([]any); ok {
 		for _, msg := range msgs {
-			if msgMap, ok := msg.(map[string]interface{}); ok {
+			if msgMap, ok := msg.(map[string]any); ok {
 				role, _ := msgMap["role"].(string)
 				content, _ := msgMap["content"].(string)
 				messages = append(messages, OpenAIMessage{
@@ -213,7 +213,7 @@ func (p *OpenAIPlugin) executeChat(ctx context.Context, config map[string]interf
 
 	// Build result
 	result := pipelines.NewPluginContext()
-	result.Set(outputKey, map[string]interface{}{
+	result.Set(outputKey, map[string]any{
 		"content":       content,
 		"model":         openaiResp.Object,
 		"usage":         openaiResp.Usage,
@@ -226,14 +226,14 @@ func (p *OpenAIPlugin) executeChat(ctx context.Context, config map[string]interf
 }
 
 // executeCompletion executes a text completion (legacy)
-func (p *OpenAIPlugin) executeCompletion(ctx context.Context, config map[string]interface{}, outputKey string) (*pipelines.PluginContext, error) {
+func (p *OpenAIPlugin) executeCompletion(ctx context.Context, config map[string]any, outputKey string) (*pipelines.PluginContext, error) {
 	// Implementation for completion API
 	// This would be similar to chat but use the completions endpoint
 	return nil, fmt.Errorf("completion operation not implemented in this example")
 }
 
 // makeAPIRequest makes a request to the OpenAI API
-func (p *OpenAIPlugin) makeAPIRequest(ctx context.Context, endpoint string, payload interface{}) ([]byte, error) {
+func (p *OpenAIPlugin) makeAPIRequest(ctx context.Context, endpoint string, payload any) ([]byte, error) {
 	// Serialize payload
 	jsonData, err := json.Marshal(payload)
 	if err != nil {

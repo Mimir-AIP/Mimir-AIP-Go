@@ -13,7 +13,7 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)
 type StorageBackend interface {
 	// Core vector operations
 	Store(ctx context.Context, collection string, documents []Document, embeddings [][]float32) error
-	Query(ctx context.Context, collection string, queryVector []float32, limit int, filters map[string]interface{}) ([]QueryResult, error)
+	Query(ctx context.Context, collection string, queryVector []float32, limit int, filters map[string]any) ([]QueryResult, error)
 	Delete(ctx context.Context, collection string, ids []string) error
 
 	// Collection management
@@ -23,7 +23,7 @@ type StorageBackend interface {
 
 	// Document operations
 	GetDocument(ctx context.Context, collection string, id string) (*Document, error)
-	UpdateMetadata(ctx context.Context, collection string, id string, metadata map[string]interface{}) error
+	UpdateMetadata(ctx context.Context, collection string, id string, metadata map[string]any) error
 
 	// Health and status
 	Health(ctx context.Context) error
@@ -37,7 +37,7 @@ type StorageBackend interface {
 type Document struct {
 	ID        string                 `json:"id"`
 	Content   string                 `json:"content"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 	Embedding []float32              `json:"embedding,omitempty"` // Optional: pre-computed embedding
 }
 
@@ -45,7 +45,7 @@ type Document struct {
 type QueryResult struct {
 	Document Document               `json:"document"`
 	Score    float32                `json:"score"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // CollectionConfig defines configuration for a vector collection

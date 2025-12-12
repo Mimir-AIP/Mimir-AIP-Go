@@ -106,7 +106,7 @@ func (cs *ContextSerializer) SerializeContext(ctx *PluginContext) ([]byte, error
 
 	// Create a serializable representation
 	serializedData := make(map[string]string)
-	metadata := make(map[string]interface{})
+	metadata := make(map[string]any)
 
 	// Serialize each data value
 	for key, data := range ctx.data {
@@ -124,7 +124,7 @@ func (cs *ContextSerializer) SerializeContext(ctx *PluginContext) ([]byte, error
 	}
 
 	// Create final structure
-	contextData := map[string]interface{}{
+	contextData := map[string]any{
 		"data":     serializedData,
 		"metadata": metadata,
 	}
@@ -134,7 +134,7 @@ func (cs *ContextSerializer) SerializeContext(ctx *PluginContext) ([]byte, error
 
 // DeserializeContext deserializes into a PluginContext
 func (cs *ContextSerializer) DeserializeContext(data []byte) (*PluginContext, error) {
-	var contextData map[string]interface{}
+	var contextData map[string]any
 	if err := json.Unmarshal(data, &contextData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal context data: %w", err)
 	}
@@ -142,7 +142,7 @@ func (cs *ContextSerializer) DeserializeContext(data []byte) (*PluginContext, er
 	ctx := NewPluginContext()
 
 	// Deserialize data
-	if dataMap, ok := contextData["data"].(map[string]interface{}); ok {
+	if dataMap, ok := contextData["data"].(map[string]any); ok {
 		for key, value := range dataMap {
 			// Handle base64 encoded strings from JSON unmarshaling
 			var dataBytes []byte
@@ -162,7 +162,7 @@ func (cs *ContextSerializer) DeserializeContext(data []byte) (*PluginContext, er
 			if len(dataBytes) > 0 {
 				// Determine data type from content
 				dataType := "json" // Default fallback
-				var temp map[string]interface{}
+				var temp map[string]any
 				if json.Unmarshal(dataBytes, &temp) == nil {
 					if _, hasContent := temp["content"]; hasContent {
 						if _, hasPoints := temp["points"]; hasPoints {
@@ -187,7 +187,7 @@ func (cs *ContextSerializer) DeserializeContext(data []byte) (*PluginContext, er
 	}
 
 	// Deserialize metadata
-	if metadata, ok := contextData["metadata"].(map[string]interface{}); ok {
+	if metadata, ok := contextData["metadata"].(map[string]any); ok {
 		for k, v := range metadata {
 			ctx.SetMetadata(k, v)
 		}
@@ -205,7 +205,7 @@ type SerializationPool struct {
 func NewSerializationPool() *SerializationPool {
 	return &SerializationPool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return NewJSONSerializer(false)
 			},
 		},

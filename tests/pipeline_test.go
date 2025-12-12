@@ -16,7 +16,7 @@ type MockPlugin struct {
 	pluginType    string
 	shouldFail    bool
 	executionTime time.Duration
-	result        interface{}
+	result        any
 }
 
 func NewMockPlugin(name, pluginType string, shouldFail bool) *MockPlugin {
@@ -24,7 +24,7 @@ func NewMockPlugin(name, pluginType string, shouldFail bool) *MockPlugin {
 		name:       name,
 		pluginType: pluginType,
 		shouldFail: shouldFail,
-		result:     map[string]interface{}{"status": "success"},
+		result:     map[string]any{"status": "success"},
 	}
 }
 
@@ -56,7 +56,7 @@ func (mp *MockPlugin) GetPluginName() string {
 	return mp.name
 }
 
-func (mp *MockPlugin) ValidateConfig(config map[string]interface{}) error {
+func (mp *MockPlugin) ValidateConfig(config map[string]any) error {
 	if config["invalid"] != nil {
 		return fmt.Errorf("VALIDATION_ERROR: Invalid configuration")
 	}
@@ -71,13 +71,13 @@ func TestPipelineExecution_Success(t *testing.T) {
 			{
 				Name:   "Step 1",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "step1_output",
 			},
 			{
 				Name:   "Step 2",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "step2_output",
 			},
 		},
@@ -125,13 +125,13 @@ func TestPipelineExecution_Failure(t *testing.T) {
 			{
 				Name:   "Step 1",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "step1_output",
 			},
 			{
 				Name:   "Failing Step",
 				Plugin: "Data_Processing.mock_fail",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "failing_output",
 			},
 		},
@@ -174,7 +174,7 @@ func TestPipelineExecution_Timeout(t *testing.T) {
 			{
 				Name:   "Slow Step",
 				Plugin: "Data_Processing.slow_mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "slow_output",
 			},
 		},
@@ -211,7 +211,7 @@ func TestPipelineExecution_ContextPropagation(t *testing.T) {
 			{
 				Name:   "Generate Data",
 				Plugin: "Data_Processing.data_generator",
-				Config: map[string]interface{}{
+				Config: map[string]any{
 					"data": "test_data",
 				},
 				Output: "generated_data",
@@ -219,7 +219,7 @@ func TestPipelineExecution_ContextPropagation(t *testing.T) {
 			{
 				Name:   "Process Data",
 				Plugin: "Data_Processing.data_processor",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "processed_data",
 			},
 		},
@@ -274,13 +274,13 @@ func TestPipelineExecution_ParallelSteps(t *testing.T) {
 			{
 				Name:   "Parallel Step 1",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "output1",
 			},
 			{
 				Name:   "Parallel Step 2",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "output2",
 			},
 		},
@@ -319,7 +319,7 @@ func TestPipelineExecution_ConfigurationValidation(t *testing.T) {
 			{
 				Name:   "Invalid Step",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{
+				Config: map[string]any{
 					"invalid": true,
 				},
 				Output: "invalid_output",

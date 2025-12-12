@@ -52,7 +52,7 @@ func benchmarkPluginExecution() {
 	stepConfig := pipelines.StepConfig{
 		Name:   "Benchmark Step",
 		Plugin: "Data_Processing.test1",
-		Config: map[string]interface{}{"operation": "echo", "text": "benchmark data"},
+		Config: map[string]any{"operation": "echo", "text": "benchmark data"},
 		Output: "result",
 	}
 
@@ -99,19 +99,19 @@ func benchmarkPipelineExecution() {
 			{
 				Name:   "Step 1",
 				Plugin: "Data_Processing.transform",
-				Config: map[string]interface{}{"operation": "echo", "text": "step1"},
+				Config: map[string]any{"operation": "echo", "text": "step1"},
 				Output: "step1_output",
 			},
 			{
 				Name:   "Step 2",
 				Plugin: "Data_Processing.transform",
-				Config: map[string]interface{}{"operation": "echo", "text": "step2"},
+				Config: map[string]any{"operation": "echo", "text": "step2"},
 				Output: "step2_output",
 			},
 			{
 				Name:   "Step 3",
 				Plugin: "Data_Processing.transform",
-				Config: map[string]interface{}{"operation": "echo", "text": "step3"},
+				Config: map[string]any{"operation": "echo", "text": "step3"},
 				Output: "step3_output",
 			},
 		},
@@ -155,7 +155,7 @@ func benchmarkMemoryUsage() {
 	stepConfig := pipelines.StepConfig{
 		Name:   "Memory Test",
 		Plugin: "Data_Processing.memory_test",
-		Config: map[string]interface{}{"operation": "echo", "text": "memory test data"},
+		Config: map[string]any{"operation": "echo", "text": "memory test data"},
 		Output: "result",
 	}
 
@@ -191,7 +191,7 @@ func benchmarkConcurrentLoad() {
 	stepConfig := pipelines.StepConfig{
 		Name:   "Concurrent Test",
 		Plugin: "Data_Processing.concurrent_test",
-		Config: map[string]interface{}{"operation": "echo", "text": "concurrent test"},
+		Config: map[string]any{"operation": "echo", "text": "concurrent test"},
 		Output: "result",
 	}
 
@@ -242,7 +242,7 @@ func (p *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepC
 	time.Sleep(100 * time.Microsecond)
 
 	result := pipelines.NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"processed": true,
 		"timestamp": time.Now(),
 	})
@@ -252,4 +252,4 @@ func (p *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepC
 
 func (p *MockPlugin) GetPluginType() string                              { return p.pluginType }
 func (p *MockPlugin) GetPluginName() string                              { return p.name }
-func (p *MockPlugin) ValidateConfig(config map[string]interface{}) error { return nil }
+func (p *MockPlugin) ValidateConfig(config map[string]any) error { return nil }

@@ -11,7 +11,7 @@ import (
 
 func TestJSONData(t *testing.T) {
 	// Test creation
-	data := pipelines.NewJSONData(map[string]interface{}{
+	data := pipelines.NewJSONData(map[string]any{
 		"name":  "test",
 		"value": 42,
 	})
@@ -166,7 +166,7 @@ func TestPluginContext(t *testing.T) {
 	ctx := pipelines.NewPluginContext()
 
 	// Test setting and getting data
-	jsonData := pipelines.NewJSONData(map[string]interface{}{"key": "value"})
+	jsonData := pipelines.NewJSONData(map[string]any{"key": "value"})
 	ctx.SetTyped("test_json", jsonData)
 
 	retrieved, exists := ctx.GetTyped("test_json")
@@ -187,12 +187,12 @@ func TestPluginContext(t *testing.T) {
 	if !exists {
 		t.Error("Expected data to exist")
 	}
-	if valueMap, ok := value.(map[string]interface{}); ok {
+	if valueMap, ok := value.(map[string]any); ok {
 		if valueMap["key"] != "value" {
 			t.Errorf("Expected value 'value', got '%v'", valueMap["key"])
 		}
 	} else {
-		t.Error("Expected map[string]interface{} type")
+		t.Error("Expected map[string]any type")
 	}
 
 	// Test metadata
@@ -219,7 +219,7 @@ func TestPluginContext(t *testing.T) {
 func TestSerialization(t *testing.T) {
 	// Test JSON serializer
 	serializer := pipelines.NewJSONSerializer(false)
-	data := pipelines.NewJSONData(map[string]interface{}{"test": "data"})
+	data := pipelines.NewJSONData(map[string]any{"test": "data"})
 
 	serialized, err := serializer.Serialize(data)
 	if err != nil {
@@ -243,7 +243,7 @@ func TestSerialization(t *testing.T) {
 func TestCompressedSerialization(t *testing.T) {
 	// Test compressed serializer
 	serializer := pipelines.NewJSONSerializer(true)
-	data := pipelines.NewJSONData(map[string]interface{}{"test": "data", "number": 42})
+	data := pipelines.NewJSONData(map[string]any{"test": "data", "number": 42})
 
 	serialized, err := serializer.Serialize(data)
 	if err != nil {
@@ -273,7 +273,7 @@ func TestContextSerialization(t *testing.T) {
 	ctx := pipelines.NewPluginContext()
 
 	// Add JSON data
-	jsonData := pipelines.NewJSONData(map[string]interface{}{"user": "test", "active": true})
+	jsonData := pipelines.NewJSONData(map[string]any{"user": "test", "active": true})
 	ctx.SetTyped("user_data", jsonData)
 
 	// Add binary data
@@ -340,7 +340,7 @@ func TestDataCache(t *testing.T) {
 	}
 
 	// Test cache put and get
-	data := pipelines.NewJSONData(map[string]interface{}{"cached": true})
+	data := pipelines.NewJSONData(map[string]any{"cached": true})
 	cache.Put("test_key", data)
 
 	retrieved, exists := cache.Get("test_key")
@@ -399,12 +399,12 @@ func TestMemoryManager(t *testing.T) {
 }
 
 func BenchmarkJSONDataSerialization(b *testing.B) {
-	data := pipelines.NewJSONData(map[string]interface{}{
+	data := pipelines.NewJSONData(map[string]any{
 		"id":       12345,
 		"name":     "Benchmark Test",
 		"active":   true,
 		"tags":     []string{"test", "benchmark", "performance"},
-		"metadata": map[string]interface{}{"version": "1.0", "env": "test"},
+		"metadata": map[string]any{"version": "1.0", "env": "test"},
 	})
 
 	b.ResetTimer()
@@ -421,7 +421,7 @@ func BenchmarkPluginContextOperations(b *testing.B) {
 
 	b.Run("Set", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			data := pipelines.NewJSONData(map[string]interface{}{"value": i})
+			data := pipelines.NewJSONData(map[string]any{"value": i})
 			ctx.SetTyped(fmt.Sprintf("key_%d", i%100), data)
 		}
 	})

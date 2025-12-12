@@ -250,7 +250,7 @@ func CreateTestDocuments() []Document {
 		{
 			ID:      "doc1",
 			Content: "The sky is blue because of Rayleigh scattering",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"category": "science",
 				"topic":    "physics",
 				"type":     "explanation",
@@ -259,7 +259,7 @@ func CreateTestDocuments() []Document {
 		{
 			ID:      "doc2",
 			Content: "Photosynthesis is the process by which plants make food",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"category": "biology",
 				"topic":    "plants",
 				"type":     "process",
@@ -268,7 +268,7 @@ func CreateTestDocuments() []Document {
 		{
 			ID:      "doc3",
 			Content: "Machine learning algorithms learn from data",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"category": "technology",
 				"topic":    "AI",
 				"type":     "definition",

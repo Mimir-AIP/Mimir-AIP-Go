@@ -8,7 +8,7 @@ import (
 // Response helpers for common HTTP response patterns
 
 // writeJSONResponse writes a JSON response with the given status code
-func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+func writeJSONResponse(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(data)
@@ -18,23 +18,23 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) 
 func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"error":  message,
 		"status": "error",
 	})
 }
 
 // writeSuccessResponse writes a success response with the given data
-func writeSuccessResponse(w http.ResponseWriter, data interface{}) {
-	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+func writeSuccessResponse(w http.ResponseWriter, data any) {
+	writeJSONResponse(w, http.StatusOK, map[string]any{
 		"success": true,
 		"data":    data,
 	})
 }
 
 // writeCreatedResponse writes a 201 Created response with the given data
-func writeCreatedResponse(w http.ResponseWriter, data interface{}) {
-	writeJSONResponse(w, http.StatusCreated, map[string]interface{}{
+func writeCreatedResponse(w http.ResponseWriter, data any) {
+	writeJSONResponse(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"data":    data,
 	})

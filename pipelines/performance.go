@@ -110,7 +110,7 @@ type ObjectPool struct {
 func NewJSONDataPool() *ObjectPool {
 	return &ObjectPool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return &JSONData{}
 			},
 		},
@@ -121,7 +121,7 @@ func NewJSONDataPool() *ObjectPool {
 func NewBinaryDataPool() *ObjectPool {
 	return &ObjectPool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return &BinaryData{}
 			},
 		},
@@ -132,7 +132,7 @@ func NewBinaryDataPool() *ObjectPool {
 func NewTimeSeriesDataPool() *ObjectPool {
 	return &ObjectPool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return NewTimeSeriesData()
 			},
 		},
@@ -140,12 +140,12 @@ func NewTimeSeriesDataPool() *ObjectPool {
 }
 
 // Get retrieves an object from the pool
-func (op *ObjectPool) Get() interface{} {
+func (op *ObjectPool) Get() any {
 	return op.pool.Get()
 }
 
 // Put returns an object to the pool
-func (op *ObjectPool) Put(obj interface{}) {
+func (op *ObjectPool) Put(obj any) {
 	// Reset object state before returning to pool
 	switch v := obj.(type) {
 	case *JSONData:

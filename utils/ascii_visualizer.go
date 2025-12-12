@@ -255,7 +255,7 @@ func (av *ASCIIVisualizer) createTableSeparator(widths []int) string {
 }
 
 // createConfigPreview creates a preview of configuration parameters
-func (av *ASCIIVisualizer) createConfigPreview(config map[string]interface{}) string {
+func (av *ASCIIVisualizer) createConfigPreview(config map[string]any) string {
 	var parts []string
 	count := 0
 

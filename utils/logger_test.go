@@ -193,15 +193,15 @@ func TestLogger_JSONFormat(t *testing.T) {
 	output := buf.String()
 
 	// Parse as JSON to verify structure
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	err := json.Unmarshal([]byte(strings.TrimSpace(output)), &logEntry)
 	require.NoError(t, err)
 
 	assert.Equal(t, "INFO", logEntry["level"])
 	assert.Equal(t, "test message", logEntry["message"])
 	assert.Equal(t, "mimir-aip", logEntry["service"])
-	assert.Equal(t, "value", logEntry["fields"].(map[string]interface{})["key"])
-	assert.Equal(t, float64(42), logEntry["fields"].(map[string]interface{})["number"])
+	assert.Equal(t, "value", logEntry["fields"].(map[string]any)["key"])
+	assert.Equal(t, float64(42), logEntry["fields"].(map[string]any)["number"])
 	assert.Contains(t, logEntry, "timestamp")
 	assert.Contains(t, logEntry, "file")
 	assert.Contains(t, logEntry, "line")
@@ -218,7 +218,7 @@ func TestLogger_WithError(t *testing.T) {
 
 	output := buf.String()
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	err := json.Unmarshal([]byte(strings.TrimSpace(output)), &logEntry)
 	require.NoError(t, err)
 
@@ -298,14 +298,14 @@ func TestFieldLogger_Error(t *testing.T) {
 
 	output := buf.String()
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	err := json.Unmarshal([]byte(strings.TrimSpace(output)), &logEntry)
 	require.NoError(t, err)
 
 	assert.Equal(t, "ERROR", logEntry["level"])
 	assert.Equal(t, "field error", logEntry["message"])
-	assert.Equal(t, "value", logEntry["fields"].(map[string]interface{})["global"])
-	assert.Equal(t, "data", logEntry["fields"].(map[string]interface{})["local"])
+	assert.Equal(t, "value", logEntry["fields"].(map[string]any)["global"])
+	assert.Equal(t, "data", logEntry["fields"].(map[string]any)["local"])
 	assert.Equal(t, testErr.Error(), logEntry["error"])
 }
 
@@ -330,7 +330,7 @@ func TestLogLevel_String(t *testing.T) {
 }
 
 func TestField_Constructors(t *testing.T) {
-	entry := &LogEntry{Fields: make(map[string]interface{})}
+	entry := &LogEntry{Fields: make(map[string]any)}
 
 	// Test StringField
 	strField := String("str_key", "str_value")
@@ -504,7 +504,7 @@ func TestLogger_CallerInformation(t *testing.T) {
 	logger.Info("caller test")
 
 	output := buf.String()
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	err := json.Unmarshal([]byte(strings.TrimSpace(output)), &logEntry)
 	require.NoError(t, err)
 

@@ -25,7 +25,7 @@ func (m *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepC
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"plugin":  m.pluginName,
 		"success": true,
 	})
@@ -34,7 +34,7 @@ func (m *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepC
 
 func (m *MockPlugin) GetPluginType() string { return m.pluginType }
 func (m *MockPlugin) GetPluginName() string { return m.pluginName }
-func (m *MockPlugin) ValidateConfig(config map[string]interface{}) error {
+func (m *MockPlugin) ValidateConfig(config map[string]any) error {
 	if m.shouldFail {
 		return assert.AnError
 	}
@@ -57,13 +57,13 @@ func TestExecutePipeline(t *testing.T) {
 					{
 						Name:   "step1",
 						Plugin: "Input.test",
-						Config: map[string]interface{}{},
+						Config: map[string]any{},
 						Output: "output1",
 					},
 					{
 						Name:   "step2",
 						Plugin: "Output.test",
-						Config: map[string]interface{}{},
+						Config: map[string]any{},
 						Output: "output2",
 					},
 				},
@@ -80,7 +80,7 @@ func TestExecutePipeline(t *testing.T) {
 					{
 						Name:   "step1",
 						Plugin: "invalid", // Missing dot separator
-						Config: map[string]interface{}{},
+						Config: map[string]any{},
 					},
 				},
 			},
@@ -143,7 +143,7 @@ func TestExecuteStep(t *testing.T) {
 			stepConfig: pipelines.StepConfig{
 				Name:   "test-step",
 				Plugin: "Input.test",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "test-output",
 			},
 			expectError: false,
@@ -153,7 +153,7 @@ func TestExecuteStep(t *testing.T) {
 			stepConfig: pipelines.StepConfig{
 				Name:   "invalid-step",
 				Plugin: "invalid",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 			},
 			expectError: true,
 		},
@@ -162,7 +162,7 @@ func TestExecuteStep(t *testing.T) {
 			stepConfig: pipelines.StepConfig{
 				Name:   "nonexistent-step",
 				Plugin: "Nonexistent.plugin",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 			},
 			expectError: true,
 		},
@@ -200,7 +200,7 @@ func TestExecutePipelineWithRegistry_ContextPassing(t *testing.T) {
 			{
 				Name:   "step1",
 				Plugin: "Input.context",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "step1_output",
 			},
 		},
@@ -233,7 +233,7 @@ func TestExecutePipelineWithRegistry_StepFailure(t *testing.T) {
 			{
 				Name:   "step1",
 				Plugin: "Input.failing",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 			},
 		},
 	}
@@ -261,7 +261,7 @@ func TestExecutePipelineWithRegistry_ConfigurationValidation(t *testing.T) {
 			{
 				Name:   "step1",
 				Plugin: "Input.invalid",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 			},
 		},
 	}
@@ -354,7 +354,7 @@ func TestRealAPIPlugin(t *testing.T) {
 
 	// Test validation
 	t.Run("valid config", func(t *testing.T) {
-		config := map[string]interface{}{
+		config := map[string]any{
 			"url": "https://example.com",
 		}
 		err := plugin.ValidateConfig(config)
@@ -362,7 +362,7 @@ func TestRealAPIPlugin(t *testing.T) {
 	})
 
 	t.Run("missing url", func(t *testing.T) {
-		config := map[string]interface{}{}
+		config := map[string]any{}
 		err := plugin.ValidateConfig(config)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "url is required")
@@ -377,7 +377,7 @@ func TestMockHTMLPlugin(t *testing.T) {
 	assert.Equal(t, "html", plugin.GetPluginName())
 
 	// Test validation (always succeeds for mock)
-	config := map[string]interface{}{}
+	config := map[string]any{}
 	err := plugin.ValidateConfig(config)
 	assert.NoError(t, err)
 
@@ -401,7 +401,7 @@ func TestMockHTMLPlugin(t *testing.T) {
 	// Check if it's a boolean directly or wrapped in JSONData
 	if boolVal, ok := value.(bool); ok {
 		assert.True(t, boolVal)
-	} else if jsonVal, ok := value.(map[string]interface{}); ok {
+	} else if jsonVal, ok := value.(map[string]any); ok {
 		assert.True(t, jsonVal["value"].(bool))
 	}
 }

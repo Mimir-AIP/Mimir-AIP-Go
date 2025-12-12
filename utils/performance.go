@@ -401,17 +401,17 @@ func getActiveGoroutines() int {
 
 // ConnectionPool manages a pool of reusable connections
 type ConnectionPool struct {
-	connections chan interface{}
-	factory     func() interface{}
-	closeFunc   func(interface{})
+	connections chan any
+	factory     func() any
+	closeFunc   func(any)
 	maxSize     int
 	mutex       sync.Mutex
 }
 
 // NewConnectionPool creates a new connection pool
-func NewConnectionPool(maxSize int, factory func() interface{}, closeFunc func(interface{})) *ConnectionPool {
+func NewConnectionPool(maxSize int, factory func() any, closeFunc func(any)) *ConnectionPool {
 	cp := &ConnectionPool{
-		connections: make(chan interface{}, maxSize),
+		connections: make(chan any, maxSize),
 		factory:     factory,
 		closeFunc:   closeFunc,
 		maxSize:     maxSize,
@@ -427,7 +427,7 @@ func NewConnectionPool(maxSize int, factory func() interface{}, closeFunc func(i
 }
 
 // Get retrieves a connection from the pool
-func (cp *ConnectionPool) Get() interface{} {
+func (cp *ConnectionPool) Get() any {
 	select {
 	case conn := <-cp.connections:
 		return conn
@@ -438,7 +438,7 @@ func (cp *ConnectionPool) Get() interface{} {
 }
 
 // Put returns a connection to the pool
-func (cp *ConnectionPool) Put(conn interface{}) {
+func (cp *ConnectionPool) Put(conn any) {
 	select {
 	case cp.connections <- conn:
 	default:

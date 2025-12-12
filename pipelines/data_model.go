@@ -30,13 +30,13 @@ type DataValue interface {
 
 // JSONData represents structured JSON data
 type JSONData struct {
-	Content map[string]interface{} `json:"content"`
+	Content map[string]any `json:"content"`
 }
 
 // NewJSONData creates a new JSONData instance
-func NewJSONData(content map[string]interface{}) *JSONData {
+func NewJSONData(content map[string]any) *JSONData {
 	if content == nil {
-		content = make(map[string]interface{})
+		content = make(map[string]any)
 	}
 	return &JSONData{Content: content}
 }
@@ -70,7 +70,7 @@ func (j *JSONData) Size() int {
 
 // Clone creates a deep copy
 func (j *JSONData) Clone() DataValue {
-	newContent := make(map[string]interface{})
+	newContent := make(map[string]any)
 	for k, v := range j.Content {
 		newContent[k] = deepCopy(v)
 	}
@@ -127,21 +127,21 @@ func (b *BinaryData) Clone() DataValue {
 // TimePoint represents a single point in time series data
 type TimePoint struct {
 	Timestamp time.Time         `json:"timestamp"`
-	Value     interface{}       `json:"value"`
+	Value     any       `json:"value"`
 	Tags      map[string]string `json:"tags,omitempty"`
 }
 
 // TimeSeriesData represents time series data
 type TimeSeriesData struct {
 	Points   []TimePoint            `json:"points"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // NewTimeSeriesData creates a new TimeSeriesData instance
 func NewTimeSeriesData() *TimeSeriesData {
 	return &TimeSeriesData{
 		Points:   make([]TimePoint, 0),
-		Metadata: make(map[string]interface{}),
+		Metadata: make(map[string]any),
 	}
 }
 
@@ -182,7 +182,7 @@ func (t *TimeSeriesData) Clone() DataValue {
 	newPoints := make([]TimePoint, len(t.Points))
 	copy(newPoints, t.Points)
 
-	newMetadata := make(map[string]interface{})
+	newMetadata := make(map[string]any)
 	for k, v := range t.Metadata {
 		newMetadata[k] = deepCopy(v)
 	}
@@ -194,7 +194,7 @@ func (t *TimeSeriesData) Clone() DataValue {
 }
 
 // AddPoint adds a new point to the time series
-func (t *TimeSeriesData) AddPoint(timestamp time.Time, value interface{}, tags map[string]string) {
+func (t *TimeSeriesData) AddPoint(timestamp time.Time, value any, tags map[string]string) {
 	point := TimePoint{
 		Timestamp: timestamp,
 		Value:     value,
@@ -263,21 +263,21 @@ func (i *ImageData) Clone() DataValue {
 	return NewImageData(newContent, i.MIMEType, i.Format, i.Width, i.Height)
 }
 
-// deepCopy performs a deep copy of interface{} values
-func deepCopy(value interface{}) interface{} {
+// deepCopy performs a deep copy of any values
+func deepCopy(value any) any {
 	if value == nil {
 		return nil
 	}
 
 	switch v := value.(type) {
-	case map[string]interface{}:
-		newMap := make(map[string]interface{})
+	case map[string]any:
+		newMap := make(map[string]any)
 		for k, val := range v {
 			newMap[k] = deepCopy(val)
 		}
 		return newMap
-	case []interface{}:
-		newSlice := make([]interface{}, len(v))
+	case []any:
+		newSlice := make([]any, len(v))
 		for i, val := range v {
 			newSlice[i] = deepCopy(val)
 		}

@@ -9,7 +9,7 @@ import (
 // PluginContext represents the execution context passed between pipeline steps
 type PluginContext struct {
 	data     map[string]DataValue
-	metadata map[string]interface{}
+	metadata map[string]any
 	mutex    sync.RWMutex
 }
 
@@ -17,12 +17,12 @@ type PluginContext struct {
 func NewPluginContext() *PluginContext {
 	return &PluginContext{
 		data:     make(map[string]DataValue),
-		metadata: make(map[string]interface{}),
+		metadata: make(map[string]any),
 	}
 }
 
 // Get retrieves a value by key
-func (pc *PluginContext) Get(key string) (interface{}, bool) {
+func (pc *PluginContext) Get(key string) (any, bool) {
 	pc.mutex.RLock()
 	defer pc.mutex.RUnlock()
 
@@ -52,13 +52,13 @@ func (pc *PluginContext) GetTyped(key string) (DataValue, bool) {
 }
 
 // Set stores a value by key (auto-wraps in appropriate DataValue type)
-func (pc *PluginContext) Set(key string, value interface{}) {
+func (pc *PluginContext) Set(key string, value any) {
 	pc.mutex.Lock()
 	defer pc.mutex.Unlock()
 
 	var dataValue DataValue
 	switch v := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		dataValue = NewJSONData(v)
 	case []byte:
 		dataValue = NewBinaryData(v, "application/octet-stream")
@@ -68,7 +68,7 @@ func (pc *PluginContext) Set(key string, value interface{}) {
 		dataValue = tsData
 	default:
 		// For other types, wrap in JSONData
-		dataValue = NewJSONData(map[string]interface{}{"value": v})
+		dataValue = NewJSONData(map[string]any{"value": v})
 	}
 
 	pc.data[key] = dataValue
@@ -111,7 +111,7 @@ func (pc *PluginContext) Clear() {
 	pc.mutex.Lock()
 	defer pc.mutex.Unlock()
 	pc.data = make(map[string]DataValue)
-	pc.metadata = make(map[string]interface{})
+	pc.metadata = make(map[string]any)
 }
 
 // Clone creates a deep copy of the context
@@ -130,7 +130,7 @@ func (pc *PluginContext) Clone() *PluginContext {
 }
 
 // GetMetadata retrieves metadata by key
-func (pc *PluginContext) GetMetadata(key string) (interface{}, bool) {
+func (pc *PluginContext) GetMetadata(key string) (any, bool) {
 	pc.mutex.RLock()
 	defer pc.mutex.RUnlock()
 	value, exists := pc.metadata[key]
@@ -138,7 +138,7 @@ func (pc *PluginContext) GetMetadata(key string) (interface{}, bool) {
 }
 
 // SetMetadata stores metadata by key
-func (pc *PluginContext) SetMetadata(key string, value interface{}) {
+func (pc *PluginContext) SetMetadata(key string, value any) {
 	pc.mutex.Lock()
 	defer pc.mutex.Unlock()
 	pc.metadata[key] = value
@@ -148,7 +148,7 @@ func (pc *PluginContext) SetMetadata(key string, value interface{}) {
 type StepConfig struct {
 	Name   string                 `yaml:"name"`
 	Plugin string                 `yaml:"plugin"`
-	Config map[string]interface{} `yaml:"config"`
+	Config map[string]any `yaml:"config"`
 	Output string                 `yaml:"output,omitempty"`
 }
 
@@ -164,7 +164,7 @@ type BasePlugin interface {
 	GetPluginName() string
 
 	// ValidateConfig validates the plugin configuration
-	ValidateConfig(config map[string]interface{}) error
+	ValidateConfig(config map[string]any) error
 }
 
 // PluginRegistry holds all registered plugins

@@ -52,36 +52,36 @@ func (ms *MCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	tools := make([]map[string]interface{}, 0)
+	tools := make([]map[string]any, 0)
 	for pluginType, typePlugins := range ms.registry.GetAllPlugins() {
 		for pluginName := range typePlugins {
 			toolName := fmt.Sprintf("%s.%s", pluginType, pluginName)
-			tools = append(tools, map[string]interface{}{
+			tools = append(tools, map[string]any{
 				"name":        toolName,
 				"description": fmt.Sprintf("%s plugin for Mimir AIP pipeline execution", toolName),
-				"inputSchema": map[string]interface{}{
+				"inputSchema": map[string]any{
 					"type": "object",
-					"properties": map[string]interface{}{
-						"step_config": map[string]interface{}{
+					"properties": map[string]any{
+						"step_config": map[string]any{
 							"type": "object",
-							"properties": map[string]interface{}{
-								"name": map[string]interface{}{
+							"properties": map[string]any{
+								"name": map[string]any{
 									"type":        "string",
 									"description": "Name of the pipeline step",
 								},
-								"config": map[string]interface{}{
+								"config": map[string]any{
 									"type":                 "object",
 									"description":          "Configuration parameters for the plugin",
 									"additionalProperties": true,
 								},
-								"output": map[string]interface{}{
+								"output": map[string]any{
 									"type":        "string",
 									"description": "Output key for storing results in context",
 								},
 							},
 							"required": []string{"name"},
 						},
-						"context": map[string]interface{}{
+						"context": map[string]any{
 							"type":                 "object",
 							"description":          "Current pipeline context",
 							"additionalProperties": true,
@@ -93,7 +93,7 @@ func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"tools": tools,
 	})
 }
@@ -104,7 +104,7 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 
 	var req struct {
 		ToolName  string                 `json:"tool_name"`
-		Arguments map[string]interface{} `json:"arguments"`
+		Arguments map[string]any `json:"arguments"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -131,8 +131,8 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 
 	// Parse arguments
 	var params struct {
-		StepConfig map[string]interface{} `json:"step_config"`
-		Context    map[string]interface{} `json:"context"`
+		StepConfig map[string]any `json:"step_config"`
+		Context    map[string]any `json:"context"`
 	}
 
 	if argsJSON, err := json.Marshal(req.Arguments); err == nil {
@@ -162,7 +162,7 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return result in MCP-compatible format
-	response := map[string]interface{}{
+	response := map[string]any{
 		"success": true,
 		"result":  result,
 	}
@@ -171,7 +171,7 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 }
 
 // Helper functions
-func getStringValue(data map[string]interface{}, key string) string {
+func getStringValue(data map[string]any, key string) string {
 	if data == nil {
 		return ""
 	}
@@ -183,14 +183,14 @@ func getStringValue(data map[string]interface{}, key string) string {
 	return ""
 }
 
-func getMapValue(data map[string]interface{}, key string) map[string]interface{} {
+func getMapValue(data map[string]any, key string) map[string]any {
 	if data == nil {
-		return make(map[string]interface{})
+		return make(map[string]any)
 	}
 	if val, exists := data[key]; exists {
-		if m, ok := val.(map[string]interface{}); ok {
+		if m, ok := val.(map[string]any); ok {
 			return m
 		}
 	}
-	return make(map[string]interface{})
+	return make(map[string]any)
 }

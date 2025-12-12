@@ -55,7 +55,7 @@ type LogEntry struct {
 	SpanID    string                 `json:"span_id,omitempty"`
 	Error     string                 `json:"error,omitempty"`
 	Stack     string                 `json:"stack,omitempty"`
-	Fields    map[string]interface{} `json:"fields,omitempty"`
+	Fields    map[string]any `json:"fields,omitempty"`
 	File      string                 `json:"file,omitempty"`
 	Line      int                    `json:"line,omitempty"`
 }
@@ -224,7 +224,7 @@ func (l *Logger) createLogEntry(level LogLevel, msg string, fields ...Field) *Lo
 		Level:     level.String(),
 		Message:   msg,
 		Service:   l.service,
-		Fields:    make(map[string]interface{}),
+		Fields:    make(map[string]any),
 	}
 
 	// Add caller information

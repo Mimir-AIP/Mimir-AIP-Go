@@ -37,7 +37,7 @@ type PluginsConfig struct {
 	AutoDiscovery  bool                   `yaml:"auto_discovery" json:"auto_discovery"`
 	Timeout        int                    `yaml:"timeout" json:"timeout"` // seconds
 	MaxConcurrency int                    `yaml:"max_concurrency" json:"max_concurrency"`
-	PluginConfigs  map[string]interface{} `yaml:"plugin_configs" json:"plugin_configs"`
+	PluginConfigs  map[string]any `yaml:"plugin_configs" json:"plugin_configs"`
 }
 
 // SchedulerConfig holds scheduler-related configuration
@@ -276,7 +276,7 @@ func getDefaultConfig() *Config {
 			AutoDiscovery:  true,
 			Timeout:        60,
 			MaxConcurrency: 10,
-			PluginConfigs:  make(map[string]interface{}),
+			PluginConfigs:  make(map[string]any),
 		},
 		Scheduler: SchedulerConfig{
 			Enabled:          true,

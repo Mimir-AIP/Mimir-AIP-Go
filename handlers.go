@@ -17,7 +17,7 @@ import (
 
 // handleHealth handles health check requests
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+	writeJSONResponse(w, http.StatusOK, map[string]any{
 		"status": "healthy",
 		"time":   time.Now().Format(time.RFC3339),
 	})
@@ -186,7 +186,7 @@ func (s *Server) handleAgentExecute(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// This will be implemented when we add LLM integration
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Agent execution not yet implemented",
 		"status":  "pending",
 	}
@@ -248,7 +248,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Job created successfully",
 		"job_id":  req.ID,
 	}
@@ -286,7 +286,7 @@ func (s *Server) handleCreatePipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message":  "Pipeline created successfully",
 		"pipeline": pipeline,
 	}
@@ -326,7 +326,7 @@ func (s *Server) handleUpdatePipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message":  "Pipeline updated successfully",
 		"pipeline": pipeline,
 	}
@@ -348,7 +348,7 @@ func (s *Server) handleDeletePipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Pipeline deleted successfully",
 		"id":      pipelineID,
 	}
@@ -391,7 +391,7 @@ func (s *Server) handleClonePipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message":  "Pipeline cloned successfully",
 		"pipeline": clonedPipeline,
 	}
@@ -416,7 +416,7 @@ func (s *Server) handleValidatePipeline(w http.ResponseWriter, r *http.Request) 
 
 	err = store.ValidatePipeline(pipeline)
 	if err != nil {
-		response := map[string]interface{}{
+		response := map[string]any{
 			"valid":       false,
 			"errors":      []string{err.Error()},
 			"pipeline_id": pipelineID,
@@ -426,7 +426,7 @@ func (s *Server) handleValidatePipeline(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"valid":       true,
 		"errors":      []string{},
 		"pipeline_id": pipelineID,
@@ -449,7 +449,7 @@ func (s *Server) handleGetPipelineHistory(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"pipeline_id": pipelineID,
 		"history":     history,
 	}
@@ -470,7 +470,7 @@ func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Job deleted successfully",
 		"job_id":  jobID,
 	}
@@ -491,7 +491,7 @@ func (s *Server) handleEnableJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Job enabled successfully",
 		"job_id":  jobID,
 	}
@@ -512,7 +512,7 @@ func (s *Server) handleDisableJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Job disabled successfully",
 		"job_id":  jobID,
 	}
@@ -583,7 +583,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"token":      token,
 		"user":       user.Username,
 		"roles":      user.Roles,
@@ -635,7 +635,7 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"token":      newToken,
 		"expires_in": auth.GetTokenExpiry().Seconds(),
 	}
@@ -653,7 +653,7 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"id":       user.ID,
 		"username": user.Username,
 		"roles":    user.Roles,
@@ -668,11 +668,11 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	auth := utils.GetAuthManager()
-	var users []map[string]interface{}
+	var users []map[string]any
 
 	allUsers := auth.GetUsers()
 	for _, user := range allUsers {
-		users = append(users, map[string]interface{}{
+		users = append(users, map[string]any{
 			"id":       user.ID,
 			"username": user.Username,
 			"roles":    user.Roles,
@@ -680,7 +680,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"users": users})
+	json.NewEncoder(w).Encode(map[string]any{"users": users})
 }
 
 // handleCreateAPIKey creates a new API key for the authenticated user
@@ -713,7 +713,7 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"key":     apiKey.Key,
 		"name":    apiKey.Name,
 		"user_id": apiKey.UserID,
@@ -749,7 +749,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Configuration updated successfully",
 	}
 
@@ -778,7 +778,7 @@ func (s *Server) handleReloadConfig(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Failed to reload environment config: %v", err)
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Configuration reloaded successfully",
 		"file":    configPath,
 	}
@@ -825,7 +825,7 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Configuration saved successfully",
 		"file":    req.FilePath,
 		"format":  req.Format,
@@ -854,9 +854,9 @@ func (s *Server) handleGetPerformanceStats(w http.ResponseWriter, r *http.Reques
 	metrics := monitor.GetMetrics()
 
 	// Add additional system stats
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"performance": metrics,
-		"system": map[string]interface{}{
+		"system": map[string]any{
 			"go_version":     runtime.Version(),
 			"num_cpu":        runtime.NumCPU(),
 			"num_goroutines": runtime.NumGoroutine(),
@@ -925,7 +925,7 @@ func (s *Server) handleStopJobExecution(w http.ResponseWriter, r *http.Request) 
 
 	s.monitor.CancelJob(executionID)
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Job execution stopped/cancelled successfully",
 		"id":      executionID,
 	}

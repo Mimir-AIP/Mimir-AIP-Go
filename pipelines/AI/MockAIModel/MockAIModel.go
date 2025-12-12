@@ -90,7 +90,7 @@ func (m *MockEchoModel) ExecuteStep(ctx context.Context, stepConfig pipelines.St
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"response":        response,
 		"model":           "mock-echo-v1",
 		"processing_time": processingTime.Seconds(),
@@ -120,7 +120,7 @@ func (m *MockSummaryModel) ExecuteStep(ctx context.Context, stepConfig pipelines
 	summary := m.generateSummary(input)
 
 	result := pipelines.NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"response":        summary,
 		"model":           "mock-summary-v1",
 		"processing_time": processingTime.Seconds(),
@@ -156,7 +156,7 @@ func (m *MockCreativeModel) ExecuteStep(ctx context.Context, stepConfig pipeline
 	creativeResponse := m.generateCreativeWriting(input, style)
 
 	result := pipelines.NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"response":        creativeResponse,
 		"model":           "mock-creative-v1",
 		"processing_time": processingTime.Seconds(),
@@ -171,7 +171,7 @@ func (m *MockCreativeModel) ExecuteStep(ctx context.Context, stepConfig pipeline
 // Plugin interface implementations for MockEchoModel
 func (m *MockEchoModel) GetPluginType() string { return "AIModels" }
 func (m *MockEchoModel) GetPluginName() string { return "mock_echo" }
-func (m *MockEchoModel) ValidateConfig(config map[string]interface{}) error {
+func (m *MockEchoModel) ValidateConfig(config map[string]any) error {
 	if _, ok := config["input"]; !ok {
 		return fmt.Errorf("input parameter is required")
 	}
@@ -181,7 +181,7 @@ func (m *MockEchoModel) ValidateConfig(config map[string]interface{}) error {
 // Plugin interface implementations for MockSummaryModel
 func (m *MockSummaryModel) GetPluginType() string { return "AIModels" }
 func (m *MockSummaryModel) GetPluginName() string { return "mock_summary" }
-func (m *MockSummaryModel) ValidateConfig(config map[string]interface{}) error {
+func (m *MockSummaryModel) ValidateConfig(config map[string]any) error {
 	if _, ok := config["input"]; !ok {
 		return fmt.Errorf("input parameter is required")
 	}
@@ -191,7 +191,7 @@ func (m *MockSummaryModel) ValidateConfig(config map[string]interface{}) error {
 // Plugin interface implementations for MockCreativeModel
 func (m *MockCreativeModel) GetPluginType() string { return "AIModels" }
 func (m *MockCreativeModel) GetPluginName() string { return "mock_creative" }
-func (m *MockCreativeModel) ValidateConfig(config map[string]interface{}) error {
+func (m *MockCreativeModel) ValidateConfig(config map[string]any) error {
 	if _, ok := config["input"]; !ok {
 		return fmt.Errorf("input parameter is required")
 	}

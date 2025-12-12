@@ -321,7 +321,7 @@ func TestExecutePipelineOptimized(t *testing.T) {
 			{
 				Name:   "step1",
 				Plugin: "Input.test",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "output1",
 			},
 		},
@@ -344,7 +344,7 @@ func TestExecuteStepOptimized(t *testing.T) {
 	stepConfig := pipelines.StepConfig{
 		Name:   "step1",
 		Plugin: "Input.test",
-		Config: map[string]interface{}{},
+		Config: map[string]any{},
 		Output: "output1",
 	}
 
@@ -362,7 +362,7 @@ func TestExecuteStepOptimizedInvalidPlugin(t *testing.T) {
 	stepConfig := pipelines.StepConfig{
 		Name:   "step1",
 		Plugin: "invalid", // Invalid format
-		Config: map[string]interface{}{},
+		Config: map[string]any{},
 	}
 
 	pluginContext := pipelines.NewPluginContext()
@@ -379,7 +379,7 @@ func TestExecuteStepOptimizedNonExistentPlugin(t *testing.T) {
 	stepConfig := pipelines.StepConfig{
 		Name:   "step1",
 		Plugin: "Nonexistent.plugin",
-		Config: map[string]interface{}{},
+		Config: map[string]any{},
 	}
 
 	pluginContext := pipelines.NewPluginContext()
@@ -393,7 +393,7 @@ func TestCreateCacheKey(t *testing.T) {
 	stepConfig := pipelines.StepConfig{
 		Name:   "test-step",
 		Plugin: "Input.test",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"param1": "value1",
 			"param2": 42,
 		},
@@ -412,10 +412,10 @@ func TestCreateCacheKey(t *testing.T) {
 
 func TestNewConnectionPool(t *testing.T) {
 	maxSize := 3
-	factory := func() interface{} {
+	factory := func() any {
 		return "test-connection"
 	}
-	closeFunc := func(conn interface{}) {
+	closeFunc := func(conn any) {
 		// Mock close function
 	}
 
@@ -428,11 +428,11 @@ func TestNewConnectionPool(t *testing.T) {
 
 func TestConnectionPoolGetPut(t *testing.T) {
 	connectionsCreated := 0
-	factory := func() interface{} {
+	factory := func() any {
 		connectionsCreated++
 		return "connection-" + string(rune(connectionsCreated))
 	}
-	closeFunc := func(conn interface{}) {}
+	closeFunc := func(conn any) {}
 
 	pool := NewConnectionPool(2, factory, closeFunc)
 
@@ -455,10 +455,10 @@ func TestConnectionPoolGetPut(t *testing.T) {
 
 func TestConnectionPoolClose(t *testing.T) {
 	connectionsClosed := 0
-	factory := func() interface{} {
+	factory := func() any {
 		return "test-connection"
 	}
-	closeFunc := func(conn interface{}) {
+	closeFunc := func(conn any) {
 		connectionsClosed++
 	}
 

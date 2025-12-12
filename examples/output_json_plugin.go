@@ -76,7 +76,7 @@ func (p *JSONOutputPlugin) GetPluginName() string {
 }
 
 // ValidateConfig validates the plugin configuration
-func (p *JSONOutputPlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *JSONOutputPlugin) ValidateConfig(config map[string]any) error {
 	if config["file"] == nil {
 		return fmt.Errorf("file is required")
 	}
@@ -89,7 +89,7 @@ func (p *JSONOutputPlugin) ValidateConfig(config map[string]interface{}) error {
 }
 
 // getOutputData extracts data to be written
-func (p *JSONOutputPlugin) getOutputData(config map[string]interface{}, context *pipelines.PluginContext) interface{} {
+func (p *JSONOutputPlugin) getOutputData(config map[string]any, context *pipelines.PluginContext) any {
 	// Check if input is specified
 	if inputKey, ok := config["input"].(string); ok {
 		if data, exists := context.Get(inputKey); exists {
@@ -107,8 +107,8 @@ func (p *JSONOutputPlugin) getOutputData(config map[string]interface{}, context 
 }
 
 // getOutputOptions extracts output formatting options
-func (p *JSONOutputPlugin) getOutputOptions(config map[string]interface{}) map[string]interface{} {
-	options := make(map[string]interface{})
+func (p *JSONOutputPlugin) getOutputOptions(config map[string]any) map[string]any {
+	options := make(map[string]any)
 
 	// Pretty printing
 	if pretty, ok := config["pretty"].(bool); ok {
@@ -142,7 +142,7 @@ func (p *JSONOutputPlugin) getOutputOptions(config map[string]interface{}) map[s
 }
 
 // writeJSONFile writes data to a JSON file
-func (p *JSONOutputPlugin) writeJSONFile(filePath string, data interface{}, options map[string]interface{}) (map[string]interface{}, error) {
+func (p *JSONOutputPlugin) writeJSONFile(filePath string, data any, options map[string]any) (map[string]any, error) {
 	// Create directory if needed
 	if options["mkdir"].(bool) {
 		dir := filepath.Dir(filePath)
@@ -196,7 +196,7 @@ func (p *JSONOutputPlugin) writeJSONFile(filePath string, data interface{}, opti
 	}
 
 	// Build result
-	result := map[string]interface{}{
+	result := map[string]any{
 		"file_path":      filePath,
 		"bytes_written":  bytesWritten,
 		"file_size":      fileInfo.Size(),

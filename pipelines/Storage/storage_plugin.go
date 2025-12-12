@@ -67,10 +67,10 @@ func (sp *StoragePlugin) handleStore(ctx context.Context, stepConfig pipelines.S
 	var documents []Document
 	if docsConfig, exists := stepConfig.Config["documents"]; exists {
 		// Try different ways to extract documents
-		if docsSlice, ok := docsConfig.([]interface{}); ok {
+		if docsSlice, ok := docsConfig.([]any); ok {
 			documents = sp.convertToDocuments(docsSlice)
-		} else if docsSlice, ok := docsConfig.([]map[string]interface{}); ok {
-			// Handle direct []map[string]interface{} input
+		} else if docsSlice, ok := docsConfig.([]map[string]any); ok {
+			// Handle direct []map[string]any input
 			documents = sp.convertToDocumentsFromMaps(docsSlice)
 		} else if docSlice, ok := docsConfig.([]Document); ok {
 			// Handle direct []Document input
@@ -81,7 +81,7 @@ func (sp *StoragePlugin) handleStore(ctx context.Context, stepConfig pipelines.S
 	// If no documents in config, try to get from context
 	if len(documents) == 0 {
 		if docsFromContext, exists := globalContext.Get(stepConfig.Output); exists {
-			if docsSlice, ok := docsFromContext.([]interface{}); ok {
+			if docsSlice, ok := docsFromContext.([]any); ok {
 				documents = sp.convertToDocuments(docsSlice)
 			}
 		}
@@ -98,7 +98,7 @@ func (sp *StoragePlugin) handleStore(ctx context.Context, stepConfig pipelines.S
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set("store_result", map[string]interface{}{
+	result.Set("store_result", map[string]any{
 		"operation":  "store",
 		"collection": collection,
 		"count":      float64(len(documents)),
@@ -149,7 +149,7 @@ func (sp *StoragePlugin) handleQuery(ctx context.Context, stepConfig pipelines.S
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set("query_result", map[string]interface{}{
+	result.Set("query_result", map[string]any{
 		"operation":  "query",
 		"collection": collection,
 		"query":      queryText,
@@ -170,9 +170,9 @@ func (sp *StoragePlugin) handleBatchStore(ctx context.Context, stepConfig pipeli
 
 	var documents []Document
 	if docsConfig, exists := stepConfig.Config["documents"]; exists {
-		if docsSlice, ok := docsConfig.([]interface{}); ok {
+		if docsSlice, ok := docsConfig.([]any); ok {
 			documents = sp.convertToDocuments(docsSlice)
-		} else if docsSlice, ok := docsConfig.([]map[string]interface{}); ok {
+		} else if docsSlice, ok := docsConfig.([]map[string]any); ok {
 			documents = sp.convertToDocumentsFromMaps(docsSlice)
 		} else if docSlice, ok := docsConfig.([]Document); ok {
 			documents = docSlice
@@ -189,7 +189,7 @@ func (sp *StoragePlugin) handleBatchStore(ctx context.Context, stepConfig pipeli
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set("batch_result", map[string]interface{}{
+	result.Set("batch_result", map[string]any{
 		"operation":  "store",
 		"collection": collection,
 		"count":      float64(len(documents)),
@@ -212,7 +212,7 @@ func (sp *StoragePlugin) handleDelete(ctx context.Context, stepConfig pipelines.
 	}
 
 	var ids []string
-	if idsSlice, ok := idsConfig.([]interface{}); ok {
+	if idsSlice, ok := idsConfig.([]any); ok {
 		for _, id := range idsSlice {
 			if idStr, ok := id.(string); ok {
 				ids = append(ids, idStr)
@@ -232,7 +232,7 @@ func (sp *StoragePlugin) handleDelete(ctx context.Context, stepConfig pipelines.
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set("delete_result", map[string]interface{}{
+	result.Set("delete_result", map[string]any{
 		"operation":  "delete",
 		"collection": collection,
 		"count":      float64(len(ids)),
@@ -260,7 +260,7 @@ func (sp *StoragePlugin) handleGet(ctx context.Context, stepConfig pipelines.Ste
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set("document", map[string]interface{}{
+	result.Set("document", map[string]any{
 		"id":       doc.ID,
 		"content":  doc.Content,
 		"metadata": doc.Metadata,
@@ -289,7 +289,7 @@ func (sp *StoragePlugin) handleCreateCollection(ctx context.Context, stepConfig 
 	}
 
 	result := pipelines.NewPluginContext()
-	result.Set("create_result", map[string]interface{}{
+	result.Set("create_result", map[string]any{
 		"operation":  "create_collection",
 		"name":       name,
 		"successful": true,
@@ -312,13 +312,13 @@ func (sp *StoragePlugin) handleListCollections(ctx context.Context, stepConfig p
 
 // Helper methods
 
-// convertToDocuments converts interface{} slice to Document slice
-func (sp *StoragePlugin) convertToDocuments(docs []interface{}) []Document {
+// convertToDocuments converts any slice to Document slice
+func (sp *StoragePlugin) convertToDocuments(docs []any) []Document {
 	documents := make([]Document, 0, len(docs))
 	for _, doc := range docs {
-		if docMap, ok := doc.(map[string]interface{}); ok {
+		if docMap, ok := doc.(map[string]any); ok {
 			document := Document{
-				Metadata: make(map[string]interface{}),
+				Metadata: make(map[string]any),
 			}
 
 			if id, exists := docMap["id"]; exists {
@@ -334,7 +334,7 @@ func (sp *StoragePlugin) convertToDocuments(docs []interface{}) []Document {
 			}
 
 			if metadata, exists := docMap["metadata"]; exists {
-				if metaMap, ok := metadata.(map[string]interface{}); ok {
+				if metaMap, ok := metadata.(map[string]any); ok {
 					document.Metadata = metaMap
 				}
 			}
@@ -345,12 +345,12 @@ func (sp *StoragePlugin) convertToDocuments(docs []interface{}) []Document {
 	return documents
 }
 
-// convertToDocumentsFromMaps converts []map[string]interface{} to Document slice
-func (sp *StoragePlugin) convertToDocumentsFromMaps(docs []map[string]interface{}) []Document {
+// convertToDocumentsFromMaps converts []map[string]any to Document slice
+func (sp *StoragePlugin) convertToDocumentsFromMaps(docs []map[string]any) []Document {
 	documents := make([]Document, 0, len(docs))
 	for _, docMap := range docs {
 		document := Document{
-			Metadata: make(map[string]interface{}),
+			Metadata: make(map[string]any),
 		}
 
 		if id, exists := docMap["id"]; exists {
@@ -366,7 +366,7 @@ func (sp *StoragePlugin) convertToDocumentsFromMaps(docs []map[string]interface{
 		}
 
 		if metadata, exists := docMap["metadata"]; exists {
-			if metaMap, ok := metadata.(map[string]interface{}); ok {
+			if metaMap, ok := metadata.(map[string]any); ok {
 				document.Metadata = metaMap
 			}
 		}
@@ -376,11 +376,11 @@ func (sp *StoragePlugin) convertToDocumentsFromMaps(docs []map[string]interface{
 	return documents
 }
 
-// convertQueryResults converts QueryResult slice to interface{} for pipeline context
-func (sp *StoragePlugin) convertQueryResults(results []QueryResult) []interface{} {
-	converted := make([]interface{}, len(results))
+// convertQueryResults converts QueryResult slice to any for pipeline context
+func (sp *StoragePlugin) convertQueryResults(results []QueryResult) []any {
+	converted := make([]any, len(results))
 	for i, result := range results {
-		converted[i] = map[string]interface{}{
+		converted[i] = map[string]any{
 			"id":       result.Document.ID,
 			"content":  result.Document.Content,
 			"metadata": result.Document.Metadata,
@@ -412,7 +412,7 @@ func (sp *StoragePlugin) GetPluginName() string {
 	return "vector"
 }
 
-func (sp *StoragePlugin) ValidateConfig(config map[string]interface{}) error {
+func (sp *StoragePlugin) ValidateConfig(config map[string]any) error {
 	if _, exists := config["operation"]; !exists {
 		return fmt.Errorf("operation is required")
 	}

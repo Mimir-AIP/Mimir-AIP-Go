@@ -24,7 +24,7 @@ type Server struct {
 type PipelineExecutionRequest struct {
 	PipelineName string                 `json:"pipeline_name,omitempty"`
 	PipelineFile string                 `json:"pipeline_file,omitempty"`
-	Context      map[string]interface{} `json:"context,omitempty"`
+	Context      map[string]any `json:"context,omitempty"`
 }
 
 // PipelineExecutionResponse represents the response from pipeline execution

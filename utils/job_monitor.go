@@ -361,7 +361,7 @@ func (jm *JobMonitor) ExportToJSON() ([]byte, error) {
 	jm.mutex.RLock()
 	defer jm.mutex.RUnlock()
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"executions":  jm.executions,
 		"statistics":  jm.stats,
 		"exported_at": time.Now(),

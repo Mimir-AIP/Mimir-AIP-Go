@@ -20,13 +20,13 @@ func BenchmarkPipelineExecution(b *testing.B) {
 			{
 				Name:   "Mock Step 1",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "step1_output",
 			},
 			{
 				Name:   "Mock Step 2",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "step2_output",
 			},
 		},
@@ -55,7 +55,7 @@ func BenchmarkPipelineExecutionWithCache(b *testing.B) {
 			{
 				Name:   "Cached Step",
 				Plugin: "Data_Processing.cached_mock",
-				Config: map[string]interface{}{
+				Config: map[string]any{
 					"data": "test_data",
 				},
 				Output: "cached_output",
@@ -88,7 +88,7 @@ func BenchmarkConcurrentPipelineExecution(b *testing.B) {
 			{
 				Name:   "Concurrent Step",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "concurrent_output",
 			},
 		},
@@ -178,8 +178,8 @@ func BenchmarkPluginCache(b *testing.B) {
 func BenchmarkConnectionPool(b *testing.B) {
 	// Create a simple connection pool
 	pool := utils.NewConnectionPool(10,
-		func() interface{} { return "connection" },
-		func(conn interface{}) { /* close connection */ },
+		func() any { return "connection" },
+		func(conn any) { /* close connection */ },
 	)
 
 	b.ResetTimer()
@@ -196,14 +196,14 @@ func BenchmarkConnectionPool(b *testing.B) {
 
 // BenchmarkJSONProcessing benchmarks JSON processing performance
 func BenchmarkJSONProcessing(b *testing.B) {
-	testData := map[string]interface{}{
-		"pipeline": map[string]interface{}{
+	testData := map[string]any{
+		"pipeline": map[string]any{
 			"name": "test",
-			"steps": []map[string]interface{}{
+			"steps": []map[string]any{
 				{
 					"name":   "step1",
 					"plugin": "Input.api",
-					"config": map[string]interface{}{
+					"config": map[string]any{
 						"url": "https://api.example.com",
 					},
 				},
@@ -275,19 +275,19 @@ func TestPerformanceComparison(t *testing.T) {
 			{
 				Name:   "Step 1",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "output1",
 			},
 			{
 				Name:   "Step 2",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "output2",
 			},
 			{
 				Name:   "Step 3",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{},
+				Config: map[string]any{},
 				Output: "output3",
 			},
 		},
@@ -331,7 +331,7 @@ func TestOptimizedVsRegularExecution(t *testing.T) {
 			{
 				Name:   "Test Step",
 				Plugin: "Data_Processing.mock",
-				Config: map[string]interface{}{
+				Config: map[string]any{
 					"data": "test_data",
 				},
 				Output: "test_output",

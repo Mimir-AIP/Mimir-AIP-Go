@@ -94,7 +94,7 @@ func (ms *MockServer) Start() *httptest.Server {
 
 func handleTestHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"status": "healthy",
 		"time":   "2025-08-25T12:30:00Z",
 	})
@@ -107,7 +107,7 @@ func handleTestListPipelines(w http.ResponseWriter, r *http.Request) {
 
 func handleTestListPlugins(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	plugins := []map[string]interface{}{
+	plugins := []map[string]any{
 		{"type": "Input", "name": "api", "description": "API input plugin"},
 		{"type": "Output", "name": "html", "description": "HTML output plugin"},
 	}
@@ -116,7 +116,7 @@ func handleTestListPlugins(w http.ResponseWriter, r *http.Request) {
 
 func handleTestPerformanceMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	metrics := map[string]interface{}{
+	metrics := map[string]any{
 		"total_requests":      100,
 		"average_latency":     5000000, // 5ms in nanoseconds
 		"requests_per_second": 20.5,
@@ -126,7 +126,7 @@ func handleTestPerformanceMetrics(w http.ResponseWriter, r *http.Request) {
 
 func handleTestListJobs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode([]map[string]interface{}{})
+	json.NewEncoder(w).Encode([]map[string]any{})
 }
 
 func handleTestGetConfig(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +158,7 @@ func handleTestPipelineExecute(w http.ResponseWriter, r *http.Request) {
 	// as it's not implemented in the test mock
 	w.WriteHeader(http.StatusMethodNotAllowed)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]any{
 		"error": "Method not allowed",
 	})
 }
@@ -179,7 +179,7 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -200,9 +200,9 @@ func TestPipelineExecutionEndpoint(t *testing.T) {
 	defer testServer.Close()
 
 	// Create request payload
-	request := map[string]interface{}{
+	request := map[string]any{
 		"pipeline_name": "test",
-		"context":       map[string]interface{}{"test": "data"},
+		"context":       map[string]any{"test": "data"},
 	}
 
 	jsonData, _ := json.Marshal(request)
@@ -297,7 +297,7 @@ func TestPerformanceMetricsEndpoint(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	var metrics map[string]interface{}
+	var metrics map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&metrics); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestJobMonitoringEndpoints(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	var jobs []map[string]interface{}
+	var jobs []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&jobs); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -568,7 +568,7 @@ func TestServerShutdown(t *testing.T) {
 type PipelineExecutionRequest struct {
 	PipelineName string                 `json:"pipeline_name,omitempty"`
 	PipelineFile string                 `json:"pipeline_file,omitempty"`
-	Context      map[string]interface{} `json:"context,omitempty"`
+	Context      map[string]any `json:"context,omitempty"`
 }
 
 // PluginInfo represents information about a plugin

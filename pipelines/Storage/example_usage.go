@@ -53,7 +53,7 @@ func ExampleUsage() {
 		{
 			ID:      "doc1",
 			Content: "The sky is blue because of Rayleigh scattering",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"source": "science",
 				"topic":  "physics",
 			},
@@ -61,7 +61,7 @@ func ExampleUsage() {
 		{
 			ID:      "doc2",
 			Content: "Photosynthesis is the process by which plants make food",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"source": "biology",
 				"topic":  "plants",
 			},
@@ -69,7 +69,7 @@ func ExampleUsage() {
 		{
 			ID:      "doc3",
 			Content: "Machine learning is a subset of artificial intelligence",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"source": "technology",
 				"topic":  "AI",
 			},
@@ -80,7 +80,7 @@ func ExampleUsage() {
 	stepConfig := pipelines.StepConfig{
 		Name:   "Store Knowledge",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "store",
 			"collection": "knowledge_base",
 			"documents":  documents,
@@ -101,7 +101,7 @@ func ExampleUsage() {
 	queryStepConfig := pipelines.StepConfig{
 		Name:   "Query Knowledge",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "query",
 			"collection": "knowledge_base",
 			"query":      "How do plants make food?",
@@ -117,11 +117,11 @@ func ExampleUsage() {
 
 	// Extract query results
 	if queryData, exists := queryResult.Get("query_result"); exists {
-		if queryMap, ok := queryData.(map[string]interface{}); ok {
-			if results, ok := queryMap["results"].([]interface{}); ok {
+		if queryMap, ok := queryData.(map[string]any); ok {
+			if results, ok := queryMap["results"].([]any); ok {
 				fmt.Printf("Found %d results:\n", len(results))
 				for i, result := range results {
-					if resultMap, ok := result.(map[string]interface{}); ok {
+					if resultMap, ok := result.(map[string]any); ok {
 						fmt.Printf("%d. %s (score: %.3f)\n",
 							i+1,
 							resultMap["content"],
@@ -138,7 +138,7 @@ func ExampleUsage() {
 	getStepConfig := pipelines.StepConfig{
 		Name:   "Get Document",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "get",
 			"collection": "knowledge_base",
 			"id":         "doc2",
@@ -152,7 +152,7 @@ func ExampleUsage() {
 	}
 
 	if docData, exists := getResult.Get("document"); exists {
-		if docMap, ok := docData.(map[string]interface{}); ok {
+		if docMap, ok := docData.(map[string]any); ok {
 			fmt.Printf("Retrieved document: %s\n", docMap["content"])
 		}
 	}
@@ -163,7 +163,7 @@ func ExampleUsage() {
 	listStepConfig := pipelines.StepConfig{
 		Name:   "List Collections",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation": "list_collections",
 		},
 		Output: "collections",
@@ -273,23 +273,23 @@ func ExamplePersistenceAndPerformance() {
 		{
 			ID:      "perf_doc_1",
 			Content: "This is a performance test document",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"type": "performance_test",
 			},
 		},
 		{
 			ID:      "perf_doc_2",
 			Content: "Another document for performance testing",
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"type": "performance_test",
 			},
 		},
 	}
 
 	// Convert documents for plugin
-	docMaps := make([]map[string]interface{}, len(documents))
+	docMaps := make([]map[string]any, len(documents))
 	for i, doc := range documents {
-		docMaps[i] = map[string]interface{}{
+		docMaps[i] = map[string]any{
 			"id":       doc.ID,
 			"content":  doc.Content,
 			"metadata": doc.Metadata,
@@ -299,7 +299,7 @@ func ExamplePersistenceAndPerformance() {
 	stepConfig := pipelines.StepConfig{
 		Name:   "Store Performance Test Documents",
 		Plugin: "Storage.vector",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation":  "store",
 			"collection": "performance_test",
 			"documents":  docMaps,

@@ -83,7 +83,7 @@ func (p *RSSPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepCo
 	}
 
 	// Format result
-	result := map[string]interface{}{
+	result := map[string]any{
 		"feed_title":       feed.Title,
 		"feed_description": feed.Description,
 		"item_count":       len(items),
@@ -108,7 +108,7 @@ func (p *RSSPlugin) GetPluginName() string {
 }
 
 // ValidateConfig validates the plugin configuration
-func (p *RSSPlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *RSSPlugin) ValidateConfig(config map[string]any) error {
 	if config["url"] == nil {
 		return fmt.Errorf("url is required")
 	}
@@ -153,11 +153,11 @@ func (p *RSSPlugin) fetchRSSFeed(ctx context.Context, url string) (*RSSFeed, err
 }
 
 // formatItems formats RSS items for output
-func (p *RSSPlugin) formatItems(items []RSSItem) []map[string]interface{} {
-	formatted := make([]map[string]interface{}, len(items))
+func (p *RSSPlugin) formatItems(items []RSSItem) []map[string]any {
+	formatted := make([]map[string]any, len(items))
 
 	for i, item := range items {
-		formatted[i] = map[string]interface{}{
+		formatted[i] = map[string]any{
 			"title":       item.Title,
 			"link":        item.Link,
 			"description": item.Description,

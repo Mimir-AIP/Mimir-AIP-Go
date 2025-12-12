@@ -15,16 +15,16 @@ func TestNewJSONData(t *testing.T) {
 	assert.Equal(t, 0, len(jsonData.Content))
 
 	// Test with content
-	content := map[string]interface{}{"key": "value"}
+	content := map[string]any{"key": "value"}
 	jsonData = NewJSONData(content)
 	assert.Equal(t, content, jsonData.Content)
 }
 
 func TestJSONDataInterface(t *testing.T) {
-	content := map[string]interface{}{
+	content := map[string]any{
 		"string": "test",
 		"number": 42,
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"inner": "value",
 		},
 	}
@@ -304,16 +304,16 @@ func TestImageDataInterface(t *testing.T) {
 
 func TestDeepCopy(t *testing.T) {
 	// Test map copy
-	originalMap := map[string]interface{}{
+	originalMap := map[string]any{
 		"string": "value",
 		"number": 42,
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"inner": "nested_value",
 		},
-		"array": []interface{}{1, 2, 3},
+		"array": []any{1, 2, 3},
 	}
 
-	copiedMap := deepCopy(originalMap).(map[string]interface{})
+	copiedMap := deepCopy(originalMap).(map[string]any)
 
 	assert.Equal(t, originalMap, copiedMap)
 	assert.NotSame(t, originalMap, copiedMap)
@@ -323,17 +323,17 @@ func TestDeepCopy(t *testing.T) {
 	assert.NotContains(t, copiedMap, "new_key")
 
 	// Modify nested map in original
-	originalMap["nested"].(map[string]interface{})["new_inner"] = "new_nested_value"
-	assert.NotContains(t, copiedMap["nested"].(map[string]interface{}), "new_inner")
+	originalMap["nested"].(map[string]any)["new_inner"] = "new_nested_value"
+	assert.NotContains(t, copiedMap["nested"].(map[string]any), "new_inner")
 
 	// Test array copy
-	originalArray := []interface{}{
+	originalArray := []any{
 		"string",
 		42,
-		map[string]interface{}{"nested": "value"},
+		map[string]any{"nested": "value"},
 	}
 
-	copiedArray := deepCopy(originalArray).([]interface{})
+	copiedArray := deepCopy(originalArray).([]any)
 
 	assert.Equal(t, originalArray, copiedArray)
 	assert.NotSame(t, originalArray, copiedArray)
@@ -357,7 +357,7 @@ func TestDataValueTypes(t *testing.T) {
 	var _ DataValue = &ImageData{}
 
 	// Test type identification
-	jsonData := NewJSONData(map[string]interface{}{})
+	jsonData := NewJSONData(map[string]any{})
 	binaryData := NewBinaryData([]byte{}, "application/octet-stream")
 	tsData := NewTimeSeriesData()
 	imageData := NewImageData([]byte{}, "image/png", "png", 100, 100)
@@ -394,10 +394,10 @@ func TestTimePoint(t *testing.T) {
 
 func TestDataValueSerializationRoundTrip(t *testing.T) {
 	// Test JSON data round trip
-	jsonContent := map[string]interface{}{
+	jsonContent := map[string]any{
 		"string": "test",
 		"number": 42,
-		"nested": map[string]interface{}{"inner": "value"},
+		"nested": map[string]any{"inner": "value"},
 	}
 	jsonData := NewJSONData(jsonContent)
 

@@ -22,16 +22,16 @@ func (p *SimpleOpenAIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelin
 	if apiKey, ok := config["api_key"].(string); !ok || apiKey == "" || apiKey == "your-api-key-here" {
 		return nil, fmt.Errorf("valid OpenAI API key is required")
 	}
-	if messages, ok := config["messages"].([]interface{}); ok {
+	if messages, ok := config["messages"].([]any); ok {
 		if len(messages) > 0 {
-			if msgMap, ok := messages[0].(map[string]interface{}); ok {
+			if msgMap, ok := messages[0].(map[string]any); ok {
 				if content, ok := msgMap["content"].(string); ok {
 					// Mock response for demo
 					result := pipelines.NewPluginContext()
-					result.Set(stepConfig.Output, map[string]interface{}{
+					result.Set(stepConfig.Output, map[string]any{
 						"content":       fmt.Sprintf("Mock AI response to: %s", content),
 						"model":         "gpt-3.5-turbo-mock",
-						"usage":         map[string]interface{}{"tokens": 42},
+						"usage":         map[string]any{"tokens": 42},
 						"finish_reason": "stop",
 						"request_id":    "mock-id-123",
 						"timestamp":     "2025-11-25T10:00:00Z",
@@ -45,7 +45,7 @@ func (p *SimpleOpenAIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelin
 }
 func (p *SimpleOpenAIPlugin) GetPluginType() string { return "AIModels" }
 func (p *SimpleOpenAIPlugin) GetPluginName() string { return "openai" }
-func (p *SimpleOpenAIPlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *SimpleOpenAIPlugin) ValidateConfig(config map[string]any) error {
 	if config["messages"] == nil {
 		return fmt.Errorf("messages are required")
 	}
@@ -82,11 +82,11 @@ func runSimpleChat(plugin *SimpleOpenAIPlugin) error {
 	stepConfig := pipelines.StepConfig{
 		Name:   "SimpleChat",
 		Plugin: "AIModels.openai",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation": "chat",
 			"model":     "gpt-3.5-turbo",
-			"messages": []interface{}{
-				map[string]interface{}{
+			"messages": []any{
+				map[string]any{
 					"role":    "user",
 					"content": "What is artificial intelligence in one sentence?",
 				},
@@ -104,11 +104,11 @@ func runSimpleChat(plugin *SimpleOpenAIPlugin) error {
 	}
 
 	if val, exists := result.Get("response"); exists {
-		if respMap, ok := val.(map[string]interface{}); ok {
+		if respMap, ok := val.(map[string]any); ok {
 			if content, ok := respMap["content"].(string); ok {
 				fmt.Printf("AI Response: %s\n", content)
 			}
-			if usage, ok := respMap["usage"].(map[string]interface{}); ok {
+			if usage, ok := respMap["usage"].(map[string]any); ok {
 				fmt.Printf("Token Usage: %+v\n", usage)
 			}
 		}
@@ -122,15 +122,15 @@ func runStructuredPrompt(plugin *SimpleOpenAIPlugin) error {
 	stepConfig := pipelines.StepConfig{
 		Name:   "StructuredPrompt",
 		Plugin: "AIModels.openai",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation": "chat",
 			"model":     "gpt-3.5-turbo",
-			"messages": []interface{}{
-				map[string]interface{}{
+			"messages": []any{
+				map[string]any{
 					"role":    "system",
 					"content": "You are a helpful assistant. Always respond in JSON format with 'summary' and 'confidence' fields.",
 				},
-				map[string]interface{}{
+				map[string]any{
 					"role":    "user",
 					"content": "Summarize the concept of machine learning.",
 				},
@@ -148,7 +148,7 @@ func runStructuredPrompt(plugin *SimpleOpenAIPlugin) error {
 	}
 
 	if val, exists := result.Get("structured_response"); exists {
-		if respMap, ok := val.(map[string]interface{}); ok {
+		if respMap, ok := val.(map[string]any); ok {
 			if content, ok := respMap["content"].(string); ok {
 				fmt.Printf("Structured AI Response:\n%s\n", content)
 			}
@@ -163,11 +163,11 @@ func runErrorCaseExample(plugin *SimpleOpenAIPlugin) error {
 	stepConfig := pipelines.StepConfig{
 		Name:   "ErrorCase",
 		Plugin: "AIModels.openai",
-		Config: map[string]interface{}{
+		Config: map[string]any{
 			"operation": "chat",
 			"model":     "gpt-3.5-turbo",
-			"messages": []interface{}{
-				map[string]interface{}{
+			"messages": []any{
+				map[string]any{
 					"role":    "user",
 					"content": "This should fail",
 				},

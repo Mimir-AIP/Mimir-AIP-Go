@@ -139,7 +139,7 @@ func (ps *PipelineStore) GetPipeline(id string) (*PipelineDefinition, error) {
 }
 
 // ListPipelines returns all pipelines with optional filtering
-func (ps *PipelineStore) ListPipelines(filter map[string]interface{}) ([]*PipelineDefinition, error) {
+func (ps *PipelineStore) ListPipelines(filter map[string]any) ([]*PipelineDefinition, error) {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
@@ -273,7 +273,7 @@ func (ps *PipelineStore) GetPipelineHistory(id string) ([]*PipelineDefinition, e
 
 // Helper methods
 
-func (ps *PipelineStore) matchesFilter(pipeline *PipelineDefinition, filter map[string]interface{}) bool {
+func (ps *PipelineStore) matchesFilter(pipeline *PipelineDefinition, filter map[string]any) bool {
 	if filter == nil {
 		return true
 	}

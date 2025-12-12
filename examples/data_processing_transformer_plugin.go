@@ -67,7 +67,7 @@ func (p *TransformerPlugin) GetPluginName() string {
 }
 
 // ValidateConfig validates the plugin configuration
-func (p *TransformerPlugin) ValidateConfig(config map[string]interface{}) error {
+func (p *TransformerPlugin) ValidateConfig(config map[string]any) error {
 	operation, exists := config["operation"]
 	if !exists {
 		return fmt.Errorf("operation is required")
@@ -81,7 +81,7 @@ func (p *TransformerPlugin) ValidateConfig(config map[string]interface{}) error 
 }
 
 // getInputData extracts input data from context or config
-func (p *TransformerPlugin) getInputData(config map[string]interface{}, context *pipelines.PluginContext) interface{} {
+func (p *TransformerPlugin) getInputData(config map[string]any, context *pipelines.PluginContext) any {
 	// Check if input is specified in config
 	if inputKey, ok := config["input"].(string); ok {
 		if data, exists := context.Get(inputKey); exists {
@@ -99,7 +99,7 @@ func (p *TransformerPlugin) getInputData(config map[string]interface{}, context 
 }
 
 // transformData performs the actual transformation
-func (p *TransformerPlugin) transformData(data interface{}, operation string, config map[string]interface{}) (interface{}, error) {
+func (p *TransformerPlugin) transformData(data any, operation string, config map[string]any) (any, error) {
 	switch operation {
 	case "uppercase":
 		return p.transformUppercase(data)
@@ -125,7 +125,7 @@ func (p *TransformerPlugin) transformData(data interface{}, operation string, co
 }
 
 // transformUppercase converts strings to uppercase
-func (p *TransformerPlugin) transformUppercase(data interface{}) (interface{}, error) {
+func (p *TransformerPlugin) transformUppercase(data any) (any, error) {
 	if str, ok := data.(string); ok {
 		return strings.ToUpper(str), nil
 	}
@@ -133,7 +133,7 @@ func (p *TransformerPlugin) transformUppercase(data interface{}) (interface{}, e
 }
 
 // transformLowercase converts strings to lowercase
-func (p *TransformerPlugin) transformLowercase(data interface{}) (interface{}, error) {
+func (p *TransformerPlugin) transformLowercase(data any) (any, error) {
 	if str, ok := data.(string); ok {
 		return strings.ToLower(str), nil
 	}
@@ -141,7 +141,7 @@ func (p *TransformerPlugin) transformLowercase(data interface{}) (interface{}, e
 }
 
 // extractNumbers extracts all numbers from a string
-func (p *TransformerPlugin) extractNumbers(data interface{}) (interface{}, error) {
+func (p *TransformerPlugin) extractNumbers(data any) (any, error) {
 	if str, ok := data.(string); ok {
 		re := regexp.MustCompile(`\d+`)
 		matches := re.FindAllString(str, -1)
@@ -158,13 +158,13 @@ func (p *TransformerPlugin) extractNumbers(data interface{}) (interface{}, error
 }
 
 // removeDuplicates removes duplicate items from arrays/slices
-func (p *TransformerPlugin) removeDuplicates(data interface{}) (interface{}, error) {
+func (p *TransformerPlugin) removeDuplicates(data any) (any, error) {
 	v := reflect.ValueOf(data)
 	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
 		return data, nil
 	}
 
-	seen := make(map[interface{}]bool)
+	seen := make(map[any]bool)
 	result := reflect.MakeSlice(v.Type(), 0, v.Len())
 
 	for i := 0; i < v.Len(); i++ {
@@ -179,7 +179,7 @@ func (p *TransformerPlugin) removeDuplicates(data interface{}) (interface{}, err
 }
 
 // filterData filters data based on criteria
-func (p *TransformerPlugin) filterData(data interface{}, config map[string]interface{}) (interface{}, error) {
+func (p *TransformerPlugin) filterData(data any, config map[string]any) (any, error) {
 	// Simple filtering example - can be extended
 	if str, ok := data.(string); ok {
 		if pattern, ok := config["pattern"].(string); ok {
@@ -190,7 +190,7 @@ func (p *TransformerPlugin) filterData(data interface{}, config map[string]inter
 }
 
 // extractPattern extracts data matching a regex pattern
-func (p *TransformerPlugin) extractPattern(data interface{}, config map[string]interface{}) (interface{}, error) {
+func (p *TransformerPlugin) extractPattern(data any, config map[string]any) (any, error) {
 	pattern, ok := config["pattern"].(string)
 	if !ok {
 		return data, fmt.Errorf("pattern is required for extract_pattern operation")
@@ -210,7 +210,7 @@ func (p *TransformerPlugin) extractPattern(data interface{}, config map[string]i
 }
 
 // splitData splits strings into arrays
-func (p *TransformerPlugin) splitData(data interface{}, config map[string]interface{}) (interface{}, error) {
+func (p *TransformerPlugin) splitData(data any, config map[string]any) (any, error) {
 	separator := ","
 	if sep, ok := config["separator"].(string); ok {
 		separator = sep
@@ -224,7 +224,7 @@ func (p *TransformerPlugin) splitData(data interface{}, config map[string]interf
 }
 
 // joinData joins arrays into strings
-func (p *TransformerPlugin) joinData(data interface{}, config map[string]interface{}) (interface{}, error) {
+func (p *TransformerPlugin) joinData(data any, config map[string]any) (any, error) {
 	separator := ","
 	if sep, ok := config["separator"].(string); ok {
 		separator = sep
@@ -243,7 +243,7 @@ func (p *TransformerPlugin) joinData(data interface{}, config map[string]interfa
 }
 
 // countData counts items in arrays or characters in strings
-func (p *TransformerPlugin) countData(data interface{}) (interface{}, error) {
+func (p *TransformerPlugin) countData(data any) (any, error) {
 	v := reflect.ValueOf(data)
 	if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
 		return v.Len(), nil

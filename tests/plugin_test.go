@@ -132,12 +132,12 @@ func TestPluginRegistry_ListPluginTypes(t *testing.T) {
 func TestPluginValidation(t *testing.T) {
 	mockPlugin := NewMockPlugin("validation_plugin", "Data_Processing", false)
 	// Test valid configuration
-	err := mockPlugin.ValidateConfig(map[string]interface{}{})
+	err := mockPlugin.ValidateConfig(map[string]any{})
 	if err != nil {
 		t.Fatalf("Valid configuration should not fail: %v", err)
 	}
 	// Test invalid configuration
-	err = mockPlugin.ValidateConfig(map[string]interface{}{"invalid": true})
+	err = mockPlugin.ValidateConfig(map[string]any{"invalid": true})
 	if err == nil {
 		t.Fatal("Invalid configuration should fail validation")
 	}
@@ -149,7 +149,7 @@ func TestPluginValidation(t *testing.T) {
 func TestPluginExecution_MalformedConfig(t *testing.T) {
 	plugin := MockAIModel.NewMockEchoModel()
 	// Missing "input" field
-	config := map[string]interface{}{"temperature": 0.5}
+	config := map[string]any{"temperature": 0.5}
 	err := plugin.ValidateConfig(config)
 	if err == nil {
 		t.Error("Expected validation error for missing input, got nil")
@@ -175,7 +175,7 @@ func (p *panicPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.Step
 }
 func (p *panicPlugin) GetPluginType() string                              { return "Test" }
 func (p *panicPlugin) GetPluginName() string                              { return "panic_plugin" }
-func (p *panicPlugin) ValidateConfig(config map[string]interface{}) error { return nil }
+func (p *panicPlugin) ValidateConfig(config map[string]any) error { return nil }
 
 // TestPluginExecution_Panic tests that plugin panics are handled gracefully
 func TestPluginExecution_Panic(t *testing.T) {
@@ -184,7 +184,7 @@ func TestPluginExecution_Panic(t *testing.T) {
 	config := &pipelines.StepConfig{
 		Name:   "Panic Step",
 		Plugin: "Test.panic_plugin",
-		Config: map[string]interface{}{},
+		Config: map[string]any{},
 		Output: "output",
 	}
 	defer func() {
@@ -200,7 +200,7 @@ func TestPluginExecution_Panic(t *testing.T) {
 // TestPluginExecution_RealPlugin tests successful execution of a real plugin
 func TestPluginExecution_RealPlugin(t *testing.T) {
 	plugin := MockAIModel.NewMockEchoModel()
-	config := map[string]interface{}{
+	config := map[string]any{
 		"input":       "Hello, world!",
 		"temperature": 0.5,
 		"max_tokens":  10,
@@ -222,7 +222,7 @@ func TestPluginExecution_RealPlugin(t *testing.T) {
 	if !exists {
 		t.Error("Expected output in context")
 	}
-	respMap, ok := val.(map[string]interface{})
+	respMap, ok := val.(map[string]any)
 	if !ok || respMap["response"] == "" {
 		t.Error("Expected response in output map")
 	}
@@ -253,10 +253,10 @@ func (p *MockOpenAIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines
 	}
 	// Simulate normal response
 	result := pipelines.NewPluginContext()
-	result.Set(stepConfig.Output, map[string]interface{}{
+	result.Set(stepConfig.Output, map[string]any{
 		"content":       "This is a mock LLM response.",
 		"model":         "gpt-3.5-turbo",
-		"usage":         map[string]interface{}{"tokens": 42},
+		"usage":         map[string]any{"tokens": 42},
 		"finish_reason": "stop",
 		"request_id":    "mock-id-123",
 		"timestamp":     "2025-11-25T10:00:00Z",
@@ -265,15 +265,15 @@ func (p *MockOpenAIPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines
 }
 func (p *MockOpenAIPlugin) GetPluginType() string                              { return "AIModels" }
 func (p *MockOpenAIPlugin) GetPluginName() string                              { return "openai" }
-func (p *MockOpenAIPlugin) ValidateConfig(config map[string]interface{}) error { return nil }
+func (p *MockOpenAIPlugin) ValidateConfig(config map[string]any) error { return nil }
 
 // TestOpenAIPlugin_ChatSuccess tests successful chat completion
 func TestOpenAIPlugin_ChatSuccess(t *testing.T) {
 	plugin := &MockOpenAIPlugin{}
-	config := map[string]interface{}{
+	config := map[string]any{
 		"operation": "chat",
-		"messages": []interface{}{
-			map[string]interface{}{"role": "user", "content": "Hello!"},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Hello!"},
 		},
 		"api_key": "test-key",
 	}
@@ -291,7 +291,7 @@ func TestOpenAIPlugin_ChatSuccess(t *testing.T) {
 	if !exists {
 		t.Error("Expected output in context")
 	}
-	respMap, ok := val.(map[string]interface{})
+	respMap, ok := val.(map[string]any)
 	if !ok || respMap["content"] == "" {
 		t.Error("Expected content in output map")
 	}
@@ -300,10 +300,10 @@ func TestOpenAIPlugin_ChatSuccess(t *testing.T) {
 // TestOpenAIPlugin_MissingAPIKey tests missing API key error
 func TestOpenAIPlugin_MissingAPIKey(t *testing.T) {
 	plugin := &MockOpenAIPlugin{ShouldError: true, ErrorType: "api_key"}
-	config := map[string]interface{}{
+	config := map[string]any{
 		"operation": "chat",
-		"messages": []interface{}{
-			map[string]interface{}{"role": "user", "content": "Hello!"},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Hello!"},
 		},
 	}
 	stepConfig := pipelines.StepConfig{
@@ -321,10 +321,10 @@ func TestOpenAIPlugin_MissingAPIKey(t *testing.T) {
 // TestOpenAIPlugin_APIError tests API error handling
 func TestOpenAIPlugin_APIError(t *testing.T) {
 	plugin := &MockOpenAIPlugin{ShouldError: true, ErrorType: "api_error"}
-	config := map[string]interface{}{
+	config := map[string]any{
 		"operation": "chat",
-		"messages": []interface{}{
-			map[string]interface{}{"role": "user", "content": "Hello!"},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Hello!"},
 		},
 		"api_key": "test-key",
 	}
@@ -343,10 +343,10 @@ func TestOpenAIPlugin_APIError(t *testing.T) {
 // TestOpenAIPlugin_Timeout tests timeout error handling
 func TestOpenAIPlugin_Timeout(t *testing.T) {
 	plugin := &MockOpenAIPlugin{ShouldError: true, ErrorType: "timeout"}
-	config := map[string]interface{}{
+	config := map[string]any{
 		"operation": "chat",
-		"messages": []interface{}{
-			map[string]interface{}{"role": "user", "content": "Hello!"},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Hello!"},
 		},
 		"api_key": "test-key",
 	}
@@ -367,10 +367,10 @@ func TestAgenticChain_Success(t *testing.T) {
 	llmPlugin := &MockOpenAIPlugin{}
 	transformPlugin := MockAIModel.NewMockEchoModel()
 	// Step 1: LLM response
-	llmConfig := map[string]interface{}{
+	llmConfig := map[string]any{
 		"operation": "chat",
-		"messages": []interface{}{
-			map[string]interface{}{"role": "user", "content": "Summarize AI."},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Summarize AI."},
 		},
 		"api_key": "test-key",
 	}
@@ -385,9 +385,9 @@ func TestAgenticChain_Success(t *testing.T) {
 		t.Fatalf("LLM step failed: %v", err)
 	}
 	llmVal, _ := llmResult.Get("llm_output")
-	llmContent := llmVal.(map[string]interface{})["content"].(string)
+	llmContent := llmVal.(map[string]any)["content"].(string)
 	// Step 2: Transform response
-	transformConfig := map[string]interface{}{
+	transformConfig := map[string]any{
 		"input":       llmContent,
 		"temperature": 0.5,
 		"max_tokens":  10,
@@ -406,7 +406,7 @@ func TestAgenticChain_Success(t *testing.T) {
 	if !exists {
 		t.Error("Expected final_output in context")
 	}
-	respMap, ok := val.(map[string]interface{})
+	respMap, ok := val.(map[string]any)
 	if !ok || respMap["response"] == "" {
 		t.Error("Expected response in final output map")
 	}
@@ -422,7 +422,7 @@ func (p *networkErrorPlugin) ExecuteStep(ctx context.Context, stepConfig pipelin
 }
 func (p *networkErrorPlugin) GetPluginType() string                              { return "Test" }
 func (p *networkErrorPlugin) GetPluginName() string                              { return "network_error_plugin" }
-func (p *networkErrorPlugin) ValidateConfig(config map[string]interface{}) error { return nil }
+func (p *networkErrorPlugin) ValidateConfig(config map[string]any) error { return nil }
 
 // TestPluginExecution_NetworkError tests network error handling
 func TestPluginExecution_NetworkError(t *testing.T) {
@@ -431,7 +431,7 @@ func TestPluginExecution_NetworkError(t *testing.T) {
 	stepConfig := pipelines.StepConfig{
 		Name:   "Network Error Step",
 		Plugin: "Test.network_error_plugin",
-		Config: map[string]interface{}{},
+		Config: map[string]any{},
 		Output: "output",
 	}
 	plugin, _ := registry.GetPlugin("Test", "network_error_plugin")
@@ -445,7 +445,7 @@ func TestPluginExecution_NetworkError(t *testing.T) {
 func TestPluginExecution_InvalidData(t *testing.T) {
 	plugin := MockAIModel.NewMockEchoModel()
 	// Pass an integer instead of string for "input"
-	config := map[string]interface{}{"input": 12345}
+	config := map[string]any{"input": 12345}
 	stepConfig := pipelines.StepConfig{
 		Name:   "Invalid Data Step",
 		Plugin: "AIModels.mock_echo",

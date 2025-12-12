@@ -379,7 +379,7 @@ properties:
 	assert.NotNil(t, schema)
 
 	// Check that required fields are present
-	required, ok := schema["required"].([]interface{})
+	required, ok := schema["required"].([]any)
 	assert.True(t, ok)
 	assert.Contains(t, required, "name")
 	assert.Contains(t, required, "enabled")
@@ -425,7 +425,7 @@ func TestPipelineConfigStruct(t *testing.T) {
 			{
 				Name:   "step1",
 				Plugin: "Input.test",
-				Config: map[string]interface{}{"param": "value"},
+				Config: map[string]any{"param": "value"},
 				Output: "output1",
 			},
 		},

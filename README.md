@@ -22,42 +22,42 @@ Mimir AIP is a high-performance, plugin-driven automation platform implemented i
 ### High-Level Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   REST API      │    │   MCP Server    │    │   Scheduler     │
-│   Server        │    │                 │    │                 │
-│                 │    │                 │    │                 │
-│ • Pipeline      │    │ • Tool Discovery│    │ • Cron Jobs     │
-│   Execution     │    │ • LLM Integration│   │ • Job Management│
-│ • Plugin        │    │ • Context       │    │ • Timezone      │
-│   Management    │    │   Protocol      │    │   Support       │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-          │                       │                       │
-          └───────────────────────┼───────────────────────┘
-                                  │
-                     ┌─────────────────┐
-                     │   Plugin        │
-                     │   System        │
-                     │                 │
-                     │ • Input         │
-                     │   Plugins       │
-                     │ • Data          │
-                     │   Processing    │
-                     │ • AI Models     │
-                     │ • Output        │
-                     │   Plugins       │
-                     └─────────────────┘
-                              │
-                     ┌─────────────────┐
-                     │   Core Engine   │
-                     │                 │
-                     │ • Pipeline      │
-                     │   Execution     │
-                     │ • Context       │
-                     │   Management    │
-                     │ • Error         │
-                     │   Handling      │
-                     │ • Logging       │
-                     └─────────────────┘
++-------------------+    +-------------------+    +-------------------+
+|   REST API      |    |   MCP Server    |    |   Scheduler     |
+|   Server        |    |                 |    |                 |
+|                 |    |                 |    |                 |
+| . Pipeline      |    | . Tool Discovery|    | . Cron Jobs     |
+|   Execution     |    | . LLM Integration|    | . Job Management|
+| . Plugin        |    | . Context       |    | . Timezone      |
+|   Management    |    |   Protocol      |    |   Support       |
++-------------------+    +-------------------+    +-------------------+
+          |                       |                       |
+          +-----------------------+-----------------------+
+                                   |
+                      +-------------------+
+                      |   Plugin        |
+                      |   System        |
+                      |                 |
+                      | . Input         |
+                      |   Plugins       |
+                      | . Data          |
+                      |   Processing    |
+                      | . AI Models     |
+                      | . Output        |
+                      |   Plugins       |
+                      +-------------------+
+                               |
+                      +-------------------+
+                      |   Core Engine   |
+                      |                 |
+                      | . Pipeline      |
+                      |   Execution     |
+                      | . Context       |
+                      |   Management    |
+                      | . Error         |
+                      | . Handling      |
+                      | . Logging       |
+                      +-------------------+
 ```
 
 ### Component Interaction Model
@@ -197,12 +197,12 @@ docker run -d \
   mimir-aip:latest
 ```
 
-**Features:**
-- ✅ **Optimized Image**: 9.34MB multi-stage build
-- ✅ **Security Hardened**: Non-root user, distroless base
-- ✅ **Health Monitoring**: Built-in health checks
-- ✅ **Multi-Platform**: AMD64 and ARM64 support
-- ✅ **Production Ready**: Volume management, environment variables
+**Implementation Features:**
+- Optimized Image: 9.34MB multi-stage build
+- Security Hardened: Non-root user, distroless base
+- Health Monitoring: Built-in health checks
+- Multi-Platform: AMD64 and ARM64 support
+- Production Ready: Volume management, environment variables
 
 **Docker Compose Options:**
 - `docker-compose.yml` - Production deployment with Redis
@@ -658,23 +658,23 @@ go tool trace trace.out
 ### Contribution Protocol
 
 1. **Development Environment Setup**
-   ```bash
-   git clone https://github.com/Mimir-AIP/Mimir-AIP-Go.git
-   cd Mimir-AIP-Go
-   go mod download
-   ```
+```bash
+git clone https://github.com/Mimir-AIP/Mimir-AIP-Go.git
+cd Mimir-AIP-Go
+go mod download
+```
 
 2. **Code Quality Assurance**
-   - Unit test coverage >80%
-   - Integration test validation
-   - Performance benchmarking
-   - Security audit compliance
+- Unit test coverage >80%
+- Integration test validation
+- Performance benchmarking
+- Security audit compliance
 
 3. **Submission Requirements**
-   - Pull request with detailed description
-   - Associated test cases
-   - Performance impact analysis
-   - Documentation updates
+- Pull request with detailed description
+- Associated test cases
+- Performance impact analysis
+- Documentation updates
 
 ## Licensing & Attribution
 
@@ -692,4 +692,5 @@ Version 1.2.0. GitHub Repository: https://github.com/Mimir-AIP/Mimir-AIP-Go
 ---
 
 **Project Repository**: https://github.com/Mimir-AIP/Mimir-AIP-Go
-**Documentation**: https://mimir-aip.github.io/wiki/wiki.html (TODO- Update docs site to include Go version)
+**Documentation**: https://mimir-aip.github.io/wiki/
+**Issues & Support**: https://github.com/Mimir-AIP/Mimir-AIP-Go/issues

@@ -19,13 +19,16 @@ import {
   clonePipeline,
   validatePipeline,
   getPipelineHistory,
+  getPipelineLogs,
   type Pipeline,
+  type ExecutionLog,
 } from "@/lib/api";
 import { DetailsSkeleton } from "@/components/LoadingSkeleton";
 import { ErrorDisplay } from "@/components/ErrorBoundary";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LogViewer } from "@/components/LogViewer";
 
 export default function PipelineDetailPage() {
   const { id } = useParams();
@@ -41,9 +44,12 @@ export default function PipelineDetailPage() {
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [cloneName, setCloneName] = useState("");
-  const [history, setHistory] = useState<unknown[]>([]);
+  const [history, setHistory] = useState<ExecutionLog[]>([]);
+  const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   const fetchPipeline = useCallback(async () => {
     try {
@@ -155,6 +161,37 @@ export default function PipelineDetailPage() {
     }
   }
 
+  async function handleViewLogs() {
+    if (!pipeline) return;
+
+    try {
+      setLogsLoading(true);
+      const result = await getPipelineLogs(pipeline.id);
+      setLogs(result.logs);
+      setLogsDialogOpen(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Failed to load logs: ${message}`);
+    } finally {
+      setLogsLoading(false);
+    }
+  }
+
+  async function handleRefreshLogs() {
+    if (!pipeline) return;
+    try {
+      setLogsLoading(true);
+      const result = await getPipelineLogs(pipeline.id);
+      setLogs(result.logs);
+      toast.success("Logs refreshed");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Failed to refresh logs: ${message}`);
+    } finally {
+      setLogsLoading(false);
+    }
+  }
+
   function getStatusColor(status?: string) {
     switch (status?.toLowerCase()) {
       case "active":
@@ -220,6 +257,9 @@ export default function PipelineDetailPage() {
               </Button>
               <Button variant="outline" onClick={handleValidate} disabled={isValidating}>
                 {isValidating ? "Validating..." : "Validate"}
+              </Button>
+              <Button variant="outline" onClick={handleViewLogs} disabled={logsLoading}>
+                {logsLoading ? "Loading Logs..." : "View Logs"}
               </Button>
               <Button variant="outline" onClick={handleViewHistory} disabled={isProcessing}>
                 View History
@@ -330,6 +370,26 @@ export default function PipelineDetailPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setHistoryDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Logs Dialog */}
+      <Dialog open={logsDialogOpen} onOpenChange={setLogsDialogOpen}>
+        <DialogContent className="bg-navy text-white border-blue max-w-6xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="text-orange">Pipeline Execution Logs</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Execution logs for &quot;{pipeline?.name}&quot;
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto max-h-[60vh]">
+            <LogViewer logs={logs} loading={logsLoading} onRefresh={handleRefreshLogs} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLogsDialogOpen(false)}>
               Close
             </Button>
           </DialogFooter>

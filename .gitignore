@@ -184,3 +184,8 @@ rss_feed_raw.xml
 # debug_search_urls.json
 /.roo
 node_modules
+
+# Go build artifacts
+mimir-aip-server
+benchmarks/benchmark_suite
+utils.test

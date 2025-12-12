@@ -50,7 +50,9 @@ func (ms *MCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // handleToolDiscovery returns available tools in MCP-compatible format
 func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request) {
-	var tools []map[string]interface{}
+	w.Header().Set("Content-Type", "application/json")
+
+	tools := make([]map[string]interface{}, 0)
 	for pluginType, typePlugins := range ms.registry.GetAllPlugins() {
 		for pluginName := range typePlugins {
 			toolName := fmt.Sprintf("%s.%s", pluginType, pluginName)
@@ -98,6 +100,8 @@ func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request)
 
 // handleToolExecution executes a specific tool
 func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	var req struct {
 		ToolName  string                 `json:"tool_name"`
 		Arguments map[string]interface{} `json:"arguments"`

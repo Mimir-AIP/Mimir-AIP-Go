@@ -193,6 +193,42 @@ func (s *Scheduler) DisableJob(id string) error {
 	return nil
 }
 
+// UpdateJob updates an existing scheduled job
+func (s *Scheduler) UpdateJob(id string, name, pipeline, cronExpr *string) error {
+	s.jobsMutex.Lock()
+	defer s.jobsMutex.Unlock()
+
+	job, exists := s.jobs[id]
+	if !exists {
+		return fmt.Errorf("job with ID %s not found", id)
+	}
+
+	// Update fields if provided
+	if name != nil && *name != "" {
+		job.Name = *name
+	}
+
+	if pipeline != nil && *pipeline != "" {
+		job.Pipeline = *pipeline
+	}
+
+	if cronExpr != nil && *cronExpr != "" {
+		// Validate new cron expression
+		_, err := parseCronExpression(*cronExpr)
+		if err != nil {
+			return fmt.Errorf("invalid cron expression: %w", err)
+		}
+		job.CronExpr = *cronExpr
+		// Recalculate next run time
+		s.updateNextRun(job)
+	}
+
+	job.UpdatedAt = time.Now()
+
+	log.Printf("Updated scheduled job: %s", id)
+	return nil
+}
+
 // GetJobs returns all scheduled jobs (as copies to prevent external modification)
 func (s *Scheduler) GetJobs() map[string]*ScheduledJob {
 	s.jobsMutex.RLock()

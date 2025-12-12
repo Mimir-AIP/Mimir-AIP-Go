@@ -92,6 +92,11 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure we never return null, always return empty array if nil
+	if pipelines == nil {
+		pipelines = []utils.PipelineConfig{}
+	}
+
 	json.NewEncoder(w).Encode(pipelines)
 }
 
@@ -201,7 +206,14 @@ func (s *Server) handleAgentExecute(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	jobs := s.scheduler.GetJobs()
+	jobsMap := s.scheduler.GetJobs()
+
+	// Convert map to array for frontend compatibility
+	jobs := make([]*utils.ScheduledJob, 0, len(jobsMap))
+	for _, job := range jobsMap {
+		jobs = append(jobs, job)
+	}
+
 	json.NewEncoder(w).Encode(jobs)
 }
 

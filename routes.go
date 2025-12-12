@@ -1,6 +1,11 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"os"
+
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
 
@@ -98,4 +103,36 @@ func (s *Server) setupRoutes() {
 	protected.HandleFunc("/pipelines", s.handleExecutePipeline).Methods("POST")
 	protected.HandleFunc("/scheduler/jobs", s.handleCreateJob).Methods("POST")
 	protected.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")
+
+	// ========================================
+	// Frontend Proxy to Next.js Server
+	// ========================================
+	// Proxy non-API requests to Next.js server running on port 3000
+	nextJSURL := os.Getenv("NEXTJS_URL")
+	if nextJSURL == "" {
+		nextJSURL = "http://localhost:3000"
+	}
+
+	// Parse Next.js backend URL
+	nextJSBackend, err := url.Parse(nextJSURL)
+	if err == nil {
+		utils.GetLogger().Info("Proxying frontend requests to: " + nextJSURL)
+
+		// Create reverse proxy to Next.js
+		proxy := httputil.NewSingleHostReverseProxy(nextJSBackend)
+
+		// Catch-all: proxy everything that's not an API route to Next.js
+		s.router.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Don't proxy API routes
+			if len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" {
+				http.NotFound(w, r)
+				return
+			}
+
+			// Proxy to Next.js
+			proxy.ServeHTTP(w, r)
+		})
+	} else {
+		utils.GetLogger().Warn("Failed to parse Next.js URL, serving API only")
+	}
 }

@@ -176,7 +176,7 @@ func (s *Scheduler) AddJob(id, name, pipeline, cronExpr string) error {
 
 	// Persist the job if persistence is enabled
 	if s.persistence != nil {
-		if err := s.persistence.SaveJob(context.Background(), job); err != nil {
+		if err := s.persistence.SaveJob(s.ctx, job); err != nil {
 			log.Printf("Warning: failed to persist job %s: %v", id, err)
 		}
 	}
@@ -198,7 +198,7 @@ func (s *Scheduler) RemoveJob(id string) error {
 
 	// Remove from persistence if enabled
 	if s.persistence != nil {
-		if err := s.persistence.DeleteJob(context.Background(), id); err != nil {
+		if err := s.persistence.DeleteJob(s.ctx, id); err != nil {
 			log.Printf("Warning: failed to delete persisted job %s: %v", id, err)
 		}
 	}
@@ -223,7 +223,7 @@ func (s *Scheduler) EnableJob(id string) error {
 
 	// Update in persistence if enabled
 	if s.persistence != nil {
-		if err := s.persistence.UpdateJob(context.Background(), job); err != nil {
+		if err := s.persistence.UpdateJob(s.ctx, job); err != nil {
 			log.Printf("Warning: failed to update persisted job %s: %v", id, err)
 		}
 	}
@@ -248,7 +248,7 @@ func (s *Scheduler) DisableJob(id string) error {
 
 	// Update in persistence if enabled
 	if s.persistence != nil {
-		if err := s.persistence.UpdateJob(context.Background(), job); err != nil {
+		if err := s.persistence.UpdateJob(s.ctx, job); err != nil {
 			log.Printf("Warning: failed to update persisted job %s: %v", id, err)
 		}
 	}
@@ -291,7 +291,7 @@ func (s *Scheduler) UpdateJob(id string, name, pipeline, cronExpr *string) error
 
 	// Update in persistence if enabled
 	if s.persistence != nil {
-		if err := s.persistence.UpdateJob(context.Background(), job); err != nil {
+		if err := s.persistence.UpdateJob(s.ctx, job); err != nil {
 			log.Printf("Warning: failed to update persisted job %s: %v", id, err)
 		}
 	}

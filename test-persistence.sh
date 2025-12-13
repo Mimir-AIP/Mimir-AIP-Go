@@ -19,11 +19,11 @@ export MIMIR_VECTOR_DB_PATH=/tmp/mimir-test-data/chromem.db
 
 # Start server in background
 echo "Starting server (first time)..."
-timeout 3 ./mimir-aip-server --server 9999 > /tmp/mimir-test.log 2>&1 &
+timeout 10 ./mimir-aip-server --server 9999 > /tmp/mimir-test.log 2>&1 &
 SERVER_PID=$!
 
 # Wait for server to start
-sleep 2
+sleep 3
 
 # Create a job via API
 echo "Creating a test job..."
@@ -73,11 +73,11 @@ fi
 
 # Start server again
 echo "Starting server (second time)..."
-timeout 3 ./mimir-aip-server --server 9999 > /tmp/mimir-test2.log 2>&1 &
+timeout 10 ./mimir-aip-server --server 9999 > /tmp/mimir-test2.log 2>&1 &
 SERVER_PID=$!
 
 # Wait for server to start
-sleep 2
+sleep 3
 
 # Verify job is still there
 echo "Verifying job persistence after restart..."

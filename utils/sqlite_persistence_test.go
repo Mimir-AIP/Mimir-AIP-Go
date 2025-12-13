@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -307,7 +308,7 @@ func TestSQLitePersistence_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			job := &ScheduledJob{
-				ID:        string(rune('a' + id)),
+				ID:        fmt.Sprintf("job-%d", id),
 				Name:      "Test Job",
 				Pipeline:  "test.yaml",
 				CronExpr:  "0 9 * * *",

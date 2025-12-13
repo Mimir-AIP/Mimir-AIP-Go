@@ -530,12 +530,10 @@ func (sp *SQLitePersistence) DeleteOldExecutions(ctx context.Context, olderThan 
 		return fmt.Errorf("failed to delete old executions: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
+	_, err = result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("failed to get affected rows: %w", err)
 	}
-
-	GetLogger().Info(fmt.Sprintf("Deleted %d old execution records", rows), nil, Component("persistence"))
 
 	return nil
 }

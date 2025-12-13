@@ -12,12 +12,13 @@ import (
 
 // Server represents the Mimir AIP server
 type Server struct {
-	router    *mux.Router
-	registry  *pipelines.PluginRegistry
-	mcpServer *MCPServer
-	scheduler *utils.Scheduler
-	monitor   *utils.JobMonitor
-	config    *utils.ConfigManager
+	router      *mux.Router
+	registry    *pipelines.PluginRegistry
+	mcpServer   *MCPServer
+	scheduler   *utils.Scheduler
+	monitor     *utils.JobMonitor
+	config      *utils.ConfigManager
+	persistence utils.PersistenceBackend
 }
 
 // PipelineExecutionRequest represents a request to execute a pipeline
@@ -72,6 +73,25 @@ func NewServer() *Server {
 	// Initialize pipeline store
 	if err := utils.InitializeGlobalPipelineStore("./pipelines"); err != nil {
 		log.Printf("Failed to initialize pipeline store: %v", err)
+	}
+
+	// Initialize persistence if enabled
+	if s.config.GetConfig().Persistence.Enabled {
+		dbPath := s.config.GetConfig().Persistence.DatabasePath
+		persistence, err := utils.NewSQLitePersistence(dbPath)
+		if err != nil {
+			log.Printf("Failed to initialize persistence: %v", err)
+		} else {
+			s.persistence = persistence
+			s.scheduler.SetPersistence(persistence)
+
+			// Load existing jobs from persistence
+			if err := s.scheduler.LoadJobsFromPersistence(); err != nil {
+				log.Printf("Failed to load jobs from persistence: %v", err)
+			}
+
+			log.Printf("Persistence initialized with SQLite backend at: %s", dbPath)
+		}
 	}
 
 	// Start the scheduler
@@ -129,6 +149,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		if logger := utils.GetLogger(); logger != nil {
 			log.Println("Flushing logs...")
 			// Logger flush if supported
+		}
+
+		// 5. Close persistence backend
+		if s.persistence != nil {
+			log.Println("Closing persistence backend...")
+			if err := s.persistence.Close(); err != nil {
+				log.Printf("Error closing persistence: %v", err)
+			}
 		}
 
 		log.Println("Graceful shutdown completed")

@@ -27,27 +27,62 @@ type ScheduledJob struct {
 
 // Scheduler manages cron-based pipeline execution
 type Scheduler struct {
-	jobs      map[string]*ScheduledJob
-	jobsMutex sync.RWMutex
-	running   bool
-	stopped   bool // Track if stopChan is closed
-	stopChan  chan struct{}
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	registry  *pipelines.PluginRegistry
+	jobs        map[string]*ScheduledJob
+	jobsMutex   sync.RWMutex
+	running     bool
+	stopped     bool // Track if stopChan is closed
+	stopChan    chan struct{}
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	registry    *pipelines.PluginRegistry
+	persistence PersistenceBackend
 }
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler(registry *pipelines.PluginRegistry) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
-		jobs:     make(map[string]*ScheduledJob),
-		stopChan: make(chan struct{}),
-		ctx:      ctx,
-		cancel:   cancel,
-		registry: registry,
+		jobs:        make(map[string]*ScheduledJob),
+		stopChan:    make(chan struct{}),
+		ctx:         ctx,
+		cancel:      cancel,
+		registry:    registry,
+		persistence: nil, // Will be set via SetPersistence
 	}
+}
+
+// SetPersistence sets the persistence backend for the scheduler
+func (s *Scheduler) SetPersistence(persistence PersistenceBackend) {
+	s.jobsMutex.Lock()
+	defer s.jobsMutex.Unlock()
+	s.persistence = persistence
+}
+
+// LoadJobsFromPersistence loads all jobs from the persistence backend
+func (s *Scheduler) LoadJobsFromPersistence() error {
+	if s.persistence == nil {
+		return nil // No persistence configured
+	}
+
+	jobs, err := s.persistence.ListJobs(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load jobs from persistence: %w", err)
+	}
+
+	s.jobsMutex.Lock()
+	defer s.jobsMutex.Unlock()
+
+	for _, job := range jobs {
+		s.jobs[job.ID] = job
+		// Recalculate next run time if job is enabled
+		if job.Enabled {
+			s.updateNextRun(job)
+		}
+	}
+
+	log.Printf("Loaded %d jobs from persistence", len(jobs))
+	return nil
 }
 
 // Start begins the scheduler
@@ -139,6 +174,13 @@ func (s *Scheduler) AddJob(id, name, pipeline, cronExpr string) error {
 	s.jobs[id] = job
 	s.updateNextRun(job)
 
+	// Persist the job if persistence is enabled
+	if s.persistence != nil {
+		if err := s.persistence.SaveJob(context.Background(), job); err != nil {
+			log.Printf("Warning: failed to persist job %s: %v", id, err)
+		}
+	}
+
 	log.Printf("Added scheduled job: %s (%s)", name, cronExpr)
 	return nil
 }
@@ -153,6 +195,14 @@ func (s *Scheduler) RemoveJob(id string) error {
 	}
 
 	delete(s.jobs, id)
+
+	// Remove from persistence if enabled
+	if s.persistence != nil {
+		if err := s.persistence.DeleteJob(context.Background(), id); err != nil {
+			log.Printf("Warning: failed to delete persisted job %s: %v", id, err)
+		}
+	}
+
 	log.Printf("Removed scheduled job: %s", id)
 	return nil
 }
@@ -171,6 +221,13 @@ func (s *Scheduler) EnableJob(id string) error {
 	job.UpdatedAt = time.Now()
 	s.updateNextRun(job)
 
+	// Update in persistence if enabled
+	if s.persistence != nil {
+		if err := s.persistence.UpdateJob(context.Background(), job); err != nil {
+			log.Printf("Warning: failed to update persisted job %s: %v", id, err)
+		}
+	}
+
 	log.Printf("Enabled scheduled job: %s", id)
 	return nil
 }
@@ -188,6 +245,13 @@ func (s *Scheduler) DisableJob(id string) error {
 	job.Enabled = false
 	job.NextRun = nil // Clear next run when disabled
 	job.UpdatedAt = time.Now()
+
+	// Update in persistence if enabled
+	if s.persistence != nil {
+		if err := s.persistence.UpdateJob(context.Background(), job); err != nil {
+			log.Printf("Warning: failed to update persisted job %s: %v", id, err)
+		}
+	}
 
 	log.Printf("Disabled scheduled job: %s", id)
 	return nil
@@ -224,6 +288,13 @@ func (s *Scheduler) UpdateJob(id string, name, pipeline, cronExpr *string) error
 	}
 
 	job.UpdatedAt = time.Now()
+
+	// Update in persistence if enabled
+	if s.persistence != nil {
+		if err := s.persistence.UpdateJob(context.Background(), job); err != nil {
+			log.Printf("Warning: failed to update persisted job %s: %v", id, err)
+		}
+	}
 
 	log.Printf("Updated scheduled job: %s", id)
 	return nil

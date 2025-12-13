@@ -51,3 +51,13 @@ security:
   enable_https: false
   cert_file: ""
   key_file: ""
+
+persistence:
+  enabled: true
+  backend: "sqlite"
+  database_path: "./data/mimir.db"
+  vector_db_path: "./data/chromem.db"
+  enable_vector_db: true
+  backup_enabled: false
+  backup_path: "./backups"
+  retention_days: 30

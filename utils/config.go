@@ -14,11 +14,12 @@ import (
 
 // Config represents the main application configuration
 type Config struct {
-	Server    ServerConfig    `yaml:"server" json:"server"`
-	Plugins   PluginsConfig   `yaml:"plugins" json:"plugins"`
-	Scheduler SchedulerConfig `yaml:"scheduler" json:"scheduler"`
-	Logging   LoggingConfig   `yaml:"logging" json:"logging"`
-	Security  SecurityConfig  `yaml:"security" json:"security"`
+	Server      ServerConfig      `yaml:"server" json:"server"`
+	Plugins     PluginsConfig     `yaml:"plugins" json:"plugins"`
+	Scheduler   SchedulerConfig   `yaml:"scheduler" json:"scheduler"`
+	Logging     LoggingConfig     `yaml:"logging" json:"logging"`
+	Security    SecurityConfig    `yaml:"security" json:"security"`
+	Persistence PersistenceConfig `yaml:"persistence" json:"persistence"`
 }
 
 // ServerConfig holds server-related configuration
@@ -71,6 +72,19 @@ type SecurityConfig struct {
 	EnableHTTPS    bool     `yaml:"enable_https" json:"enable_https"`
 	CertFile       string   `yaml:"cert_file" json:"cert_file"`
 	KeyFile        string   `yaml:"key_file" json:"key_file"`
+}
+
+// PersistenceConfig holds persistence-related configuration
+type PersistenceConfig struct {
+	Enabled          bool   `yaml:"enabled" json:"enabled"`
+	Backend          string `yaml:"backend" json:"backend"`                     // sqlite, postgres, mysql
+	DatabasePath     string `yaml:"database_path" json:"database_path"`         // for sqlite
+	ConnectionString string `yaml:"connection_string" json:"connection_string"` // for postgres/mysql
+	VectorDBPath     string `yaml:"vector_db_path" json:"vector_db_path"`       // for chromem persistence
+	EnableVectorDB   bool   `yaml:"enable_vector_db" json:"enable_vector_db"`
+	BackupEnabled    bool   `yaml:"backup_enabled" json:"backup_enabled"`
+	BackupPath       string `yaml:"backup_path" json:"backup_path"`
+	RetentionDays    int    `yaml:"retention_days" json:"retention_days"` // execution history retention
 }
 
 // ConfigManager manages application configuration
@@ -162,6 +176,14 @@ func (cm *ConfigManager) LoadFromEnvironment() error {
 
 	if jwtSecret := os.Getenv("MIMIR_JWT_SECRET"); jwtSecret != "" {
 		cm.config.Security.JWTSecret = jwtSecret
+	}
+
+	if dbPath := os.Getenv("MIMIR_DATABASE_PATH"); dbPath != "" {
+		cm.config.Persistence.DatabasePath = dbPath
+	}
+
+	if vectorDBPath := os.Getenv("MIMIR_VECTOR_DB_PATH"); vectorDBPath != "" {
+		cm.config.Persistence.VectorDBPath = vectorDBPath
 	}
 
 	return nil
@@ -304,6 +326,16 @@ func getDefaultConfig() *Config {
 			EnableHTTPS:    false,
 			CertFile:       "",
 			KeyFile:        "",
+		},
+		Persistence: PersistenceConfig{
+			Enabled:        true,
+			Backend:        "sqlite",
+			DatabasePath:   "./data/mimir.db",
+			VectorDBPath:   "./data/chromem.db",
+			EnableVectorDB: true,
+			BackupEnabled:  false,
+			BackupPath:     "./backups",
+			RetentionDays:  30,
 		},
 	}
 }

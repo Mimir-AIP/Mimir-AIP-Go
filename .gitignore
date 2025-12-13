@@ -189,3 +189,11 @@ node_modules
 mimir-aip-server
 benchmarks/benchmark_suite
 utils.test
+
+# Runtime data directories
+data/
+logs/
+backups/
+*.db
+*.db-shm
+*.db-wal

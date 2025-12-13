@@ -24,6 +24,8 @@ services:
       - MIMIR_DATA_DIR=/app/data
       - MIMIR_LOG_DIR=/app/logs
       - MIMIR_PLUGIN_DIR=/app/plugins
+      - MIMIR_DATABASE_PATH=/app/data/mimir.db
+      - MIMIR_VECTOR_DB_PATH=/app/data/chromem.db
       - NEXTJS_URL=http://localhost:3000
       - PORT=3000
       - HOSTNAME=0.0.0.0

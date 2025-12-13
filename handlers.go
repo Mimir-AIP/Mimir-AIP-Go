@@ -17,10 +17,34 @@ import (
 
 // handleHealth handles health check requests
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSONResponse(w, http.StatusOK, map[string]any{
+	healthStatus := map[string]any{
 		"status": "healthy",
 		"time":   time.Now().Format(time.RFC3339),
-	})
+	}
+
+	// Check persistence health if enabled
+	if s.persistence != nil {
+		ctx := r.Context()
+		if err := s.persistence.Health(ctx); err != nil {
+			healthStatus["persistence"] = map[string]any{
+				"status": "unhealthy",
+				"error":  err.Error(),
+			}
+			writeJSONResponse(w, http.StatusServiceUnavailable, healthStatus)
+			return
+		}
+		healthStatus["persistence"] = map[string]any{
+			"status":  "healthy",
+			"backend": s.config.GetConfig().Persistence.Backend,
+			"path":    s.config.GetConfig().Persistence.DatabasePath,
+		}
+	} else {
+		healthStatus["persistence"] = map[string]any{
+			"status": "disabled",
+		}
+	}
+
+	writeJSONResponse(w, http.StatusOK, healthStatus)
 }
 
 // handleExecutePipeline handles pipeline execution requests

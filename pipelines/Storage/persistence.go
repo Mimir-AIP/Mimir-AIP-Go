@@ -179,6 +179,23 @@ func (p *PersistenceBackend) initSchema() error {
 		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
 	);
 
+	-- Auto-update policies table
+	CREATE TABLE IF NOT EXISTS auto_update_policies (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ontology_id TEXT NOT NULL UNIQUE,
+		enabled BOOLEAN NOT NULL DEFAULT 0,
+		auto_apply_classes BOOLEAN NOT NULL DEFAULT 0,
+		auto_apply_properties BOOLEAN NOT NULL DEFAULT 0,
+		auto_apply_modify BOOLEAN NOT NULL DEFAULT 0,
+		max_risk_level TEXT NOT NULL DEFAULT 'low',
+		min_confidence REAL NOT NULL DEFAULT 0.8,
+		require_approval TEXT,
+		notification_email TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
+	);
+
 	-- Create indexes for better query performance
 	CREATE INDEX IF NOT EXISTS idx_ontologies_name ON ontologies(name);
 	CREATE INDEX IF NOT EXISTS idx_ontologies_status ON ontologies(status);

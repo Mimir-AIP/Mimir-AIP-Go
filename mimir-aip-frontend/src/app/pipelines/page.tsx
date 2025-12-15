@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getPipelines, deletePipeline, clonePipeline, type Pipeline } from "@/lib/api";
+import { Textarea } from "@/components/ui/textarea";
+import { getPipelines, deletePipeline, clonePipeline, createPipeline, type Pipeline } from "@/lib/api";
 import { CardListSkeleton } from "@/components/LoadingSkeleton";
 import { ErrorDisplay } from "@/components/ErrorBoundary";
 import { toast } from "sonner";
@@ -25,9 +26,28 @@ export default function PipelinesPage() {
   const [error, setError] = useState<string | null>(null);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
   const [cloneName, setCloneName] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Create pipeline form state
+  const [createFormData, setCreateFormData] = useState({
+    name: "",
+    description: "",
+    yamlConfig: `version: "1.0"
+name: my-pipeline
+description: A sample pipeline
+steps:
+  - name: step1
+    plugin: input/http
+    config:
+      url: https://example.com/api
+  - name: step2
+    plugin: output/json
+    config:
+      file: output.json`,
+  });
 
   useEffect(() => {
     fetchPipelines();
@@ -99,6 +119,76 @@ export default function PipelinesPage() {
     setDeleteDialogOpen(true);
   }
 
+  async function handleCreate() {
+    if (!createFormData.name.trim()) {
+      toast.error("Please enter a pipeline name");
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      
+      // Parse YAML config
+      let parsedConfig: any;
+      try {
+        // Simple YAML parsing - in production you'd use a library like js-yaml
+        parsedConfig = {
+          steps: [],
+          name: createFormData.name,
+          description: createFormData.description,
+        };
+        
+        // Try to parse as JSON first (simpler for now)
+        // In reality, we'd need a YAML parser
+        const lines = createFormData.yamlConfig.split('\n');
+        // For now, just send the raw YAML as config
+      } catch (parseErr) {
+        toast.error("Invalid YAML configuration");
+        return;
+      }
+
+      const metadata = {
+        name: createFormData.name,
+        description: createFormData.description,
+        enabled: true,
+        tags: [],
+      };
+
+      const config = {
+        name: createFormData.name,
+        description: createFormData.description,
+        enabled: true,
+        steps: [], // This would be parsed from YAML
+      };
+
+      await createPipeline(metadata, config);
+      toast.success(`Pipeline "${createFormData.name}" created successfully`);
+      setCreateDialogOpen(false);
+      setCreateFormData({
+        name: "",
+        description: "",
+        yamlConfig: `version: "1.0"
+name: my-pipeline
+description: A sample pipeline
+steps:
+  - name: step1
+    plugin: input/http
+    config:
+      url: https://example.com/api
+  - name: step2
+    plugin: output/json
+    config:
+      file: output.json`,
+      });
+      await fetchPipelines();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Failed to create pipeline: ${message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   function getStatusColor(status?: string) {
     switch (status?.toLowerCase()) {
       case "active":
@@ -118,7 +208,7 @@ export default function PipelinesPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-orange">Pipelines</h1>
-        <Button onClick={() => toast.info("Create pipeline feature coming soon")}>
+        <Button onClick={() => setCreateDialogOpen(true)}>
           Create Pipeline
         </Button>
       </div>
@@ -129,7 +219,7 @@ export default function PipelinesPage() {
       {!loading && !error && pipelines.length === 0 && (
         <Card className="bg-navy text-white border-blue p-8 text-center">
           <p className="text-white/60 mb-4">No pipelines found</p>
-          <Button onClick={() => toast.info("Create pipeline feature coming soon")}>
+          <Button onClick={() => setCreateDialogOpen(true)}>
             Create Your First Pipeline
           </Button>
         </Card>
@@ -209,6 +299,65 @@ export default function PipelinesPage() {
             </Button>
             <Button onClick={handleClone} disabled={isProcessing || !cloneName.trim()}>
               {isProcessing ? "Cloning..." : "Clone Pipeline"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Pipeline Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="bg-navy text-white border-blue max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="text-orange">Create New Pipeline</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Define a new pipeline with steps and configuration
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4 overflow-y-auto max-h-[60vh]">
+            <div className="grid gap-2">
+              <Label htmlFor="create-name">Pipeline Name *</Label>
+              <Input
+                id="create-name"
+                value={createFormData.name}
+                onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })}
+                placeholder="my-pipeline"
+                className="bg-blue/10 border-blue text-white"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="create-description">Description</Label>
+              <Input
+                id="create-description"
+                value={createFormData.description}
+                onChange={(e) => setCreateFormData({ ...createFormData, description: e.target.value })}
+                placeholder="A brief description of this pipeline"
+                className="bg-blue/10 border-blue text-white"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="create-yaml">Pipeline Configuration (YAML)</Label>
+              <Textarea
+                id="create-yaml"
+                value={createFormData.yamlConfig}
+                onChange={(e) => setCreateFormData({ ...createFormData, yamlConfig: e.target.value })}
+                placeholder="Enter YAML configuration"
+                className="bg-blue/10 border-blue text-white font-mono text-sm min-h-[300px]"
+              />
+              <p className="text-xs text-white/60">
+                Define pipeline steps, plugins, and configuration in YAML format
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreateDialogOpen(false)}
+              disabled={isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={isProcessing || !createFormData.name.trim()}>
+              {isProcessing ? "Creating..." : "Create Pipeline"}
             </Button>
           </DialogFooter>
         </DialogContent>

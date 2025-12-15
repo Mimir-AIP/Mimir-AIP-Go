@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	ontology "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
 	"github.com/gorilla/mux"
 )
 
@@ -35,6 +36,21 @@ type OntologyUploadResponse struct {
 // SPARQLQueryRequest represents a SPARQL query request
 type SPARQLQueryRequest struct {
 	Query string `json:"query"`
+}
+
+// ExtractionJobRequest represents a request to create an extraction job
+type ExtractionJobRequest struct {
+	OntologyID     string `json:"ontology_id"`
+	JobName        string `json:"job_name,omitempty"`
+	SourceType     string `json:"source_type"`
+	ExtractionType string `json:"extraction_type,omitempty"`
+	Data           any    `json:"data"`
+}
+
+// NLQueryRequest represents a natural language query request
+type NLQueryRequest struct {
+	Question   string `json:"question"`
+	OntologyID string `json:"ontology_id,omitempty"`
 }
 
 // handleUploadOntology handles ontology upload requests
@@ -495,4 +511,389 @@ func (s *Server) handleExportOntology(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s-%s.%s\"", ontology.Name, ontology.Version, format))
 	io.WriteString(w, string(contentBytes))
+}
+
+// handleCreateExtractionJob handles requests to create an entity extraction job
+func (s *Server) handleCreateExtractionJob(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil || s.tdb2Backend == nil {
+		writeInternalServerErrorResponse(w, "Ontology features are not available")
+		return
+	}
+
+	var req ExtractionJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	// Validate required fields
+	if req.OntologyID == "" || req.SourceType == "" || req.Data == nil {
+		writeBadRequestResponse(w, "ontology_id, source_type, and data are required")
+		return
+	}
+
+	// Get extraction plugin
+	plugin, err := s.registry.GetPlugin("Ontology", "extraction")
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Extraction plugin not available: %v", err))
+		return
+	}
+
+	// Create step config
+	stepConfig := pipelines.StepConfig{
+		Name:   "extract_entities",
+		Plugin: "Ontology.extraction",
+		Config: map[string]any{
+			"operation":       "extract",
+			"ontology_id":     req.OntologyID,
+			"job_name":        req.JobName,
+			"source_type":     req.SourceType,
+			"extraction_type": req.ExtractionType,
+			"data":            req.Data,
+		},
+	}
+
+	// Execute plugin
+	ctx := context.Background()
+	globalContext := pipelines.NewPluginContext()
+	result, err := plugin.ExecuteStep(ctx, stepConfig, globalContext)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to create extraction job: %v", err))
+		return
+	}
+
+	// Extract results
+	jobID, _ := result.Get("job_id")
+	status, _ := result.Get("status")
+	entitiesExtracted, _ := result.Get("entities_extracted")
+	triplesGenerated, _ := result.Get("triples_generated")
+	confidence, _ := result.Get("confidence")
+	warnings, _ := result.Get("warnings")
+
+	response := map[string]any{
+		"job_id":             jobID,
+		"status":             status,
+		"entities_extracted": entitiesExtracted,
+		"triples_generated":  triplesGenerated,
+		"confidence":         confidence,
+		"warnings":           warnings,
+	}
+
+	writeSuccessResponse(w, response)
+}
+
+// handleListExtractionJobs handles requests to list extraction jobs
+func (s *Server) handleListExtractionJobs(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil {
+		writeInternalServerErrorResponse(w, "Ontology features are not available")
+		return
+	}
+
+	// Get query parameters
+	ontologyID := r.URL.Query().Get("ontology_id")
+	status := r.URL.Query().Get("status")
+
+	// Get extraction plugin
+	plugin, err := s.registry.GetPlugin("Ontology", "extraction")
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Extraction plugin not available: %v", err))
+		return
+	}
+
+	// Create step config
+	stepConfig := pipelines.StepConfig{
+		Name:   "list_extraction_jobs",
+		Plugin: "Ontology.extraction",
+		Config: map[string]any{
+			"operation":   "list_jobs",
+			"ontology_id": ontologyID,
+			"status":      status,
+		},
+	}
+
+	// Execute plugin
+	ctx := context.Background()
+	globalContext := pipelines.NewPluginContext()
+	result, err := plugin.ExecuteStep(ctx, stepConfig, globalContext)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to list extraction jobs: %v", err))
+		return
+	}
+
+	jobs, _ := result.Get("jobs")
+
+	response := map[string]any{
+		"jobs": jobs,
+	}
+
+	writeSuccessResponse(w, response)
+}
+
+// handleGetExtractionJob handles requests to get a specific extraction job
+func (s *Server) handleGetExtractionJob(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil {
+		writeInternalServerErrorResponse(w, "Ontology features are not available")
+		return
+	}
+
+	vars := mux.Vars(r)
+	jobID := vars["id"]
+
+	if jobID == "" {
+		writeBadRequestResponse(w, "job ID is required")
+		return
+	}
+
+	// Get extraction plugin
+	plugin, err := s.registry.GetPlugin("Ontology", "extraction")
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Extraction plugin not available: %v", err))
+		return
+	}
+
+	// Create step config
+	stepConfig := pipelines.StepConfig{
+		Name:   "get_extraction_job",
+		Plugin: "Ontology.extraction",
+		Config: map[string]any{
+			"operation": "get_job",
+			"job_id":    jobID,
+		},
+	}
+
+	// Execute plugin
+	ctx := context.Background()
+	globalContext := pipelines.NewPluginContext()
+	result, err := plugin.ExecuteStep(ctx, stepConfig, globalContext)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to get extraction job: %v", err))
+		return
+	}
+
+	job, _ := result.Get("job")
+	entities, _ := result.Get("entities")
+
+	response := map[string]any{
+		"job":      job,
+		"entities": entities,
+	}
+
+	writeSuccessResponse(w, response)
+}
+
+// handleNLQuery handles natural language query requests
+func (s *Server) handleNLQuery(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil || s.tdb2Backend == nil {
+		writeInternalServerErrorResponse(w, "Ontology features are not available")
+		return
+	}
+
+	if s.llmClient == nil {
+		writeInternalServerErrorResponse(w, "LLM client is not configured. Set OPENAI_API_KEY environment variable.")
+		return
+	}
+
+	var req NLQueryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	if req.Question == "" {
+		writeBadRequestResponse(w, "question is required")
+		return
+	}
+
+	// Get NL query plugin
+	plugin, err := s.registry.GetPlugin("Ontology", "nl_query")
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("NL query plugin not available: %v", err))
+		return
+	}
+
+	// Create step config
+	stepConfig := pipelines.StepConfig{
+		Name:   "nl_query",
+		Plugin: "Ontology.nl_query",
+		Config: map[string]any{
+			"question":    req.Question,
+			"ontology_id": req.OntologyID,
+		},
+	}
+
+	// Execute plugin
+	ctx := context.Background()
+	globalContext := pipelines.NewPluginContext()
+	result, err := plugin.ExecuteStep(ctx, stepConfig, globalContext)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to execute NL query: %v", err))
+		return
+	}
+
+	question, _ := result.Get("question")
+	sparqlQuery, _ := result.Get("sparql_query")
+	explanation, _ := result.Get("explanation")
+	results, _ := result.Get("results")
+
+	response := map[string]any{
+		"question":     question,
+		"sparql_query": sparqlQuery,
+		"explanation":  explanation,
+		"results":      results,
+	}
+
+	writeSuccessResponse(w, response)
+}
+
+// ==================== VERSIONING HANDLERS ====================
+
+// CreateVersionRequest represents a request to create a new ontology version
+type CreateVersionRequest struct {
+	Version   string `json:"version"`
+	Changelog string `json:"changelog"`
+	CreatedBy string `json:"created_by,omitempty"`
+}
+
+// handleCreateVersion creates a new version of an ontology
+// POST /api/v1/ontology/:id/versions
+func (s *Server) handleCreateVersion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	var req CreateVersionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	if req.Version == "" {
+		writeBadRequestResponse(w, "version is required")
+		return
+	}
+
+	// Get versioning service
+	db := s.persistence.GetDB()
+	versioningService := ontology.NewVersioningService(db)
+
+	// Create version
+	version, err := versioningService.CreateVersion(ontologyID, req.Version, req.Changelog, req.CreatedBy)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to create version: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, version)
+}
+
+// handleListVersions lists all versions of an ontology
+// GET /api/v1/ontology/:id/versions
+func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	// Get versioning service
+	db := s.persistence.GetDB()
+	versioningService := ontology.NewVersioningService(db)
+
+	// Get versions
+	versions, err := versioningService.GetVersions(ontologyID)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to get versions: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, versions)
+}
+
+// handleGetVersion gets a specific version
+// GET /api/v1/ontology/:id/versions/:vid
+func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	versionID := vars["vid"]
+
+	// Parse version ID
+	var vID int
+	if _, err := fmt.Sscanf(versionID, "%d", &vID); err != nil {
+		writeBadRequestResponse(w, "Invalid version ID")
+		return
+	}
+
+	// Get versioning service
+	db := s.persistence.GetDB()
+	versioningService := ontology.NewVersioningService(db)
+
+	// Get version
+	version, err := versioningService.GetVersionByID(vID)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to get version: %v", err))
+		return
+	}
+
+	// Get changes
+	changes, err := versioningService.GetChanges(vID)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to get changes: %v", err))
+		return
+	}
+
+	response := map[string]any{
+		"version": version,
+		"changes": changes,
+	}
+
+	writeSuccessResponse(w, response)
+}
+
+// handleCompareVersions compares two versions
+// GET /api/v1/ontology/:id/versions/compare?v1=...&v2=...
+func (s *Server) handleCompareVersions(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	v1 := r.URL.Query().Get("v1")
+	v2 := r.URL.Query().Get("v2")
+
+	if v1 == "" || v2 == "" {
+		writeBadRequestResponse(w, "Both v1 and v2 query parameters are required")
+		return
+	}
+
+	// Get versioning service
+	db := s.persistence.GetDB()
+	versioningService := ontology.NewVersioningService(db)
+
+	// Compare versions
+	diff, err := versioningService.CompareVersions(ontologyID, v1, v2)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to compare versions: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, diff)
+}
+
+// handleDeleteVersion deletes a version
+// DELETE /api/v1/ontology/:id/versions/:vid
+func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	versionID := vars["vid"]
+
+	// Parse version ID
+	var vID int
+	if _, err := fmt.Sscanf(versionID, "%d", &vID); err != nil {
+		writeBadRequestResponse(w, "Invalid version ID")
+		return
+	}
+
+	// Get versioning service
+	db := s.persistence.GetDB()
+	versioningService := ontology.NewVersioningService(db)
+
+	// Delete version
+	if err := versioningService.DeleteVersion(vID); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to delete version: %v", err))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

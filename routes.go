@@ -92,10 +92,23 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/ontology/{id}/export", s.handleExportOntology).Methods("GET")
 	v1.HandleFunc("/ontology/validate", s.handleValidateOntology).Methods("POST")
 
+	// Ontology versioning endpoints
+	v1.HandleFunc("/ontology/{id}/versions", s.handleListVersions).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/versions", s.handleCreateVersion).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/versions/compare", s.handleCompareVersions).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/versions/{vid}", s.handleGetVersion).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/versions/{vid}", s.handleDeleteVersion).Methods("DELETE")
+
 	// Knowledge Graph endpoints
 	v1.HandleFunc("/kg/query", s.handleSPARQLQuery).Methods("POST")
+	v1.HandleFunc("/kg/nl-query", s.handleNLQuery).Methods("POST")
 	v1.HandleFunc("/kg/stats", s.handleKnowledgeGraphStats).Methods("GET")
 	v1.HandleFunc("/kg/subgraph", s.handleGetSubgraph).Methods("GET")
+
+	// Entity extraction endpoints
+	v1.HandleFunc("/extraction/jobs", s.handleListExtractionJobs).Methods("GET")
+	v1.HandleFunc("/extraction/jobs", s.handleCreateExtractionJob).Methods("POST")
+	v1.HandleFunc("/extraction/jobs/{id}", s.handleGetExtractionJob).Methods("GET")
 
 	// Job monitoring endpoints
 	v1.HandleFunc("/jobs", s.handleListJobExecutions).Methods("GET")

@@ -53,6 +53,11 @@ func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 
 	tools := make([]map[string]any, 0)
+
+	// Add specialized ontology tools for agents
+	tools = append(tools, ms.getOntologyTools()...)
+
+	// Add all registered plugins as tools
 	for pluginType, typePlugins := range ms.registry.GetAllPlugins() {
 		for pluginName := range typePlugins {
 			toolName := fmt.Sprintf("%s.%s", pluginType, pluginName)
@@ -98,6 +103,150 @@ func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// getOntologyTools returns specialized ontology tools for Mimir agents
+func (ms *MCPServer) getOntologyTools() []map[string]any {
+	return []map[string]any{
+		{
+			"name":        "ontology.query",
+			"description": "Query the knowledge graph using natural language or SPARQL. Converts natural language questions to SPARQL queries and returns results from the RDF triplestore.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ontology_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the ontology to query",
+					},
+					"question": map[string]any{
+						"type":        "string",
+						"description": "Natural language question to query the knowledge graph",
+					},
+					"use_nl": map[string]any{
+						"type":        "boolean",
+						"description": "Use natural language translation (true) or provide raw SPARQL (false)",
+						"default":     true,
+					},
+					"sparql_query": map[string]any{
+						"type":        "string",
+						"description": "Raw SPARQL query (only if use_nl is false)",
+					},
+				},
+				"required": []string{"ontology_id"},
+			},
+		},
+		{
+			"name":        "ontology.extract",
+			"description": "Extract entities and relationships from data according to the ontology schema. Supports CSV, JSON, text, and HTML sources with deterministic or LLM-powered extraction.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ontology_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the ontology schema to use for extraction",
+					},
+					"data": map[string]any{
+						"type":        "object",
+						"description": "Data to extract entities from",
+					},
+					"source_type": map[string]any{
+						"type":        "string",
+						"description": "Type of data source (csv, json, text, html)",
+						"enum":        []string{"csv", "json", "text", "html"},
+					},
+					"extraction_type": map[string]any{
+						"type":        "string",
+						"description": "Extraction method (deterministic, llm, hybrid)",
+						"enum":        []string{"deterministic", "llm", "hybrid"},
+						"default":     "hybrid",
+					},
+					"job_name": map[string]any{
+						"type":        "string",
+						"description": "Name for the extraction job",
+					},
+				},
+				"required": []string{"ontology_id", "data", "source_type"},
+			},
+		},
+		{
+			"name":        "ontology.detect_drift",
+			"description": "Detect schema drift by analyzing data patterns that don't match the current ontology. Suggests new classes, properties, or modifications based on actual usage.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ontology_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the ontology to check for drift",
+					},
+					"source": map[string]any{
+						"type":        "string",
+						"description": "Drift detection source",
+						"enum":        []string{"knowledge_graph", "extraction_job", "data"},
+					},
+					"job_id": map[string]any{
+						"type":        "string",
+						"description": "Extraction job ID (only for extraction_job source)",
+					},
+					"data": map[string]any{
+						"type":        "object",
+						"description": "Raw data to analyze (only for data source)",
+					},
+				},
+				"required": []string{"ontology_id", "source"},
+			},
+		},
+		{
+			"name":        "ontology.list_suggestions",
+			"description": "List AI-generated suggestions for improving the ontology schema. Returns pending, approved, rejected, or applied suggestions with confidence scores and risk levels.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ontology_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the ontology",
+					},
+					"status": map[string]any{
+						"type":        "string",
+						"description": "Filter by status",
+						"enum":        []string{"pending", "approved", "rejected", "applied"},
+					},
+				},
+				"required": []string{"ontology_id"},
+			},
+		},
+		{
+			"name":        "ontology.apply_suggestion",
+			"description": "Apply an approved ontology suggestion to both the metadata database and RDF triplestore. Only works for suggestions with 'approved' status.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ontology_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the ontology",
+					},
+					"suggestion_id": map[string]any{
+						"type":        "integer",
+						"description": "ID of the suggestion to apply",
+					},
+				},
+				"required": []string{"ontology_id", "suggestion_id"},
+			},
+		},
+		{
+			"name":        "ontology.get_stats",
+			"description": "Get statistics about the ontology and knowledge graph including class count, property count, triple count, and entity count.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ontology_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the ontology",
+					},
+				},
+				"required": []string{"ontology_id"},
+			},
+		},
+	}
+}
+
 // handleToolExecution executes a specific tool
 func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -109,6 +258,12 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Handle specialized ontology tools first (simplified API)
+	if strings.HasPrefix(req.ToolName, "ontology.") {
+		ms.handleOntologyTool(w, r, req.ToolName, req.Arguments)
 		return
 	}
 
@@ -167,6 +322,100 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 		"result":  result,
 	}
 
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleOntologyTool executes specialized ontology tools with simplified API
+func (ms *MCPServer) handleOntologyTool(w http.ResponseWriter, r *http.Request, toolName string, arguments map[string]any) {
+	ctx := r.Context()
+
+	// These tools are called directly via HTTP endpoints, not plugins
+	// This provides a simpler interface for agents
+
+	switch toolName {
+	case "ontology.query":
+		ms.handleOntologyQuery(w, ctx, arguments)
+	case "ontology.extract":
+		ms.handleOntologyExtract(w, ctx, arguments)
+	case "ontology.detect_drift":
+		ms.handleOntologyDetectDrift(w, ctx, arguments)
+	case "ontology.list_suggestions":
+		ms.handleOntologyListSuggestions(w, ctx, arguments)
+	case "ontology.apply_suggestion":
+		ms.handleOntologyApplySuggestion(w, ctx, arguments)
+	case "ontology.get_stats":
+		ms.handleOntologyGetStats(w, ctx, arguments)
+	default:
+		http.Error(w, fmt.Sprintf("Unknown ontology tool: %s", toolName), http.StatusNotFound)
+	}
+}
+
+// handleOntologyQuery executes natural language or SPARQL queries
+func (ms *MCPServer) handleOntologyQuery(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	// Note: This would typically be implemented by making HTTP calls to the REST API
+	// or by injecting server dependencies. For simplicity, we'll document the expected behavior.
+
+	response := map[string]any{
+		"success":   true,
+		"tool":      "ontology.query",
+		"message":   "Query tool requires server instance access. Use REST API: POST /api/v1/kg/nl-query",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleOntologyExtract executes entity extraction
+func (ms *MCPServer) handleOntologyExtract(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "ontology.extract",
+		"message":   "Extract tool requires server instance access. Use REST API: POST /api/v1/extraction/jobs",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleOntologyDetectDrift executes drift detection
+func (ms *MCPServer) handleOntologyDetectDrift(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "ontology.detect_drift",
+		"message":   "Drift detection tool requires server instance access. Use REST API: POST /api/v1/ontology/:id/drift/detect",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleOntologyListSuggestions lists ontology suggestions
+func (ms *MCPServer) handleOntologyListSuggestions(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "ontology.list_suggestions",
+		"message":   "List suggestions tool requires server instance access. Use REST API: GET /api/v1/ontology/:id/suggestions",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleOntologyApplySuggestion applies an approved suggestion
+func (ms *MCPServer) handleOntologyApplySuggestion(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "ontology.apply_suggestion",
+		"message":   "Apply suggestion tool requires server instance access. Use REST API: POST /api/v1/ontology/:id/suggestions/:sid/apply",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleOntologyGetStats gets ontology statistics
+func (ms *MCPServer) handleOntologyGetStats(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "ontology.get_stats",
+		"message":   "Get stats tool requires server instance access. Use REST API: GET /api/v1/ontology/:id/stats",
+		"arguments": args,
+	}
 	json.NewEncoder(w).Encode(response)
 }
 

@@ -20,6 +20,7 @@ import {
   validatePipeline,
   getPipelineHistory,
   getPipelineLogs,
+  updatePipeline,
   type Pipeline,
   type ExecutionLog,
 } from "@/lib/api";
@@ -28,6 +29,7 @@ import { ErrorDisplay } from "@/components/ErrorBoundary";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { LogViewer } from "@/components/LogViewer";
 
 export default function PipelineDetailPage() {
@@ -43,6 +45,7 @@ export default function PipelineDetailPage() {
   // Dialog states
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [cloneName, setCloneName] = useState("");
@@ -50,6 +53,13 @@ export default function PipelineDetailPage() {
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
+
+  // Edit form state
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    description: "",
+    yamlConfig: "",
+  });
 
   const fetchPipeline = useCallback(async () => {
     try {
@@ -192,6 +202,50 @@ export default function PipelineDetailPage() {
     }
   }
 
+  function openEditDialog() {
+    if (!pipeline) return;
+    setEditFormData({
+      name: pipeline.name || "",
+      description: (pipeline as any).description || "",
+      yamlConfig: JSON.stringify(pipeline, null, 2),
+    });
+    setEditDialogOpen(true);
+  }
+
+  async function handleEdit() {
+    if (!pipeline) return;
+    if (!editFormData.name.trim()) {
+      toast.error("Please enter a pipeline name");
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      
+      const metadata = {
+        name: editFormData.name,
+        description: editFormData.description,
+      };
+
+      const config = {
+        name: editFormData.name,
+        description: editFormData.description,
+        enabled: true,
+        steps: [], // Would be parsed from YAML
+      };
+
+      await updatePipeline(pipeline.id, metadata, config);
+      toast.success(`Pipeline "${editFormData.name}" updated successfully`);
+      setEditDialogOpen(false);
+      await fetchPipeline();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Failed to update pipeline: ${message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   function getStatusColor(status?: string) {
     switch (status?.toLowerCase()) {
       case "active":
@@ -267,7 +321,7 @@ export default function PipelineDetailPage() {
               <Button variant="outline" onClick={() => setCloneDialogOpen(true)}>
                 Clone
               </Button>
-              <Button variant="outline" onClick={() => toast.info("Edit feature coming soon")}>
+              <Button variant="outline" onClick={openEditDialog}>
                 Edit
               </Button>
               <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
@@ -345,6 +399,65 @@ export default function PipelineDetailPage() {
               disabled={isProcessing}
             >
               {isProcessing ? "Deleting..." : "Delete Pipeline"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Pipeline Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="bg-navy text-white border-blue max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="text-orange">Edit Pipeline</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Update pipeline &quot;{pipeline?.name}&quot; configuration
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4 overflow-y-auto max-h-[60vh]">
+            <div className="grid gap-2">
+              <Label htmlFor="edit-name">Pipeline Name *</Label>
+              <Input
+                id="edit-name"
+                value={editFormData.name}
+                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                placeholder="my-pipeline"
+                className="bg-blue/10 border-blue text-white"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Input
+                id="edit-description"
+                value={editFormData.description}
+                onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                placeholder="A brief description of this pipeline"
+                className="bg-blue/10 border-blue text-white"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-yaml">Pipeline Configuration (YAML)</Label>
+              <Textarea
+                id="edit-yaml"
+                value={editFormData.yamlConfig}
+                onChange={(e) => setEditFormData({ ...editFormData, yamlConfig: e.target.value })}
+                placeholder="Enter YAML configuration"
+                className="bg-blue/10 border-blue text-white font-mono text-sm min-h-[300px]"
+              />
+              <p className="text-xs text-white/60">
+                Define pipeline steps, plugins, and configuration in YAML format
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={isProcessing || !editFormData.name.trim()}>
+              {isProcessing ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

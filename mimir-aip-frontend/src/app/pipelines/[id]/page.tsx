@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { getStatusColor } from "@/lib/utils";
 import { LogViewer } from "@/components/LogViewer";
 
 export default function PipelineDetailPage() {
@@ -246,20 +247,6 @@ export default function PipelineDetailPage() {
     }
   }
 
-  function getStatusColor(status?: string) {
-    switch (status?.toLowerCase()) {
-      case "active":
-      case "running":
-        return "bg-green-500";
-      case "failed":
-      case "error":
-        return "bg-red-500";
-      case "pending":
-        return "bg-yellow-500";
-      default:
-        return "bg-gray-500";
-    }
-  }
 
   return (
     <div>

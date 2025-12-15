@@ -52,8 +52,8 @@ export default function OntologyVersionsPage() {
         listOntologyVersions(ontologyId),
       ]);
 
-      if (ontologyRes.success) {
-        setOntology(ontologyRes.data);
+      if (ontologyRes.success && ontologyRes.data.ontology) {
+        setOntology(ontologyRes.data.ontology);
       }
 
       if (versionsRes.success) {

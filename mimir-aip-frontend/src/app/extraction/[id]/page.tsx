@@ -40,7 +40,9 @@ export default function ExtractionJobDetailsPage() {
       if (response.data.job.ontology_id) {
         try {
           const ontData = await getOntology(response.data.job.ontology_id);
-          setOntology(ontData);
+          if (ontData.success && ontData.data.ontology) {
+            setOntology(ontData.data.ontology);
+          }
         } catch (err) {
           console.error("Failed to load ontology:", err);
         }

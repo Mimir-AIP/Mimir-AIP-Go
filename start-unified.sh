@@ -5,8 +5,36 @@ echo "========================================="
 echo "Starting Mimir AIP Unified Container"
 echo "========================================="
 
-# Create logs directory if it doesn't exist
+# Create necessary directories
 mkdir -p /app/logs
+mkdir -p /app/data/tdb2
+mkdir -p /app/data/ontologies
+
+# Start Jena Fuseki server in background
+echo "Starting Jena Fuseki server on port 3030..."
+cd $JENA_HOME
+java $JVM_ARGS -jar fuseki-server.jar \
+    --port=3030 \
+    --loc=/app/data/tdb2 \
+    /mimir > /app/logs/fuseki.log 2>&1 &
+FUSEKI_PID=$!
+echo "Jena Fuseki started with PID $FUSEKI_PID"
+
+# Wait for Fuseki to be ready
+echo "Waiting for Jena Fuseki to initialize..."
+for i in {1..30}; do
+    if curl -s http://localhost:3030/$/ping > /dev/null 2>&1; then
+        echo "Jena Fuseki is ready!"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "ERROR: Jena Fuseki failed to start within 30 seconds"
+        cat /app/logs/fuseki.log 2>/dev/null || echo "No Fuseki logs found"
+        kill $FUSEKI_PID 2>/dev/null || true
+        exit 1
+    fi
+    sleep 1
+done
 
 # Start Next.js frontend server in background
 echo "Starting Next.js frontend server on port 3000..."
@@ -26,6 +54,7 @@ for i in {1..30}; do
         echo "ERROR: Next.js failed to start within 30 seconds"
         cat /app/logs/nextjs.log 2>/dev/null || echo "No Next.js logs found"
         kill $NEXTJS_PID 2>/dev/null || true
+        kill $FUSEKI_PID 2>/dev/null || true
         exit 1
     fi
     sleep 1

@@ -81,6 +81,22 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/performance/metrics", s.handleGetPerformanceMetrics).Methods("GET")
 	v1.HandleFunc("/performance/stats", s.handleGetPerformanceStats).Methods("GET")
 
+	// Ontology management endpoints
+	v1.HandleFunc("/ontology", s.handleListOntologies).Methods("GET")
+	v1.HandleFunc("/ontology", s.handleUploadOntology).Methods("POST")
+	v1.HandleFunc("/ontology/{id}", s.handleGetOntology).Methods("GET")
+	v1.HandleFunc("/ontology/{id}", s.handleUpdateOntology).Methods("PUT")
+	v1.HandleFunc("/ontology/{id}", s.handleDeleteOntology).Methods("DELETE")
+	v1.HandleFunc("/ontology/{id}/validate", s.handleValidateOntology).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/stats", s.handleOntologyStats).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/export", s.handleExportOntology).Methods("GET")
+	v1.HandleFunc("/ontology/validate", s.handleValidateOntology).Methods("POST")
+
+	// Knowledge Graph endpoints
+	v1.HandleFunc("/kg/query", s.handleSPARQLQuery).Methods("POST")
+	v1.HandleFunc("/kg/stats", s.handleKnowledgeGraphStats).Methods("GET")
+	v1.HandleFunc("/kg/subgraph", s.handleGetSubgraph).Methods("GET")
+
 	// Job monitoring endpoints
 	v1.HandleFunc("/jobs", s.handleListJobExecutions).Methods("GET")
 	v1.HandleFunc("/jobs/{id}", s.handleGetJobExecution).Methods("GET")

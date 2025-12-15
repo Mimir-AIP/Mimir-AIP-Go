@@ -1,7 +1,7 @@
 # =====================================================
-# Unified Dockerfile for Mimir AIP
-# Runs both Go backend AND Next.js frontend in single container
-# Base: Alpine Linux with both Go and Node.js runtimes
+# Unified Dockerfile for Mimir AIP with Ontology Support
+# Runs Go backend + Next.js frontend + Embedded Jena TDB2
+# Base: Alpine Linux with Go, Node.js, and OpenJDK runtimes
 # =====================================================
 
 # Stage 1: Build Frontend
@@ -23,10 +23,9 @@ RUN bun install --frozen-lockfile
 COPY mimir-aip-frontend/ ./
 
 # Set production environment
-# Use empty string for API_URL to use relative paths from root (e.g., /api/v1/*)
 ENV NODE_ENV=production
 
-# Build Next.js application (standalone mode for Node.js server)
+# Build Next.js application (standalone mode)
 RUN bun run build
 
 # =====================================================
@@ -53,8 +52,24 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     -o mimir-aip-server .
 
 # =====================================================
-# Stage 3: Final Runtime Image - Alpine with Node.js and tools
-FROM alpine:3.19
+# Stage 3: Download and Setup Apache Jena
+FROM alpine:3.19 AS jena-downloader
+
+# Install wget and tar
+RUN apk add --no-cache wget tar
+
+WORKDIR /tmp
+
+# Download Apache Jena Fuseki (includes TDB2)
+# Version 4.10.0 - stable release
+ENV JENA_VERSION=4.10.0
+RUN wget -q https://dlcdn.apache.org/jena/binaries/apache-jena-fuseki-${JENA_VERSION}.tar.gz && \
+    tar -xzf apache-jena-fuseki-${JENA_VERSION}.tar.gz && \
+    mv apache-jena-fuseki-${JENA_VERSION} /jena
+
+# =====================================================
+# Stage 4: Final Runtime Image - Alpine with Node.js, OpenJDK, and tools
+FROM eclipse-temurin:21-jre-alpine
 
 # Install runtime dependencies: Node.js, npm, bash, curl, ca-certificates
 RUN apk add --no-cache \
@@ -73,18 +88,29 @@ WORKDIR /app
 RUN addgroup -g 65532 -S nonroot && \
     adduser -u 65532 -S nonroot -G nonroot
 
+# Copy Jena from downloader stage
+COPY --from=jena-downloader /jena /opt/jena
+RUN chown -R nonroot:nonroot /opt/jena
+
 # Copy backend binary and configuration
 COPY --from=backend-builder /app/mimir-aip-server /app/mimir-aip-server
 COPY --from=backend-builder /app/config.yaml /app/config.yaml
 
-# Copy Next.js built application (standalone mode includes server)
+# Copy Next.js built application
 COPY --from=frontend-builder /frontend/.next/standalone ./frontend
 COPY --from=frontend-builder /frontend/.next/static ./frontend/.next/static
 COPY --from=frontend-builder /frontend/public ./frontend/public
 COPY --from=frontend-builder /frontend/package.json ./frontend/package.json
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /app/data /app/logs /app/plugins /app/pipelines && \
+RUN mkdir -p \
+    /app/data \
+    /app/data/tdb2 \
+    /app/data/ontologies \
+    /app/data/chromem \
+    /app/logs \
+    /app/plugins \
+    /app/pipelines && \
     chown -R nonroot:nonroot /app && \
     chmod -R 755 /app
 
@@ -98,7 +124,8 @@ USER nonroot:nonroot
 # Expose ports
 # 8080 - Main port (Go reverse proxy to Next.js)
 # 3000 - Next.js (internal only, proxied through Go)
-EXPOSE 8080 3000
+# 3030 - Jena Fuseki (internal only, accessed by Go backend)
+EXPOSE 8080 3000 3030
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
@@ -113,10 +140,18 @@ ENV MIMIR_PORT=8080 \
     NEXTJS_URL=http://localhost:3000 \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
-    NODE_ENV=production
+    NODE_ENV=production \
+    JENA_HOME=/opt/jena \
+    JAVA_HOME=/opt/java/openjdk \
+    FUSEKI_BASE=/app/data/tdb2 \
+    FUSEKI_PORT=3030 \
+    JVM_ARGS="-Xmx512m -Xms256m"
 
-# Use tini as init system to handle signals properly
+# Add Jena to PATH
+ENV PATH="${PATH}:/opt/jena/bin"
+
+# Use tini as init system
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Start both servers
+# Start all services (backend, frontend, Jena)
 CMD ["/bin/bash", "/app/start.sh"]

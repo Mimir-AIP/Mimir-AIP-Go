@@ -46,6 +46,14 @@ func writeInternalServerErrorResponse(w http.ResponseWriter, message string) {
 	writeErrorResponse(w, http.StatusInternalServerError, message)
 }
 
+// writeNotFoundResponse writes a 404 Not Found response
+func writeNotFoundResponse(w http.ResponseWriter, message string) {
+	if message == "" {
+		message = "Not Found"
+	}
+	writeErrorResponse(w, http.StatusNotFound, message)
+}
+
 // writeOperationSuccessResponse writes a success response for CRUD operations
 func writeOperationSuccessResponse(w http.ResponseWriter, message, idKey, idValue string) {
 	writeJSONResponse(w, http.StatusOK, map[string]any{

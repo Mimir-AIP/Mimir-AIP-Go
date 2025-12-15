@@ -26,8 +26,11 @@ import {
   disableJob,
   updateJob,
   getJobLogs,
+  createJob,
+  getPipelines,
   type Job,
   type ExecutionLog,
+  type Pipeline,
 } from "@/lib/api";
 import { CardListSkeleton, TableSkeleton } from "@/components/LoadingSkeleton";
 import { ErrorDisplay } from "@/components/ErrorBoundary";
@@ -38,10 +41,12 @@ import { LogViewer } from "@/components/LogViewer";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [logsDialogOpen, setLogsDialogOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -56,8 +61,17 @@ export default function JobsPage() {
     cron_expr: "",
   });
 
+  // Create form state
+  const [createFormData, setCreateFormData] = useState({
+    id: "",
+    name: "",
+    pipeline: "",
+    cron_expr: "*/5 * * * *",
+  });
+
   useEffect(() => {
     fetchJobs();
+    fetchPipelines();
   }, []);
 
   async function fetchJobs() {
@@ -72,6 +86,15 @@ export default function JobsPage() {
       toast.error("Failed to load jobs");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchPipelines() {
+    try {
+      const data = await getPipelines();
+      setPipelines(data);
+    } catch (err) {
+      console.error("Failed to load pipelines:", err);
     }
   }
 
@@ -196,6 +219,28 @@ export default function JobsPage() {
     }
   }
 
+  async function handleCreateJob() {
+    if (!createFormData.name.trim() || !createFormData.pipeline) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      const jobId = createFormData.id || `job-${Date.now()}`;
+      await createJob(jobId, createFormData.name, createFormData.pipeline, createFormData.cron_expr);
+      toast.success(`Job "${createFormData.name}" created successfully`);
+      setCreateDialogOpen(false);
+      setCreateFormData({ id: "", name: "", pipeline: "", cron_expr: "*/5 * * * *" });
+      await fetchJobs();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Failed to create job: ${message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   function getStatusColor(status?: string) {
     switch (status?.toLowerCase()) {
       case "active":
@@ -237,7 +282,7 @@ export default function JobsPage() {
           >
             Table
           </Button>
-          <Button onClick={() => toast.info("Create job feature coming soon")}>
+          <Button onClick={() => setCreateDialogOpen(true)}>
             Create Job
           </Button>
         </div>
@@ -250,7 +295,7 @@ export default function JobsPage() {
       {!loading && !error && jobs.length === 0 && (
         <Card className="bg-navy text-white border-blue p-8 text-center">
           <p className="text-white/60 mb-4">No scheduled jobs found</p>
-          <Button onClick={() => toast.info("Create job feature coming soon")}>
+          <Button onClick={() => setCreateDialogOpen(true)}>
             Create Your First Job
           </Button>
         </Card>
@@ -431,6 +476,65 @@ export default function JobsPage() {
               disabled={isProcessing}
             >
               {isProcessing ? "Deleting..." : "Delete Job"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Job Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="bg-navy text-white border-blue">
+          <DialogHeader>
+            <DialogTitle className="text-orange">Create New Job</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Schedule a pipeline to run automatically
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="create-name">Job Name *</Label>
+              <Input
+                id="create-name"
+                value={createFormData.name}
+                onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })}
+                placeholder="my-scheduled-job"
+                className="bg-blue/10 border-blue text-white"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="create-pipeline">Pipeline *</Label>
+              <select
+                id="create-pipeline"
+                value={createFormData.pipeline}
+                onChange={(e) => setCreateFormData({ ...createFormData, pipeline: e.target.value })}
+                className="bg-blue/10 border-blue text-white rounded-md px-3 py-2 border"
+              >
+                <option value="">Select a pipeline</option>
+                {pipelines.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="create-cron">Cron Expression *</Label>
+              <Input
+                id="create-cron"
+                value={createFormData.cron_expr}
+                onChange={(e) => setCreateFormData({ ...createFormData, cron_expr: e.target.value })}
+                placeholder="*/5 * * * *"
+                className="bg-blue/10 border-blue text-white"
+              />
+              <p className="text-xs text-white/60">
+                Format: minute hour day month weekday (e.g., &quot;*/5 * * * *&quot; runs every 5 minutes)
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={isProcessing}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateJob} disabled={isProcessing || !createFormData.name.trim() || !createFormData.pipeline}>
+              {isProcessing ? "Creating..." : "Create Job"}
             </Button>
           </DialogFooter>
         </DialogContent>

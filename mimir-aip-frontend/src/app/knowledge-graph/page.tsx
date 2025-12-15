@@ -4,8 +4,12 @@ import { useState } from "react";
 import {
   executeSPARQLQuery,
   getKnowledgeGraphStats,
+  executeNLQuery,
+  listOntologies,
   type SPARQLQueryResult,
   type KnowledgeGraphStats,
+  type NLQueryResult,
+  type Ontology,
 } from "@/lib/api";
 import { useEffect } from "react";
 
@@ -75,6 +79,7 @@ WHERE {
 ];
 
 export default function KnowledgeGraphPage() {
+  const [activeTab, setActiveTab] = useState<"sparql" | "natural-language">("sparql");
   const [query, setQuery] = useState(SAMPLE_QUERIES[0].query);
   const [queryResult, setQueryResult] = useState<SPARQLQueryResult | null>(null);
   const [stats, setStats] = useState<KnowledgeGraphStats | null>(null);
@@ -82,8 +87,17 @@ export default function KnowledgeGraphPage() {
   const [error, setError] = useState<string | null>(null);
   const [queryHistory, setQueryHistory] = useState<string[]>([]);
 
+  // Natural Language Query state
+  const [nlQuestion, setNlQuestion] = useState("");
+  const [nlResult, setNlResult] = useState<NLQueryResult | null>(null);
+  const [nlLoading, setNlLoading] = useState(false);
+  const [nlError, setNlError] = useState<string | null>(null);
+  const [ontologies, setOntologies] = useState<Ontology[]>([]);
+  const [selectedOntology, setSelectedOntology] = useState<string>("");
+
   useEffect(() => {
     loadStats();
+    loadOntologies();
     // Load query history from localStorage
     const saved = localStorage.getItem("sparql_history");
     if (saved) {
@@ -103,6 +117,15 @@ export default function KnowledgeGraphPage() {
       }
     } catch (err) {
       console.error("Failed to load stats:", err);
+    }
+  };
+
+  const loadOntologies = async () => {
+    try {
+      const data = await listOntologies("active");
+      setOntologies(data);
+    } catch (err) {
+      console.error("Failed to load ontologies:", err);
     }
   };
 
@@ -177,14 +200,62 @@ export default function KnowledgeGraphPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleAskQuestion = async () => {
+    if (!nlQuestion.trim()) {
+      setNlError("Please enter a question");
+      return;
+    }
+
+    try {
+      setNlLoading(true);
+      setNlError(null);
+      setNlResult(null);
+
+      const response = await executeNLQuery(nlQuestion, selectedOntology || undefined);
+      if (response.success) {
+        setNlResult(response.data);
+      }
+    } catch (err) {
+      setNlError(err instanceof Error ? err.message : "Failed to process question");
+    } finally {
+      setNlLoading(false);
+    }
+  };
+
   return (
     <div className="p-6">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">SPARQL Query Editor</h1>
+        <h1 className="text-3xl font-bold">Knowledge Graph Query</h1>
         <p className="text-gray-600 mt-1">
-          Query the knowledge graph using SPARQL
+          Query the knowledge graph using SPARQL or natural language
         </p>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="mb-6 border-b border-gray-200">
+        <div className="flex gap-4">
+          <button
+            onClick={() => setActiveTab("sparql")}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === "sparql"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            SPARQL Query
+          </button>
+          <button
+            onClick={() => setActiveTab("natural-language")}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === "natural-language"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Natural Language
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -209,7 +280,9 @@ export default function KnowledgeGraphPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* SPARQL Tab Content */}
+      {activeTab === "sparql" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Query Editor */}
         <div className="lg:col-span-2 space-y-4">
           {/* Query Editor */}
@@ -427,7 +500,248 @@ export default function KnowledgeGraphPage() {
             </ul>
           </div>
         </div>
-      </div>
+        </div>
+      )}
+
+      {/* Natural Language Tab Content */}
+      {activeTab === "natural-language" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Question Input */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Question Input */}
+            <div className="bg-white rounded-lg shadow p-4">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-semibold">Ask a Question</h3>
+                <button
+                  onClick={handleAskQuestion}
+                  disabled={nlLoading}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-1 rounded"
+                >
+                  {nlLoading ? "Processing..." : "Ask Question"}
+                </button>
+              </div>
+              
+              {/* Ontology Selector */}
+              {ontologies.length > 0 && (
+                <div className="mb-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Select Ontology (Optional)
+                  </label>
+                  <select
+                    value={selectedOntology}
+                    onChange={(e) => setSelectedOntology(e.target.value)}
+                    className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">All Ontologies</option>
+                    {ontologies.map((ont) => (
+                      <option key={ont.id} value={ont.id}>
+                        {ont.name} ({ont.format})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <textarea
+                value={nlQuestion}
+                onChange={(e) => setNlQuestion(e.target.value)}
+                className="w-full h-32 border rounded p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Ask a question in natural language, e.g., 'Show me all the people in the database' or 'What are the properties of the Person class?'"
+                spellCheck={true}
+              />
+              <div className="mt-2 text-xs text-gray-500">
+                The system will translate your question to SPARQL and execute it
+              </div>
+            </div>
+
+            {/* Error Display */}
+            {nlError && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                <div className="font-semibold">Error</div>
+                <div className="text-sm mt-1">{nlError}</div>
+              </div>
+            )}
+
+            {/* Results Display */}
+            {nlResult && (
+              <div className="space-y-4">
+                {/* Your Question */}
+                <div className="bg-white rounded-lg shadow p-4">
+                  <h3 className="font-semibold mb-2">Your Question</h3>
+                  <p className="text-gray-700">{nlResult.question}</p>
+                </div>
+
+                {/* Generated SPARQL */}
+                <div className="bg-white rounded-lg shadow p-4">
+                  <h3 className="font-semibold mb-2">Generated SPARQL Query</h3>
+                  <pre className="bg-gray-50 border rounded p-3 text-xs font-mono overflow-x-auto">
+                    {nlResult.sparql_query}
+                  </pre>
+                </div>
+
+                {/* Explanation */}
+                {nlResult.explanation && (
+                  <div className="bg-blue-50 rounded-lg shadow p-4">
+                    <h3 className="font-semibold mb-2 text-blue-900">Explanation</h3>
+                    <p className="text-sm text-blue-800">{nlResult.explanation}</p>
+                  </div>
+                )}
+
+                {/* Query Results */}
+                <div className="bg-white rounded-lg shadow p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <div>
+                      <h3 className="font-semibold">Results</h3>
+                      <div className="text-sm text-gray-600">
+                        {nlResult.results.query_type === "SELECT" && (
+                          <>
+                            {nlResult.results.bindings?.length || 0} row(s) returned
+                            {nlResult.results.duration && ` in ${nlResult.results.duration}ms`}
+                          </>
+                        )}
+                        {nlResult.results.query_type === "ASK" && (
+                          <>Result: {nlResult.results.boolean ? "true" : "false"}</>
+                        )}
+                        {nlResult.results.query_type === "CONSTRUCT" && (
+                          <>Constructed {nlResult.results.bindings?.length || 0} triple(s)</>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ASK Result */}
+                  {nlResult.results.query_type === "ASK" && (
+                    <div className={`text-center py-8 text-2xl font-bold ${nlResult.results.boolean ? "text-green-600" : "text-red-600"}`}>
+                      {nlResult.results.boolean ? "TRUE" : "FALSE"}
+                    </div>
+                  )}
+
+                  {/* SELECT Results */}
+                  {nlResult.results.query_type === "SELECT" && nlResult.results.bindings && nlResult.results.bindings.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-100 border-b">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                            {nlResult.results.variables?.map((variable: string) => (
+                              <th key={variable} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                {variable}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {nlResult.results.bindings.map((binding: Record<string, { value?: string; type?: string; datatype?: string; "xml:lang"?: string }>, idx: number) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
+                              {nlResult.results.variables?.map((variable: string) => {
+                                const value = binding[variable];
+                                return (
+                                  <td key={variable} className="px-3 py-2">
+                                    {value ? (
+                                      <div className="font-mono text-xs">
+                                        <div className="break-all">{value.value}</div>
+                                        {value.type && (
+                                          <div className="text-gray-400 text-xs mt-1">
+                                            {value.type}
+                                            {value.datatype && ` (${value.datatype})`}
+                                            {value["xml:lang"] && ` @${value["xml:lang"]}`}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Empty Results */}
+                  {nlResult.results.query_type === "SELECT" && (!nlResult.results.bindings || nlResult.results.bindings.length === 0) && (
+                    <div className="text-center py-8 text-gray-500">
+                      No results found
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column - Examples & Tips */}
+          <div className="space-y-4">
+            {/* Example Questions */}
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="font-semibold mb-3">Example Questions</h3>
+              <div className="space-y-2">
+                <button
+                  onClick={() => setNlQuestion("Show me all the classes in the ontology")}
+                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                >
+                  Show me all the classes
+                </button>
+                <button
+                  onClick={() => setNlQuestion("What properties does the Person class have?")}
+                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                >
+                  What properties does Person have?
+                </button>
+                <button
+                  onClick={() => setNlQuestion("List all entities of type Organization")}
+                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                >
+                  List all Organizations
+                </button>
+                <button
+                  onClick={() => setNlQuestion("Show me the relationships between Person and Organization")}
+                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                >
+                  Show relationships
+                </button>
+                <button
+                  onClick={() => setNlQuestion("How many triples are in the knowledge graph?")}
+                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                >
+                  Count all triples
+                </button>
+              </div>
+            </div>
+
+            {/* Tips */}
+            <div className="bg-green-50 rounded-lg shadow p-4">
+              <h3 className="font-semibold mb-2 text-green-900">Tips</h3>
+              <ul className="text-xs text-green-800 space-y-1">
+                <li>• Be specific about what you want to find</li>
+                <li>• Mention class or property names if known</li>
+                <li>• Use simple, clear language</li>
+                <li>• Review the generated SPARQL to learn</li>
+                <li>• Select an ontology for more targeted results</li>
+              </ul>
+            </div>
+
+            {/* How it Works */}
+            <div className="bg-purple-50 rounded-lg shadow p-4">
+              <h3 className="font-semibold mb-2 text-purple-900">How it Works</h3>
+              <div className="text-xs text-purple-800 space-y-2">
+                <p>
+                  The system uses an AI model to understand your question and translate it into a SPARQL query.
+                </p>
+                <p>
+                  The generated query is validated for safety (read-only operations only) before execution.
+                </p>
+                <p>
+                  You can see the generated SPARQL to learn how to write queries manually.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

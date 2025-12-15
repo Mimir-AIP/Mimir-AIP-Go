@@ -99,6 +99,18 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/ontology/{id}/versions/{vid}", s.handleGetVersion).Methods("GET")
 	v1.HandleFunc("/ontology/{id}/versions/{vid}", s.handleDeleteVersion).Methods("DELETE")
 
+	// Drift detection endpoints
+	v1.HandleFunc("/ontology/{id}/drift/detect", s.handleTriggerDriftDetection).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/drift/history", s.handleGetDriftHistory).Methods("GET")
+
+	// Suggestion management endpoints
+	v1.HandleFunc("/ontology/{id}/suggestions", s.handleListSuggestions).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/suggestions/summary", s.handleGetSuggestionSummary).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/suggestions/{sid}", s.handleGetSuggestion).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/suggestions/{sid}/approve", s.handleApproveSuggestion).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/suggestions/{sid}/reject", s.handleRejectSuggestion).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/suggestions/{sid}/apply", s.handleApplySuggestion).Methods("POST")
+
 	// Knowledge Graph endpoints
 	v1.HandleFunc("/kg/query", s.handleSPARQLQuery).Methods("POST")
 	v1.HandleFunc("/kg/nl-query", s.handleNLQuery).Methods("POST")

@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	ontology "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
@@ -896,4 +898,327 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ========================================
+// Drift Detection Handlers
+// ========================================
+
+// handleTriggerDriftDetection triggers drift detection for an ontology
+// POST /api/v1/ontology/:id/drift/detect
+func (s *Server) handleTriggerDriftDetection(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	// Parse request body
+	var req struct {
+		Source     string `json:"source"` // "extraction_job", "data", or "knowledge_graph"
+		JobID      string `json:"job_id,omitempty"`
+		Data       any    `json:"data,omitempty"`
+		DataSource string `json:"data_source,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	// Get database and clients
+	db := s.persistence.GetDB()
+	detector := ontology.NewDriftDetector(db, s.llmClient, s.tdb2Backend)
+
+	var suggestionsCount int
+	var err error
+
+	// Execute drift detection based on source
+	switch req.Source {
+	case "extraction_job":
+		if req.JobID == "" {
+			writeBadRequestResponse(w, "job_id is required for extraction_job source")
+			return
+		}
+		suggestionsCount, err = detector.DetectDriftFromExtractionJob(r.Context(), req.JobID)
+	case "data":
+		if req.Data == nil {
+			writeBadRequestResponse(w, "data is required for data source")
+			return
+		}
+		dataSource := req.DataSource
+		if dataSource == "" {
+			dataSource = "api_request"
+		}
+		suggestionsCount, err = detector.DetectDriftFromData(r.Context(), ontologyID, req.Data, dataSource)
+	case "knowledge_graph":
+		suggestionsCount, err = detector.MonitorKnowledgeGraphDrift(r.Context(), ontologyID)
+	default:
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid source: %s (must be 'extraction_job', 'data', or 'knowledge_graph')", req.Source))
+		return
+	}
+
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Drift detection failed: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, map[string]any{
+		"message":               "Drift detection completed",
+		"suggestions_generated": suggestionsCount,
+		"ontology_id":           ontologyID,
+	})
+}
+
+// handleGetDriftHistory retrieves drift detection history for an ontology
+// GET /api/v1/ontology/:id/drift/history
+func (s *Server) handleGetDriftHistory(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	db := s.persistence.GetDB()
+
+	query := `SELECT id, ontology_id, detection_type, data_source, suggestions_generated, status, 
+	          started_at, completed_at, error_message 
+	          FROM drift_detections WHERE ontology_id = ? ORDER BY started_at DESC`
+
+	rows, err := db.QueryContext(r.Context(), query, ontologyID)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to query drift history: %v", err))
+		return
+	}
+	defer rows.Close()
+
+	type DriftHistory struct {
+		ID                   int        `json:"id"`
+		OntologyID           string     `json:"ontology_id"`
+		DetectionType        string     `json:"detection_type"`
+		DataSource           string     `json:"data_source"`
+		SuggestionsGenerated int        `json:"suggestions_generated"`
+		Status               string     `json:"status"`
+		StartedAt            time.Time  `json:"started_at"`
+		CompletedAt          *time.Time `json:"completed_at,omitempty"`
+		ErrorMessage         string     `json:"error_message,omitempty"`
+	}
+
+	history := make([]DriftHistory, 0)
+	for rows.Next() {
+		var h DriftHistory
+		var completedAt sql.NullTime
+		var errorMessage sql.NullString
+
+		err := rows.Scan(&h.ID, &h.OntologyID, &h.DetectionType, &h.DataSource,
+			&h.SuggestionsGenerated, &h.Status, &h.StartedAt, &completedAt, &errorMessage)
+		if err != nil {
+			continue
+		}
+
+		if completedAt.Valid {
+			h.CompletedAt = &completedAt.Time
+		}
+		if errorMessage.Valid {
+			h.ErrorMessage = errorMessage.String
+		}
+
+		history = append(history, h)
+	}
+
+	writeSuccessResponse(w, history)
+}
+
+// ========================================
+// Suggestion Management Handlers
+// ========================================
+
+// handleListSuggestions retrieves suggestions for an ontology
+// GET /api/v1/ontology/:id/suggestions
+func (s *Server) handleListSuggestions(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	// Parse query parameters
+	statusFilter := ontology.SuggestionStatus(r.URL.Query().Get("status"))
+
+	// Get suggestion engine
+	db := s.persistence.GetDB()
+	engine := ontology.NewSuggestionEngine(db, s.llmClient, s.tdb2Backend)
+
+	// List suggestions
+	suggestions, err := engine.ListSuggestions(r.Context(), ontologyID, statusFilter)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to list suggestions: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, suggestions)
+}
+
+// handleGetSuggestion retrieves a single suggestion
+// GET /api/v1/ontology/:id/suggestions/:sid
+func (s *Server) handleGetSuggestion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	suggestionID := vars["sid"]
+
+	// Parse suggestion ID
+	var sID int
+	if _, err := fmt.Sscanf(suggestionID, "%d", &sID); err != nil {
+		writeBadRequestResponse(w, "Invalid suggestion ID")
+		return
+	}
+
+	// Get suggestion engine
+	db := s.persistence.GetDB()
+	engine := ontology.NewSuggestionEngine(db, s.llmClient, s.tdb2Backend)
+
+	// Get suggestion
+	suggestion, err := engine.GetSuggestion(r.Context(), sID)
+	if err != nil {
+		if err.Error() == "suggestion not found" {
+			writeNotFoundResponse(w, "Suggestion not found")
+			return
+		}
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to get suggestion: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, suggestion)
+}
+
+// handleApproveSuggestion approves a suggestion
+// POST /api/v1/ontology/:id/suggestions/:sid/approve
+func (s *Server) handleApproveSuggestion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	suggestionID := vars["sid"]
+
+	// Parse suggestion ID
+	var sID int
+	if _, err := fmt.Sscanf(suggestionID, "%d", &sID); err != nil {
+		writeBadRequestResponse(w, "Invalid suggestion ID")
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		ReviewedBy  string `json:"reviewed_by"`
+		ReviewNotes string `json:"review_notes,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	if req.ReviewedBy == "" {
+		writeBadRequestResponse(w, "reviewed_by is required")
+		return
+	}
+
+	// Get suggestion engine
+	db := s.persistence.GetDB()
+	engine := ontology.NewSuggestionEngine(db, s.llmClient, s.tdb2Backend)
+
+	// Approve suggestion
+	if err := engine.ApproveSuggestion(r.Context(), sID, req.ReviewedBy, req.ReviewNotes); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to approve suggestion: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, map[string]any{
+		"message":       "Suggestion approved",
+		"suggestion_id": sID,
+		"status":        "approved",
+	})
+}
+
+// handleRejectSuggestion rejects a suggestion
+// POST /api/v1/ontology/:id/suggestions/:sid/reject
+func (s *Server) handleRejectSuggestion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	suggestionID := vars["sid"]
+
+	// Parse suggestion ID
+	var sID int
+	if _, err := fmt.Sscanf(suggestionID, "%d", &sID); err != nil {
+		writeBadRequestResponse(w, "Invalid suggestion ID")
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		ReviewedBy  string `json:"reviewed_by"`
+		ReviewNotes string `json:"review_notes,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	if req.ReviewedBy == "" {
+		writeBadRequestResponse(w, "reviewed_by is required")
+		return
+	}
+
+	// Get suggestion engine
+	db := s.persistence.GetDB()
+	engine := ontology.NewSuggestionEngine(db, s.llmClient, s.tdb2Backend)
+
+	// Reject suggestion
+	if err := engine.RejectSuggestion(r.Context(), sID, req.ReviewedBy, req.ReviewNotes); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to reject suggestion: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, map[string]any{
+		"message":       "Suggestion rejected",
+		"suggestion_id": sID,
+		"status":        "rejected",
+	})
+}
+
+// handleApplySuggestion applies an approved suggestion to the ontology
+// POST /api/v1/ontology/:id/suggestions/:sid/apply
+func (s *Server) handleApplySuggestion(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	suggestionID := vars["sid"]
+
+	// Parse suggestion ID
+	var sID int
+	if _, err := fmt.Sscanf(suggestionID, "%d", &sID); err != nil {
+		writeBadRequestResponse(w, "Invalid suggestion ID")
+		return
+	}
+
+	// Get suggestion engine
+	db := s.persistence.GetDB()
+	engine := ontology.NewSuggestionEngine(db, s.llmClient, s.tdb2Backend)
+
+	// Apply suggestion
+	if err := engine.ApplySuggestion(r.Context(), sID); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to apply suggestion: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, map[string]any{
+		"message":       "Suggestion applied successfully",
+		"suggestion_id": sID,
+		"status":        "applied",
+	})
+}
+
+// handleGetSuggestionSummary retrieves a summary of suggestions
+// GET /api/v1/ontology/:id/suggestions/summary
+func (s *Server) handleGetSuggestionSummary(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	// Get suggestion engine
+	db := s.persistence.GetDB()
+	engine := ontology.NewSuggestionEngine(db, s.llmClient, s.tdb2Backend)
+
+	// Get summary
+	summary, err := engine.GenerateSuggestionSummary(r.Context(), ontologyID)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to generate summary: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, map[string]any{
+		"ontology_id": ontologyID,
+		"summary":     summary,
+	})
 }

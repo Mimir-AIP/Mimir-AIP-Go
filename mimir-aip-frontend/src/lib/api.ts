@@ -976,3 +976,154 @@ export async function deleteOntologyVersion(ontologyId: string, versionId: numbe
     method: "DELETE",
   });
 }
+
+// ========================================
+// Drift Detection Types & Functions
+// ========================================
+
+export interface DriftDetection {
+  id: number;
+  ontology_id: string;
+  detection_type: string;
+  data_source: string;
+  suggestions_generated: number;
+  status: "running" | "completed" | "failed";
+  started_at: string;
+  completed_at?: string;
+  error_message?: string;
+}
+
+export interface DriftDetectionRequest {
+  source: "extraction_job" | "data" | "knowledge_graph";
+  job_id?: string;
+  data?: any;
+  data_source?: string;
+}
+
+/**
+ * Trigger drift detection for an ontology
+ * POST /api/v1/ontology/:id/drift/detect
+ */
+export async function triggerDriftDetection(
+  ontologyId: string,
+  request: DriftDetectionRequest
+): Promise<{ success: boolean; data: { message: string; suggestions_generated: number; ontology_id: string } }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/drift/detect`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Get drift detection history
+ * GET /api/v1/ontology/:id/drift/history
+ */
+export async function getDriftHistory(ontologyId: string): Promise<{ success: boolean; data: DriftDetection[] }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/drift/history`);
+}
+
+// ========================================
+// Suggestion Management Types & Functions
+// ========================================
+
+export interface OntologySuggestion {
+  id: number;
+  ontology_id: string;
+  suggestion_type: "add_class" | "add_property" | "modify_class" | "modify_property" | "deprecate";
+  entity_type: string;
+  entity_uri?: string;
+  confidence: number;
+  reasoning: string;
+  status: "pending" | "approved" | "rejected" | "applied";
+  risk_level: "low" | "medium" | "high" | "critical";
+  created_at: string;
+  reviewed_at?: string;
+  reviewed_by?: string;
+  review_decision?: string;
+  review_notes?: string;
+}
+
+export interface SuggestionReview {
+  reviewed_by: string;
+  review_notes?: string;
+}
+
+export interface SuggestionSummary {
+  ontology_id: string;
+  summary: string;
+}
+
+/**
+ * List suggestions for an ontology
+ * GET /api/v1/ontology/:id/suggestions
+ */
+export async function listSuggestions(
+  ontologyId: string,
+  status?: string
+): Promise<{ success: boolean; data: OntologySuggestion[] }> {
+  const queryString = status ? `?status=${encodeURIComponent(status)}` : "";
+  const endpoint = queryString ? `/api/v1/ontology/${ontologyId}/suggestions${queryString}` : `/api/v1/ontology/${ontologyId}/suggestions`;
+  return apiFetch(endpoint);
+}
+
+/**
+ * Get a specific suggestion
+ * GET /api/v1/ontology/:id/suggestions/:sid
+ */
+export async function getSuggestion(
+  ontologyId: string,
+  suggestionId: number
+): Promise<{ success: boolean; data: OntologySuggestion }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/suggestions/${suggestionId}`);
+}
+
+/**
+ * Approve a suggestion
+ * POST /api/v1/ontology/:id/suggestions/:sid/approve
+ */
+export async function approveSuggestion(
+  ontologyId: string,
+  suggestionId: number,
+  review: SuggestionReview
+): Promise<{ success: boolean; data: { message: string; suggestion_id: number; status: string } }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/suggestions/${suggestionId}/approve`, {
+    method: "POST",
+    body: JSON.stringify(review),
+  });
+}
+
+/**
+ * Reject a suggestion
+ * POST /api/v1/ontology/:id/suggestions/:sid/reject
+ */
+export async function rejectSuggestion(
+  ontologyId: string,
+  suggestionId: number,
+  review: SuggestionReview
+): Promise<{ success: boolean; data: { message: string; suggestion_id: number; status: string } }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/suggestions/${suggestionId}/reject`, {
+    method: "POST",
+    body: JSON.stringify(review),
+  });
+}
+
+/**
+ * Apply an approved suggestion to the ontology
+ * POST /api/v1/ontology/:id/suggestions/:sid/apply
+ */
+export async function applySuggestion(
+  ontologyId: string,
+  suggestionId: number
+): Promise<{ success: boolean; data: { message: string; suggestion_id: number; status: string } }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/suggestions/${suggestionId}/apply`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Get suggestion summary
+ * GET /api/v1/ontology/:id/suggestions/summary
+ */
+export async function getSuggestionSummary(ontologyId: string): Promise<{ success: boolean; data: SuggestionSummary }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/suggestions/summary`);
+}

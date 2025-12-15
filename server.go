@@ -4,20 +4,26 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/gorilla/mux"
 )
 
 // Server represents the Mimir AIP server
 type Server struct {
-	router    *mux.Router
-	registry  *pipelines.PluginRegistry
-	mcpServer *MCPServer
-	scheduler *utils.Scheduler
-	monitor   *utils.JobMonitor
-	config    *utils.ConfigManager
+	router      *mux.Router
+	registry    *pipelines.PluginRegistry
+	mcpServer   *MCPServer
+	scheduler   *utils.Scheduler
+	monitor     *utils.JobMonitor
+	config      *utils.ConfigManager
+	persistence *storage.PersistenceBackend
+	tdb2Backend *knowledgegraph.TDB2Backend
 }
 
 // PipelineExecutionRequest represents a request to execute a pipeline
@@ -46,13 +52,39 @@ type PluginInfo struct {
 func NewServer() *Server {
 	registry := pipelines.NewPluginRegistry()
 
+	// Initialize persistence backend (SQLite)
+	dbPath := os.Getenv("MIMIR_DB_PATH")
+	if dbPath == "" {
+		dbPath = "./data/mimir.db"
+	}
+
+	persistence, err := storage.NewPersistenceBackend(dbPath)
+	if err != nil {
+		log.Printf("Failed to initialize persistence backend: %v", err)
+		log.Printf("Ontology features will be disabled")
+		persistence = nil
+	}
+
+	// Initialize TDB2 backend (Jena Fuseki)
+	fusekiURL := os.Getenv("FUSEKI_URL")
+	if fusekiURL == "" {
+		fusekiURL = "http://localhost:3030"
+	}
+	dataset := os.Getenv("FUSEKI_DATASET")
+	if dataset == "" {
+		dataset = "mimir"
+	}
+	tdb2Backend := knowledgegraph.NewTDB2Backend(fusekiURL, dataset)
+
 	s := &Server{
-		router:    mux.NewRouter(),
-		registry:  registry,
-		mcpServer: NewMCPServer(registry),
-		scheduler: utils.NewScheduler(registry),
-		monitor:   utils.NewJobMonitor(1000), // Keep last 1000 executions
-		config:    utils.GetConfigManager(),
+		router:      mux.NewRouter(),
+		registry:    registry,
+		mcpServer:   NewMCPServer(registry),
+		scheduler:   utils.NewScheduler(registry),
+		monitor:     utils.NewJobMonitor(1000), // Keep last 1000 executions
+		config:      utils.GetConfigManager(),
+		persistence: persistence,
+		tdb2Backend: tdb2Backend,
 	}
 
 	s.registerDefaultPlugins()
@@ -90,6 +122,27 @@ func (s *Server) registerDefaultPlugins() {
 
 	_ = s.registry.RegisterPlugin(apiPlugin)
 	_ = s.registry.RegisterPlugin(htmlPlugin)
+
+	// Register ontology plugins if persistence is available
+	if s.persistence != nil && s.tdb2Backend != nil {
+		ontologyDir := os.Getenv("ONTOLOGY_DIR")
+		if ontologyDir == "" {
+			ontologyDir = "./data/ontologies"
+		}
+
+		// Create ontology directory if it doesn't exist
+		if err := os.MkdirAll(ontologyDir, 0755); err != nil {
+			log.Printf("Failed to create ontology directory: %v", err)
+		} else {
+			// Register ontology management plugin
+			ontologyPlugin := ontology.NewManagementPlugin(s.persistence, s.tdb2Backend, ontologyDir)
+			if err := s.registry.RegisterPlugin(ontologyPlugin); err != nil {
+				log.Printf("Failed to register ontology management plugin: %v", err)
+			} else {
+				log.Println("Registered ontology management plugin")
+			}
+		}
+	}
 }
 
 // Start starts the HTTP server
@@ -122,10 +175,25 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			// MCP server cleanup if needed
 		}
 
-		// 3. Close any open connections or resources
+		// 3. Close ontology backends
+		if s.persistence != nil {
+			log.Println("Closing persistence backend...")
+			if err := s.persistence.Close(); err != nil {
+				log.Printf("Error closing persistence backend: %v", err)
+			}
+		}
+
+		if s.tdb2Backend != nil {
+			log.Println("Closing TDB2 backend...")
+			if err := s.tdb2Backend.Close(); err != nil {
+				log.Printf("Error closing TDB2 backend: %v", err)
+			}
+		}
+
+		// 4. Close any open connections or resources
 		log.Println("Cleaning up resources...")
 
-		// 4. Flush any pending logs
+		// 5. Flush any pending logs
 		if logger := utils.GetLogger(); logger != nil {
 			log.Println("Flushing logs...")
 			// Logger flush if supported

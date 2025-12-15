@@ -776,3 +776,203 @@ export async function getKnowledgeGraphStats(): Promise<{ success: boolean; data
 export async function getSubgraph(rootUri: string, depth = 1): Promise<{ success: boolean; data: { nodes: unknown[]; edges: unknown[]; stats: { node_count: number; edge_count: number } } }> {
   return apiFetch(`/api/v1/kg/subgraph?root_uri=${encodeURIComponent(rootUri)}&depth=${depth}`);
 }
+
+// ==================== ENTITY EXTRACTION ====================
+
+export interface ExtractionJob {
+  id: string;
+  ontology_id: string;
+  job_name: string;
+  status: "pending" | "running" | "completed" | "failed";
+  extraction_type: "deterministic" | "llm" | "hybrid";
+  source_type: string;
+  entities_extracted: number;
+  triples_generated: number;
+  error_message?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface ExtractedEntity {
+  id: number;
+  job_id: string;
+  entity_uri: string;
+  entity_type: string;
+  entity_label?: string;
+  confidence?: number;
+  source_text?: string;
+  properties?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ExtractionJobDetails extends ExtractionJob {
+  entities: ExtractedEntity[];
+}
+
+/**
+ * Create a new extraction job
+ * POST /api/v1/extraction/jobs
+ */
+export async function createExtractionJob(data: {
+  ontology_id: string;
+  job_name?: string;
+  source_type: string;
+  extraction_type?: "deterministic" | "llm" | "hybrid";
+  data: unknown;
+}): Promise<{ success: boolean; data: { job_id: string; status: string; entities_extracted: number; triples_generated: number; confidence: number; warnings: string[] } }> {
+  return apiFetch("/api/v1/extraction/jobs", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * List extraction jobs
+ * GET /api/v1/extraction/jobs
+ */
+export async function listExtractionJobs(params?: {
+  ontology_id?: string;
+  status?: string;
+}): Promise<{ success: boolean; data: { jobs: ExtractionJob[] } }> {
+  const searchParams = new URLSearchParams();
+  if (params?.ontology_id) searchParams.set("ontology_id", params.ontology_id);
+  if (params?.status) searchParams.set("status", params.status);
+  
+  const queryString = searchParams.toString();
+  const endpoint = queryString ? `/api/v1/extraction/jobs?${queryString}` : "/api/v1/extraction/jobs";
+  
+  return apiFetch(endpoint);
+}
+
+/**
+ * Get extraction job details
+ * GET /api/v1/extraction/jobs/:id
+ */
+export async function getExtractionJob(id: string): Promise<{ success: boolean; data: { job: ExtractionJob; entities: ExtractedEntity[] } }> {
+  return apiFetch(`/api/v1/extraction/jobs/${id}`);
+}
+
+// ==================== NATURAL LANGUAGE QUERIES ====================
+
+export interface NLQueryResult {
+  question: string;
+  sparql_query: string;
+  explanation: string;
+  results: SPARQLQueryResult;
+}
+
+/**
+ * Execute a natural language query
+ * POST /api/v1/kg/nl-query
+ */
+export async function executeNLQuery(question: string, ontologyId?: string): Promise<{ success: boolean; data: NLQueryResult }> {
+  return apiFetch("/api/v1/kg/nl-query", {
+    method: "POST",
+    body: JSON.stringify({
+      question,
+      ontology_id: ontologyId,
+    }),
+  });
+}
+
+// ==================== ONTOLOGY VERSIONING ====================
+
+export interface OntologyVersion {
+  id: number;
+  ontology_id: string;
+  version: string;
+  previous_version?: string;
+  changelog: string;
+  migration_strategy?: string;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface OntologyChange {
+  id: number;
+  version_id: number;
+  change_type: string;
+  entity_type: string;
+  entity_uri: string;
+  old_value?: string;
+  new_value?: string;
+  description?: string;
+  created_at: string;
+}
+
+export interface VersionDiff {
+  from_version: string;
+  to_version: string;
+  changes: OntologyChange[];
+  summary: {
+    classes_added: number;
+    classes_removed: number;
+    classes_modified: number;
+    properties_added: number;
+    properties_removed: number;
+    properties_modified: number;
+    total_changes: number;
+  };
+}
+
+/**
+ * Create a new version of an ontology
+ * POST /api/v1/ontology/:id/versions
+ */
+export async function createOntologyVersion(
+  ontologyId: string,
+  version: string,
+  changelog: string,
+  createdBy?: string
+): Promise<{ success: boolean; data: OntologyVersion }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/versions`, {
+    method: "POST",
+    body: JSON.stringify({
+      version,
+      changelog,
+      created_by: createdBy,
+    }),
+  });
+}
+
+/**
+ * List all versions of an ontology
+ * GET /api/v1/ontology/:id/versions
+ */
+export async function listOntologyVersions(ontologyId: string): Promise<{ success: boolean; data: OntologyVersion[] }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/versions`);
+}
+
+/**
+ * Get a specific version with changes
+ * GET /api/v1/ontology/:id/versions/:vid
+ */
+export async function getOntologyVersion(
+  ontologyId: string,
+  versionId: number
+): Promise<{ success: boolean; data: { version: OntologyVersion; changes: OntologyChange[] } }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/versions/${versionId}`);
+}
+
+/**
+ * Compare two versions
+ * GET /api/v1/ontology/:id/versions/compare?v1=...&v2=...
+ */
+export async function compareOntologyVersions(
+  ontologyId: string,
+  v1: string,
+  v2: string
+): Promise<{ success: boolean; data: VersionDiff }> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/versions/compare?v1=${encodeURIComponent(v1)}&v2=${encodeURIComponent(v2)}`);
+}
+
+/**
+ * Delete a version
+ * DELETE /api/v1/ontology/:id/versions/:vid
+ */
+export async function deleteOntologyVersion(ontologyId: string, versionId: number): Promise<void> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/versions/${versionId}`, {
+    method: "DELETE",
+  });
+}

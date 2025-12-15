@@ -27,6 +27,15 @@ services:
       - NEXTJS_URL=http://localhost:3000
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      # Ontology and Knowledge Graph settings
+      - MIMIR_DB_PATH=/app/data/mimir.db
+      - ONTOLOGY_DIR=/app/data/ontologies
+      - FUSEKI_URL=http://localhost:3030
+      - FUSEKI_DATASET=mimir
+      - FUSEKI_BASE=/app/data/tdb2
+      - FUSEKI_PORT=3030
+      - JENA_HOME=/opt/jena-fuseki
+      - JVM_ARGS=-Xmx2g -Xms512m
       # Don't set NEXT_PUBLIC_API_URL - use relative paths from root
     
     # Volume mounts for persistence
@@ -36,6 +45,9 @@ services:
       - mimir_config:/app/config
       - mimir_plugins:/app/plugins
       - mimir_pipelines:/app/pipelines
+      - mimir_tdb2:/app/data/tdb2
+      - mimir_ontologies:/app/data/ontologies
+      - mimir_chromem:/app/data/chromem
     
     # Health check
     healthcheck:
@@ -45,15 +57,15 @@ services:
       retries: 3
       start_period: 40s
     
-    # Resource limits
+    # Resource limits (increased for Java + ontology processing)
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 1G
+          cpus: '4.0'
+          memory: 4G
         reservations:
-          cpus: '1.0'
-          memory: 512M
+          cpus: '2.0'
+          memory: 2G
     
     # Security options
     security_opt:
@@ -76,6 +88,24 @@ volumes:
     driver: local
   mimir_pipelines:
     driver: local
+  mimir_tdb2:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/data/tdb2
+      o: bind
+  mimir_ontologies:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/data/ontologies
+      o: bind
+  mimir_chromem:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/data/chromem
+      o: bind
 
 # Networks
 networks:

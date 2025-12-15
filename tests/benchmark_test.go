@@ -130,15 +130,7 @@ func BenchmarkPluginRegistry(b *testing.B) {
 	}
 }
 
-// BenchmarkStringInterning benchmarks string interning performance
-func BenchmarkStringInterning(b *testing.B) {
-	interner := utils.GetStringInterner()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = interner.Intern("test_string_" + string(rune(i%100)))
-	}
-}
+// BenchmarkStringInterning removed - StringInterner was unused dead code
 
 // BenchmarkPerformanceMonitor benchmarks performance monitoring
 func BenchmarkPerformanceMonitor(b *testing.B) {
@@ -174,23 +166,7 @@ func BenchmarkPluginCache(b *testing.B) {
 	}
 }
 
-// BenchmarkConnectionPool benchmarks connection pool performance
-func BenchmarkConnectionPool(b *testing.B) {
-	// Create a simple connection pool
-	pool := utils.NewConnectionPool(10,
-		func() any { return "connection" },
-		func(conn any) { /* close connection */ },
-	)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		conn := pool.Get()
-		if conn == nil {
-			b.Fatalf("Expected connection")
-		}
-		pool.Put(conn)
-	}
-}
+// BenchmarkConnectionPool removed - ConnectionPool was unused dead code
 
 // Performance comparison benchmarks
 

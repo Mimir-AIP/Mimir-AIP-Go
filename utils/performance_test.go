@@ -417,108 +417,16 @@ func TestCreateCacheKey(t *testing.T) {
 	assert.Contains(t, key, "param1")
 }
 
-func TestNewConnectionPool(t *testing.T) {
-	maxSize := 3
-	factory := func() any {
-		return "test-connection"
-	}
-	closeFunc := func(conn any) {
-		// Mock close function
-	}
+// TestNewConnectionPool removed - functionality was unused dead code
 
-	pool := NewConnectionPool(maxSize, factory, closeFunc)
+// TestConnectionPoolGetPut removed - functionality was unused dead code
 
-	assert.NotNil(t, pool)
-	assert.Equal(t, maxSize, pool.maxSize)
-	assert.Equal(t, maxSize, len(pool.connections))
-}
+// TestConnectionPoolClose removed - functionality was unused dead code
 
-func TestConnectionPoolGetPut(t *testing.T) {
-	connectionsCreated := 0
-	factory := func() any {
-		connectionsCreated++
-		return fmt.Sprintf("connection-%d", connectionsCreated)
-	}
-	closeFunc := func(conn any) {}
+// TestNewStringInterner removed - functionality was unused dead code
 
-	pool := NewConnectionPool(2, factory, closeFunc)
+// TestStringInternerIntern removed - functionality was unused dead code
 
-	// Pool is pre-populated with 2 connections in a buffered channel
-	// Get first connection
-	conn1 := pool.Get()
-	assert.NotNil(t, conn1)
-	firstConn := conn1.(string)
+// TestGetStringInterner removed - functionality was unused dead code
 
-	// Get second connection
-	conn2 := pool.Get()
-	assert.NotNil(t, conn2)
-	secondConn := conn2.(string)
-
-	// They should be different
-	assert.NotEqual(t, firstConn, secondConn)
-
-	// Put first connection back
-	pool.Put(conn1)
-
-	// Get a connection - should get conn1 back
-	conn3 := pool.Get()
-	assert.Equal(t, conn1, conn3)
-
-	// Verify we got 2 connections total created
-	assert.Equal(t, 2, connectionsCreated)
-}
-
-func TestConnectionPoolClose(t *testing.T) {
-	connectionsClosed := 0
-	factory := func() any {
-		return "test-connection"
-	}
-	closeFunc := func(conn any) {
-		connectionsClosed++
-	}
-
-	pool := NewConnectionPool(2, factory, closeFunc)
-	pool.Close()
-
-	assert.Equal(t, 2, connectionsClosed)
-}
-
-func TestNewStringInterner(t *testing.T) {
-	interner := NewStringInterner()
-
-	assert.NotNil(t, interner)
-	assert.NotNil(t, interner.strings)
-	assert.Equal(t, 0, interner.Size())
-}
-
-func TestStringInternerIntern(t *testing.T) {
-	interner := NewStringInterner()
-
-	// Test interning new strings
-	str1 := interner.Intern("hello")
-	str2 := interner.Intern("world")
-	str3 := interner.Intern("hello") // Same as str1
-
-	assert.Equal(t, "hello", str1)
-	assert.Equal(t, "world", str2)
-	assert.Equal(t, "hello", str3)
-	// Values should be equal
-	assert.Equal(t, str1, str3)
-	assert.NotEqual(t, str1, str2)
-	assert.Equal(t, 2, interner.Size()) // Only 2 unique strings
-}
-
-func TestGetStringInterner(t *testing.T) {
-	interner1 := GetStringInterner()
-	interner2 := GetStringInterner()
-
-	// Should return the same instance (singleton)
-	assert.Same(t, interner1, interner2)
-	assert.NotNil(t, interner1)
-}
-
-func TestGetActiveGoroutines(t *testing.T) {
-	// This is a placeholder implementation that returns 0
-	count := getActiveGoroutines()
-	assert.Equal(t, 0, count)
-}
+// TestGetActiveGoroutines removed - functionality was unused dead code

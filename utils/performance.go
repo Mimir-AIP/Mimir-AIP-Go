@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -121,7 +122,7 @@ func (pm *PerformanceMonitor) GetMetrics() *PerformanceMetrics {
 		P99Latency:        p99Latency,
 		RequestsPerSecond: rps,
 		ErrorRate:         errorRate,
-		ActiveGoroutines:  getActiveGoroutines(),
+		ActiveGoroutines:  runtime.NumGoroutine(),
 	}
 }
 
@@ -388,6 +389,4 @@ func createCacheKey(step pipelines.StepConfig, context *pipelines.PluginContext)
 	}
 
 	return key
-}
-
 }

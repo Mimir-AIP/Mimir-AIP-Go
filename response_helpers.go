@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -43,4 +44,26 @@ func writeInternalServerErrorResponse(w http.ResponseWriter, message string) {
 		message = "Internal Server Error"
 	}
 	writeErrorResponse(w, http.StatusInternalServerError, message)
+}
+
+// writeOperationSuccessResponse writes a success response for CRUD operations
+func writeOperationSuccessResponse(w http.ResponseWriter, message, idKey, idValue string) {
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"message": message,
+		idKey:     idValue,
+	})
+}
+
+// parseLimit extracts and validates a limit parameter from the request, returning default if invalid
+func parseLimit(r *http.Request, defaultLimit int) int {
+	limitParam := r.URL.Query().Get("limit")
+	if limitParam == "" {
+		return defaultLimit
+	}
+
+	var limit int
+	if n, err := fmt.Sscanf(limitParam, "%d", &limit); err == nil && n == 1 && limit > 0 {
+		return limit
+	}
+	return defaultLimit
 }

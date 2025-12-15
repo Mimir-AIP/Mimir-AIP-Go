@@ -565,13 +565,7 @@ func (s *Server) handleListExecutionLogs(w http.ResponseWriter, r *http.Request)
 
 	jobID := r.URL.Query().Get("job_id")
 	pipelineID := r.URL.Query().Get("pipeline_id")
-	limit := 100 // default
-
-	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
-		if l, err := fmt.Sscanf(limitParam, "%d", &limit); err != nil || l != 1 {
-			limit = 100
-		}
-	}
+	limit := parseLimit(r, 100)
 
 	logger := utils.GetExecutionLogger()
 	logs, err := logger.ListLogs(jobID, pipelineID, limit)
@@ -589,12 +583,7 @@ func (s *Server) handleGetPipelineLogs(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	pipelineID := vars["id"]
 
-	limit := 50 // default
-	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
-		if l, err := fmt.Sscanf(limitParam, "%d", &limit); err != nil || l != 1 {
-			limit = 50
-		}
-	}
+	limit := parseLimit(r, 50)
 
 	logger := utils.GetExecutionLogger()
 	logs, err := logger.ListLogs("", pipelineID, limit)
@@ -617,12 +606,7 @@ func (s *Server) handleGetJobLogs(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	jobID := vars["id"]
 
-	limit := 50 // default
-	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
-		if l, err := fmt.Sscanf(limitParam, "%d", &limit); err != nil || l != 1 {
-			limit = 50
-		}
-	}
+	limit := parseLimit(r, 50)
 
 	logger := utils.GetExecutionLogger()
 	logs, err := logger.ListLogs(jobID, "", limit)
@@ -1046,12 +1030,7 @@ func (s *Server) handleGetJobStatistics(w http.ResponseWriter, r *http.Request) 
 // handleGetRecentJobs handles requests to get recent job executions
 func (s *Server) handleGetRecentJobs(w http.ResponseWriter, r *http.Request) {
 
-	limit := 10 // Default limit
-	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
-		if l, err := fmt.Sscanf(limitParam, "%d", &limit); err != nil || l != 1 {
-			limit = 10
-		}
-	}
+	limit := parseLimit(r, 10)
 
 	recent := s.monitor.GetRecentExecutions(limit)
 	writeJSONResponse(w, http.StatusOK, recent)

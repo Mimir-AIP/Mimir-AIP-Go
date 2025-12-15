@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	AI "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/AI"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
@@ -24,6 +25,7 @@ type Server struct {
 	config      *utils.ConfigManager
 	persistence *storage.PersistenceBackend
 	tdb2Backend *knowledgegraph.TDB2Backend
+	llmClient   AI.LLMClient
 }
 
 // PipelineExecutionRequest represents a request to execute a pipeline
@@ -76,6 +78,27 @@ func NewServer() *Server {
 	}
 	tdb2Backend := knowledgegraph.NewTDB2Backend(fusekiURL, dataset)
 
+	// Initialize LLM client (optional, for extraction and NL queries)
+	var llmClient AI.LLMClient
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey != "" {
+		llmConfig := AI.LLMClientConfig{
+			Provider: AI.ProviderOpenAI,
+			APIKey:   apiKey,
+			Model:    "gpt-4o-mini", // Default to cost-effective model
+		}
+		client, err := AI.NewLLMClient(llmConfig)
+		if err != nil {
+			log.Printf("Failed to initialize LLM client: %v", err)
+			log.Printf("LLM-based extraction and NL queries will be disabled")
+		} else {
+			llmClient = client
+			log.Println("LLM client initialized successfully")
+		}
+	} else {
+		log.Println("OPENAI_API_KEY not set - LLM features disabled")
+	}
+
 	s := &Server{
 		router:      mux.NewRouter(),
 		registry:    registry,
@@ -85,6 +108,7 @@ func NewServer() *Server {
 		config:      utils.GetConfigManager(),
 		persistence: persistence,
 		tdb2Backend: tdb2Backend,
+		llmClient:   llmClient,
 	}
 
 	s.registerDefaultPlugins()
@@ -140,6 +164,22 @@ func (s *Server) registerDefaultPlugins() {
 				log.Printf("Failed to register ontology management plugin: %v", err)
 			} else {
 				log.Println("Registered ontology management plugin")
+			}
+
+			// Register extraction plugin (requires database access)
+			extractionPlugin := ontology.NewExtractionPlugin(s.persistence.GetDB(), s.tdb2Backend, s.llmClient)
+			if err := s.registry.RegisterPlugin(extractionPlugin); err != nil {
+				log.Printf("Failed to register extraction plugin: %v", err)
+			} else {
+				log.Println("Registered extraction plugin")
+			}
+
+			// Register NL query plugin (requires LLM client)
+			nlQueryPlugin := ontology.NewNLQueryPlugin(s.persistence.GetDB(), s.tdb2Backend, s.llmClient)
+			if err := s.registry.RegisterPlugin(nlQueryPlugin); err != nil {
+				log.Printf("Failed to register NL query plugin: %v", err)
+			} else {
+				log.Println("Registered NL query plugin")
 			}
 		}
 	}

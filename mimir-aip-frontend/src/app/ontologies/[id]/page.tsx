@@ -220,6 +220,15 @@ LIMIT 50`,
           </div>
           
           <div className="flex gap-2">
+            <Link
+              href={`/ontologies/${ontologyId}/versions`}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg inline-flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Versions
+            </Link>
             <button
               onClick={handleExport}
               className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"

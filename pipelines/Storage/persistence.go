@@ -308,6 +308,11 @@ func (p *PersistenceBackend) Close() error {
 	return p.db.Close()
 }
 
+// GetDB returns the underlying database connection
+func (p *PersistenceBackend) GetDB() *sql.DB {
+	return p.db
+}
+
 // Health checks database connectivity
 func (p *PersistenceBackend) Health(ctx context.Context) error {
 	return p.db.PingContext(ctx)

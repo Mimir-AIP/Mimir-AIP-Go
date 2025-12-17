@@ -33,10 +33,10 @@ type ServerConfig struct {
 
 // PluginsConfig holds plugin-related configuration
 type PluginsConfig struct {
-	Directories    []string               `yaml:"directories" json:"directories"`
-	AutoDiscovery  bool                   `yaml:"auto_discovery" json:"auto_discovery"`
-	Timeout        int                    `yaml:"timeout" json:"timeout"` // seconds
-	MaxConcurrency int                    `yaml:"max_concurrency" json:"max_concurrency"`
+	Directories    []string       `yaml:"directories" json:"directories"`
+	AutoDiscovery  bool           `yaml:"auto_discovery" json:"auto_discovery"`
+	Timeout        int            `yaml:"timeout" json:"timeout"` // seconds
+	MaxConcurrency int            `yaml:"max_concurrency" json:"max_concurrency"`
 	PluginConfigs  map[string]any `yaml:"plugin_configs" json:"plugin_configs"`
 }
 

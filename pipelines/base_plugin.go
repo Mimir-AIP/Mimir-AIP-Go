@@ -146,10 +146,10 @@ func (pc *PluginContext) SetMetadata(key string, value any) {
 
 // StepConfig represents the configuration for a single pipeline step
 type StepConfig struct {
-	Name   string                 `yaml:"name"`
-	Plugin string                 `yaml:"plugin"`
+	Name   string         `yaml:"name"`
+	Plugin string         `yaml:"plugin"`
 	Config map[string]any `yaml:"config"`
-	Output string                 `yaml:"output,omitempty"`
+	Output string         `yaml:"output,omitempty"`
 }
 
 // BasePlugin defines the interface that all plugins must implement

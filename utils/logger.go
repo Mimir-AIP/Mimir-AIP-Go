@@ -44,20 +44,20 @@ func (l LogLevel) String() string {
 
 // LogEntry represents a structured log entry
 type LogEntry struct {
-	Timestamp string                 `json:"timestamp"`
-	Level     string                 `json:"level"`
-	Message   string                 `json:"message"`
-	Service   string                 `json:"service,omitempty"`
-	Component string                 `json:"component,omitempty"`
-	RequestID string                 `json:"request_id,omitempty"`
-	UserID    string                 `json:"user_id,omitempty"`
-	TraceID   string                 `json:"trace_id,omitempty"`
-	SpanID    string                 `json:"span_id,omitempty"`
-	Error     string                 `json:"error,omitempty"`
-	Stack     string                 `json:"stack,omitempty"`
+	Timestamp string         `json:"timestamp"`
+	Level     string         `json:"level"`
+	Message   string         `json:"message"`
+	Service   string         `json:"service,omitempty"`
+	Component string         `json:"component,omitempty"`
+	RequestID string         `json:"request_id,omitempty"`
+	UserID    string         `json:"user_id,omitempty"`
+	TraceID   string         `json:"trace_id,omitempty"`
+	SpanID    string         `json:"span_id,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	Stack     string         `json:"stack,omitempty"`
 	Fields    map[string]any `json:"fields,omitempty"`
-	File      string                 `json:"file,omitempty"`
-	Line      int                    `json:"line,omitempty"`
+	File      string         `json:"file,omitempty"`
+	Line      int            `json:"line,omitempty"`
 }
 
 // Logger provides structured logging capabilities

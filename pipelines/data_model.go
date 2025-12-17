@@ -127,13 +127,13 @@ func (b *BinaryData) Clone() DataValue {
 // TimePoint represents a single point in time series data
 type TimePoint struct {
 	Timestamp time.Time         `json:"timestamp"`
-	Value     any       `json:"value"`
+	Value     any               `json:"value"`
 	Tags      map[string]string `json:"tags,omitempty"`
 }
 
 // TimeSeriesData represents time series data
 type TimeSeriesData struct {
-	Points   []TimePoint            `json:"points"`
+	Points   []TimePoint    `json:"points"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 

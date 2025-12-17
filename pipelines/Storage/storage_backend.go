@@ -35,16 +35,16 @@ type StorageBackend interface {
 
 // Document represents a document to be stored with its metadata
 type Document struct {
-	ID        string                 `json:"id"`
-	Content   string                 `json:"content"`
+	ID        string         `json:"id"`
+	Content   string         `json:"content"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
-	Embedding []float32              `json:"embedding,omitempty"` // Optional: pre-computed embedding
+	Embedding []float32      `json:"embedding,omitempty"` // Optional: pre-computed embedding
 }
 
 // QueryResult represents the result of a vector similarity query
 type QueryResult struct {
-	Document Document               `json:"document"`
-	Score    float32                `json:"score"`
+	Document Document       `json:"document"`
+	Score    float32        `json:"score"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 

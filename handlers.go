@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1480,6 +1481,12 @@ func (s *Server) handleSelectData(w http.ResponseWriter, r *http.Request) {
 			utils.GetLogger().Warn(fmt.Sprintf("Failed to create digital twin: %v", err))
 			response["twin_error"] = err.Error()
 		} else {
+			// Extract scenario IDs from twin base state
+			scenarioIDs := []string{}
+			if scenarios, ok := twin.BaseState["default_scenarios"].([]string); ok {
+				scenarioIDs = scenarios
+			}
+
 			response["digital_twin"] = map[string]any{
 				"id":                 twin.ID,
 				"name":               twin.Name,
@@ -1487,6 +1494,8 @@ func (s *Server) handleSelectData(w http.ResponseWriter, r *http.Request) {
 				"model_type":         twin.ModelType,
 				"entity_count":       len(twin.Entities),
 				"relationship_count": len(twin.Relationships),
+				"scenario_ids":       scenarioIDs,
+				"scenario_count":     len(scenarioIDs),
 			}
 			response["message"] = "Ontology and Digital Twin generated successfully"
 		}
@@ -1759,7 +1768,360 @@ func (s *Server) createDigitalTwinFromOntology(ctx context.Context, ontologyData
 		}
 	}
 
+	// Generate and save default scenarios for the new twin
+	scenarios := generateDefaultScenarios(twin)
+	scenarioIDs := []string{}
+
+	for _, scenario := range scenarios {
+		err := saveScenarioToDatabase(ctx, s.persistence, &scenario)
+		if err != nil {
+			utils.GetLogger().Warn(fmt.Sprintf("Failed to save scenario %s: %v", scenario.Name, err))
+		} else {
+			scenarioIDs = append(scenarioIDs, scenario.ID)
+		}
+	}
+
+	// Store scenario IDs in the twin's base state for reference
+	if len(scenarioIDs) > 0 {
+		twin.BaseState["default_scenarios"] = scenarioIDs
+	}
+
 	return twin, nil
+}
+
+// generateDefaultScenarios generates realistic simulation scenarios for a newly created Digital Twin
+func generateDefaultScenarios(twin *DigitalTwin.DigitalTwin) []DigitalTwin.SimulationScenario {
+	scenarios := []DigitalTwin.SimulationScenario{}
+
+	// Scenario 1: Baseline - Normal operations with no events
+	baselineScenario := DigitalTwin.SimulationScenario{
+		ID:          fmt.Sprintf("scenario_%s_baseline", twin.ID),
+		TwinID:      twin.ID,
+		Name:        "Baseline Operations",
+		Description: "Normal operating conditions with no disruptions. Establishes performance baseline for comparison.",
+		Type:        "baseline",
+		Events:      []DigitalTwin.SimulationEvent{},
+		Duration:    30, // 30 steps
+		CreatedAt:   time.Now(),
+	}
+	scenarios = append(scenarios, baselineScenario)
+
+	// Scenario 2: Data Quality Issues - Simulates missing/invalid data
+	dataQualityEvents := generateDataQualityEvents(twin)
+	dataQualityScenario := DigitalTwin.SimulationScenario{
+		ID:          fmt.Sprintf("scenario_%s_data_quality", twin.ID),
+		TwinID:      twin.ID,
+		Name:        "Data Quality Issues",
+		Description: "Simulates data quality problems including missing values, invalid data, and entity unavailability.",
+		Type:        "data_quality_issue",
+		Events:      dataQualityEvents,
+		Duration:    40, // 40 steps
+		CreatedAt:   time.Now(),
+	}
+	scenarios = append(scenarios, dataQualityScenario)
+
+	// Scenario 3: Capacity Test - Simulates high volume/load
+	capacityEvents := generateCapacityTestEvents(twin)
+	capacityScenario := DigitalTwin.SimulationScenario{
+		ID:          fmt.Sprintf("scenario_%s_capacity", twin.ID),
+		TwinID:      twin.ID,
+		Name:        "Capacity Stress Test",
+		Description: "Tests system behavior under high load conditions with demand surges and increased utilization.",
+		Type:        "capacity_test",
+		Events:      capacityEvents,
+		Duration:    50, // 50 steps
+		CreatedAt:   time.Now(),
+	}
+	scenarios = append(scenarios, capacityScenario)
+
+	return scenarios
+}
+
+// generateDataQualityEvents creates events simulating data quality issues
+func generateDataQualityEvents(twin *DigitalTwin.DigitalTwin) []DigitalTwin.SimulationEvent {
+	events := []DigitalTwin.SimulationEvent{}
+
+	if len(twin.Entities) == 0 {
+		return events
+	}
+
+	// Select entities to target (up to 30% of entities)
+	targetCount := len(twin.Entities) / 3
+	if targetCount < 1 {
+		targetCount = 1
+	}
+	if targetCount > len(twin.Entities) {
+		targetCount = len(twin.Entities)
+	}
+
+	// Event 1: Resource unavailable at step 5 (data source failure)
+	if len(twin.Entities) > 0 {
+		targetEntity := twin.Entities[0]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventResourceUnavailable,
+			targetEntity.URI,
+			5,
+			map[string]interface{}{
+				"reason": "Data source unavailable",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityHigh)
+
+		// Add propagation rules if there are relationships
+		if len(twin.Relationships) > 0 {
+			// Find relationship types connected to this entity
+			relTypes := getEntityRelationshipTypes(twin, targetEntity.URI)
+			for _, relType := range relTypes {
+				event.WithPropagation(relType, 0.6, 2) // 60% impact, 2 step delay
+			}
+		}
+
+		events = append(events, *event)
+	}
+
+	// Event 2: Process failure at step 15 (data validation failure)
+	if len(twin.Entities) > 1 {
+		targetEntity := twin.Entities[1]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventProcessFailure,
+			targetEntity.URI,
+			15,
+			map[string]interface{}{
+				"reason": "Data validation failure - invalid schema",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityMedium)
+
+		events = append(events, *event)
+	}
+
+	// Event 3: Resource restoration at step 25
+	if len(twin.Entities) > 0 {
+		targetEntity := twin.Entities[0]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventResourceAvailable,
+			targetEntity.URI,
+			25,
+			map[string]interface{}{
+				"reason": "Data source restored",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityLow)
+
+		events = append(events, *event)
+	}
+
+	// Event 4: Data quality constraint at step 30 (if we have more entities)
+	if len(twin.Entities) > 2 {
+		targetEntity := twin.Entities[2]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventPolicyConstraintAdd,
+			targetEntity.URI,
+			30,
+			map[string]interface{}{
+				"constraint":      "data_quality_check",
+				"capacity_impact": 0.85, // 15% capacity reduction
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityMedium)
+
+		events = append(events, *event)
+	}
+
+	return events
+}
+
+// generateCapacityTestEvents creates events simulating high load scenarios
+func generateCapacityTestEvents(twin *DigitalTwin.DigitalTwin) []DigitalTwin.SimulationEvent {
+	events := []DigitalTwin.SimulationEvent{}
+
+	if len(twin.Entities) == 0 {
+		return events
+	}
+
+	// Event 1: Initial demand surge at step 5
+	if len(twin.Entities) > 0 {
+		targetEntity := twin.Entities[0]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventDemandSurge,
+			targetEntity.URI,
+			5,
+			map[string]interface{}{
+				"increase_factor": 1.8, // 80% increase
+				"reason":          "Peak load scenario",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityMedium)
+
+		// Propagate to related entities
+		relTypes := getEntityRelationshipTypes(twin, targetEntity.URI)
+		for _, relType := range relTypes {
+			event.WithPropagation(relType, 0.7, 1) // 70% impact, 1 step delay
+		}
+
+		events = append(events, *event)
+	}
+
+	// Event 2: Secondary demand surge at step 15 (cascading load)
+	if len(twin.Entities) > 1 {
+		targetEntity := twin.Entities[len(twin.Entities)/2]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventDemandSurge,
+			targetEntity.URI,
+			15,
+			map[string]interface{}{
+				"increase_factor": 2.2, // 120% increase
+				"reason":          "Compound load increase",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityHigh)
+
+		relTypes := getEntityRelationshipTypes(twin, targetEntity.URI)
+		for _, relType := range relTypes {
+			event.WithPropagation(relType, 0.8, 1)
+		}
+
+		events = append(events, *event)
+	}
+
+	// Event 3: Capacity reduction at step 20 (resource constraint under load)
+	if len(twin.Entities) > 2 {
+		targetEntity := twin.Entities[len(twin.Entities)-1]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventResourceCapacityChange,
+			targetEntity.URI,
+			20,
+			map[string]interface{}{
+				"multiplier": 0.7, // 30% capacity reduction
+				"reason":     "Resource throttling under high load",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityHigh)
+
+		events = append(events, *event)
+	}
+
+	// Event 4: External market shift at step 25 (additional load from external factor)
+	if len(twin.Entities) > 0 {
+		targetEntity := twin.Entities[0]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventExternalMarketShift,
+			targetEntity.URI,
+			25,
+			map[string]interface{}{
+				"demand_impact": 1.5,
+				"reason":        "Market surge affecting demand patterns",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityCritical)
+
+		relTypes := getEntityRelationshipTypes(twin, targetEntity.URI)
+		for _, relType := range relTypes {
+			event.WithPropagation(relType, 0.5, 2)
+		}
+
+		events = append(events, *event)
+	}
+
+	// Event 5: Process optimization at step 35 (mitigation)
+	if len(twin.Entities) > 1 {
+		targetEntity := twin.Entities[1]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventProcessOptimization,
+			targetEntity.URI,
+			35,
+			map[string]interface{}{
+				"efficiency_gain": 0.25, // 25% efficiency improvement
+				"reason":          "Load balancing optimization applied",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityLow)
+
+		events = append(events, *event)
+	}
+
+	// Event 6: Demand normalization at step 45
+	if len(twin.Entities) > 0 {
+		targetEntity := twin.Entities[0]
+		event := DigitalTwin.CreateEvent(
+			DigitalTwin.EventDemandDrop,
+			targetEntity.URI,
+			45,
+			map[string]interface{}{
+				"decrease_factor": 0.6, // Return to 60% of peak
+				"reason":          "Load returning to normal levels",
+			},
+		)
+		event.WithSeverity(DigitalTwin.SeverityLow)
+
+		events = append(events, *event)
+	}
+
+	return events
+}
+
+// getEntityRelationshipTypes returns unique relationship types for an entity
+func getEntityRelationshipTypes(twin *DigitalTwin.DigitalTwin, entityURI string) []string {
+	typeMap := make(map[string]bool)
+	types := []string{}
+
+	for _, rel := range twin.Relationships {
+		if rel.SourceURI == entityURI || rel.TargetURI == entityURI {
+			if !typeMap[rel.Type] {
+				typeMap[rel.Type] = true
+				types = append(types, rel.Type)
+			}
+		}
+	}
+
+	return types
+}
+
+// saveScenarioToDatabase persists a simulation scenario to the database
+func saveScenarioToDatabase(ctx context.Context, persistence interface{}, scenario *DigitalTwin.SimulationScenario) error {
+	// Get database connection from persistence backend
+	type dbProvider interface {
+		GetDB() *sql.DB
+	}
+
+	provider, ok := persistence.(dbProvider)
+	if !ok {
+		return fmt.Errorf("persistence backend does not provide database access")
+	}
+
+	db := provider.GetDB()
+	if db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
+	// Serialize events to JSON
+	eventsJSON, err := json.Marshal(scenario.Events)
+	if err != nil {
+		return fmt.Errorf("failed to marshal events: %w", err)
+	}
+
+	// Insert scenario into database
+	query := `
+		INSERT INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = db.ExecContext(ctx, query,
+		scenario.ID,
+		scenario.TwinID,
+		scenario.Name,
+		scenario.Description,
+		scenario.Type,
+		string(eventsJSON),
+		scenario.Duration,
+		scenario.CreatedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert scenario: %w", err)
+	}
+
+	return nil
 }
 
 // generateSampleValue creates sample data for a given column

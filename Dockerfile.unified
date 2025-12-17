@@ -32,8 +32,8 @@ RUN bun run build
 # Stage 2: Build Backend
 FROM golang:1.23-alpine AS backend-builder
 
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+# Install build dependencies including gcc for CGO
+RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
 
 WORKDIR /app
 
@@ -44,10 +44,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application with optimization flags
+# Build the application with optimization flags and CGO enabled for SQLite
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -ldflags="-s -w -X main.mimirVersion=$(git describe --tags --always --dirty 2>/dev/null || echo 'dev')" \
     -o mimir-aip-server .
 
@@ -63,15 +63,16 @@ WORKDIR /tmp
 # Download Apache Jena Fuseki (includes TDB2)
 # Version 4.10.0 - stable release
 ENV JENA_VERSION=4.10.0
-RUN wget -q https://dlcdn.apache.org/jena/binaries/apache-jena-fuseki-${JENA_VERSION}.tar.gz && \
-    tar -xzf apache-jena-fuseki-${JENA_VERSION}.tar.gz && \
-    mv apache-jena-fuseki-${JENA_VERSION} /jena
+RUN wget -q https://dlcdn.apache.org/jena/binaries/apache-jena-fuseki-${JENA_VERSION}.tar.gz \
+    || wget -q https://archive.apache.org/dist/jena/binaries/apache-jena-fuseki-${JENA_VERSION}.tar.gz \
+    && tar -xzf apache-jena-fuseki-${JENA_VERSION}.tar.gz \
+    && mv apache-jena-fuseki-${JENA_VERSION} /jena
 
 # =====================================================
 # Stage 4: Final Runtime Image - Alpine with Node.js, OpenJDK, and tools
 FROM eclipse-temurin:21-jre-alpine
 
-# Install runtime dependencies: Node.js, npm, bash, curl, ca-certificates
+# Install runtime dependencies: Node.js, npm, bash, curl, ca-certificates, and libgcc for CGO
 RUN apk add --no-cache \
     nodejs \
     npm \
@@ -79,7 +80,8 @@ RUN apk add --no-cache \
     curl \
     ca-certificates \
     tzdata \
-    tini
+    tini \
+    libgcc
 
 # Set working directory
 WORKDIR /app

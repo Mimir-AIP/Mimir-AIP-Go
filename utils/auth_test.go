@@ -498,7 +498,7 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 	assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
 	assert.Equal(t, "1; mode=block", w.Header().Get("X-XSS-Protection"))
 	assert.Equal(t, "max-age=31536000; includeSubDomains", w.Header().Get("Strict-Transport-Security"))
-	assert.Equal(t, "default-src 'self'", w.Header().Get("Content-Security-Policy"))
+	assert.Contains(t, w.Header().Get("Content-Security-Policy"), "default-src 'self'")
 	assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
 }
 

@@ -202,15 +202,84 @@ type ActionRecommendation struct {
 	TargetEntities  []string `json:"target_entities"`
 }
 
+// Constructors
+
+// NewDigitalTwin creates a new DigitalTwin with the given parameters
+func NewDigitalTwin(id, ontologyID, modelType, name string) *DigitalTwin {
+	now := time.Now()
+	return &DigitalTwin{
+		ID:            id,
+		OntologyID:    ontologyID,
+		Name:          name,
+		ModelType:     modelType,
+		BaseState:     make(map[string]interface{}),
+		Entities:      []TwinEntity{},
+		Relationships: []TwinRelationship{},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+}
+
+// NewTwinEntity creates a new TwinEntity with the given parameters
+func NewTwinEntity(uri, entityType, label string) *TwinEntity {
+	return &TwinEntity{
+		URI:        uri,
+		Type:       entityType,
+		Label:      label,
+		Properties: make(map[string]interface{}),
+		State: EntityState{
+			Status:      "active",
+			Available:   true,
+			Metrics:     make(map[string]float64),
+			LastUpdated: time.Now(),
+		},
+	}
+}
+
+// NewTwinRelationship creates a new TwinRelationship
+func NewTwinRelationship(id, sourceURI, targetURI, relType string, strength float64) *TwinRelationship {
+	return &TwinRelationship{
+		ID:         id,
+		SourceURI:  sourceURI,
+		TargetURI:  targetURI,
+		Type:       relType,
+		Strength:   strength,
+		Properties: make(map[string]interface{}),
+	}
+}
+
+// TwinFromJSON creates a DigitalTwin from JSON bytes
+func TwinFromJSON(data []byte) (*DigitalTwin, error) {
+	twin := &DigitalTwin{}
+	err := json.Unmarshal(data, twin)
+	if err != nil {
+		return nil, err
+	}
+	return twin, nil
+}
+
 // Helper methods
 
-// ToJSON converts a DigitalTwin to JSON string
-func (dt *DigitalTwin) ToJSON() (string, error) {
-	data, err := json.Marshal(dt)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+// AddEntity adds an entity to the digital twin
+func (dt *DigitalTwin) AddEntity(entity *TwinEntity) {
+	dt.Entities = append(dt.Entities, *entity)
+	dt.UpdatedAt = time.Now()
+}
+
+// AddRelationship adds a relationship to the digital twin
+func (dt *DigitalTwin) AddRelationship(rel *TwinRelationship) {
+	dt.Relationships = append(dt.Relationships, *rel)
+	dt.UpdatedAt = time.Now()
+}
+
+// AddProperty adds a property to the entity
+func (te *TwinEntity) AddProperty(key string, value interface{}) {
+	te.Properties[key] = value
+}
+
+// ToJSON converts a DigitalTwin to JSON bytes
+func (dt *DigitalTwin) ToJSON() ([]byte, error) {
+	return json.Marshal(dt)
 }
 
 // FromJSON populates a DigitalTwin from JSON string

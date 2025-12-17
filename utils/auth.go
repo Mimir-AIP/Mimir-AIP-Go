@@ -333,11 +333,17 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 // InputValidationMiddleware validates input data
 func InputValidationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip validation for file upload endpoints
+		if strings.HasPrefix(r.URL.Path, "/api/v1/data/upload") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Validate content type for POST/PUT requests
 		if r.Method == "POST" || r.Method == "PUT" {
 			contentType := r.Header.Get("Content-Type")
-			if !strings.Contains(contentType, "application/json") {
-				http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+			if !strings.Contains(contentType, "application/json") && !strings.Contains(contentType, "multipart/form-data") {
+				http.Error(w, "Content-Type must be application/json or multipart/form-data", http.StatusBadRequest)
 				return
 			}
 

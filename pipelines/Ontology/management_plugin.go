@@ -155,7 +155,7 @@ func (p *ManagementPlugin) handleUpload(ctx context.Context, stepConfig pipeline
 	}
 
 	// Set result in context
-	result := &pipelines.PluginContext{}
+	result := pipelines.NewPluginContext()
 	result.Set("ontology_id", ontologyID)
 	result.Set("ontology_name", name)
 	result.Set("ontology_version", version)
@@ -180,7 +180,7 @@ func (p *ManagementPlugin) handleValidate(ctx context.Context, stepConfig pipeli
 
 	validationResult := p.validateOntologyData(ontologyData, format)
 
-	result := &pipelines.PluginContext{}
+	result := pipelines.NewPluginContext()
 	result.Set("valid", validationResult.Valid)
 	result.Set("errors", validationResult.Errors)
 	result.Set("warnings", validationResult.Warnings)
@@ -197,7 +197,7 @@ func (p *ManagementPlugin) handleList(ctx context.Context, stepConfig pipelines.
 		return nil, fmt.Errorf("failed to list ontologies: %w", err)
 	}
 
-	result := &pipelines.PluginContext{}
+	result := pipelines.NewPluginContext()
 	result.Set("ontologies", ontologies)
 	result.Set("count", len(ontologies))
 
@@ -228,7 +228,7 @@ func (p *ManagementPlugin) handleGet(ctx context.Context, stepConfig pipelines.S
 		content = string(contentBytes)
 	}
 
-	result := &pipelines.PluginContext{}
+	result := pipelines.NewPluginContext()
 	result.Set("ontology", ontology)
 	if includeContent {
 		result.Set("content", content)
@@ -267,7 +267,7 @@ func (p *ManagementPlugin) handleDelete(ctx context.Context, stepConfig pipeline
 		fmt.Printf("Warning: failed to delete ontology file %s: %v\n", ontology.FilePath, err)
 	}
 
-	result := &pipelines.PluginContext{}
+	result := pipelines.NewPluginContext()
 	result.Set("status", "deleted")
 	result.Set("ontology_id", ontologyID)
 
@@ -299,7 +299,7 @@ func (p *ManagementPlugin) handleStats(ctx context.Context, stepConfig pipelines
 		TotalTriples: graphStats.TotalTriples,
 	}
 
-	result := &pipelines.PluginContext{}
+	result := pipelines.NewPluginContext()
 	result.Set("stats", stats)
 	result.Set("ontology_name", ontology.Name)
 

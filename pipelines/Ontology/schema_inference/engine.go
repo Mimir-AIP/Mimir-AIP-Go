@@ -15,28 +15,53 @@ import (
 
 // DataSchema represents the inferred schema of structured data
 type DataSchema struct {
-	Name          string                 `json:"name"`
-	Description   string                 `json:"description"`
-	Columns       []ColumnSchema         `json:"columns"`
-	Relationships []RelationshipSchema   `json:"relationships"`
-	Metadata      map[string]interface{} `json:"metadata"`
-	InferredAt    time.Time              `json:"inferred_at"`
+	Name          string                   `json:"name"`
+	Description   string                   `json:"description"`
+	Columns       []ColumnSchema           `json:"columns"`
+	Relationships []RelationshipSchema     `json:"relationships"`
+	ForeignKeys   []ForeignKeyRelationship `json:"foreign_keys,omitempty"`
+	Metadata      map[string]interface{}   `json:"metadata"`
+	InferredAt    time.Time                `json:"inferred_at"`
 }
 
 // ColumnSchema represents schema information for a single column
 type ColumnSchema struct {
-	Name         string                 `json:"name"`
-	DataType     string                 `json:"data_type"`
-	OntologyType string                 `json:"ontology_type"`
-	IsPrimaryKey bool                   `json:"is_primary_key"`
-	IsForeignKey bool                   `json:"is_foreign_key"`
-	IsRequired   bool                   `json:"is_required"`
-	IsUnique     bool                   `json:"is_unique"`
-	SampleValues []interface{}          `json:"sample_values"`
-	Constraints  map[string]interface{} `json:"constraints"`
-	Description  string                 `json:"description"`
-	AIEnhanced   bool                   `json:"ai_enhanced,omitempty"`   // Indicates if AI was used for inference
-	AIConfidence float64                `json:"ai_confidence,omitempty"` // AI confidence score if available
+	Name               string                 `json:"name"`
+	DataType           string                 `json:"data_type"`
+	OntologyType       string                 `json:"ontology_type"`
+	IsPrimaryKey       bool                   `json:"is_primary_key"`
+	IsForeignKey       bool                   `json:"is_foreign_key"`
+	IsRequired         bool                   `json:"is_required"`
+	IsUnique           bool                   `json:"is_unique"`
+	SampleValues       []interface{}          `json:"sample_values"`
+	Constraints        map[string]interface{} `json:"constraints"`
+	Description        string                 `json:"description"`
+	AIEnhanced         bool                   `json:"ai_enhanced,omitempty"`         // Indicates if AI was used for inference
+	AIConfidence       float64                `json:"ai_confidence,omitempty"`       // AI confidence score if available
+	FKMetadata         *ForeignKeyMetadata    `json:"fk_metadata,omitempty"`         // Foreign key metadata if detected
+	Cardinality        int                    `json:"cardinality,omitempty"`         // Number of unique values
+	CardinalityPercent float64                `json:"cardinality_percent,omitempty"` // Cardinality as percentage of total rows
+}
+
+// ForeignKeyMetadata contains metadata about a foreign key column
+type ForeignKeyMetadata struct {
+	ReferencedTable  string  `json:"referenced_table,omitempty"`
+	ReferencedColumn string  `json:"referenced_column,omitempty"`
+	Confidence       float64 `json:"confidence"`
+	DetectionMethod  string  `json:"detection_method"` // "name_pattern", "value_overlap", "cardinality"
+}
+
+// ForeignKeyRelationship represents a detected foreign key relationship
+type ForeignKeyRelationship struct {
+	SourceColumn         string   `json:"source_column"`
+	TargetColumn         string   `json:"target_column"`
+	SourceTable          string   `json:"source_table,omitempty"`
+	TargetTable          string   `json:"target_table,omitempty"`
+	Confidence           float64  `json:"confidence"`
+	ReferentialIntegrity float64  `json:"referential_integrity"` // Percentage of values that match (0.0-1.0)
+	MatchedValues        int      `json:"matched_values"`
+	TotalValues          int      `json:"total_values"`
+	DetectionMethods     []string `json:"detection_methods"` // Methods used to detect this FK
 }
 
 // RelationshipSchema represents relationships between columns/entities
@@ -64,6 +89,8 @@ type InferenceConfig struct {
 	EnableConstraints   bool    `json:"enable_constraints"`
 	EnableAIFallback    bool    `json:"enable_ai_fallback"`
 	AIConfidenceBoost   float64 `json:"ai_confidence_boost"` // How much to boost confidence when AI is used
+	EnableFKDetection   bool    `json:"enable_fk_detection"` // Enable foreign key detection
+	FKMinConfidence     float64 `json:"fk_min_confidence"`   // Minimum confidence for FK relationships (default 0.8)
 }
 
 // NewSchemaInferenceEngine creates a new inference engine
@@ -76,6 +103,9 @@ func NewSchemaInferenceEngine(config InferenceConfig) *SchemaInferenceEngine {
 	}
 	if config.AIConfidenceBoost <= 0 {
 		config.AIConfidenceBoost = 0.15 // Default 15% confidence boost from AI
+	}
+	if config.FKMinConfidence <= 0 {
+		config.FKMinConfidence = 0.8 // Default 80% confidence for FK detection
 	}
 
 	return &SchemaInferenceEngine{
@@ -122,6 +152,7 @@ func (e *SchemaInferenceEngine) inferFromArray(rows []map[string]interface{}, na
 		Description:   fmt.Sprintf("Schema inferred from %d data rows", len(rows)),
 		Columns:       []ColumnSchema{},
 		Relationships: []RelationshipSchema{},
+		ForeignKeys:   []ForeignKeyRelationship{},
 		Metadata:      make(map[string]interface{}),
 		InferredAt:    time.Now(),
 	}
@@ -147,6 +178,15 @@ func (e *SchemaInferenceEngine) inferFromArray(rows []map[string]interface{}, na
 		schema.Columns = append(schema.Columns, colSchema)
 	}
 
+	// Detect foreign key relationships if enabled
+	if e.config.EnableFKDetection {
+		fkRelationships := e.detectForeignKeys(schema.Columns, sampleRows)
+		schema.ForeignKeys = fkRelationships
+
+		// Update column metadata based on detected FKs
+		e.updateColumnsWithFKInfo(schema.Columns, fkRelationships)
+	}
+
 	// Detect relationships if enabled
 	if e.config.EnableRelationships {
 		schema.Relationships = e.detectRelationships(schema.Columns, sampleRows)
@@ -157,6 +197,7 @@ func (e *SchemaInferenceEngine) inferFromArray(rows []map[string]interface{}, na
 	schema.Metadata["analyzed_rows"] = sampleSize
 	schema.Metadata["column_count"] = len(schema.Columns)
 	schema.Metadata["relationship_count"] = len(schema.Relationships)
+	schema.Metadata["foreign_key_count"] = len(schema.ForeignKeys)
 
 	return schema, nil
 }
@@ -193,6 +234,13 @@ func (e *SchemaInferenceEngine) analyzeColumn(colName string, rows []map[string]
 	}
 	colSchema.SampleValues = values[:sampleSize]
 
+	// Calculate cardinality statistics
+	totalValues := len(values)
+	colSchema.Cardinality = len(uniqueValues)
+	if totalValues > 0 {
+		colSchema.CardinalityPercent = float64(len(uniqueValues)) / float64(totalValues)
+	}
+
 	// Infer data type with confidence tracking
 	typeInfo := e.inferColumnType(context.Background(), colName, values)
 	colSchema.DataType = typeInfo.DataType
@@ -201,7 +249,6 @@ func (e *SchemaInferenceEngine) analyzeColumn(colName string, rows []map[string]
 	colSchema.AIConfidence = typeInfo.Confidence
 
 	// Check constraints
-	totalValues := len(values)
 	if e.config.EnableConstraints && totalValues > 0 {
 		// Required check
 		colSchema.IsRequired = nullCount == 0
@@ -716,4 +763,218 @@ func (e *SchemaInferenceEngine) inferFromObject(obj map[string]interface{}, name
 	// Convert single object to array format
 	rows := []map[string]interface{}{obj}
 	return e.inferFromArray(rows, name)
+}
+
+// detectForeignKeys analyzes columns to identify foreign key relationships
+func (e *SchemaInferenceEngine) detectForeignKeys(columns []ColumnSchema, rows []map[string]interface{}) []ForeignKeyRelationship {
+	var foreignKeys []ForeignKeyRelationship
+
+	// Build a map of column values for efficient comparison
+	columnValues := make(map[string]map[string]bool)
+	for _, col := range columns {
+		valueSet := make(map[string]bool)
+		for _, row := range rows {
+			if val, exists := row[col.Name]; exists && val != nil {
+				strVal := fmt.Sprintf("%v", val)
+				valueSet[strVal] = true
+			}
+		}
+		columnValues[col.Name] = valueSet
+	}
+
+	// Check each column for FK patterns
+	for _, sourceCol := range columns {
+		// Skip if already confirmed as primary key
+		if sourceCol.IsPrimaryKey {
+			continue
+		}
+
+		var detectionMethods []string
+		var confidenceScores []float64
+
+		// Method 1: Name pattern analysis
+		nameConfidence, targetColName := e.detectFKByName(sourceCol.Name, columns)
+		if nameConfidence > 0 {
+			detectionMethods = append(detectionMethods, "name_pattern")
+			confidenceScores = append(confidenceScores, nameConfidence)
+		}
+
+		// Method 2: Cardinality analysis
+		// If column has low cardinality relative to row count, it's likely a FK
+		cardinalityConfidence := e.detectFKByCardinality(sourceCol, len(rows))
+		if cardinalityConfidence > 0 {
+			detectionMethods = append(detectionMethods, "cardinality")
+			confidenceScores = append(confidenceScores, cardinalityConfidence)
+		}
+
+		// Method 3: Value overlap analysis
+		// Compare values across columns to detect references
+		for _, targetCol := range columns {
+			// Skip self-comparison and non-PK columns for value matching
+			if sourceCol.Name == targetCol.Name {
+				continue
+			}
+
+			// Check if values overlap significantly
+			overlapConfidence, matchedCount, totalCount := e.detectFKByValueOverlap(
+				columnValues[sourceCol.Name],
+				columnValues[targetCol.Name],
+			)
+
+			if overlapConfidence >= e.config.FKMinConfidence {
+				// If name pattern suggested a target, prefer that match
+				if targetColName != "" && targetCol.Name != targetColName {
+					continue
+				}
+
+				// Calculate overall confidence
+				allScores := append(confidenceScores, overlapConfidence)
+				overallConfidence := e.calculateAverageConfidence(allScores)
+
+				// Calculate referential integrity
+				referentialIntegrity := float64(matchedCount) / float64(totalCount)
+
+				fk := ForeignKeyRelationship{
+					SourceColumn:         sourceCol.Name,
+					TargetColumn:         targetCol.Name,
+					Confidence:           overallConfidence,
+					ReferentialIntegrity: referentialIntegrity,
+					MatchedValues:        matchedCount,
+					TotalValues:          totalCount,
+					DetectionMethods:     append(detectionMethods, "value_overlap"),
+				}
+
+				e.logger.Debug("Detected FK relationship",
+					utils.String("source", sourceCol.Name),
+					utils.String("target", targetCol.Name),
+					utils.Float("confidence", overallConfidence),
+					utils.Float("integrity", referentialIntegrity))
+
+				foreignKeys = append(foreignKeys, fk)
+			}
+		}
+	}
+
+	return foreignKeys
+}
+
+// detectFKByName analyzes column name patterns to identify likely FKs
+// Returns confidence score and suggested target column name
+func (e *SchemaInferenceEngine) detectFKByName(colName string, columns []ColumnSchema) (float64, string) {
+	lowerName := strings.ToLower(colName)
+
+	// Pattern 1: ends with _id (e.g., user_id, product_id)
+	if strings.HasSuffix(lowerName, "_id") {
+		referencedTable := strings.TrimSuffix(lowerName, "_id")
+
+		// Look for matching column (id, <table>_id, or <table>Id)
+		for _, col := range columns {
+			colLower := strings.ToLower(col.Name)
+			if col.IsPrimaryKey && (colLower == "id" || strings.Contains(colLower, referencedTable)) {
+				return 0.9, col.Name // High confidence if PK found
+			}
+		}
+		return 0.7, "id" // Medium confidence even without PK
+	}
+
+	// Pattern 2: ends with _ref (e.g., order_ref)
+	if strings.HasSuffix(lowerName, "_ref") {
+		referencedTable := strings.TrimSuffix(lowerName, "_ref")
+		return 0.7, referencedTable + "_id"
+	}
+
+	// Pattern 3: starts with fk_ (e.g., fk_customer)
+	if strings.HasPrefix(lowerName, "fk_") {
+		referencedTable := strings.TrimPrefix(lowerName, "fk_")
+		return 0.8, referencedTable + "_id"
+	}
+
+	// Pattern 4: contains _fk_ (e.g., customer_fk_id)
+	if strings.Contains(lowerName, "_fk_") {
+		return 0.7, ""
+	}
+
+	return 0.0, ""
+}
+
+// detectFKByCardinality checks if column cardinality suggests it's a FK
+func (e *SchemaInferenceEngine) detectFKByCardinality(col ColumnSchema, rowCount int) float64 {
+	if col.Cardinality == 0 || rowCount == 0 {
+		return 0.0
+	}
+
+	cardinalityRatio := float64(col.Cardinality) / float64(rowCount)
+
+	// If cardinality is between 5% and 80% of row count, likely a FK
+	// Too low (<5%) might be a category/enum
+	// Too high (>80%) might be unique identifier or regular data
+	if cardinalityRatio >= 0.05 && cardinalityRatio <= 0.8 {
+		// Higher confidence for mid-range cardinality
+		if cardinalityRatio >= 0.2 && cardinalityRatio <= 0.6 {
+			return 0.7
+		}
+		return 0.5
+	}
+
+	return 0.0
+}
+
+// detectFKByValueOverlap calculates value overlap between two columns
+// Returns confidence, matched count, and total count
+func (e *SchemaInferenceEngine) detectFKByValueOverlap(sourceValues, targetValues map[string]bool) (float64, int, int) {
+	if len(sourceValues) == 0 {
+		return 0.0, 0, 0
+	}
+
+	matchedCount := 0
+	for val := range sourceValues {
+		if targetValues[val] {
+			matchedCount++
+		}
+	}
+
+	totalCount := len(sourceValues)
+	overlapRatio := float64(matchedCount) / float64(totalCount)
+
+	// High overlap suggests FK relationship
+	// Require at least 70% overlap for FK consideration
+	if overlapRatio >= 0.7 {
+		return overlapRatio, matchedCount, totalCount
+	}
+
+	return 0.0, matchedCount, totalCount
+}
+
+// calculateAverageConfidence computes average of confidence scores
+func (e *SchemaInferenceEngine) calculateAverageConfidence(scores []float64) float64 {
+	if len(scores) == 0 {
+		return 0.0
+	}
+
+	sum := 0.0
+	for _, score := range scores {
+		sum += score
+	}
+	return sum / float64(len(scores))
+}
+
+// updateColumnsWithFKInfo updates column metadata based on detected FK relationships
+func (e *SchemaInferenceEngine) updateColumnsWithFKInfo(columns []ColumnSchema, fkRelationships []ForeignKeyRelationship) {
+	// Build a map of FK info by source column
+	fkMap := make(map[string]*ForeignKeyRelationship)
+	for i := range fkRelationships {
+		fkMap[fkRelationships[i].SourceColumn] = &fkRelationships[i]
+	}
+
+	// Update columns
+	for i := range columns {
+		if fk, exists := fkMap[columns[i].Name]; exists {
+			columns[i].IsForeignKey = true
+			columns[i].FKMetadata = &ForeignKeyMetadata{
+				ReferencedColumn: fk.TargetColumn,
+				Confidence:       fk.Confidence,
+				DetectionMethod:  strings.Join(fk.DetectionMethods, ","),
+			}
+		}
+	}
 }

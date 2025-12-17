@@ -219,6 +219,32 @@ func (g *OntologyGenerator) generateProperties(schema *DataSchema, classes []Ont
 		properties = append(properties, property)
 	}
 
+	// Add ObjectProperties for detected foreign key relationships
+	for _, fk := range schema.ForeignKeys {
+		propertyName := g.formatPropertyName(fk.SourceColumn + "_references")
+		propertyURI := fmt.Sprintf("%s%s", g.config.BaseURI, propertyName)
+
+		// Try to find the target class for the range
+		rangeClass := g.inferRangeClass(fk.TargetColumn, classes)
+		if rangeClass == "" {
+			rangeClass = domainClass // Default to same class
+		}
+
+		property := OntologyProperty{
+			Name:   propertyName,
+			URI:    propertyURI,
+			Domain: domainClass,
+			Range:  rangeClass,
+			Type:   "object",
+			Description: fmt.Sprintf("References %s with %.1f%% integrity (detected via %s)",
+				fk.TargetColumn,
+				fk.ReferentialIntegrity*100,
+				strings.Join(fk.DetectionMethods, ", ")),
+		}
+
+		properties = append(properties, property)
+	}
+
 	return properties
 }
 

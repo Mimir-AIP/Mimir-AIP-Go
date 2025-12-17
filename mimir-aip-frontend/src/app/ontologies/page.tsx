@@ -23,9 +23,10 @@ export default function OntologiesPage() {
       setLoading(true);
       setError(null);
       const data = await listOntologies(statusFilter);
-      setOntologies(data);
+      setOntologies(data || []); // Handle null/undefined responses
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load ontologies");
+      setOntologies([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -52,14 +53,14 @@ export default function OntologiesPage() {
     <div className="p-6">
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Ontologies</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-3xl font-bold text-orange">Ontologies</h1>
+          <p className="text-gray-400 mt-1">
             Manage ontologies and knowledge graph schemas
           </p>
         </div>
         <Link
           href="/ontologies/upload"
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+          className="bg-orange hover:bg-orange/80 text-navy px-4 py-2 rounded-lg font-semibold"
         >
           Upload Ontology
         </Link>
@@ -67,11 +68,11 @@ export default function OntologiesPage() {
 
       <div className="mb-4 flex gap-4 items-center">
         <label className="flex items-center gap-2">
-          <span className="text-sm font-medium">Status:</span>
+          <span className="text-sm font-medium text-white">Status:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="border rounded px-3 py-1"
+            className="bg-navy border border-blue rounded px-3 py-1 text-white focus:border-orange focus:ring-1 focus:ring-orange"
           >
             <option value="">All</option>
             <option value="active">Active</option>
@@ -82,7 +83,7 @@ export default function OntologiesPage() {
         </label>
         <button
           onClick={loadOntologies}
-          className="bg-gray-200 hover:bg-gray-300 px-4 py-1 rounded"
+          className="bg-blue hover:bg-orange text-white px-4 py-1 rounded border border-blue"
         >
           Refresh
         </button>
@@ -90,22 +91,22 @@ export default function OntologiesPage() {
 
       {loading && (
         <div className="text-center py-12">
-          <p className="text-gray-600">Loading ontologies...</p>
+          <p className="text-gray-400">Loading ontologies...</p>
         </div>
       )}
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded mb-4">
           {error}
         </div>
       )}
 
       {!loading && !error && ontologies.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-600 mb-4">No ontologies found</p>
+          <p className="text-gray-400 mb-4">No ontologies found</p>
           <Link
             href="/ontologies/upload"
-            className="text-blue-600 hover:underline"
+            className="text-orange hover:underline"
           >
             Upload your first ontology
           </Link>
@@ -113,72 +114,72 @@ export default function OntologiesPage() {
       )}
 
       {!loading && !error && ontologies.length > 0 && (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="bg-blue border border-blue rounded-lg shadow overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-700">
+            <thead className="bg-navy">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Version
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Format
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Created
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-blue divide-y divide-gray-700">
               {ontologies.map((ontology) => (
-                <tr key={ontology.id} className="hover:bg-gray-50">
+                <tr key={ontology.id} className="hover:bg-navy transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
+                    <div className="text-sm font-medium text-white">
                       {ontology.name}
                     </div>
                     {ontology.description && (
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-gray-400">
                         {ontology.description}
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                     {ontology.version}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                     {ontology.format}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                         ontology.status === "active"
-                          ? "bg-green-100 text-green-800"
+                          ? "bg-green-900/40 text-green-400 border border-green-500"
                           : ontology.status === "deprecated"
-                          ? "bg-yellow-100 text-yellow-800"
+                          ? "bg-yellow-900/40 text-yellow-400 border border-yellow-500"
                           : ontology.status === "draft"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-gray-100 text-gray-800"
+                          ? "bg-blue-900/40 text-blue-400 border border-blue-500"
+                          : "bg-gray-800 text-gray-400 border border-gray-600"
                       }`}
                     >
                       {ontology.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                     {new Date(ontology.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
                       <Link
                         href={`/ontologies/${ontology.id}`}
-                        className="text-blue-600 hover:text-blue-900"
+                        className="text-orange hover:text-orange/80"
                       >
                         View
                       </Link>
@@ -186,13 +187,13 @@ export default function OntologiesPage() {
                         onClick={() =>
                           handleExport(ontology.id, ontology.name, ontology.format)
                         }
-                        className="text-green-600 hover:text-green-900"
+                        className="text-green-400 hover:text-green-300"
                       >
                         Export
                       </button>
                       <button
                         onClick={() => handleDelete(ontology.id, ontology.name)}
-                        className="text-red-600 hover:text-red-900"
+                        className="text-red-400 hover:text-red-300"
                       >
                         Delete
                       </button>
@@ -206,7 +207,7 @@ export default function OntologiesPage() {
       )}
 
       <div className="mt-6">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-400">
           Total: {ontologies.length} ontolog{ontologies.length === 1 ? "y" : "ies"}
         </p>
       </div>

@@ -93,17 +93,17 @@ export default function UploadOntologyPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-6">
-        <Link href="/ontologies" className="text-blue-600 hover:underline mb-4 inline-block">
+        <Link href="/ontologies" className="text-orange hover:underline mb-4 inline-block">
           ← Back to Ontologies
         </Link>
-        <h1 className="text-3xl font-bold">Upload Ontology</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="text-3xl font-bold text-orange">Upload Ontology</h1>
+        <p className="text-gray-400 mt-1">
           Upload a new ontology to the knowledge graph
         </p>
       </div>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded mb-4">
           {error}
         </div>
       )}
@@ -112,8 +112,8 @@ export default function UploadOntologyPage() {
         <div
           className={`border px-4 py-3 rounded mb-4 ${
             validationResult.valid
-              ? "bg-green-100 border-green-400 text-green-700"
-              : "bg-yellow-100 border-yellow-400 text-yellow-700"
+              ? "bg-green-900/20 border-green-500 text-green-400"
+              : "bg-yellow-900/20 border-yellow-500 text-yellow-400"
           }`}
         >
           <p className="font-semibold">
@@ -142,27 +142,27 @@ export default function UploadOntologyPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="bg-blue border border-blue rounded-lg shadow p-6 space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-1">
-            Name <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-white mb-1">
+            Name <span className="text-red-400">*</span>
           </label>
           <input
             type="text"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="w-full border rounded px-3 py-2"
+            className="w-full bg-navy border border-blue rounded px-3 py-2 text-white focus:border-orange focus:ring-1 focus:ring-orange"
             placeholder="my-ontology"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
+          <label className="block text-sm font-medium text-white mb-1">Description</label>
           <textarea
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            className="w-full border rounded px-3 py-2"
+            className="w-full bg-navy border border-blue rounded px-3 py-2 text-white focus:border-orange focus:ring-1 focus:ring-orange"
             rows={2}
             placeholder="A description of your ontology"
           />
@@ -170,27 +170,27 @@ export default function UploadOntologyPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Version <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium text-white mb-1">
+              Version <span className="text-red-400">*</span>
             </label>
             <input
               type="text"
               value={formData.version}
               onChange={(e) => setFormData({ ...formData, version: e.target.value })}
-              className="w-full border rounded px-3 py-2"
+              className="w-full bg-navy border border-blue rounded px-3 py-2 text-white focus:border-orange focus:ring-1 focus:ring-orange"
               placeholder="1.0.0"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Format <span className="text-red-500">*</span>
+            <label className="block text-sm font-medium text-white mb-1">
+              Format <span className="text-red-400">*</span>
             </label>
             <select
               value={formData.format}
               onChange={(e) => setFormData({ ...formData, format: e.target.value })}
-              className="w-full border rounded px-3 py-2"
+              className="w-full bg-navy border border-blue rounded px-3 py-2 text-white focus:border-orange focus:ring-1 focus:ring-orange"
               required
             >
               <option value="turtle">Turtle (.ttl)</option>
@@ -202,39 +202,39 @@ export default function UploadOntologyPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Created By</label>
+          <label className="block text-sm font-medium text-white mb-1">Created By</label>
           <input
             type="text"
             value={formData.created_by}
             onChange={(e) => setFormData({ ...formData, created_by: e.target.value })}
-            className="w-full border rounded px-3 py-2"
+            className="w-full bg-navy border border-blue rounded px-3 py-2 text-white focus:border-orange focus:ring-1 focus:ring-orange"
             placeholder="username"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">
-            Ontology File <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-white mb-1">
+            Ontology File <span className="text-red-400">*</span>
           </label>
           <input
             type="file"
             onChange={handleFileUpload}
             accept=".ttl,.rdf,.xml,.nt,.jsonld"
-            className="w-full border rounded px-3 py-2"
+            className="w-full bg-navy border border-blue rounded px-3 py-2 text-white file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange file:text-navy hover:file:bg-orange/80"
           />
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-400 mt-1">
             Supported formats: Turtle, RDF/XML, N-Triples, JSON-LD
           </p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">
-            Ontology Data <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-white mb-1">
+            Ontology Data <span className="text-red-400">*</span>
           </label>
           <textarea
             value={formData.ontology_data}
             onChange={(e) => setFormData({ ...formData, ontology_data: e.target.value })}
-            className="w-full border rounded px-3 py-2 font-mono text-sm"
+            className="w-full bg-navy border border-blue rounded px-3 py-2 font-mono text-sm text-white focus:border-orange focus:ring-1 focus:ring-orange"
             rows={12}
             placeholder="Paste your ontology data here or upload a file above"
             required
@@ -244,7 +244,7 @@ export default function UploadOntologyPage() {
               type="button"
               onClick={handleValidate}
               disabled={validating || !formData.ontology_data}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded disabled:opacity-50"
+              className="bg-blue hover:bg-orange text-white px-4 py-2 rounded disabled:opacity-50 border border-blue hover:border-orange"
             >
               {validating ? "Validating..." : "Validate Syntax"}
             </button>
@@ -254,14 +254,14 @@ export default function UploadOntologyPage() {
         <div className="flex justify-end gap-2 pt-4">
           <Link
             href="/ontologies"
-            className="bg-gray-200 hover:bg-gray-300 px-6 py-2 rounded"
+            className="bg-navy hover:bg-blue text-white px-6 py-2 rounded border border-blue"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded disabled:opacity-50"
+            className="bg-orange hover:bg-orange/80 text-navy px-6 py-2 rounded disabled:opacity-50"
           >
             {loading ? "Uploading..." : "Upload Ontology"}
           </button>

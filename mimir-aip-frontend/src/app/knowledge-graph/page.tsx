@@ -123,9 +123,10 @@ export default function KnowledgeGraphPage() {
   const loadOntologies = async () => {
     try {
       const data = await listOntologies("active");
-      setOntologies(data);
+      setOntologies(data || []); // Handle null/undefined responses
     } catch (err) {
       console.error("Failed to load ontologies:", err);
+      setOntologies([]); // Set empty array on error
     }
   };
 
@@ -168,9 +169,10 @@ export default function KnowledgeGraphPage() {
     }
 
     const headers = queryResult.variables || [];
-    const rows = queryResult.bindings.map((binding: Record<string, { value?: string }>) =>
+    const rows = queryResult.bindings.map((binding) =>
       headers.map((header) => {
-        const value = binding[header]?.value || "";
+        const bindingObj = binding as Record<string, { value?: string }>;
+        const value = bindingObj[header]?.value || "";
         return `"${value.replace(/"/g, '""')}"`;
       }).join(",")
     );
@@ -226,21 +228,21 @@ export default function KnowledgeGraphPage() {
     <div className="p-6">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Knowledge Graph Query</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="text-3xl font-bold text-orange">Knowledge Graph Query</h1>
+        <p className="text-gray-400 mt-1">
           Query the knowledge graph using SPARQL or natural language
         </p>
       </div>
 
       {/* Tab Navigation */}
-      <div className="mb-6 border-b border-gray-200">
+      <div className="mb-6 border-b border-blue">
         <div className="flex gap-4">
           <button
             onClick={() => setActiveTab("sparql")}
             className={`px-4 py-2 font-medium border-b-2 transition-colors ${
               activeTab === "sparql"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-600 hover:text-gray-900"
+                ? "border-blue-600 text-orange"
+                : "border-transparent text-gray-400 hover:text-white"
             }`}
           >
             SPARQL Query
@@ -249,8 +251,8 @@ export default function KnowledgeGraphPage() {
             onClick={() => setActiveTab("natural-language")}
             className={`px-4 py-2 font-medium border-b-2 transition-colors ${
               activeTab === "natural-language"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-600 hover:text-gray-900"
+                ? "border-blue-600 text-orange"
+                : "border-transparent text-gray-400 hover:text-white"
             }`}
           >
             Natural Language
@@ -261,21 +263,21 @@ export default function KnowledgeGraphPage() {
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-blue-50 rounded-lg shadow p-4">
-            <div className="text-sm text-blue-600">Total Triples</div>
-            <div className="text-3xl font-bold text-blue-900">{stats.total_triples.toLocaleString()}</div>
+          <div className="bg-blue rounded-lg shadow p-4">
+            <div className="text-sm text-orange">Total Triples</div>
+            <div className="text-3xl font-bold text-white">{stats.total_triples.toLocaleString()}</div>
           </div>
-          <div className="bg-purple-50 rounded-lg shadow p-4">
+          <div className="bg-blue rounded-lg shadow p-4">
             <div className="text-sm text-purple-600">Subjects</div>
-            <div className="text-3xl font-bold text-purple-900">{stats.total_subjects.toLocaleString()}</div>
+            <div className="text-3xl font-bold text-white">{stats.total_subjects.toLocaleString()}</div>
           </div>
-          <div className="bg-green-50 rounded-lg shadow p-4">
+          <div className="bg-blue rounded-lg shadow p-4">
             <div className="text-sm text-green-600">Predicates</div>
-            <div className="text-3xl font-bold text-green-900">{stats.total_predicates.toLocaleString()}</div>
+            <div className="text-3xl font-bold text-white">{stats.total_predicates.toLocaleString()}</div>
           </div>
-          <div className="bg-orange-50 rounded-lg shadow p-4">
+          <div className="bg-blue rounded-lg shadow p-4">
             <div className="text-sm text-orange-600">Named Graphs</div>
-            <div className="text-3xl font-bold text-orange-900">{stats.named_graphs?.length || 0}</div>
+            <div className="text-3xl font-bold text-white">{stats.named_graphs?.length || 0}</div>
           </div>
         </div>
       )}
@@ -286,20 +288,20 @@ export default function KnowledgeGraphPage() {
         {/* Left Column - Query Editor */}
         <div className="lg:col-span-2 space-y-4">
           {/* Query Editor */}
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="bg-blue rounded-lg shadow p-4">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="font-semibold">Query Editor</h3>
+              <h3 className="font-semibold text-white">Query Editor</h3>
               <div className="flex gap-2">
                 <button
                   onClick={() => setQuery("")}
-                  className="text-sm text-gray-600 hover:text-gray-900 px-3 py-1 border rounded"
+                  className="text-sm text-gray-400 hover:text-white px-3 py-1 border rounded"
                 >
                   Clear
                 </button>
                 <button
                   onClick={handleRunQuery}
                   disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-1 rounded"
+                  className="bg-orange hover:bg-orange/80 disabled:bg-gray-400 text-white px-4 py-1 rounded"
                 >
                   {loading ? "Running..." : "Run Query"}
                 </button>
@@ -308,18 +310,18 @@ export default function KnowledgeGraphPage() {
             <textarea
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full h-64 font-mono text-sm border rounded p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full h-64 font-mono text-sm border rounded p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-navy text-white"
               placeholder="Enter your SPARQL query here..."
               spellCheck={false}
             />
-            <div className="mt-2 text-xs text-gray-500">
+            <div className="mt-2 text-xs text-gray-400">
               Press Ctrl+Enter to run query (not implemented yet)
             </div>
           </div>
 
           {/* Error Display */}
           {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+            <div className="bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded">
               <div className="font-semibold">Query Error</div>
               <div className="text-sm mt-1">{error}</div>
             </div>
@@ -327,11 +329,11 @@ export default function KnowledgeGraphPage() {
 
           {/* Results Display */}
           {queryResult && (
-            <div className="bg-white rounded-lg shadow p-4">
+            <div className="bg-blue rounded-lg shadow p-4">
               <div className="flex justify-between items-center mb-3">
                 <div>
-                  <h3 className="font-semibold">Results</h3>
-                  <div className="text-sm text-gray-600">
+                  <h3 className="font-semibold text-white">Results</h3>
+                  <div className="text-sm text-gray-400">
                     {queryResult.query_type === "SELECT" && (
                       <>
                         {queryResult.bindings?.length || 0} row(s) returned
@@ -350,13 +352,13 @@ export default function KnowledgeGraphPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={handleExportCSV}
-                      className="text-sm text-green-600 hover:text-green-900 px-3 py-1 border rounded"
+                      className="text-sm text-green-600 hover:text-white px-3 py-1 border rounded"
                     >
                       Export CSV
                     </button>
                     <button
                       onClick={handleExportJSON}
-                      className="text-sm text-blue-600 hover:text-blue-900 px-3 py-1 border rounded"
+                      className="text-sm text-orange hover:text-orange/80 px-3 py-1 border rounded"
                     >
                       Export JSON
                     </button>
@@ -375,27 +377,29 @@ export default function KnowledgeGraphPage() {
               {queryResult.query_type === "SELECT" && queryResult.bindings && queryResult.bindings.length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-gray-100 border-b">
+                    <thead className="bg-navy border-b">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">#</th>
                         {queryResult.variables?.map((variable: string) => (
-                          <th key={variable} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          <th key={variable} className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">
                             {variable}
                           </th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {queryResult.bindings.map((binding: Record<string, { value?: string; type?: string; datatype?: string; "xml:lang"?: string }>, idx: number) => (
-                        <tr key={idx} className="hover:bg-gray-50">
+                    <tbody className="bg-blue divide-y divide-gray-700">
+                      {queryResult.bindings.map((binding: Record<string, unknown>, idx: number) => {
+                        const typedBinding = binding as Record<string, { value?: string; type?: string; datatype?: string; "xml:lang"?: string }>;
+                        return (
+                        <tr key={idx} className="hover:bg-navy">
                           <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
                           {queryResult.variables?.map((variable: string) => {
-                            const value = binding[variable];
+                            const value = typedBinding[variable];
                             return (
                               <td key={variable} className="px-3 py-2">
                                 {value ? (
-                                  <div className="font-mono text-xs">
-                                    <div className="break-all">{value.value}</div>
+                                   <div className="font-mono text-xs">
+                                    <div className="break-all text-white">{value.value}</div>
                                     {value.type && (
                                       <div className="text-gray-400 text-xs mt-1">
                                         {value.type}
@@ -411,7 +415,8 @@ export default function KnowledgeGraphPage() {
                             );
                           })}
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -419,7 +424,7 @@ export default function KnowledgeGraphPage() {
 
               {/* Empty Results */}
               {queryResult.query_type === "SELECT" && (!queryResult.bindings || queryResult.bindings.length === 0) && (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-gray-400">
                   No results found
                 </div>
               )}
@@ -430,14 +435,14 @@ export default function KnowledgeGraphPage() {
         {/* Right Column - Sample Queries & History */}
         <div className="space-y-4">
           {/* Sample Queries */}
-          <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="font-semibold mb-3">Sample Queries</h3>
+          <div className="bg-blue rounded-lg shadow p-4">
+            <h3 className="font-semibold mb-3 text-white">Sample Queries</h3>
             <div className="space-y-2">
               {SAMPLE_QUERIES.map((sample, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleLoadSample(sample.query)}
-                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                  className="w-full text-left text-sm text-orange hover:text-orange/80 hover:bg-blue px-3 py-2 rounded border border-transparent hover:border-blue-200"
                 >
                   {sample.name}
                 </button>
@@ -447,15 +452,15 @@ export default function KnowledgeGraphPage() {
 
           {/* Query History */}
           {queryHistory.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-4">
+            <div className="bg-blue rounded-lg shadow p-4">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold">Query History</h3>
+                <h3 className="font-semibold text-white">Query History</h3>
                 <button
                   onClick={() => {
                     setQueryHistory([]);
                     localStorage.removeItem("sparql_history");
                   }}
-                  className="text-xs text-red-600 hover:text-red-900"
+                  className="text-xs text-red-400 hover:text-red-300"
                 >
                   Clear
                 </button>
@@ -465,7 +470,7 @@ export default function KnowledgeGraphPage() {
                   <button
                     key={idx}
                     onClick={() => handleLoadSample(historicalQuery)}
-                    className="w-full text-left text-xs text-gray-700 hover:bg-gray-50 px-3 py-2 rounded border"
+                    className="w-full text-left text-xs text-gray-300 hover:bg-navy px-3 py-2 rounded border border-gray-600"
                   >
                     <div className="font-mono truncate">{historicalQuery.split("\n")[0]}</div>
                   </button>
@@ -476,11 +481,11 @@ export default function KnowledgeGraphPage() {
 
           {/* Named Graphs */}
           {stats && stats.named_graphs && stats.named_graphs.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="font-semibold mb-3">Named Graphs</h3>
+            <div className="bg-blue rounded-lg shadow p-4">
+              <h3 className="font-semibold mb-3 text-white">Named Graphs</h3>
               <div className="space-y-1 max-h-64 overflow-y-auto">
                 {stats.named_graphs.map((graph, idx) => (
-                  <div key={idx} className="text-xs font-mono text-gray-700 break-all px-2 py-1 bg-gray-50 rounded">
+                  <div key={idx} className="text-xs font-mono text-gray-300 break-all px-2 py-1 bg-navy rounded">
                     {graph}
                   </div>
                 ))}
@@ -489,9 +494,9 @@ export default function KnowledgeGraphPage() {
           )}
 
           {/* Tips */}
-          <div className="bg-blue-50 rounded-lg shadow p-4">
-            <h3 className="font-semibold mb-2 text-blue-900">Tips</h3>
-            <ul className="text-xs text-blue-800 space-y-1">
+          <div className="bg-blue rounded-lg shadow p-4">
+            <h3 className="font-semibold mb-2 text-white">Tips</h3>
+            <ul className="text-xs text-gray-400 space-y-1">
               <li>• Use PREFIX to define namespace shortcuts</li>
               <li>• Add LIMIT to prevent large result sets</li>
               <li>• Use OPTIONAL for optional patterns</li>
@@ -509,13 +514,13 @@ export default function KnowledgeGraphPage() {
           {/* Left Column - Question Input */}
           <div className="lg:col-span-2 space-y-4">
             {/* Question Input */}
-            <div className="bg-white rounded-lg shadow p-4">
+            <div className="bg-blue rounded-lg shadow p-4">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold">Ask a Question</h3>
+                <h3 className="font-semibold text-white">Ask a Question</h3>
                 <button
                   onClick={handleAskQuestion}
                   disabled={nlLoading}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-1 rounded"
+                  className="bg-orange hover:bg-orange/80 disabled:bg-gray-400 text-white px-4 py-1 rounded"
                 >
                   {nlLoading ? "Processing..." : "Ask Question"}
                 </button>
@@ -524,39 +529,39 @@ export default function KnowledgeGraphPage() {
               {/* Ontology Selector */}
               {ontologies.length > 0 && (
                 <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
                     Select Ontology (Optional)
                   </label>
-                  <select
-                    value={selectedOntology}
-                    onChange={(e) => setSelectedOntology(e.target.value)}
-                    className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">All Ontologies</option>
-                    {ontologies.map((ont) => (
-                      <option key={ont.id} value={ont.id}>
-                        {ont.name} ({ont.format})
-                      </option>
-                    ))}
-                  </select>
+              <select
+                value={selectedOntology}
+                onChange={(e) => setSelectedOntology(e.target.value)}
+                className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-navy text-white border-gray-600"
+              >
+                <option value="">All Ontologies</option>
+                {ontologies.map((ont) => (
+                  <option key={ont.id} value={ont.id}>
+                    {ont.name} ({ont.format})
+                  </option>
+                ))}
+              </select>
                 </div>
               )}
 
               <textarea
                 value={nlQuestion}
                 onChange={(e) => setNlQuestion(e.target.value)}
-                className="w-full h-32 border rounded p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full h-32 border rounded p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-navy text-white border-gray-600"
                 placeholder="Ask a question in natural language, e.g., 'Show me all the people in the database' or 'What are the properties of the Person class?'"
                 spellCheck={true}
               />
-              <div className="mt-2 text-xs text-gray-500">
+              <div className="mt-2 text-xs text-gray-400">
                 The system will translate your question to SPARQL and execute it
               </div>
             </div>
 
             {/* Error Display */}
             {nlError && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+              <div className="bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded">
                 <div className="font-semibold">Error</div>
                 <div className="text-sm mt-1">{nlError}</div>
               </div>
@@ -566,33 +571,33 @@ export default function KnowledgeGraphPage() {
             {nlResult && (
               <div className="space-y-4">
                 {/* Your Question */}
-                <div className="bg-white rounded-lg shadow p-4">
-                  <h3 className="font-semibold mb-2">Your Question</h3>
-                  <p className="text-gray-700">{nlResult.question}</p>
+                <div className="bg-blue rounded-lg shadow p-4">
+                  <h3 className="font-semibold mb-2 text-white">Your Question</h3>
+                  <p className="text-gray-300">{nlResult.question}</p>
                 </div>
 
                 {/* Generated SPARQL */}
-                <div className="bg-white rounded-lg shadow p-4">
-                  <h3 className="font-semibold mb-2">Generated SPARQL Query</h3>
-                  <pre className="bg-gray-50 border rounded p-3 text-xs font-mono overflow-x-auto">
+                <div className="bg-blue rounded-lg shadow p-4">
+                  <h3 className="font-semibold mb-2 text-white">Generated SPARQL Query</h3>
+                  <pre className="bg-navy border rounded p-3 text-xs font-mono overflow-x-auto text-white">
                     {nlResult.sparql_query}
                   </pre>
                 </div>
 
                 {/* Explanation */}
                 {nlResult.explanation && (
-                  <div className="bg-blue-50 rounded-lg shadow p-4">
-                    <h3 className="font-semibold mb-2 text-blue-900">Explanation</h3>
-                    <p className="text-sm text-blue-800">{nlResult.explanation}</p>
+                  <div className="bg-blue rounded-lg shadow p-4">
+                    <h3 className="font-semibold mb-2 text-white">Explanation</h3>
+                    <p className="text-sm text-gray-400">{nlResult.explanation}</p>
                   </div>
                 )}
 
                 {/* Query Results */}
-                <div className="bg-white rounded-lg shadow p-4">
+                <div className="bg-blue rounded-lg shadow p-4">
                   <div className="flex justify-between items-center mb-3">
                     <div>
-                      <h3 className="font-semibold">Results</h3>
-                      <div className="text-sm text-gray-600">
+                      <h3 className="font-semibold text-white">Results</h3>
+                      <div className="text-sm text-gray-400">
                         {nlResult.results.query_type === "SELECT" && (
                           <>
                             {nlResult.results.bindings?.length || 0} row(s) returned
@@ -620,27 +625,29 @@ export default function KnowledgeGraphPage() {
                   {nlResult.results.query_type === "SELECT" && nlResult.results.bindings && nlResult.results.bindings.length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-sm">
-                        <thead className="bg-gray-100 border-b">
+                        <thead className="bg-navy border-b">
                           <tr>
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">#</th>
                             {nlResult.results.variables?.map((variable: string) => (
-                              <th key={variable} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                              <th key={variable} className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">
                                 {variable}
                               </th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {nlResult.results.bindings.map((binding: Record<string, { value?: string; type?: string; datatype?: string; "xml:lang"?: string }>, idx: number) => (
-                            <tr key={idx} className="hover:bg-gray-50">
+                        <tbody className="bg-blue divide-y divide-gray-700">
+                          {nlResult.results.bindings.map((binding: Record<string, unknown>, idx: number) => {
+                            const typedBinding = binding as Record<string, { value?: string; type?: string; datatype?: string; "xml:lang"?: string }>;
+                            return (
+                            <tr key={idx} className="hover:bg-navy">
                               <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
                               {nlResult.results.variables?.map((variable: string) => {
-                                const value = binding[variable];
+                                const value = typedBinding[variable];
                                 return (
                                   <td key={variable} className="px-3 py-2">
                                     {value ? (
                                       <div className="font-mono text-xs">
-                                        <div className="break-all">{value.value}</div>
+                                        <div className="break-all text-white">{value.value}</div>
                                         {value.type && (
                                           <div className="text-gray-400 text-xs mt-1">
                                             {value.type}
@@ -656,7 +663,8 @@ export default function KnowledgeGraphPage() {
                                 );
                               })}
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -664,7 +672,7 @@ export default function KnowledgeGraphPage() {
 
                   {/* Empty Results */}
                   {nlResult.results.query_type === "SELECT" && (!nlResult.results.bindings || nlResult.results.bindings.length === 0) && (
-                    <div className="text-center py-8 text-gray-500">
+                    <div className="text-center py-8 text-gray-400">
                       No results found
                     </div>
                   )}
@@ -676,36 +684,36 @@ export default function KnowledgeGraphPage() {
           {/* Right Column - Examples & Tips */}
           <div className="space-y-4">
             {/* Example Questions */}
-            <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="font-semibold mb-3">Example Questions</h3>
+            <div className="bg-blue rounded-lg shadow p-4">
+              <h3 className="font-semibold mb-3 text-white">Example Questions</h3>
               <div className="space-y-2">
                 <button
                   onClick={() => setNlQuestion("Show me all the classes in the ontology")}
-                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                  className="w-full text-left text-sm text-orange hover:text-orange/80 hover:bg-blue px-3 py-2 rounded border border-transparent hover:border-blue-200"
                 >
                   Show me all the classes
                 </button>
                 <button
                   onClick={() => setNlQuestion("What properties does the Person class have?")}
-                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                  className="w-full text-left text-sm text-orange hover:text-orange/80 hover:bg-blue px-3 py-2 rounded border border-transparent hover:border-blue-200"
                 >
                   What properties does Person have?
                 </button>
                 <button
                   onClick={() => setNlQuestion("List all entities of type Organization")}
-                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                  className="w-full text-left text-sm text-orange hover:text-orange/80 hover:bg-blue px-3 py-2 rounded border border-transparent hover:border-blue-200"
                 >
                   List all Organizations
                 </button>
                 <button
                   onClick={() => setNlQuestion("Show me the relationships between Person and Organization")}
-                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                  className="w-full text-left text-sm text-orange hover:text-orange/80 hover:bg-blue px-3 py-2 rounded border border-transparent hover:border-blue-200"
                 >
                   Show relationships
                 </button>
                 <button
                   onClick={() => setNlQuestion("How many triples are in the knowledge graph?")}
-                  className="w-full text-left text-sm text-blue-600 hover:text-blue-900 hover:bg-blue-50 px-3 py-2 rounded border border-transparent hover:border-blue-200"
+                  className="w-full text-left text-sm text-orange hover:text-orange/80 hover:bg-blue px-3 py-2 rounded border border-transparent hover:border-blue-200"
                 >
                   Count all triples
                 </button>
@@ -713,9 +721,9 @@ export default function KnowledgeGraphPage() {
             </div>
 
             {/* Tips */}
-            <div className="bg-green-50 rounded-lg shadow p-4">
-              <h3 className="font-semibold mb-2 text-green-900">Tips</h3>
-              <ul className="text-xs text-green-800 space-y-1">
+            <div className="bg-blue rounded-lg shadow p-4">
+              <h3 className="font-semibold mb-2 text-white">Tips</h3>
+              <ul className="text-xs text-gray-400 space-y-1">
                 <li>• Be specific about what you want to find</li>
                 <li>• Mention class or property names if known</li>
                 <li>• Use simple, clear language</li>
@@ -725,9 +733,9 @@ export default function KnowledgeGraphPage() {
             </div>
 
             {/* How it Works */}
-            <div className="bg-purple-50 rounded-lg shadow p-4">
-              <h3 className="font-semibold mb-2 text-purple-900">How it Works</h3>
-              <div className="text-xs text-purple-800 space-y-2">
+            <div className="bg-blue rounded-lg shadow p-4">
+              <h3 className="font-semibold mb-2 text-white">How it Works</h3>
+              <div className="text-xs text-gray-400 space-y-2">
                 <p>
                   The system uses an AI model to understand your question and translate it into a SPARQL query.
                 </p>

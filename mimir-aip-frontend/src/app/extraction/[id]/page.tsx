@@ -59,15 +59,15 @@ export default function ExtractionJobDetailsPage() {
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-100 text-green-800";
+        return "bg-green-900/40 text-green-400 border border-green-500";
       case "running":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-900/40 text-blue-400 border border-blue-500";
       case "failed":
-        return "bg-red-100 text-red-800";
+        return "bg-red-900/40 text-red-400 border border-red-500";
       case "pending":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-900/40 text-yellow-400 border border-yellow-500";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-800 text-gray-400 border border-gray-600";
     }
   };
 
@@ -92,7 +92,7 @@ export default function ExtractionJobDetailsPage() {
   if (loading) {
     return (
       <div className="p-6">
-        <p className="text-gray-600">Loading extraction job details...</p>
+        <p className="text-gray-400">Loading extraction job details...</p>
       </div>
     );
   }
@@ -100,12 +100,12 @@ export default function ExtractionJobDetailsPage() {
   if (error || !job) {
     return (
       <div className="p-6">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        <div className="bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded">
           {error || "Job not found"}
         </div>
         <Link
           href="/extraction"
-          className="text-blue-600 hover:underline mt-4 inline-block"
+          className="text-orange hover:underline mt-4 inline-block"
         >
           ← Back to Extraction Jobs
         </Link>
@@ -116,22 +116,22 @@ export default function ExtractionJobDetailsPage() {
   return (
     <div className="p-6">
       <div className="mb-4">
-        <Link href="/extraction" className="text-blue-600 hover:underline">
+        <Link href="/extraction" className="text-orange hover:underline">
           ← Back to Extraction Jobs
         </Link>
       </div>
 
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">{job.job_name}</h1>
-        <p className="text-gray-600 mt-1 text-sm">Job ID: {job.id}</p>
+        <h1 className="text-3xl font-bold text-orange">{job.job_name}</h1>
+        <p className="text-gray-400 mt-1 text-sm">Job ID: {job.id}</p>
       </div>
 
       {/* Job Overview */}
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Job Overview</h2>
+      <div className="bg-blue rounded-lg shadow p-6 mb-6">
+        <h2 className="text-xl font-semibold mb-4 text-white">Job Overview</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <p className="text-sm text-gray-500">Status</p>
+            <p className="text-sm text-gray-400">Status</p>
             <span
               className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(
                 job.status
@@ -141,48 +141,48 @@ export default function ExtractionJobDetailsPage() {
             </span>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Extraction Type</p>
-            <p className="font-medium capitalize">{job.extraction_type}</p>
+            <p className="text-sm text-gray-400">Extraction Type</p>
+            <p className="font-medium capitalize text-white">{job.extraction_type}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Source Type</p>
-            <p className="font-medium">{job.source_type}</p>
+            <p className="text-sm text-gray-400">Source Type</p>
+            <p className="font-medium text-white">{job.source_type}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Duration</p>
-            <p className="font-medium">{formatDuration()}</p>
+            <p className="text-sm text-gray-400">Duration</p>
+            <p className="font-medium text-white">{formatDuration()}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
           <div>
-            <p className="text-sm text-gray-500">Entities Extracted</p>
-            <p className="text-2xl font-bold text-blue-600">
+            <p className="text-sm text-gray-400">Entities Extracted</p>
+            <p className="text-2xl font-bold text-orange">
               {job.entities_extracted}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Triples Generated</p>
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-sm text-gray-400">Triples Generated</p>
+            <p className="text-2xl font-bold text-green-400">
               {job.triples_generated}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Created</p>
-            <p className="text-sm">{formatDate(job.created_at)}</p>
+            <p className="text-sm text-gray-400">Created</p>
+            <p className="text-sm text-white">{formatDate(job.created_at)}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">Completed</p>
-            <p className="text-sm">{formatDate(job.completed_at)}</p>
+            <p className="text-sm text-gray-400">Completed</p>
+            <p className="text-sm text-white">{formatDate(job.completed_at)}</p>
           </div>
         </div>
 
         {ontology && (
-          <div className="mt-4 pt-4 border-t">
-            <p className="text-sm text-gray-500 mb-2">Ontology</p>
+          <div className="mt-4 pt-4 border-t border-gray-600">
+            <p className="text-sm text-gray-400 mb-2">Ontology</p>
             <Link
               href={`/ontologies/${ontology.id}`}
-              className="text-blue-600 hover:underline font-medium"
+              className="text-orange hover:underline font-medium"
             >
               {ontology.name} (v{ontology.version})
             </Link>
@@ -190,9 +190,9 @@ export default function ExtractionJobDetailsPage() {
         )}
 
         {job.error_message && (
-          <div className="mt-4 pt-4 border-t">
-            <p className="text-sm text-gray-500 mb-2">Error Message</p>
-            <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded text-sm">
+          <div className="mt-4 pt-4 border-t border-gray-600">
+            <p className="text-sm text-gray-400 mb-2">Error Message</p>
+            <div className="bg-red-900/20 border border-red-400 text-red-400 px-3 py-2 rounded text-sm">
               {job.error_message}
             </div>
           </div>
@@ -200,46 +200,46 @@ export default function ExtractionJobDetailsPage() {
       </div>
 
       {/* Extracted Entities */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">
+      <div className="bg-blue rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4 text-white">
           Extracted Entities ({entities.length})
         </h2>
 
         {entities.length === 0 ? (
-          <p className="text-gray-600 text-center py-8">No entities extracted</p>
+          <p className="text-gray-400 text-center py-8">No entities extracted</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-700">
+              <thead className="bg-navy">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
                     Label
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
                     Type
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
                     URI
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
                     Confidence
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-blue divide-y divide-gray-700">
                 {entities.map((entity) => (
-                  <tr key={entity.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm">
+                  <tr key={entity.id} className="hover:bg-navy">
+                    <td className="px-4 py-3 text-sm text-white">
                       {entity.entity_label || "Untitled"}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-sm text-gray-400">
                       {entity.entity_type.split("/").pop() ||
                         entity.entity_type}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 max-w-md truncate">
+                    <td className="px-4 py-3 text-xs text-gray-400 max-w-md truncate">
                       {entity.entity_uri}
                     </td>
                     <td className="px-4 py-3 text-sm">
@@ -247,10 +247,10 @@ export default function ExtractionJobDetailsPage() {
                         <span
                           className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                             entity.confidence >= 0.8
-                              ? "bg-green-100 text-green-800"
+                              ? "bg-green-900/40 text-green-400 border border-green-500"
                               : entity.confidence >= 0.5
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-red-100 text-red-800"
+                              ? "bg-yellow-900/40 text-yellow-400 border border-yellow-500"
+                              : "bg-red-900/40 text-red-400 border border-red-500"
                           }`}
                         >
                           {(entity.confidence * 100).toFixed(0)}%
@@ -262,7 +262,7 @@ export default function ExtractionJobDetailsPage() {
                     <td className="px-4 py-3 text-sm">
                       <button
                         onClick={() => setSelectedEntity(entity)}
-                        className="text-blue-600 hover:text-blue-900"
+                        className="text-orange hover:text-orange/80"
                       >
                         View Details
                       </button>
@@ -278,15 +278,15 @@ export default function ExtractionJobDetailsPage() {
       {/* Entity Details Modal */}
       {selectedEntity && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+          <div className="bg-blue rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-semibold">
+                <h3 className="text-lg font-semibold text-white">
                   {selectedEntity.entity_label || "Entity Details"}
                 </h3>
                 <button
                   onClick={() => setSelectedEntity(null)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-white text-xl"
                 >
                   ✕
                 </button>
@@ -294,21 +294,21 @@ export default function ExtractionJobDetailsPage() {
 
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm text-gray-500">URI</p>
-                  <p className="text-sm font-mono break-all">
+                  <p className="text-sm text-gray-400">URI</p>
+                  <p className="text-sm font-mono break-all text-white">
                     {selectedEntity.entity_uri}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-sm text-gray-500">Type</p>
-                  <p className="text-sm font-mono">{selectedEntity.entity_type}</p>
+                  <p className="text-sm text-gray-400">Type</p>
+                  <p className="text-sm font-mono text-white">{selectedEntity.entity_type}</p>
                 </div>
 
                 {selectedEntity.confidence !== undefined && (
                   <div>
-                    <p className="text-sm text-gray-500">Confidence</p>
-                    <p className="text-sm">
+                    <p className="text-sm text-gray-400">Confidence</p>
+                    <p className="text-sm text-white">
                       {(selectedEntity.confidence * 100).toFixed(2)}%
                     </p>
                   </div>
@@ -316,8 +316,8 @@ export default function ExtractionJobDetailsPage() {
 
                 {selectedEntity.source_text && (
                   <div>
-                    <p className="text-sm text-gray-500">Source Text</p>
-                    <p className="text-sm bg-gray-50 p-3 rounded">
+                    <p className="text-sm text-gray-400">Source Text</p>
+                    <p className="text-sm bg-navy p-3 rounded text-white">
                       {selectedEntity.source_text}
                     </p>
                   </div>
@@ -326,9 +326,9 @@ export default function ExtractionJobDetailsPage() {
                 {selectedEntity.properties &&
                   Object.keys(selectedEntity.properties).length > 0 && (
                     <div>
-                      <p className="text-sm text-gray-500 mb-2">Properties</p>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <pre className="text-xs overflow-x-auto">
+                      <p className="text-sm text-gray-400 mb-2">Properties</p>
+                      <div className="bg-navy p-3 rounded">
+                        <pre className="text-xs overflow-x-auto text-white">
                           {JSON.stringify(selectedEntity.properties, null, 2)}
                         </pre>
                       </div>
@@ -339,7 +339,7 @@ export default function ExtractionJobDetailsPage() {
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => setSelectedEntity(null)}
-                  className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded"
+                  className="bg-orange hover:bg-orange/80 text-white px-4 py-2 rounded"
                 >
                   Close
                 </button>

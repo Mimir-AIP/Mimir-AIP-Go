@@ -162,30 +162,30 @@ export default function SuggestionsPage() {
   const getRiskLevelColor = (risk: string) => {
     switch (risk) {
       case "low":
-        return "bg-green-100 text-green-800";
+        return "bg-green-900/40 text-green-400 border border-green-500";
       case "medium":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-900/40 text-yellow-400 border border-yellow-500";
       case "high":
-        return "bg-orange-100 text-orange-800";
+        return "bg-orange-900/40 text-orange-400 border border-orange-500";
       case "critical":
-        return "bg-red-100 text-red-800";
+        return "bg-red-900/40 text-red-400 border border-red-500";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-800 text-gray-400 border border-gray-600";
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-800 text-gray-400 border border-gray-600";
       case "approved":
-        return "bg-green-100 text-green-800";
+        return "bg-green-900/40 text-green-400 border border-green-500";
       case "rejected":
-        return "bg-red-100 text-red-800";
+        return "bg-red-900/40 text-red-400 border border-red-500";
       case "applied":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-900/40 text-blue-400 border border-blue-500";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-800 text-gray-400 border border-gray-600";
     }
   };
 
@@ -255,7 +255,7 @@ export default function SuggestionsPage() {
             <CardTitle className="text-sm font-medium">Rejected</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-700">{stats.rejected}</div>
+            <div className="text-2xl font-bold text-red-400">{stats.rejected}</div>
           </CardContent>
         </Card>
         <Card>

@@ -98,6 +98,23 @@ export default function JobsPage() {
     }
   }
 
+  function getStatusColor(status?: string) {
+    switch (status) {
+      case "enabled":
+        return "bg-green-600";
+      case "disabled":
+        return "bg-gray-600";
+      case "running":
+        return "bg-blue-600";
+      case "completed":
+        return "bg-green-600";
+      case "failed":
+        return "bg-red-600";
+      default:
+        return "bg-gray-600";
+    }
+  }
+
   async function handleEnable(job: Job) {
     try {
       setIsProcessing(true);

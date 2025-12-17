@@ -28,9 +28,10 @@ export default function ExtractionJobsPage() {
   const loadOntologies = async () => {
     try {
       const data = await listOntologies("");
-      setOntologies(data);
+      setOntologies(data || []); // Handle null/undefined responses
     } catch (err) {
       console.error("Failed to load ontologies:", err);
+      setOntologies([]); // Set empty array on error
     }
   };
 
@@ -55,28 +56,28 @@ export default function ExtractionJobsPage() {
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-100 text-green-800";
+        return "bg-green-900/40 text-green-400 border border-green-500";
       case "running":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-900/40 text-blue-400 border border-blue-500";
       case "failed":
-        return "bg-red-100 text-red-800";
+        return "bg-red-900/40 text-red-400 border border-red-500";
       case "pending":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-900/40 text-yellow-400 border border-yellow-500";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-800 text-gray-400 border border-gray-600";
     }
   };
 
   const getExtractionTypeBadge = (type: string) => {
     switch (type) {
       case "deterministic":
-        return "bg-purple-100 text-purple-800";
+        return "bg-purple-900/40 text-purple-400 border border-purple-500";
       case "llm":
-        return "bg-indigo-100 text-indigo-800";
+        return "bg-indigo-900/40 text-indigo-400 border border-indigo-500";
       case "hybrid":
-        return "bg-pink-100 text-pink-800";
+        return "bg-pink-900/40 text-pink-400 border border-pink-500";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-800 text-gray-400 border border-gray-600";
     }
   };
 
@@ -92,19 +93,19 @@ export default function ExtractionJobsPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Entity Extraction Jobs</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="text-3xl font-bold text-orange">Entity Extraction Jobs</h1>
+        <p className="text-gray-400 mt-1">
           Track and manage entity extraction from data sources
         </p>
       </div>
 
       <div className="mb-4 flex gap-4 items-center flex-wrap">
         <label className="flex items-center gap-2">
-          <span className="text-sm font-medium">Ontology:</span>
+          <span className="text-sm font-medium text-white">Ontology:</span>
           <select
             value={ontologyFilter}
             onChange={(e) => setOntologyFilter(e.target.value)}
-            className="border rounded px-3 py-1"
+            className="border rounded px-3 py-1 bg-navy text-white border-gray-600"
           >
             <option value="">All</option>
             {ontologies.map((ont) => (
@@ -115,11 +116,11 @@ export default function ExtractionJobsPage() {
           </select>
         </label>
         <label className="flex items-center gap-2">
-          <span className="text-sm font-medium">Status:</span>
+          <span className="text-sm font-medium text-white">Status:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="border rounded px-3 py-1"
+            className="border rounded px-3 py-1 bg-navy text-white border-gray-600"
           >
             <option value="">All</option>
             <option value="pending">Pending</option>
@@ -130,7 +131,7 @@ export default function ExtractionJobsPage() {
         </label>
         <button
           onClick={loadJobs}
-          className="bg-gray-200 hover:bg-gray-300 px-4 py-1 rounded"
+          className="bg-blue hover:bg-orange text-white px-4 py-1 rounded border border-blue"
         >
           Refresh
         </button>
@@ -138,66 +139,66 @@ export default function ExtractionJobsPage() {
 
       {loading && (
         <div className="text-center py-12">
-          <p className="text-gray-600">Loading extraction jobs...</p>
+          <p className="text-gray-400">Loading extraction jobs...</p>
         </div>
       )}
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div className="bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded mb-4">
           {error}
         </div>
       )}
 
       {!loading && !error && jobs.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-600 mb-4">No extraction jobs found</p>
-          <p className="text-sm text-gray-500">
+          <p className="text-gray-400 mb-4">No extraction jobs found</p>
+          <p className="text-sm text-gray-400">
             Use the REST API to create extraction jobs
           </p>
         </div>
       )}
 
       {!loading && !error && jobs.length > 0 && (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="bg-blue rounded-lg shadow overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-700">
+            <thead className="bg-navy">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Job Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Ontology
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Type
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Entities
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Triples
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Created
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-blue divide-y divide-gray-700">
               {jobs.map((job) => (
-                <tr key={job.id} className="hover:bg-gray-50">
+                <tr key={job.id} className="hover:bg-navy">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
+                    <div className="text-sm font-medium text-white">
                       {job.job_name}
                     </div>
-                    <div className="text-xs text-gray-500">{job.id}</div>
+                    <div className="text-xs text-gray-400">{job.id}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                     {getOntologyName(job.ontology_id)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -218,19 +219,19 @@ export default function ExtractionJobsPage() {
                       {job.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                     {job.entities_extracted}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                     {job.triples_generated}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                     {formatDate(job.created_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <Link
                       href={`/extraction/${job.id}`}
-                      className="text-blue-600 hover:text-blue-900"
+                      className="text-orange hover:text-orange/80"
                     >
                       View Details
                     </Link>

@@ -3,6 +3,7 @@ import Image from 'next/image';
 
 const navItems = [
   { name: 'Dashboard', href: '/dashboard' },
+  { name: 'Data Ingestion', href: '/data/upload' },
   { name: 'Pipelines', href: '/pipelines' },
   { name: 'Jobs', href: '/jobs' },
   { name: 'Ontologies', href: '/ontologies' },

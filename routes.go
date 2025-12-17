@@ -151,6 +151,12 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/chat/{id}", s.handleDeleteConversation).Methods("DELETE")
 	v1.HandleFunc("/chat/{id}/message", s.handleSendMessage).Methods("POST")
 
+	// Data Ingestion endpoints
+	v1.HandleFunc("/data/plugins", s.handleListInputPlugins).Methods("GET")
+	v1.HandleFunc("/data/upload", s.handleUploadData).Methods("POST")
+	v1.HandleFunc("/data/preview", s.handlePreviewData).Methods("POST")
+	v1.HandleFunc("/data/select", s.handleSelectData).Methods("POST")
+
 	// Configuration endpoints
 	v1.HandleFunc("/config", s.handleGetConfig).Methods("GET")
 	v1.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")
@@ -189,15 +195,10 @@ func (s *Server) setupRoutes() {
 		// Create reverse proxy to Next.js
 		proxy := httputil.NewSingleHostReverseProxy(nextJSBackend)
 
-		// Catch-all: proxy everything that's not an API route to Next.js
+		// Catch-all: proxy everything that's not matched by registered routes to Next.js
+		// Note: gorilla/mux will match registered routes first, so this only handles
+		// unmatched paths (frontend pages, static assets, etc.)
 		s.router.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Don't proxy API routes
-			if len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" {
-				http.NotFound(w, r)
-				return
-			}
-
-			// Proxy to Next.js
 			proxy.ServeHTTP(w, r)
 		})
 	} else {

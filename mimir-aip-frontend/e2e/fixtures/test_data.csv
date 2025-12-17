@@ -1,0 +1,11 @@
+name,age,email,status
+John Doe,30,john.doe@example.com,active
+Jane Smith,25,jane.smith@example.com,active
+Bob Johnson,35,bob.johnson@example.com,inactive
+Alice Williams,28,alice.williams@example.com,active
+Charlie Brown,42,charlie.brown@example.com,active
+Diana Prince,31,diana.prince@example.com,inactive
+Eve Miller,27,eve.miller@example.com,active
+Frank Castle,38,frank.castle@example.com,active
+Grace Hopper,29,grace.hopper@example.com,active
+Henry Ford,45,henry.ford@example.com,inactive

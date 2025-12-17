@@ -328,19 +328,21 @@ export async function getJobLogs(jobId: string, limit = 50): Promise<{ job_id: s
 
 // ==================== PLUGINS ====================
 
-export interface Plugin {
+export interface LegacyPlugin {
   name: string;
   type?: string;
   description?: string;
+  version?: string;
+  author?: string;
   [key: string]: unknown;
 }
 
 /**
- * Get all plugins
+ * Get all plugins (legacy endpoint)
  * GET /api/v1/plugins
  */
-export async function getPlugins(): Promise<Plugin[]> {
-  return apiFetch<Plugin[]>("/api/v1/plugins");
+export async function getPlugins(): Promise<LegacyPlugin[]> {
+  return apiFetch<LegacyPlugin[]>("/api/v1/plugins");
 }
 
 /**
@@ -559,10 +561,10 @@ export async function getUsers(): Promise<{ users: User[] }> {
 }
 
 /**
- * Create API key
+ * Create Auth API key
  * POST /api/v1/auth/apikeys
  */
-export async function createAPIKey(name: string): Promise<{
+export async function createAuthAPIKey(name: string): Promise<{
   key: string;
   name: string;
   user_id: string;
@@ -996,7 +998,7 @@ export interface DriftDetection {
 export interface DriftDetectionRequest {
   source: "extraction_job" | "data" | "knowledge_graph";
   job_id?: string;
-  data?: any;
+  data?: Record<string, unknown>;
   data_source?: string;
 }
 
@@ -1126,4 +1128,553 @@ export async function applySuggestion(
  */
 export async function getSuggestionSummary(ontologyId: string): Promise<{ success: boolean; data: SuggestionSummary }> {
   return apiFetch(`/api/v1/ontology/${ontologyId}/suggestions/summary`);
+}
+
+// ==================== DIGITAL TWINS ====================
+
+export interface DigitalTwin {
+  id: string;
+  ontology_id: string;
+  name: string;
+  description?: string;
+  model_type: string;
+  base_state: Record<string, unknown>;
+  entities: TwinEntity[];
+  relationships: TwinRelationship[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TwinEntity {
+  uri: string;
+  type: string;
+  label: string;
+  properties: Record<string, unknown>;
+  state: EntityState;
+}
+
+export interface EntityState {
+  status: string;
+  capacity: number;
+  utilization: number;
+  available: boolean;
+  metrics: Record<string, number>;
+  last_updated: string;
+}
+
+export interface TwinRelationship {
+  id: string;
+  source_uri: string;
+  target_uri: string;
+  type: string;
+  properties: Record<string, unknown>;
+  strength: number;
+}
+
+export interface SimulationScenario {
+  id: string;
+  twin_id: string;
+  name: string;
+  description?: string;
+  scenario_type?: string;
+  events: SimulationEvent[];
+  duration: number;
+  created_at: string;
+}
+
+export interface SimulationEvent {
+  id: string;
+  type: string;
+  target_uri: string;
+  timestamp: number;
+  parameters: Record<string, unknown>;
+  impact: EventImpact;
+}
+
+export interface EventImpact {
+  affected_entities: string[];
+  state_changes: Record<string, unknown>;
+  propagation_rules: PropagationRule[];
+  severity: string;
+}
+
+export interface PropagationRule {
+  relationship_type: string;
+  impact_multiplier: number;
+  delay: number;
+  condition?: Record<string, unknown>;
+}
+
+export interface SimulationRun {
+  id: string;
+  scenario_id: string;
+  status: string;
+  start_time: string;
+  end_time?: string;
+  initial_state: Record<string, unknown>;
+  final_state: Record<string, unknown>;
+  metrics: SimulationMetrics;
+  events_log: EventLogEntry[];
+  snapshots?: StateSnapshot[];
+}
+
+export interface SimulationMetrics {
+  total_steps: number;
+  events_processed: number;
+  entities_affected: number;
+  average_utilization: number;
+  peak_utilization: number;
+  bottleneck_entities: string[];
+  system_stability: number;
+  critical_events: number;
+  impact_summary: string;
+  recommendations: string[];
+}
+
+export interface EventLogEntry {
+  timestamp: string;
+  step: number;
+  type: string;
+  event_type: string;
+  entity_uri: string;
+  details: string;
+  severity?: string;
+}
+
+export interface StateSnapshot {
+  timestamp: string;
+  step_number: number;
+  state: Record<string, unknown>;
+  description?: string;
+  metrics?: Record<string, unknown>;
+}
+
+export interface ImpactAnalysis {
+  overall_impact: string;
+  risk_score: number;
+  affected_entities: AffectedEntity[];
+  critical_path: string[];
+  alternative_actions: string[];
+  mitigation_strategies: string[];
+}
+
+export interface AffectedEntity {
+  uri: string;
+  label: string;
+  impact_level: string;
+  changes: string[];
+}
+
+export interface CreateTwinRequest {
+  ontology_id: string;
+  name: string;
+  model_type: string;
+  description?: string;
+  query?: string;
+}
+
+export interface CreateScenarioRequest {
+  name: string;
+  description?: string;
+  scenario_type?: string;
+  events: SimulationEvent[];
+  duration: number;
+}
+
+export interface RunSimulationRequest {
+  snapshot_interval?: number;
+  max_steps?: number;
+}
+
+/**
+ * Create a new digital twin from an ontology
+ * POST /api/v1/twin/create
+ */
+export async function createDigitalTwin(request: CreateTwinRequest): Promise<{
+  twin_id: string;
+  entity_count: number;
+  relationship_count: number;
+  message: string;
+}> {
+  return apiFetch("/api/v1/twin/create", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * List all digital twins
+ * GET /api/v1/twin
+ */
+export async function listDigitalTwins(): Promise<DigitalTwin[]> {
+  return apiFetch<DigitalTwin[]>("/api/v1/twin");
+}
+
+/**
+ * Get a specific digital twin
+ * GET /api/v1/twin/:id
+ */
+export async function getDigitalTwin(id: string): Promise<DigitalTwin> {
+  return apiFetch<DigitalTwin>(`/api/v1/twin/${id}`);
+}
+
+/**
+ * Get current state of a digital twin
+ * GET /api/v1/twin/:id/state
+ */
+export async function getTwinState(id: string): Promise<{
+  twin_id: string;
+  state: Record<string, unknown>;
+  entity_states: Record<string, EntityState>;
+}> {
+  return apiFetch(`/api/v1/twin/${id}/state`);
+}
+
+/**
+ * Create a scenario for a digital twin
+ * POST /api/v1/twin/:id/scenarios
+ */
+export async function createScenario(twinId: string, request: CreateScenarioRequest): Promise<{
+  scenario_id: string;
+  message: string;
+}> {
+  return apiFetch(`/api/v1/twin/${twinId}/scenarios`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * List scenarios for a digital twin
+ * GET /api/v1/twin/:id/scenarios
+ */
+export async function listScenarios(twinId: string): Promise<SimulationScenario[]> {
+  return apiFetch<SimulationScenario[]>(`/api/v1/twin/${twinId}/scenarios`);
+}
+
+/**
+ * Run a simulation
+ * POST /api/v1/twin/:id/scenarios/:sid/run
+ */
+export async function runSimulation(
+  twinId: string,
+  scenarioId: string,
+  request?: RunSimulationRequest
+): Promise<SimulationRun> {
+  return apiFetch(`/api/v1/twin/${twinId}/scenarios/${scenarioId}/run`, {
+    method: "POST",
+    body: JSON.stringify(request || {}),
+  });
+}
+
+/**
+ * Get simulation run results
+ * GET /api/v1/twin/:id/runs/:rid
+ */
+export async function getSimulationRun(twinId: string, runId: string): Promise<SimulationRun> {
+  return apiFetch<SimulationRun>(`/api/v1/twin/${twinId}/runs/${runId}`);
+}
+
+/**
+ * Get simulation timeline (snapshots)
+ * GET /api/v1/twin/:id/runs/:rid/timeline
+ */
+export async function getSimulationTimeline(twinId: string, runId: string): Promise<{
+  snapshots: StateSnapshot[];
+  count: number;
+}> {
+  return apiFetch(`/api/v1/twin/${twinId}/runs/${runId}/timeline`);
+}
+
+/**
+ * Analyze simulation impact
+ * POST /api/v1/twin/:id/runs/:rid/analyze
+ */
+export async function analyzeSimulationImpact(twinId: string, runId: string): Promise<ImpactAnalysis> {
+  return apiFetch(`/api/v1/twin/${twinId}/runs/${runId}/analyze`, {
+    method: "POST",
+  });
+}
+
+// ==================== AGENT CHAT ====================
+
+export interface ChatConversation {
+  id: string;
+  twin_id?: string;
+  title: string;
+  model_provider: string;
+  model_name: string;
+  system_prompt?: string;
+  context_summary?: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+}
+
+export interface ChatMessage {
+  id: number;
+  conversation_id: string;
+  role: string;
+  content: string;
+  tool_calls?: ToolCallInfo[];
+  tool_results?: unknown;
+  metadata?: unknown;
+  created_at: string;
+}
+
+export interface ToolCallInfo {
+  id: string;
+  tool_name: string;
+  input: unknown;
+  output: unknown;
+  duration_ms: number;
+}
+
+export interface CreateConversationRequest {
+  twin_id?: string;
+  title: string;
+  model_provider?: string;
+  model_name?: string;
+  system_prompt?: string;
+}
+
+export interface SendMessageRequest {
+  message: string;
+  model_provider?: string;
+  model_name?: string;
+}
+
+export interface SendMessageResponse {
+  conversation_id: string;
+  user_message: ChatMessage;
+  assistant_reply: ChatMessage;
+  tool_calls?: ToolCallInfo[];
+}
+
+/**
+ * List all conversations, optionally filtered by twin_id
+ * GET /api/v1/chat?twin_id=
+ */
+export async function listConversations(twinId?: string): Promise<ChatConversation[]> {
+  const params = twinId ? `?twin_id=${encodeURIComponent(twinId)}` : "";
+  return apiFetch<ChatConversation[]>(`/api/v1/chat${params}`);
+}
+
+/**
+ * Create a new conversation
+ * POST /api/v1/chat
+ */
+export async function createConversation(request: CreateConversationRequest): Promise<{
+  conversation_id: string;
+  conversation: ChatConversation;
+}> {
+  return apiFetch("/api/v1/chat", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Get a conversation with all messages
+ * GET /api/v1/chat/:id
+ */
+export async function getConversation(id: string): Promise<{
+  conversation: ChatConversation;
+  messages: ChatMessage[];
+}> {
+  return apiFetch(`/api/v1/chat/${id}`);
+}
+
+/**
+ * Update conversation metadata (title, model, etc.)
+ * PUT /api/v1/chat/:id
+ */
+export async function updateConversation(id: string, updates: Partial<ChatConversation>): Promise<void> {
+  return apiFetch(`/api/v1/chat/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  });
+}
+
+/**
+ * Delete a conversation and all its messages
+ * DELETE /api/v1/chat/:id
+ */
+export async function deleteConversation(id: string): Promise<void> {
+  return apiFetch(`/api/v1/chat/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Send a message to a conversation and get AI response
+ * POST /api/v1/chat/:id/message
+ */
+export async function sendMessage(
+  conversationId: string,
+  message: string,
+  modelProvider?: string,
+  modelName?: string
+): Promise<SendMessageResponse> {
+  const body: SendMessageRequest = { message };
+  if (modelProvider) body.model_provider = modelProvider;
+  if (modelName) body.model_name = modelName;
+
+  return apiFetch(`/api/v1/chat/${conversationId}/message`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// ==================== API KEYS ====================
+
+export interface APIKey {
+  id: string;
+  provider: string; // openai, anthropic, ollama, custom
+  name: string;
+  endpoint_url?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  last_used_at?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateAPIKeyRequest {
+  provider: string;
+  name: string;
+  key_value: string; // Will be encrypted by backend
+  endpoint_url?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateAPIKeyRequest {
+  name?: string;
+  key_value?: string; // Only if updating the key
+  endpoint_url?: string;
+  is_active?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * List all API keys (encrypted values NOT returned)
+ */
+export async function listAPIKeys(): Promise<APIKey[]> {
+  return apiFetch<APIKey[]>("/api/v1/settings/api-keys");
+}
+
+/**
+ * Create a new API key
+ */
+export async function createAPIKey(data: CreateAPIKeyRequest): Promise<APIKey> {
+  return apiFetch("/api/v1/settings/api-keys", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Update an API key
+ */
+export async function updateAPIKey(id: string, data: UpdateAPIKeyRequest): Promise<APIKey> {
+  return apiFetch(`/api/v1/settings/api-keys/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Delete an API key
+ */
+export async function deleteAPIKey(id: string): Promise<void> {
+  return apiFetch(`/api/v1/settings/api-keys/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Test if an API key is valid
+ */
+export async function testAPIKey(id: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch(`/api/v1/settings/api-keys/${id}/test`, {
+    method: "POST",
+  });
+}
+
+// ==================== PLUGINS ====================
+
+export interface Plugin {
+  id: string;
+  name: string;
+  type: string; // input, output, ai, data_processing
+  version: string;
+  file_path: string;
+  description?: string;
+  author?: string;
+  is_enabled: boolean;
+  is_builtin: boolean;
+  config?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdatePluginRequest {
+  is_enabled?: boolean;
+  config?: Record<string, unknown>;
+}
+
+/**
+ * List all plugins
+ */
+export async function listPlugins(): Promise<Plugin[]> {
+  return apiFetch<Plugin[]>("/api/v1/settings/plugins");
+}
+
+/**
+ * Upload a plugin file (.so/.dll)
+ */
+export async function uploadPlugin(file: File): Promise<Plugin> {
+  const formData = new FormData();
+  formData.append("plugin", file);
+
+  const url = `${API_BASE_URL}/api/v1/settings/plugins/upload`;
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData, // Don't set Content-Type, let browser set it with boundary
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Upload failed (${response.status}): ${errorText || response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Update a plugin (enable/disable, config)
+ */
+export async function updatePlugin(id: string, data: UpdatePluginRequest): Promise<Plugin> {
+  return apiFetch(`/api/v1/settings/plugins/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Delete a plugin (user-uploaded only)
+ */
+export async function deletePlugin(id: string): Promise<void> {
+  return apiFetch(`/api/v1/settings/plugins/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Reload a plugin without restart
+ */
+export async function reloadPlugin(id: string): Promise<void> {
+  return apiFetch(`/api/v1/settings/plugins/${id}/reload`, {
+    method: "POST",
+  });
 }

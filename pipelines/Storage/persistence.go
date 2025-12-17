@@ -196,6 +196,86 @@ func (p *PersistenceBackend) initSchema() error {
 		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
 	);
 
+	-- Digital twins table
+	CREATE TABLE IF NOT EXISTS digital_twins (
+		id TEXT PRIMARY KEY,
+		ontology_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT,
+		model_type TEXT NOT NULL,
+		base_state TEXT NOT NULL,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
+	);
+
+	-- Simulation scenarios table
+	CREATE TABLE IF NOT EXISTS simulation_scenarios (
+		id TEXT PRIMARY KEY,
+		twin_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT,
+		scenario_type TEXT,
+		events TEXT NOT NULL,
+		duration INTEGER,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
+	);
+
+	-- Simulation runs table
+	CREATE TABLE IF NOT EXISTS simulation_runs (
+		id TEXT PRIMARY KEY,
+		scenario_id TEXT NOT NULL,
+		status TEXT NOT NULL,
+		start_time TIMESTAMP,
+		end_time TIMESTAMP,
+		initial_state TEXT,
+		final_state TEXT,
+		metrics TEXT,
+		events_log TEXT,
+		error_message TEXT,
+		FOREIGN KEY (scenario_id) REFERENCES simulation_scenarios(id) ON DELETE CASCADE
+	);
+
+	-- Temporal state snapshots table
+	CREATE TABLE IF NOT EXISTS twin_state_snapshots (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_id TEXT NOT NULL,
+		timestamp TIMESTAMP NOT NULL,
+		step_number INTEGER NOT NULL,
+		state TEXT NOT NULL,
+		description TEXT,
+		metrics TEXT,
+		FOREIGN KEY (run_id) REFERENCES simulation_runs(id) ON DELETE CASCADE
+	);
+
+	-- Agent conversations table
+	CREATE TABLE IF NOT EXISTS agent_conversations (
+		id TEXT PRIMARY KEY,
+		twin_id TEXT,
+		title TEXT NOT NULL,
+		model_provider TEXT NOT NULL DEFAULT 'openai',
+		model_name TEXT NOT NULL DEFAULT 'gpt-4',
+		system_prompt TEXT,
+		context_summary TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE SET NULL
+	);
+
+	-- Agent messages table
+	CREATE TABLE IF NOT EXISTS agent_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		conversation_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		content TEXT NOT NULL,
+		tool_calls TEXT,
+		tool_results TEXT,
+		metadata TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (conversation_id) REFERENCES agent_conversations(id) ON DELETE CASCADE
+	);
+
 	-- Create indexes for better query performance
 	CREATE INDEX IF NOT EXISTS idx_ontologies_name ON ontologies(name);
 	CREATE INDEX IF NOT EXISTS idx_ontologies_status ON ontologies(status);
@@ -207,6 +287,51 @@ func (p *PersistenceBackend) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_extraction_jobs_ontology ON extraction_jobs(ontology_id);
 	CREATE INDEX IF NOT EXISTS idx_extracted_entities_job ON extracted_entities(job_id);
 	CREATE INDEX IF NOT EXISTS idx_drift_detections_ontology ON drift_detections(ontology_id);
+	CREATE INDEX IF NOT EXISTS idx_digital_twins_ontology ON digital_twins(ontology_id);
+	CREATE INDEX IF NOT EXISTS idx_simulation_scenarios_twin ON simulation_scenarios(twin_id);
+	CREATE INDEX IF NOT EXISTS idx_simulation_runs_scenario ON simulation_runs(scenario_id);
+	CREATE INDEX IF NOT EXISTS idx_simulation_runs_status ON simulation_runs(status);
+	CREATE INDEX IF NOT EXISTS idx_twin_snapshots_run ON twin_state_snapshots(run_id);
+	CREATE INDEX IF NOT EXISTS idx_twin_snapshots_step ON twin_state_snapshots(run_id, step_number);
+	CREATE INDEX IF NOT EXISTS idx_agent_conversations_twin ON agent_conversations(twin_id);
+	CREATE INDEX IF NOT EXISTS idx_agent_conversations_updated ON agent_conversations(updated_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_agent_messages_conversation ON agent_messages(conversation_id);
+	CREATE INDEX IF NOT EXISTS idx_agent_messages_created ON agent_messages(conversation_id, created_at);
+
+	-- API keys table for LLM provider credentials
+	CREATE TABLE IF NOT EXISTS api_keys (
+		id TEXT PRIMARY KEY,
+		provider TEXT NOT NULL,  -- openai, anthropic, ollama, etc.
+		name TEXT NOT NULL,  -- User-friendly name (e.g., "My OpenAI Key")
+		key_value TEXT NOT NULL,  -- Encrypted API key
+		endpoint_url TEXT,  -- Custom endpoint (for Ollama, etc.)
+		is_active BOOLEAN NOT NULL DEFAULT 1,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		last_used_at TIMESTAMP,
+		metadata TEXT  -- JSON: extra config like model defaults, rate limits, etc.
+	);
+
+	-- Plugins table for tracking installed plugins
+	CREATE TABLE IF NOT EXISTS plugins (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL UNIQUE,
+		type TEXT NOT NULL,  -- input, output, ai, data_processing, etc.
+		version TEXT NOT NULL,
+		file_path TEXT NOT NULL,  -- Path to .so/.dll file
+		description TEXT,
+		author TEXT,
+		is_enabled BOOLEAN NOT NULL DEFAULT 1,
+		is_builtin BOOLEAN NOT NULL DEFAULT 0,  -- Built-in vs user-uploaded
+		config TEXT,  -- JSON: plugin-specific configuration
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_api_keys_provider ON api_keys(provider);
+	CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active);
+	CREATE INDEX IF NOT EXISTS idx_plugins_type ON plugins(type);
+	CREATE INDEX IF NOT EXISTS idx_plugins_enabled ON plugins(is_enabled);
 	`
 
 	_, err := p.db.Exec(schema)

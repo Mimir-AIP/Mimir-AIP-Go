@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1122,6 +1125,46 @@ type DataPreviewRequest struct {
 	PluginName string         `json:"plugin_name"`
 	Config     map[string]any `json:"config"`
 	MaxRows    int            `json:"max_rows,omitempty"` // Limit preview rows
+	Profile    bool           `json:"profile,omitempty"`  // Whether to include profiling
+}
+
+// ColumnProfile represents comprehensive profiling statistics for a column
+type ColumnProfile struct {
+	ColumnName       string           `json:"column_name"`
+	DataType         string           `json:"data_type"`
+	TotalCount       int              `json:"total_count"`
+	DistinctCount    int              `json:"distinct_count"`
+	DistinctPercent  float64          `json:"distinct_percent"`
+	NullCount        int              `json:"null_count"`
+	NullPercent      float64          `json:"null_percent"`
+	MinValue         any              `json:"min_value,omitempty"`
+	MaxValue         any              `json:"max_value,omitempty"`
+	Mean             float64          `json:"mean,omitempty"`
+	Median           float64          `json:"median,omitempty"`
+	StdDev           float64          `json:"std_dev,omitempty"`
+	MinLength        int              `json:"min_length,omitempty"`
+	MaxLength        int              `json:"max_length,omitempty"`
+	AvgLength        float64          `json:"avg_length,omitempty"`
+	TopValues        []ValueFrequency `json:"top_values"`
+	DataQualityScore float64          `json:"data_quality_score"`
+	QualityIssues    []string         `json:"quality_issues"`
+}
+
+// ValueFrequency represents a value and its frequency
+type ValueFrequency struct {
+	Value     any     `json:"value"`
+	Count     int     `json:"count"`
+	Frequency float64 `json:"frequency"`
+}
+
+// DataProfileSummary represents overall profiling summary
+type DataProfileSummary struct {
+	TotalRows            int             `json:"total_rows"`
+	TotalColumns         int             `json:"total_columns"`
+	TotalDistinctValues  int             `json:"total_distinct_values"`
+	OverallQualityScore  float64         `json:"overall_quality_score"`
+	SuggestedPrimaryKeys []string        `json:"suggested_primary_keys"`
+	ColumnProfiles       []ColumnProfile `json:"column_profiles"`
 }
 
 // DataSelection represents selected data for ontology generation
@@ -1387,14 +1430,31 @@ func (s *Server) handlePreviewData(w http.ResponseWriter, r *http.Request) {
 	// Limit rows for preview
 	limitedData := s.limitPreviewData(parsedData, req.MaxRows)
 
-	writeJSONResponse(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"upload_id":    req.UploadID,
 		"plugin_type":  req.PluginType,
 		"plugin_name":  req.PluginName,
 		"data":         limitedData,
 		"preview_rows": req.MaxRows,
 		"message":      "Data preview generated successfully",
-	})
+	}
+
+	// Check if profiling is requested via query parameter or request body
+	profileParam := r.URL.Query().Get("profile")
+	shouldProfile := req.Profile || profileParam == "true"
+
+	// Add profiling if requested
+	if shouldProfile {
+		dataMap, ok := parsedData.(map[string]any)
+		if ok {
+			// Profile the full dataset (before limiting)
+			profileSummary := profileDataset(dataMap, 10000) // Sample up to 10k rows for profiling
+			response["profile"] = profileSummary
+			response["message"] = "Data preview with profiling generated successfully"
+		}
+	}
+
+	writeJSONResponse(w, http.StatusOK, response)
 }
 
 // handleSelectData handles data column/relationship selection for ontology generation
@@ -2369,4 +2429,455 @@ func (s *Server) csvToTriples(csvData []map[string]interface{}, ontologyID, grap
 	}
 
 	return triples, stats, nil
+}
+
+// profileColumnData calculates comprehensive statistics for a column
+func profileColumnData(columnName string, values []any) ColumnProfile {
+	profile := ColumnProfile{
+		ColumnName:    columnName,
+		QualityIssues: []string{},
+		TopValues:     []ValueFrequency{},
+	}
+
+	totalCount := len(values)
+	profile.TotalCount = totalCount
+
+	if totalCount == 0 {
+		profile.DataType = "unknown"
+		profile.DataQualityScore = 0.0
+		profile.QualityIssues = append(profile.QualityIssues, "No data available")
+		return profile
+	}
+
+	// Track distinct values and nulls
+	distinctValues := make(map[string]bool)
+	valueCounts := make(map[string]int)
+	nullCount := 0
+
+	// For numeric analysis
+	var numericValues []float64
+	isNumeric := true
+
+	// For string length analysis
+	var stringLengths []int
+
+	// Analyze each value
+	for _, val := range values {
+		// Handle null/empty values
+		if val == nil || val == "" {
+			nullCount++
+			continue
+		}
+
+		valueStr := fmt.Sprintf("%v", val)
+		distinctValues[valueStr] = true
+		valueCounts[valueStr]++
+
+		// Track string lengths
+		stringLengths = append(stringLengths, len(valueStr))
+
+		// Try to parse as numeric
+		if numVal, err := parseNumeric(val); err == nil {
+			numericValues = append(numericValues, numVal)
+		} else {
+			isNumeric = false
+		}
+	}
+
+	// Calculate basic stats
+	profile.DistinctCount = len(distinctValues)
+	profile.NullCount = nullCount
+
+	nonNullCount := totalCount - nullCount
+	if totalCount > 0 {
+		profile.DistinctPercent = float64(profile.DistinctCount) / math.Max(1, float64(nonNullCount)) * 100
+		profile.NullPercent = float64(nullCount) / float64(totalCount) * 100
+	}
+
+	// Determine data type
+	if isNumeric && len(numericValues) > 0 {
+		profile.DataType = "numeric"
+
+		// Calculate numeric statistics
+		profile.Mean = calculateMean(numericValues)
+		profile.Median = calculateMedian(numericValues)
+		profile.StdDev = calculateStdDev(numericValues, profile.Mean)
+		profile.MinValue = findMin(numericValues)
+		profile.MaxValue = findMax(numericValues)
+	} else {
+		profile.DataType = "string"
+
+		// Calculate string length statistics
+		if len(stringLengths) > 0 {
+			profile.MinLength = minInt(stringLengths)
+			profile.MaxLength = maxInt(stringLengths)
+			profile.AvgLength = avgInt(stringLengths)
+		}
+	}
+
+	// Calculate top 5 most frequent values
+	profile.TopValues = getTopValues(valueCounts, nonNullCount, 5)
+
+	// Detect data quality issues
+	profile.QualityIssues = detectQualityIssues(profile, nonNullCount)
+
+	// Calculate data quality score (0-1.0)
+	profile.DataQualityScore = calculateDataQualityScore(profile, nonNullCount)
+
+	return profile
+}
+
+// parseNumeric attempts to parse a value as numeric
+func parseNumeric(val any) (float64, error) {
+	switch v := val.(type) {
+	case int:
+		return float64(v), nil
+	case int32:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case float32:
+		return float64(v), nil
+	case float64:
+		return v, nil
+	case string:
+		return strconv.ParseFloat(v, 64)
+	default:
+		return 0, fmt.Errorf("not numeric")
+	}
+}
+
+// calculateMean calculates the arithmetic mean
+func calculateMean(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, v := range values {
+		sum += v
+	}
+	return sum / float64(len(values))
+}
+
+// calculateMedian calculates the median value
+func calculateMedian(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	sort.Float64s(sorted)
+
+	n := len(sorted)
+	if n%2 == 0 {
+		return (sorted[n/2-1] + sorted[n/2]) / 2.0
+	}
+	return sorted[n/2]
+}
+
+// calculateStdDev calculates standard deviation
+func calculateStdDev(values []float64, mean float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+
+	sumSquares := 0.0
+	for _, v := range values {
+		diff := v - mean
+		sumSquares += diff * diff
+	}
+
+	variance := sumSquares / float64(len(values))
+	return math.Sqrt(variance)
+}
+
+// findMin finds the minimum numeric value
+func findMin(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	min := values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+	}
+	return min
+}
+
+// findMax finds the maximum numeric value
+func findMax(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	max := values[0]
+	for _, v := range values[1:] {
+		if v > max {
+			max = v
+		}
+	}
+	return max
+}
+
+// minInt finds minimum integer value
+func minInt(values []int) int {
+	if len(values) == 0 {
+		return 0
+	}
+	min := values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+	}
+	return min
+}
+
+// maxInt finds maximum integer value
+func maxInt(values []int) int {
+	if len(values) == 0 {
+		return 0
+	}
+	max := values[0]
+	for _, v := range values[1:] {
+		if v > max {
+			max = v
+		}
+	}
+	return max
+}
+
+// avgInt calculates average of integers
+func avgInt(values []int) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sum := 0
+	for _, v := range values {
+		sum += v
+	}
+	return float64(sum) / float64(len(values))
+}
+
+// getTopValues returns top N most frequent values
+func getTopValues(valueCounts map[string]int, totalCount int, topN int) []ValueFrequency {
+	// Convert map to slice for sorting
+	type pair struct {
+		value string
+		count int
+	}
+
+	var pairs []pair
+	for value, count := range valueCounts {
+		pairs = append(pairs, pair{value, count})
+	}
+
+	// Sort by count descending
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].count > pairs[j].count
+	})
+
+	// Take top N
+	n := topN
+	if len(pairs) < n {
+		n = len(pairs)
+	}
+
+	result := make([]ValueFrequency, n)
+	for i := 0; i < n; i++ {
+		freq := 0.0
+		if totalCount > 0 {
+			freq = float64(pairs[i].count) / float64(totalCount) * 100
+		}
+		result[i] = ValueFrequency{
+			Value:     pairs[i].value,
+			Count:     pairs[i].count,
+			Frequency: freq,
+		}
+	}
+
+	return result
+}
+
+// detectQualityIssues identifies potential data quality problems
+func detectQualityIssues(profile ColumnProfile, nonNullCount int) []string {
+	issues := []string{}
+
+	// High null rate
+	if profile.NullPercent > 50 {
+		issues = append(issues, fmt.Sprintf("High null rate (%.1f%%)", profile.NullPercent))
+	} else if profile.NullPercent > 25 {
+		issues = append(issues, fmt.Sprintf("Moderate null rate (%.1f%%)", profile.NullPercent))
+	}
+
+	// Low cardinality (may indicate categorical data or quality issues)
+	if nonNullCount > 10 && profile.DistinctCount < 5 {
+		issues = append(issues, fmt.Sprintf("Very low cardinality (%d distinct values)", profile.DistinctCount))
+	}
+
+	// Check for potential duplicates in what should be unique
+	if profile.DistinctPercent < 80 && nonNullCount > 100 {
+		issues = append(issues, fmt.Sprintf("Low uniqueness (%.1f%% distinct)", profile.DistinctPercent))
+	}
+
+	// Check for single dominant value
+	if len(profile.TopValues) > 0 && profile.TopValues[0].Frequency > 80 {
+		issues = append(issues, fmt.Sprintf("Single value dominates (%.1f%%)", profile.TopValues[0].Frequency))
+	}
+
+	// Check for extreme string length variance
+	if profile.DataType == "string" && profile.MaxLength > 0 {
+		lengthRatio := float64(profile.MaxLength) / math.Max(1, float64(profile.MinLength))
+		if lengthRatio > 100 {
+			issues = append(issues, "Extreme length variance in string values")
+		}
+	}
+
+	// Check for potential ID columns with gaps
+	columnNameLower := strings.ToLower(profile.ColumnName)
+	if strings.Contains(columnNameLower, "id") && profile.DistinctPercent < 95 && nonNullCount > 20 {
+		issues = append(issues, "Potential ID column with missing or duplicate values")
+	}
+
+	return issues
+}
+
+// calculateDataQualityScore computes an overall quality score (0-1.0)
+func calculateDataQualityScore(profile ColumnProfile, nonNullCount int) float64 {
+	score := 1.0
+
+	// Penalize high null rate
+	score -= profile.NullPercent / 200.0 // Max penalty: 0.5 for 100% nulls
+
+	// Penalize if there are critical quality issues
+	criticalIssues := 0
+	for _, issue := range profile.QualityIssues {
+		if strings.Contains(issue, "High null") ||
+			strings.Contains(issue, "Very low cardinality") ||
+			strings.Contains(issue, "duplicate values") {
+			criticalIssues++
+		}
+	}
+	score -= float64(criticalIssues) * 0.15
+
+	// Bonus for high data completeness
+	if profile.NullPercent < 5 {
+		score += 0.1
+	}
+
+	// Bonus for good cardinality (for non-ID columns)
+	columnNameLower := strings.ToLower(profile.ColumnName)
+	if !strings.Contains(columnNameLower, "id") {
+		if nonNullCount > 10 && profile.DistinctCount >= 5 && profile.DistinctCount < nonNullCount {
+			score += 0.05
+		}
+	}
+
+	// Ensure score is in valid range
+	if score < 0 {
+		score = 0
+	}
+	if score > 1.0 {
+		score = 1.0
+	}
+
+	return math.Round(score*100) / 100 // Round to 2 decimal places
+}
+
+// profileDataset generates comprehensive profiling for entire dataset
+func profileDataset(data map[string]any, sampleSize int) DataProfileSummary {
+	summary := DataProfileSummary{
+		SuggestedPrimaryKeys: []string{},
+		ColumnProfiles:       []ColumnProfile{},
+	}
+
+	// Extract rows from data
+	rowsAny, ok := data["rows"].([]any)
+	if !ok || len(rowsAny) == 0 {
+		return summary
+	}
+
+	summary.TotalRows = len(rowsAny)
+
+	// Sample data if needed (for large datasets)
+	sampled := rowsAny
+	if sampleSize > 0 && len(rowsAny) > sampleSize {
+		sampled = sampleRows(rowsAny, sampleSize)
+	}
+
+	// Get column names from first row
+	if len(sampled) == 0 {
+		return summary
+	}
+
+	firstRow, ok := sampled[0].(map[string]any)
+	if !ok {
+		return summary
+	}
+
+	// Extract column values
+	columnValues := make(map[string][]any)
+	for colName := range firstRow {
+		columnValues[colName] = []any{}
+	}
+
+	for _, rowAny := range sampled {
+		row, ok := rowAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		for colName, val := range row {
+			columnValues[colName] = append(columnValues[colName], val)
+		}
+	}
+
+	summary.TotalColumns = len(columnValues)
+
+	// Profile each column
+	totalDistinct := 0
+	totalQualityScore := 0.0
+
+	for colName, values := range columnValues {
+		profile := profileColumnData(colName, values)
+		summary.ColumnProfiles = append(summary.ColumnProfiles, profile)
+		totalDistinct += profile.DistinctCount
+		totalQualityScore += profile.DataQualityScore
+	}
+
+	summary.TotalDistinctValues = totalDistinct
+
+	// Calculate overall quality score
+	if len(summary.ColumnProfiles) > 0 {
+		summary.OverallQualityScore = math.Round((totalQualityScore/float64(len(summary.ColumnProfiles)))*100) / 100
+	}
+
+	// Suggest primary key columns (high uniqueness, low nulls)
+	for _, profile := range summary.ColumnProfiles {
+		if profile.DistinctPercent > 95 && profile.NullPercent < 5 && len(sampled) > 10 {
+			summary.SuggestedPrimaryKeys = append(summary.SuggestedPrimaryKeys, profile.ColumnName)
+		}
+	}
+
+	return summary
+}
+
+// sampleRows returns a random sample of rows
+func sampleRows(rows []any, sampleSize int) []any {
+	if sampleSize >= len(rows) {
+		return rows
+	}
+
+	// Use systematic sampling for consistency
+	step := len(rows) / sampleSize
+	if step < 1 {
+		step = 1
+	}
+
+	sampled := make([]any, 0, sampleSize)
+	for i := 0; i < len(rows) && len(sampled) < sampleSize; i += step {
+		sampled = append(sampled, rows[i])
+	}
+
+	return sampled
 }

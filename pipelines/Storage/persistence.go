@@ -459,3 +459,105 @@ func (p *PersistenceBackend) GetDB() *sql.DB {
 func (p *PersistenceBackend) Health(ctx context.Context) error {
 	return p.db.PingContext(ctx)
 }
+
+// CreateDigitalTwin creates a new digital twin in the database
+func (p *PersistenceBackend) CreateDigitalTwin(ctx context.Context, id, ontologyID, name, description, modelType, baseState string) error {
+	query := `
+		INSERT INTO digital_twins (id, ontology_id, name, description, model_type, base_state, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	`
+	_, err := p.db.ExecContext(ctx, query, id, ontologyID, name, description, modelType, baseState)
+	if err != nil {
+		return fmt.Errorf("failed to create digital twin: %w", err)
+	}
+	return nil
+}
+
+// GetDigitalTwin retrieves a digital twin by ID
+func (p *PersistenceBackend) GetDigitalTwin(ctx context.Context, id string) (map[string]interface{}, error) {
+	query := `SELECT id, ontology_id, name, description, model_type, base_state, created_at, updated_at FROM digital_twins WHERE id = ?`
+
+	var twin struct {
+		ID          string
+		OntologyID  string
+		Name        string
+		Description sql.NullString
+		ModelType   string
+		BaseState   string
+		CreatedAt   time.Time
+		UpdatedAt   time.Time
+	}
+
+	err := p.db.QueryRowContext(ctx, query, id).Scan(
+		&twin.ID, &twin.OntologyID, &twin.Name, &twin.Description,
+		&twin.ModelType, &twin.BaseState, &twin.CreatedAt, &twin.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("digital twin not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get digital twin: %w", err)
+	}
+
+	result := map[string]interface{}{
+		"id":          twin.ID,
+		"ontology_id": twin.OntologyID,
+		"name":        twin.Name,
+		"model_type":  twin.ModelType,
+		"base_state":  twin.BaseState,
+		"created_at":  twin.CreatedAt.Format(time.RFC3339),
+		"updated_at":  twin.UpdatedAt.Format(time.RFC3339),
+	}
+
+	if twin.Description.Valid {
+		result["description"] = twin.Description.String
+	}
+
+	return result, nil
+}
+
+// ListDigitalTwins retrieves all digital twins
+func (p *PersistenceBackend) ListDigitalTwins(ctx context.Context) ([]map[string]interface{}, error) {
+	query := `SELECT id, ontology_id, name, description, model_type, created_at, updated_at FROM digital_twins ORDER BY created_at DESC`
+
+	rows, err := p.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list digital twins: %w", err)
+	}
+	defer rows.Close()
+
+	var twins []map[string]interface{}
+	for rows.Next() {
+		var twin struct {
+			ID          string
+			OntologyID  string
+			Name        string
+			Description sql.NullString
+			ModelType   string
+			CreatedAt   time.Time
+			UpdatedAt   time.Time
+		}
+
+		err := rows.Scan(&twin.ID, &twin.OntologyID, &twin.Name, &twin.Description, &twin.ModelType, &twin.CreatedAt, &twin.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan digital twin: %w", err)
+		}
+
+		result := map[string]interface{}{
+			"id":          twin.ID,
+			"ontology_id": twin.OntologyID,
+			"name":        twin.Name,
+			"model_type":  twin.ModelType,
+			"created_at":  twin.CreatedAt.Format(time.RFC3339),
+			"updated_at":  twin.UpdatedAt.Format(time.RFC3339),
+		}
+
+		if twin.Description.Valid {
+			result["description"] = twin.Description.String
+		}
+
+		twins = append(twins, result)
+	}
+
+	return twins, rows.Err()
+}

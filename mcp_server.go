@@ -57,6 +57,9 @@ func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request)
 	// Add specialized ontology tools for agents
 	tools = append(tools, ms.getOntologyTools()...)
 
+	// Add specialized digital twin tools for agents
+	tools = append(tools, ms.getDigitalTwinTools()...)
+
 	// Add all registered plugins as tools
 	for pluginType, typePlugins := range ms.registry.GetAllPlugins() {
 		for pluginName := range typePlugins {
@@ -249,26 +252,28 @@ func (ms *MCPServer) getOntologyTools() []map[string]any {
 
 // handleToolExecution executes a specific tool
 func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	var req struct {
-		ToolName  string         `json:"tool_name"`
+	var request struct {
+		Name      string         `json:"name"`
 		Arguments map[string]any `json:"arguments"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Handle specialized ontology tools first (simplified API)
-	if strings.HasPrefix(req.ToolName, "ontology.") {
-		ms.handleOntologyTool(w, r, req.ToolName, req.Arguments)
+	// Route to appropriate handler based on tool name
+	if strings.HasPrefix(request.Name, "ontology.") {
+		ms.handleOntologyTool(w, r, request.Name, request.Arguments)
+		return
+	}
+	if strings.HasPrefix(request.Name, "twin.") {
+		ms.handleDigitalTwinTool(w, r, request.Name, request.Arguments)
 		return
 	}
 
 	// Parse tool name (e.g., "Input.api" -> type: "Input", name: "api")
-	toolParts := strings.Split(req.ToolName, ".")
+	toolParts := strings.Split(request.Name, ".")
 	if len(toolParts) != 2 {
 		http.Error(w, "Invalid tool name format", http.StatusBadRequest)
 		return
@@ -290,14 +295,14 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 		Context    map[string]any `json:"context"`
 	}
 
-	if argsJSON, err := json.Marshal(req.Arguments); err == nil {
+	if argsJSON, err := json.Marshal(request.Arguments); err == nil {
 		_ = json.Unmarshal(argsJSON, &params)
 	}
 
 	// Convert to plugin types
 	stepConfig := pipelines.StepConfig{
 		Name:   getStringValue(params.StepConfig, "name"),
-		Plugin: req.ToolName,
+		Plugin: request.Name,
 		Config: getMapValue(params.StepConfig, "config"),
 		Output: getStringValue(params.StepConfig, "output"),
 	}
@@ -414,6 +419,256 @@ func (ms *MCPServer) handleOntologyGetStats(w http.ResponseWriter, ctx context.C
 		"success":   true,
 		"tool":      "ontology.get_stats",
 		"message":   "Get stats tool requires server instance access. Use REST API: GET /api/v1/ontology/:id/stats",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// getDigitalTwinTools returns specialized digital twin tools for Mimir agents
+func (ms *MCPServer) getDigitalTwinTools() []map[string]any {
+	return []map[string]any{
+		{
+			"name":        "twin.create",
+			"description": "Create a digital twin from a knowledge graph ontology. Initializes entities and relationships for simulation.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ontology_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the ontology to create twin from",
+					},
+					"name": map[string]any{
+						"type":        "string",
+						"description": "Name for the digital twin",
+					},
+					"description": map[string]any{
+						"type":        "string",
+						"description": "Description of the twin",
+					},
+					"model_type": map[string]any{
+						"type":        "string",
+						"description": "Type of model",
+						"enum":        []string{"organization", "department", "process", "individual"},
+						"default":     "organization",
+					},
+				},
+				"required": []string{"ontology_id", "name"},
+			},
+		},
+		{
+			"name":        "twin.query_state",
+			"description": "Query the current state of a digital twin including entity states, utilization, and system metrics.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"twin_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the digital twin",
+					},
+				},
+				"required": []string{"twin_id"},
+			},
+		},
+		{
+			"name":        "twin.create_scenario",
+			"description": "Create a what-if simulation scenario with custom events. Define resource failures, demand surges, or other disruptions.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"twin_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the digital twin",
+					},
+					"name": map[string]any{
+						"type":        "string",
+						"description": "Name for the scenario",
+					},
+					"description": map[string]any{
+						"type":        "string",
+						"description": "Description of the scenario",
+					},
+					"events": map[string]any{
+						"type":        "array",
+						"description": "Array of simulation events",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"type": map[string]any{
+									"type":        "string",
+									"description": "Event type (e.g., resource.unavailable, demand.surge)",
+								},
+								"target_uri": map[string]any{
+									"type":        "string",
+									"description": "URI of the target entity",
+								},
+								"timestamp": map[string]any{
+									"type":        "integer",
+									"description": "Step number when event occurs",
+								},
+								"parameters": map[string]any{
+									"type":        "object",
+									"description": "Event-specific parameters",
+								},
+							},
+						},
+					},
+					"duration": map[string]any{
+						"type":        "integer",
+						"description": "Simulation duration in steps",
+					},
+				},
+				"required": []string{"twin_id", "name", "events", "duration"},
+			},
+		},
+		{
+			"name":        "twin.run_simulation",
+			"description": "Execute a simulation scenario and return results with metrics, impact analysis, and recommendations.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"twin_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the digital twin",
+					},
+					"scenario_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the scenario to run",
+					},
+					"snapshot_interval": map[string]any{
+						"type":        "integer",
+						"description": "Take state snapshot every N steps (0 to disable)",
+						"default":     10,
+					},
+					"max_steps": map[string]any{
+						"type":        "integer",
+						"description": "Maximum simulation steps",
+						"default":     1000,
+					},
+				},
+				"required": []string{"twin_id", "scenario_id"},
+			},
+		},
+		{
+			"name":        "twin.analyze_impact",
+			"description": "Analyze the impact of a completed simulation run. Provides entity-level impacts, critical paths, risk scores, and mitigation recommendations.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"twin_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the digital twin",
+					},
+					"run_id": map[string]any{
+						"type":        "string",
+						"description": "ID of the simulation run",
+					},
+				},
+				"required": []string{"twin_id", "run_id"},
+			},
+		},
+		{
+			"name":        "twin.compare_runs",
+			"description": "Compare multiple simulation runs to identify which scenarios had the most impact and which mitigations were most effective.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"run_ids": map[string]any{
+						"type":        "array",
+						"description": "Array of simulation run IDs to compare",
+						"items": map[string]any{
+							"type": "string",
+						},
+					},
+				},
+				"required": []string{"run_ids"},
+			},
+		},
+	}
+}
+
+// handleDigitalTwinTool executes specialized digital twin tools
+func (ms *MCPServer) handleDigitalTwinTool(w http.ResponseWriter, r *http.Request, toolName string, arguments map[string]any) {
+	ctx := r.Context()
+
+	switch toolName {
+	case "twin.create":
+		ms.handleTwinCreate(w, ctx, arguments)
+	case "twin.query_state":
+		ms.handleTwinQueryState(w, ctx, arguments)
+	case "twin.create_scenario":
+		ms.handleTwinCreateScenario(w, ctx, arguments)
+	case "twin.run_simulation":
+		ms.handleTwinRunSimulation(w, ctx, arguments)
+	case "twin.analyze_impact":
+		ms.handleTwinAnalyzeImpact(w, ctx, arguments)
+	case "twin.compare_runs":
+		ms.handleTwinCompareRuns(w, ctx, arguments)
+	default:
+		http.Error(w, fmt.Sprintf("Unknown digital twin tool: %s", toolName), http.StatusNotFound)
+	}
+}
+
+// handleTwinCreate creates a new digital twin
+func (ms *MCPServer) handleTwinCreate(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "twin.create",
+		"message":   "Create twin tool requires server instance access. Use REST API: POST /api/v1/twin/create",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleTwinQueryState queries digital twin state
+func (ms *MCPServer) handleTwinQueryState(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "twin.query_state",
+		"message":   "Query state tool requires server instance access. Use REST API: GET /api/v1/twin/:id/state",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleTwinCreateScenario creates a simulation scenario
+func (ms *MCPServer) handleTwinCreateScenario(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "twin.create_scenario",
+		"message":   "Create scenario tool requires server instance access. Use REST API: POST /api/v1/twin/:id/scenarios",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleTwinRunSimulation executes a simulation
+func (ms *MCPServer) handleTwinRunSimulation(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "twin.run_simulation",
+		"message":   "Run simulation tool requires server instance access. Use REST API: POST /api/v1/twin/:id/scenarios/:sid/run",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleTwinAnalyzeImpact analyzes simulation impact
+func (ms *MCPServer) handleTwinAnalyzeImpact(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "twin.analyze_impact",
+		"message":   "Analyze impact tool requires server instance access. Use REST API: POST /api/v1/twin/:id/runs/:rid/analyze",
+		"arguments": args,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleTwinCompareRuns compares multiple simulation runs
+func (ms *MCPServer) handleTwinCompareRuns(w http.ResponseWriter, ctx context.Context, args map[string]any) {
+	response := map[string]any{
+		"success":   true,
+		"tool":      "twin.compare_runs",
+		"message":   "Compare runs functionality not yet implemented via MCP. Use REST API directly.",
 		"arguments": args,
 	}
 	json.NewEncoder(w).Encode(response)

@@ -54,11 +54,11 @@ func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request)
 
 	tools := make([]map[string]any, 0)
 
-	// Add specialized ontology tools for agents
-	tools = append(tools, ms.getOntologyTools()...)
-
-	// Add specialized digital twin tools for agents
-	tools = append(tools, ms.getDigitalTwinTools()...)
+	// Optionally include built-in tools (ontology, digital twin) when requested via query parameter
+	if r.URL.Query().Get("include_builtin") == "true" {
+		tools = append(tools, ms.getOntologyTools()...)
+		tools = append(tools, ms.getDigitalTwinTools()...)
+	}
 
 	// Add all registered plugins as tools
 	for pluginType, typePlugins := range ms.registry.GetAllPlugins() {
@@ -254,6 +254,7 @@ func (ms *MCPServer) getOntologyTools() []map[string]any {
 func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Name      string         `json:"name"`
+		ToolName  string         `json:"tool_name"`
 		Arguments map[string]any `json:"arguments"`
 	}
 
@@ -262,18 +263,24 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Support legacy 'tool_name' for backwards compatibility
+	toolFullName := request.Name
+	if toolFullName == "" {
+		toolFullName = request.ToolName
+	}
+
 	// Route to appropriate handler based on tool name
-	if strings.HasPrefix(request.Name, "ontology.") {
-		ms.handleOntologyTool(w, r, request.Name, request.Arguments)
+	if strings.HasPrefix(toolFullName, "ontology.") {
+		ms.handleOntologyTool(w, r, toolFullName, request.Arguments)
 		return
 	}
-	if strings.HasPrefix(request.Name, "twin.") {
-		ms.handleDigitalTwinTool(w, r, request.Name, request.Arguments)
+	if strings.HasPrefix(toolFullName, "twin.") {
+		ms.handleDigitalTwinTool(w, r, toolFullName, request.Arguments)
 		return
 	}
 
 	// Parse tool name (e.g., "Input.api" -> type: "Input", name: "api")
-	toolParts := strings.Split(request.Name, ".")
+	toolParts := strings.Split(toolFullName, ".")
 	if len(toolParts) != 2 {
 		http.Error(w, "Invalid tool name format", http.StatusBadRequest)
 		return

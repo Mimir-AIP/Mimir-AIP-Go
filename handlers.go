@@ -1457,6 +1457,18 @@ func (s *Server) handleSelectData(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				utils.GetLogger().Warn(fmt.Sprintf("Failed to write ontology file: %v", err))
 			}
+
+			// Load ontology into TDB2 knowledge graph if available
+			if s.tdb2Backend != nil {
+				err = s.tdb2Backend.LoadOntology(r.Context(), ont.TDB2Graph, ontologyContent, "turtle")
+				if err != nil {
+					utils.GetLogger().Warn(fmt.Sprintf("Failed to load ontology into TDB2: %v", err))
+					response["kg_warning"] = "Ontology saved but failed to load into knowledge graph"
+				} else {
+					utils.GetLogger().Info(fmt.Sprintf("Loaded ontology %s into TDB2 graph %s", ontologyID, ont.TDB2Graph))
+					response["kg_graph"] = ont.TDB2Graph
+				}
+			}
 		}
 	}
 

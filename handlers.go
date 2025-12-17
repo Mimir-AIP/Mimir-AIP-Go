@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -1086,4 +1088,463 @@ func (s *Server) handleVisualizePlugins(w http.ResponseWriter, r *http.Request) 
 	visualization := visualizer.VisualizePluginRegistry(s.registry)
 
 	_, _ = w.Write([]byte(visualization))
+}
+
+// Data ingestion handlers for flexible plugin-based data upload and processing
+
+// ExtendedPluginInfo represents detailed information about an input plugin
+type ExtendedPluginInfo struct {
+	Type             string         `json:"type"`
+	Name             string         `json:"name"`
+	Description      string         `json:"description"`
+	ConfigSchema     map[string]any `json:"config_schema"`
+	SupportedFormats []string       `json:"supported_formats"`
+}
+
+// DataUploadRequest represents a file upload request
+type DataUploadRequest struct {
+	PluginType string         `json:"plugin_type"`
+	PluginName string         `json:"plugin_name"`
+	Config     map[string]any `json:"config"`
+	File       []byte         `json:"file,omitempty"` // For API uploads
+	FileName   string         `json:"file_name,omitempty"`
+}
+
+// DataPreviewRequest represents a request to preview parsed data
+type DataPreviewRequest struct {
+	UploadID   string         `json:"upload_id"`
+	PluginType string         `json:"plugin_type"`
+	PluginName string         `json:"plugin_name"`
+	Config     map[string]any `json:"config"`
+	MaxRows    int            `json:"max_rows,omitempty"` // Limit preview rows
+}
+
+// DataSelection represents selected data for ontology generation
+type DataSelection struct {
+	UploadID        string             `json:"upload_id"`
+	SelectedColumns []string           `json:"selected_columns"`
+	ColumnMappings  map[string]string  `json:"column_mappings,omitempty"` // column -> property name
+	Relationships   []RelationshipSpec `json:"relationships,omitempty"`
+}
+
+// RelationshipSpec defines a relationship between columns/entities
+type RelationshipSpec struct {
+	SourceColumn     string  `json:"source_column"`
+	TargetColumn     string  `json:"target_column"`
+	RelationshipType string  `json:"relationship_type"`
+	Strength         float64 `json:"strength,omitempty"`
+}
+
+// handleListInputPlugins lists all available input plugins for data ingestion
+func (s *Server) handleListInputPlugins(w http.ResponseWriter, r *http.Request) {
+	plugins := []ExtendedPluginInfo{}
+
+	// Get all plugins from registry
+	allPlugins := s.registry.GetAllPlugins()
+
+	// Filter for Input plugins
+	if inputPlugins, exists := allPlugins["Input"]; exists {
+		for name := range inputPlugins {
+			pluginInfo := ExtendedPluginInfo{
+				Type:        "Input",
+				Name:        name,
+				Description: fmt.Sprintf("%s input plugin", name),
+			}
+
+			// Add basic config schema
+			pluginInfo.ConfigSchema = map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"file_path": map[string]any{
+						"type":        "string",
+						"description": "Path to the input file",
+					},
+				},
+				"required": []string{"file_path"},
+			}
+
+			// Add supported formats based on plugin name
+			switch name {
+			case "csv":
+				pluginInfo.SupportedFormats = []string{"csv", "tsv", "txt"}
+				pluginInfo.Description = "CSV and delimited text files"
+				pluginInfo.ConfigSchema = map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"file_path": map[string]any{
+							"type":        "string",
+							"description": "Path to the CSV file",
+						},
+						"has_headers": map[string]any{
+							"type":        "boolean",
+							"description": "Whether first row contains headers",
+							"default":     true,
+						},
+						"delimiter": map[string]any{
+							"type":        "string",
+							"description": "Field delimiter",
+							"default":     ",",
+						},
+					},
+					"required": []string{"file_path"},
+				}
+			case "markdown":
+				pluginInfo.SupportedFormats = []string{"md", "markdown"}
+				pluginInfo.Description = "Markdown documents with sections and metadata"
+				pluginInfo.ConfigSchema = map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"file_path": map[string]any{
+							"type":        "string",
+							"description": "Path to the Markdown file",
+						},
+						"extract_sections": map[string]any{
+							"type":        "boolean",
+							"description": "Extract headings and sections",
+							"default":     true,
+						},
+						"extract_links": map[string]any{
+							"type":        "boolean",
+							"description": "Extract links and images",
+							"default":     true,
+						},
+						"extract_metadata": map[string]any{
+							"type":        "boolean",
+							"description": "Extract YAML frontmatter",
+							"default":     true,
+						},
+					},
+					"required": []string{"file_path"},
+				}
+			case "excel":
+				pluginInfo.SupportedFormats = []string{"xlsx", "xls"}
+				pluginInfo.Description = "Excel spreadsheets (.xlsx)"
+				pluginInfo.ConfigSchema = map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"file_path": map[string]any{
+							"type":        "string",
+							"description": "Path to the Excel file",
+						},
+						"sheet_name": map[string]any{
+							"type":        "string",
+							"description": "Sheet name to read (optional)",
+						},
+						"has_headers": map[string]any{
+							"type":        "boolean",
+							"description": "Whether first row contains headers",
+							"default":     true,
+						},
+					},
+					"required": []string{"file_path"},
+				}
+			}
+
+			plugins = append(plugins, pluginInfo)
+		}
+	}
+
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"plugins": plugins,
+	})
+}
+
+// handleUploadData handles file uploads for data ingestion
+func (s *Server) handleUploadData(w http.ResponseWriter, r *http.Request) {
+	// Parse multipart form
+	err := r.ParseMultipartForm(32 << 20) // 32MB max
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Failed to parse multipart form: %v", err))
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Failed to get file: %v", err))
+		return
+	}
+	defer file.Close()
+
+	// Get plugin info from form
+	pluginType := r.FormValue("plugin_type")
+	pluginName := r.FormValue("plugin_name")
+
+	if pluginType == "" || pluginName == "" {
+		writeBadRequestResponse(w, "plugin_type and plugin_name are required")
+		return
+	}
+
+	// Read file content
+	fileContent := make([]byte, header.Size)
+	_, err = file.Read(fileContent)
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Failed to read file: %v", err))
+		return
+	}
+
+	// Generate upload ID and create temporary file path
+	uploadID := fmt.Sprintf("upload_%d_%s", time.Now().Unix(), header.Filename)
+	tempDir := "/tmp/mimir-uploads"
+	os.MkdirAll(tempDir, 0755) // Create directory if it doesn't exist
+	tempFilePath := fmt.Sprintf("%s/%s", tempDir, uploadID)
+
+	// Save file to temporary location
+	tempFile, err := os.Create(tempFilePath)
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Failed to create temp file: %v", err))
+		return
+	}
+	defer tempFile.Close()
+
+	// Reset file reader to beginning
+	file.Seek(0, 0)
+	_, err = io.Copy(tempFile, file)
+	if err != nil {
+		os.Remove(tempFilePath) // Clean up on error
+		writeBadRequestResponse(w, fmt.Sprintf("Failed to save file: %v", err))
+		return
+	}
+
+	// Basic validation based on plugin type
+	err = s.validateUploadedFile(pluginType, pluginName, header.Filename, fileContent)
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("File validation failed: %v", err))
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"upload_id":   uploadID,
+		"filename":    header.Filename,
+		"size":        header.Size,
+		"plugin_type": pluginType,
+		"plugin_name": pluginName,
+		"message":     "File uploaded successfully",
+	})
+}
+
+// handlePreviewData previews parsed data from uploaded file
+func (s *Server) handlePreviewData(w http.ResponseWriter, r *http.Request) {
+	var req DataPreviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	if req.UploadID == "" || req.PluginType == "" || req.PluginName == "" {
+		writeBadRequestResponse(w, "upload_id, plugin_type, and plugin_name are required")
+		return
+	}
+
+	// Set default max rows if not specified
+	if req.MaxRows <= 0 {
+		req.MaxRows = 100
+	}
+
+	// Get the plugin
+	plugin, err := s.registry.GetPlugin(req.PluginType, req.PluginName)
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Plugin not found: %v", err))
+		return
+	}
+
+	// For now, we'll simulate file access (in real implementation, retrieve from storage)
+	// Create a temporary context with file path
+	globalContext := pipelines.NewPluginContext()
+
+	// Set file path in config (this would normally come from stored upload metadata)
+	if req.Config == nil {
+		req.Config = make(map[string]any)
+	}
+	req.Config["file_path"] = fmt.Sprintf("/tmp/mimir-uploads/%s", req.UploadID)
+
+	// Execute plugin to parse data
+	stepConfig := pipelines.StepConfig{
+		Name:   "data_preview",
+		Plugin: fmt.Sprintf("%s.%s", req.PluginType, req.PluginName),
+		Config: req.Config,
+		Output: "preview_data",
+	}
+
+	result, err := plugin.ExecuteStep(r.Context(), stepConfig, globalContext)
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Data parsing failed: %v", err))
+		return
+	}
+
+	// Get parsed data
+	parsedData, ok := result.Get("preview_data")
+	if !ok {
+		writeBadRequestResponse(w, "Failed to get parsed data from plugin")
+		return
+	}
+
+	// Limit rows for preview
+	limitedData := s.limitPreviewData(parsedData, req.MaxRows)
+
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"upload_id":    req.UploadID,
+		"plugin_type":  req.PluginType,
+		"plugin_name":  req.PluginName,
+		"data":         limitedData,
+		"preview_rows": req.MaxRows,
+		"message":      "Data preview generated successfully",
+	})
+}
+
+// handleSelectData handles data column/relationship selection for ontology generation
+func (s *Server) handleSelectData(w http.ResponseWriter, r *http.Request) {
+	var selection DataSelection
+	if err := json.NewDecoder(r.Body).Decode(&selection); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	if selection.UploadID == "" {
+		writeBadRequestResponse(w, "upload_id is required")
+		return
+	}
+
+	if len(selection.SelectedColumns) == 0 {
+		writeBadRequestResponse(w, "At least one column must be selected")
+		return
+	}
+
+	// Generate ontology from selection
+	ontology, err := s.generateOntologyFromSelection(selection)
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Ontology generation failed: %v", err))
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"selection": selection,
+		"ontology":  ontology,
+		"message":   "Ontology generated successfully from selected data",
+	})
+}
+
+// validateUploadedFile performs basic validation based on plugin type
+func (s *Server) validateUploadedFile(pluginType, pluginName, filename string, content []byte) error {
+	// Check file extension
+	switch pluginName {
+	case "csv":
+		if !strings.HasSuffix(strings.ToLower(filename), ".csv") &&
+			!strings.HasSuffix(strings.ToLower(filename), ".tsv") &&
+			!strings.HasSuffix(strings.ToLower(filename), ".txt") {
+			return fmt.Errorf("invalid file type for CSV plugin: %s", filename)
+		}
+	case "markdown":
+		if !strings.HasSuffix(strings.ToLower(filename), ".md") &&
+			!strings.HasSuffix(strings.ToLower(filename), ".markdown") {
+			return fmt.Errorf("invalid file type for Markdown plugin: %s", filename)
+		}
+	case "excel":
+		if !strings.HasSuffix(strings.ToLower(filename), ".xlsx") &&
+			!strings.HasSuffix(strings.ToLower(filename), ".xls") {
+			return fmt.Errorf("invalid file type for Excel plugin: %s", filename)
+		}
+	}
+
+	// Basic content validation
+	if len(content) == 0 {
+		return fmt.Errorf("file is empty")
+	}
+
+	// Plugin-specific validation could go here
+	switch pluginName {
+	case "csv":
+		// Check if it looks like CSV data
+		contentStr := string(content)
+		if !strings.Contains(contentStr, ",") && !strings.Contains(contentStr, "\t") {
+			return fmt.Errorf("file does not appear to be CSV or delimited data")
+		}
+	case "markdown":
+		// Check if it has markdown-like content
+		contentStr := string(content)
+		if !strings.Contains(contentStr, "#") && !strings.Contains(contentStr, "[") {
+			return fmt.Errorf("file does not appear to be Markdown format")
+		}
+	}
+
+	return nil
+}
+
+// limitPreviewData limits the number of rows returned for preview
+func (s *Server) limitPreviewData(data any, maxRows int) any {
+	// This is a simple implementation - in reality, you'd need to handle
+	// the specific data structure returned by each plugin
+	dataMap, ok := data.(map[string]any)
+	if !ok {
+		return data
+	}
+
+	// Check if it has rows array
+	if rows, exists := dataMap["rows"]; exists {
+		if rowsSlice, ok := rows.([]any); ok && len(rowsSlice) > maxRows {
+			dataMap["rows"] = rowsSlice[:maxRows]
+			dataMap["preview_limited"] = true
+			dataMap["total_rows"] = len(rowsSlice)
+		}
+	}
+
+	return dataMap
+}
+
+// generateOntologyFromSelection creates a basic ontology from selected data
+func (s *Server) generateOntologyFromSelection(selection DataSelection) (map[string]any, error) {
+	// This is a simplified ontology generation
+	// In a full implementation, this would use AI/LLM to generate proper ontologies
+
+	ontology := map[string]any{
+		"id":          fmt.Sprintf("ontology_%d", time.Now().Unix()),
+		"name":        fmt.Sprintf("Generated from %s", selection.UploadID),
+		"description": "Automatically generated ontology from selected data",
+		"version":     "1.0.0",
+		"format":      "turtle",
+		"classes":     []map[string]any{},
+		"properties":  []map[string]any{},
+		"created_at":  time.Now().Format(time.RFC3339),
+	}
+
+	// Generate classes from selected columns
+	classes := []map[string]any{}
+	properties := []map[string]any{}
+
+	for _, column := range selection.SelectedColumns {
+		// Create a class for each column (simplified approach)
+		className := strings.Title(strings.ReplaceAll(column, "_", " "))
+		class := map[string]any{
+			"name":        className,
+			"uri":         fmt.Sprintf("http://example.org/%s", strings.ToLower(strings.ReplaceAll(column, "_", ""))),
+			"description": fmt.Sprintf("Class representing %s data", column),
+		}
+		classes = append(classes, class)
+
+		// Create properties for the class
+		property := map[string]any{
+			"name":        column,
+			"uri":         fmt.Sprintf("http://example.org/has%s", strings.Title(strings.ReplaceAll(column, "_", ""))),
+			"domain":      class["uri"],
+			"range":       "xsd:string", // Default to string
+			"description": fmt.Sprintf("Property for %s", column),
+		}
+		properties = append(properties, property)
+	}
+
+	// Add relationships if specified
+	for _, rel := range selection.Relationships {
+		relationship := map[string]any{
+			"name":          rel.RelationshipType,
+			"source_column": rel.SourceColumn,
+			"target_column": rel.TargetColumn,
+			"strength":      rel.Strength,
+			"description":   fmt.Sprintf("Relationship between %s and %s", rel.SourceColumn, rel.TargetColumn),
+		}
+		properties = append(properties, relationship)
+	}
+
+	ontology["classes"] = classes
+	ontology["properties"] = properties
+
+	return ontology, nil
 }

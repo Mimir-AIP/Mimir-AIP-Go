@@ -18,7 +18,53 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
+  ChevronDown,
+  ChevronUp,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  BarChart3,
+  GitBranch,
 } from "lucide-react";
+
+// ==================== TYPE DEFINITIONS ====================
+
+// Profiling Types
+interface ValueFrequency {
+  value: any;
+  count: number;
+  frequency: number;
+}
+
+interface ColumnProfile {
+  column_name: string;
+  data_type: string;
+  total_count: number;
+  distinct_count: number;
+  distinct_percent: number;
+  null_count: number;
+  null_percent: number;
+  min_value?: any;
+  max_value?: any;
+  mean?: number;
+  median?: number;
+  std_dev?: number;
+  min_length?: number;
+  max_length?: number;
+  avg_length?: number;
+  top_values: ValueFrequency[];
+  data_quality_score: number;
+  quality_issues: string[];
+}
+
+interface DataProfileSummary {
+  total_rows: number;
+  total_columns: number;
+  total_distinct_values: number;
+  overall_quality_score: number;
+  suggested_primary_keys: string[];
+  column_profiles: ColumnProfile[];
+}
 
 // Data preview response
 interface DataPreviewResponse {
@@ -28,6 +74,7 @@ interface DataPreviewResponse {
   data: any;
   preview_rows: number;
   message: string;
+  profile?: DataProfileSummary;
 }
 
 // Column selection state
@@ -38,6 +85,8 @@ interface ColumnSelection {
   sampleValues: any[];
 }
 
+// ==================== MAIN COMPONENT ====================
+
 export default function DataPreviewPage() {
   const params = useParams();
   const router = useRouter();
@@ -47,6 +96,9 @@ export default function DataPreviewPage() {
   const [previewData, setPreviewData] = useState<DataPreviewResponse | null>(null);
   const [columns, setColumns] = useState<ColumnSelection[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [enableProfiling, setEnableProfiling] = useState(true);
+  const [createTwin, setCreateTwin] = useState(false);
+  const [expandedProfiles, setExpandedProfiles] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (uploadId) {
@@ -64,7 +116,8 @@ export default function DataPreviewPage() {
         },
         body: JSON.stringify({
           upload_id: uploadId,
-          max_rows: 50, // Preview first 50 rows
+          max_rows: 50,
+          profile: enableProfiling,
         }),
       });
 
@@ -135,6 +188,18 @@ export default function DataPreviewPage() {
     );
   };
 
+  const toggleProfileExpansion = (columnName: string) => {
+    setExpandedProfiles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(columnName)) {
+        newSet.delete(columnName);
+      } else {
+        newSet.add(columnName);
+      }
+      return newSet;
+    });
+  };
+
   const handleGenerateOntology = async () => {
     const selectedColumns = columns.filter(col => col.selected).map(col => col.name);
 
@@ -153,7 +218,7 @@ export default function DataPreviewPage() {
         body: JSON.stringify({
           upload_id: uploadId,
           selected_columns: selectedColumns,
-          // Additional mappings could be added here
+          create_twin: createTwin,
         }),
       });
 
@@ -163,7 +228,12 @@ export default function DataPreviewPage() {
       }
 
       const result = await response.json();
-      toast.success("Ontology generated successfully!");
+      
+      if (createTwin && result.digital_twin) {
+        toast.success(`Ontology and Digital Twin created successfully!`);
+      } else {
+        toast.success("Ontology generated successfully!");
+      }
 
       // Redirect to ontology page or show result
       router.push(`/ontologies`);
@@ -191,6 +261,22 @@ export default function DataPreviewPage() {
     }
   };
 
+  const getQualityBadge = (score: number) => {
+    if (score >= 0.8) {
+      return <Badge className="bg-green-600">Good ({(score * 100).toFixed(0)}%)</Badge>;
+    } else if (score >= 0.6) {
+      return <Badge className="bg-yellow-600">Fair ({(score * 100).toFixed(0)}%)</Badge>;
+    } else {
+      return <Badge className="bg-red-600">Poor ({(score * 100).toFixed(0)}%)</Badge>;
+    }
+  };
+
+  const getQualityColor = (score: number) => {
+    if (score >= 0.8) return "text-green-600";
+    if (score >= 0.6) return "text-yellow-600";
+    return "text-red-600";
+  };
+
   if (loading) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
@@ -215,7 +301,7 @@ export default function DataPreviewPage() {
     );
   }
 
-  const { data } = previewData;
+  const { data, profile } = previewData;
   const hasData = data?.rows && data.rows.length > 0;
 
   return (
@@ -229,6 +315,59 @@ export default function DataPreviewPage() {
           Review your data and select columns for ontology generation
         </p>
       </div>
+
+      {/* Data Quality Summary Card */}
+      {profile && (
+        <Card className="mb-6 border-2 border-blue-200">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Activity className="h-5 w-5 mr-2 text-blue-500" />
+              Data Quality Summary
+            </CardTitle>
+            <CardDescription>
+              Overall assessment of your dataset health
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="text-center">
+                <div className={`text-3xl font-bold ${getQualityColor(profile.overall_quality_score)}`}>
+                  {(profile.overall_quality_score * 100).toFixed(0)}%
+                </div>
+                <div className="text-sm text-gray-600">Overall Quality</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-blue-600">{profile.total_rows.toLocaleString()}</div>
+                <div className="text-sm text-gray-600">Total Rows</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-purple-600">{profile.total_columns}</div>
+                <div className="text-sm text-gray-600">Total Columns</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-green-600">{profile.total_distinct_values.toLocaleString()}</div>
+                <div className="text-sm text-gray-600">Distinct Values</div>
+              </div>
+            </div>
+
+            {profile.suggested_primary_keys && profile.suggested_primary_keys.length > 0 && (
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center mb-2">
+                  <Database className="h-4 w-4 mr-2 text-blue-600" />
+                  <span className="font-semibold text-sm text-blue-900">Suggested Primary Keys</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {profile.suggested_primary_keys.map((key, idx) => (
+                    <Badge key={idx} className="bg-blue-600">
+                      {key}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Column Selection */}
@@ -245,36 +384,76 @@ export default function DataPreviewPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {columns.map((column) => (
-                  <div key={column.name} className="flex items-center space-x-3 p-3 border rounded-lg">
-                    <Checkbox
-                      id={`col-${column.name}`}
-                      checked={column.selected}
-                      onCheckedChange={() => toggleColumn(column.name)}
-                    />
-                    <div className="flex-1">
-                      <label
-                        htmlFor={`col-${column.name}`}
-                        className="font-medium cursor-pointer flex items-center"
-                      >
-                        {column.selected ? (
-                          <Eye className="h-4 w-4 mr-2 text-green-500" />
-                        ) : (
-                          <EyeOff className="h-4 w-4 mr-2 text-gray-400" />
-                        )}
-                        {column.name}
-                      </label>
-                      <div className="flex items-center mt-1 text-sm text-gray-500">
-                        {getDataTypeIcon(column.dataType)}
-                        <span className="ml-1 capitalize">{column.dataType}</span>
-                        <span className="ml-2">• {column.sampleValues.length} samples</span>
+                {columns.map((column) => {
+                  const columnProfile = profile?.column_profiles.find(p => p.column_name === column.name);
+                  const isPrimaryKey = profile?.suggested_primary_keys.includes(column.name);
+
+                  return (
+                    <div key={column.name} className={`p-3 border rounded-lg ${isPrimaryKey ? 'border-blue-400 bg-blue-50' : ''}`}>
+                      <div className="flex items-center space-x-3">
+                        <Checkbox
+                          id={`col-${column.name}`}
+                          checked={column.selected}
+                          onCheckedChange={() => toggleColumn(column.name)}
+                        />
+                        <div className="flex-1">
+                          <label
+                            htmlFor={`col-${column.name}`}
+                            className="font-medium cursor-pointer flex items-center"
+                          >
+                            {column.selected ? (
+                              <Eye className="h-4 w-4 mr-2 text-green-500" />
+                            ) : (
+                              <EyeOff className="h-4 w-4 mr-2 text-gray-400" />
+                            )}
+                            {column.name}
+                            {isPrimaryKey && (
+                              <Badge className="ml-2 bg-blue-600 text-xs">PK</Badge>
+                            )}
+                          </label>
+                          <div className="flex items-center mt-1 text-sm text-gray-500">
+                            {getDataTypeIcon(column.dataType)}
+                            <span className="ml-1 capitalize">{column.dataType}</span>
+                          </div>
+                          {columnProfile && (
+                            <div className="mt-2">
+                              {getQualityBadge(columnProfile.data_quality_score)}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-6 space-y-3">
+                {/* Profiling Checkbox */}
+                <div className="flex items-center space-x-2 p-3 border rounded-lg bg-gray-50">
+                  <Checkbox
+                    id="enable-profiling"
+                    checked={enableProfiling}
+                    onCheckedChange={(checked) => setEnableProfiling(checked as boolean)}
+                  />
+                  <label htmlFor="enable-profiling" className="text-sm font-medium cursor-pointer flex items-center">
+                    <BarChart3 className="h-4 w-4 mr-2 text-blue-500" />
+                    Enable Data Profiling
+                  </label>
+                </div>
+
+                {/* Create Twin Checkbox */}
+                <div className="flex items-center space-x-2 p-3 border rounded-lg bg-gray-50">
+                  <Checkbox
+                    id="create-twin"
+                    checked={createTwin}
+                    onCheckedChange={(checked) => setCreateTwin(checked as boolean)}
+                  />
+                  <label htmlFor="create-twin" className="text-sm font-medium cursor-pointer flex items-center">
+                    <GitBranch className="h-4 w-4 mr-2 text-purple-500" />
+                    Create Digital Twin
+                  </label>
+                </div>
+
                 <Button
                   onClick={handleGenerateOntology}
                   disabled={generating || columns.filter(c => c.selected).length === 0}
@@ -283,12 +462,12 @@ export default function DataPreviewPage() {
                   {generating ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Generating Ontology...
+                      Generating...
                     </>
                   ) : (
                     <>
                       <Database className="h-4 w-4 mr-2" />
-                      Generate Ontology
+                      Generate Ontology {createTwin && "+ Twin"}
                     </>
                   )}
                 </Button>
@@ -325,17 +504,19 @@ export default function DataPreviewPage() {
                         {data.columns?.map((col: string, index: number) => {
                           const column = columns.find(c => c.name === col);
                           const isSelected = column?.selected ?? false;
+                          const isPrimaryKey = profile?.suggested_primary_keys.includes(col);
                           return (
                             <th
                               key={col}
                               className={`border border-gray-300 px-4 py-2 text-left text-sm font-medium ${
                                 isSelected ? 'bg-green-50 text-green-800' : 'text-gray-500'
-                              }`}
+                              } ${isPrimaryKey ? 'border-2 border-blue-400' : ''}`}
                             >
                               <div className="flex items-center">
                                 {getDataTypeIcon(column?.dataType || 'unknown')}
                                 <span className="ml-2">{col}</span>
                                 {isSelected && <CheckCircle className="h-4 w-4 ml-2 text-green-500" />}
+                                {isPrimaryKey && <Database className="h-4 w-4 ml-2 text-blue-500" />}
                               </div>
                             </th>
                           );
@@ -373,8 +554,124 @@ export default function DataPreviewPage() {
             </CardContent>
           </Card>
 
+          {/* Column Profiling Details */}
+          {profile && profile.column_profiles.length > 0 && (
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <BarChart3 className="h-5 w-5 mr-2" />
+                  Column Profiling Details
+                </CardTitle>
+                <CardDescription>
+                  Detailed statistics and quality metrics for each column
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {profile.column_profiles.map((colProfile) => {
+                    const isExpanded = expandedProfiles.has(colProfile.column_name);
+                    return (
+                      <div key={colProfile.column_name} className="border rounded-lg">
+                        <div
+                          className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50"
+                          onClick={() => toggleProfileExpansion(colProfile.column_name)}
+                        >
+                          <div className="flex items-center space-x-3 flex-1">
+                            <div>
+                              <div className="font-medium">{colProfile.column_name}</div>
+                              <div className="text-sm text-gray-500 capitalize">{colProfile.data_type}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-3">
+                            {getQualityBadge(colProfile.data_quality_score)}
+                            {isExpanded ? (
+                              <ChevronUp className="h-5 w-5 text-gray-500" />
+                            ) : (
+                              <ChevronDown className="h-5 w-5 text-gray-500" />
+                            )}
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="px-4 pb-4 border-t">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                              <div>
+                                <div className="text-xs text-gray-500">Distinct</div>
+                                <div className="font-semibold">{colProfile.distinct_percent.toFixed(1)}%</div>
+                                <div className="text-xs text-gray-400">{colProfile.distinct_count.toLocaleString()} values</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-500">Nulls</div>
+                                <div className={`font-semibold ${colProfile.null_percent > 20 ? 'text-red-600' : 'text-green-600'}`}>
+                                  {colProfile.null_percent.toFixed(1)}%
+                                </div>
+                                <div className="text-xs text-gray-400">{colProfile.null_count.toLocaleString()} nulls</div>
+                              </div>
+                              {colProfile.mean !== undefined && (
+                                <div>
+                                  <div className="text-xs text-gray-500">Mean</div>
+                                  <div className="font-semibold">{colProfile.mean.toFixed(2)}</div>
+                                </div>
+                              )}
+                              {colProfile.avg_length !== undefined && (
+                                <div>
+                                  <div className="text-xs text-gray-500">Avg Length</div>
+                                  <div className="font-semibold">{colProfile.avg_length.toFixed(1)}</div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Top Values */}
+                            {colProfile.top_values && colProfile.top_values.length > 0 && (
+                              <div className="mt-4">
+                                <div className="text-sm font-semibold mb-2">Top Values</div>
+                                <div className="space-y-1">
+                                  {colProfile.top_values.slice(0, 5).map((vf, idx) => (
+                                    <div key={idx} className="flex items-center justify-between text-sm">
+                                      <span className="truncate max-w-[200px]">{String(vf.value)}</span>
+                                      <div className="flex items-center space-x-2">
+                                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                                          <div
+                                            className="bg-blue-500 h-2 rounded-full"
+                                            style={{ width: `${vf.frequency * 100}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-gray-500 text-xs w-12 text-right">
+                                          {(vf.frequency * 100).toFixed(1)}%
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Quality Issues */}
+                            {colProfile.quality_issues && colProfile.quality_issues.length > 0 && (
+                              <div className="mt-4">
+                                <div className="text-sm font-semibold mb-2 text-red-600">Quality Issues</div>
+                                <ul className="space-y-1">
+                                  {colProfile.quality_issues.map((issue, idx) => (
+                                    <li key={idx} className="text-sm text-red-600 flex items-start">
+                                      <AlertCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+                                      {issue}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Data Statistics */}
-          {hasData && (
+          {hasData && !profile && (
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle>Data Statistics</CardTitle>

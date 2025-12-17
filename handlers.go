@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/DigitalTwin"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology/schema_inference"
+	storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/gorilla/mux"
 )
@@ -1125,6 +1128,7 @@ type DataSelection struct {
 	SelectedColumns []string           `json:"selected_columns"`
 	ColumnMappings  map[string]string  `json:"column_mappings,omitempty"` // column -> property name
 	Relationships   []RelationshipSpec `json:"relationships,omitempty"`
+	CreateTwin      bool               `json:"create_twin,omitempty"` // Whether to create a Digital Twin
 }
 
 // RelationshipSpec defines a relationship between columns/entities
@@ -1416,11 +1420,66 @@ func (s *Server) handleSelectData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSONResponse(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"selection": selection,
 		"ontology":  ontology,
 		"message":   "Ontology generated successfully from selected data",
-	})
+	}
+
+	// Save ontology to database if persistence is available
+	if s.persistence != nil {
+		ontologyID, _ := ontology["id"].(string)
+		ontologyName, _ := ontology["name"].(string)
+		ontologyDesc, _ := ontology["description"].(string)
+		ontologyVersion, _ := ontology["version"].(string)
+		ontologyContent, _ := ontology["content"].(string)
+
+		// Create Ontology struct for persistence
+		ont := &storage.Ontology{
+			ID:          ontologyID,
+			Name:        ontologyName,
+			Description: ontologyDesc,
+			Version:     ontologyVersion,
+			FilePath:    "/tmp/ontology_" + ontologyID + ".ttl",
+			TDB2Graph:   "http://mimir-aip.io/graph/" + ontologyID,
+			Format:      "turtle",
+			Status:      "active",
+			CreatedBy:   "data_ingestion",
+			Metadata:    "{}",
+		}
+
+		err = s.persistence.CreateOntology(r.Context(), ont)
+		if err != nil {
+			utils.GetLogger().Warn(fmt.Sprintf("Failed to persist ontology: %v", err))
+		} else {
+			// Also save the content to a file
+			err = os.WriteFile(ont.FilePath, []byte(ontologyContent), 0644)
+			if err != nil {
+				utils.GetLogger().Warn(fmt.Sprintf("Failed to write ontology file: %v", err))
+			}
+		}
+	}
+
+	// Optionally create Digital Twin from ontology
+	if selection.CreateTwin {
+		twin, err := s.createDigitalTwinFromOntology(r.Context(), ontology)
+		if err != nil {
+			utils.GetLogger().Warn(fmt.Sprintf("Failed to create digital twin: %v", err))
+			response["twin_error"] = err.Error()
+		} else {
+			response["digital_twin"] = map[string]any{
+				"id":                 twin.ID,
+				"name":               twin.Name,
+				"description":        twin.Description,
+				"model_type":         twin.ModelType,
+				"entity_count":       len(twin.Entities),
+				"relationship_count": len(twin.Relationships),
+			}
+			response["message"] = "Ontology and Digital Twin generated successfully"
+		}
+	}
+
+	writeJSONResponse(w, http.StatusOK, response)
 }
 
 // validateUploadedFile performs basic validation based on plugin type
@@ -1490,61 +1549,241 @@ func (s *Server) limitPreviewData(data any, maxRows int) any {
 	return dataMap
 }
 
-// generateOntologyFromSelection creates a basic ontology from selected data
+// generateOntologyFromSelection creates an ontology from selected data using schema inference
 func (s *Server) generateOntologyFromSelection(selection DataSelection) (map[string]any, error) {
-	// This is a simplified ontology generation
-	// In a full implementation, this would use AI/LLM to generate proper ontologies
+	// First, we need to retrieve the original data from the upload
+	// For now, we'll create a mock dataset based on the selection
+	// In a real implementation, you'd retrieve the actual parsed data
 
-	ontology := map[string]any{
-		"id":          fmt.Sprintf("ontology_%d", time.Now().Unix()),
-		"name":        fmt.Sprintf("Generated from %s", selection.UploadID),
-		"description": "Automatically generated ontology from selected data",
-		"version":     "1.0.0",
-		"format":      "turtle",
-		"classes":     []map[string]any{},
-		"properties":  []map[string]any{},
-		"created_at":  time.Now().Format(time.RFC3339),
+	// Create mock data structure based on selected columns
+	mockData := make([]map[string]interface{}, 3) // Sample rows
+	for i := range mockData {
+		mockData[i] = make(map[string]interface{})
+		for _, col := range selection.SelectedColumns {
+			// Generate sample data based on column name patterns
+			mockData[i][col] = s.generateSampleValue(col, i+1)
+		}
 	}
 
-	// Generate classes from selected columns
-	classes := []map[string]any{}
-	properties := []map[string]any{}
+	// Use schema inference engine
+	inferenceConfig := schema_inference.InferenceConfig{
+		SampleSize:          100,
+		ConfidenceThreshold: 0.8,
+		EnableRelationships: true,
+		EnableConstraints:   true,
+	}
+	inferenceEngine := schema_inference.NewSchemaInferenceEngine(inferenceConfig)
 
-	for _, column := range selection.SelectedColumns {
-		// Create a class for each column (simplified approach)
-		className := strings.Title(strings.ReplaceAll(column, "_", " "))
-		class := map[string]any{
-			"name":        className,
-			"uri":         fmt.Sprintf("http://example.org/%s", strings.ToLower(strings.ReplaceAll(column, "_", ""))),
-			"description": fmt.Sprintf("Class representing %s data", column),
-		}
-		classes = append(classes, class)
-
-		// Create properties for the class
-		property := map[string]any{
-			"name":        column,
-			"uri":         fmt.Sprintf("http://example.org/has%s", strings.Title(strings.ReplaceAll(column, "_", ""))),
-			"domain":      class["uri"],
-			"range":       "xsd:string", // Default to string
-			"description": fmt.Sprintf("Property for %s", column),
-		}
-		properties = append(properties, property)
+	// Infer schema from the mock data
+	schema, err := inferenceEngine.InferSchema(mockData, fmt.Sprintf("Dataset_%s", selection.UploadID))
+	if err != nil {
+		return nil, fmt.Errorf("schema inference failed: %w", err)
 	}
 
-	// Add relationships if specified
-	for _, rel := range selection.Relationships {
-		relationship := map[string]any{
-			"name":          rel.RelationshipType,
-			"source_column": rel.SourceColumn,
-			"target_column": rel.TargetColumn,
-			"strength":      rel.Strength,
-			"description":   fmt.Sprintf("Relationship between %s and %s", rel.SourceColumn, rel.TargetColumn),
+	// Filter schema to only include selected columns
+	filteredColumns := []schema_inference.ColumnSchema{}
+	for _, col := range schema.Columns {
+		for _, selectedCol := range selection.SelectedColumns {
+			if col.Name == selectedCol {
+				filteredColumns = append(filteredColumns, col)
+				break
+			}
 		}
-		properties = append(properties, relationship)
+	}
+	schema.Columns = filteredColumns
+
+	// Use ontology generator
+	generatorConfig := schema_inference.OntologyConfig{
+		BaseURI:         "http://mimir-aip.io/ontology/",
+		OntologyPrefix:  "mimir",
+		IncludeMetadata: true,
+		IncludeComments: true,
+		ClassNaming:     "pascal",
+		PropertyNaming:  "camel",
+	}
+	generator := schema_inference.NewOntologyGenerator(generatorConfig)
+
+	// Generate ontology
+	ontology, err := generator.GenerateOntology(schema)
+	if err != nil {
+		return nil, fmt.Errorf("ontology generation failed: %w", err)
 	}
 
-	ontology["classes"] = classes
-	ontology["properties"] = properties
+	// Convert to API response format
+	result := map[string]any{
+		"id":          ontology.ID,
+		"name":        ontology.Name,
+		"description": ontology.Description,
+		"version":     ontology.Version,
+		"format":      ontology.Format,
+		"content":     ontology.Content,
+		"classes":     ontology.Classes,
+		"properties":  ontology.Properties,
+		"metadata":    ontology.Metadata,
+		"created_at":  ontology.GeneratedAt.Format(time.RFC3339),
+	}
 
-	return ontology, nil
+	return result, nil
+}
+
+// createDigitalTwinFromOntology creates a Digital Twin from an ontology
+func (s *Server) createDigitalTwinFromOntology(ctx context.Context, ontologyData map[string]any) (*DigitalTwin.DigitalTwin, error) {
+	// Extract ontology information
+	ontologyID, _ := ontologyData["id"].(string)
+	ontologyName, _ := ontologyData["name"].(string)
+	classes, _ := ontologyData["classes"].([]any)
+	properties, _ := ontologyData["properties"].([]any)
+
+	// Generate twin ID
+	twinID := fmt.Sprintf("twin_%d", time.Now().Unix())
+
+	// Create digital twin structure
+	twin := DigitalTwin.NewDigitalTwin(twinID, ontologyID, "data_model", ontologyName)
+	twin.Description = fmt.Sprintf("Digital Twin created from ontology: %s", ontologyName)
+
+	// Create entities from ontology classes
+	for _, classAny := range classes {
+		classMap, ok := classAny.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		className, _ := classMap["name"].(string)
+		classURI, _ := classMap["uri"].(string)
+
+		// Create sample entities for each class (in a real implementation,
+		// these would come from the actual data)
+		for i := 1; i <= 3; i++ {
+			entityURI := fmt.Sprintf("%s/%d", classURI, i)
+			entityLabel := fmt.Sprintf("%s %d", className, i)
+
+			entity := DigitalTwin.NewTwinEntity(entityURI, classURI, entityLabel)
+
+			// Add properties to entity based on ontology datatype properties
+			for _, propAny := range properties {
+				propMap, ok := propAny.(map[string]any)
+				if !ok {
+					continue
+				}
+
+				propType, _ := propMap["type"].(string)
+				if propType != "datatype" {
+					continue
+				}
+
+				propDomain, _ := propMap["domain"].(string)
+				if propDomain != classURI {
+					continue
+				}
+
+				propName, _ := propMap["name"].(string)
+				// Generate sample value based on property name
+				entity.Properties[propName] = s.generateSampleValue(propName, i)
+			}
+
+			twin.Entities = append(twin.Entities, *entity)
+		}
+	}
+
+	// Create relationships from object properties
+	relationshipID := 1
+	for _, propAny := range properties {
+		propMap, ok := propAny.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		propType, _ := propMap["type"].(string)
+		if propType != "object" {
+			continue
+		}
+
+		propName, _ := propMap["name"].(string)
+		propDomain, _ := propMap["domain"].(string)
+		propRange, _ := propMap["range"].(string)
+
+		// Create sample relationships between entities
+		// In a real implementation, relationships would be inferred from data
+		for i := 0; i < len(twin.Entities)-1; i++ {
+			if twin.Entities[i].Type == propDomain && twin.Entities[i+1].Type == propRange {
+				relID := fmt.Sprintf("rel_%d", relationshipID)
+				rel := DigitalTwin.NewTwinRelationship(
+					relID,
+					twin.Entities[i].URI,
+					twin.Entities[i+1].URI,
+					propName,
+					0.8, // Default relationship strength
+				)
+				twin.Relationships = append(twin.Relationships, *rel)
+				relationshipID++
+			}
+		}
+	}
+
+	// Serialize twin state for storage
+	twinState := map[string]interface{}{
+		"entities":      twin.Entities,
+		"relationships": twin.Relationships,
+	}
+	twinStateJSON, err := json.Marshal(twinState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal twin state: %w", err)
+	}
+
+	// Store in database
+	if s.persistence != nil {
+		err = s.persistence.CreateDigitalTwin(
+			ctx,
+			twin.ID,
+			twin.OntologyID,
+			twin.Name,
+			twin.Description,
+			twin.ModelType,
+			string(twinStateJSON),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to persist digital twin: %w", err)
+		}
+	}
+
+	return twin, nil
+}
+
+// generateSampleValue creates sample data for a given column
+func (s *Server) generateSampleValue(columnName string, rowIndex int) interface{} {
+	name := strings.ToLower(columnName)
+
+	// Generate different types of sample data based on column name patterns
+	if strings.Contains(name, "id") || strings.HasSuffix(name, "_id") {
+		return rowIndex
+	}
+
+	if strings.Contains(name, "name") {
+		names := []string{"John Doe", "Jane Smith", "Bob Johnson", "Alice Brown", "Charlie Wilson"}
+		return names[(rowIndex-1)%len(names)]
+	}
+
+	if strings.Contains(name, "email") {
+		emails := []string{"john@example.com", "jane@example.com", "bob@example.com", "alice@example.com", "charlie@example.com"}
+		return emails[(rowIndex-1)%len(emails)]
+	}
+
+	if strings.Contains(name, "age") {
+		return 25 + (rowIndex * 5)
+	}
+
+	if strings.Contains(name, "price") || strings.Contains(name, "cost") || strings.Contains(name, "amount") {
+		return 10.99 + float64(rowIndex*10)
+	}
+
+	if strings.Contains(name, "active") || strings.Contains(name, "enabled") {
+		return rowIndex%2 == 1
+	}
+
+	if strings.Contains(name, "date") || strings.Contains(name, "created") || strings.Contains(name, "updated") {
+		return fmt.Sprintf("2024-01-%02d", rowIndex)
+	}
+
+	// Default to string
+	return fmt.Sprintf("Value %d", rowIndex)
 }

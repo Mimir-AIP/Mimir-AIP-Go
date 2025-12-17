@@ -8,6 +8,7 @@ import (
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	AI "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/AI"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Input"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
@@ -146,6 +147,29 @@ func (s *Server) registerDefaultPlugins() {
 
 	_ = s.registry.RegisterPlugin(apiPlugin)
 	_ = s.registry.RegisterPlugin(htmlPlugin)
+
+	// Register input plugins for data ingestion
+	csvPlugin := Input.NewCSVPlugin()
+	markdownPlugin := Input.NewMarkdownPlugin()
+	excelPlugin := Input.NewExcelPlugin()
+
+	if err := s.registry.RegisterPlugin(csvPlugin); err != nil {
+		log.Printf("Failed to register CSV plugin: %v", err)
+	} else {
+		log.Println("Registered CSV input plugin")
+	}
+
+	if err := s.registry.RegisterPlugin(markdownPlugin); err != nil {
+		log.Printf("Failed to register Markdown plugin: %v", err)
+	} else {
+		log.Println("Registered Markdown input plugin")
+	}
+
+	if err := s.registry.RegisterPlugin(excelPlugin); err != nil {
+		log.Printf("Failed to register Excel plugin: %v", err)
+	} else {
+		log.Println("Registered Excel input plugin")
+	}
 
 	// Register ontology plugins if persistence is available
 	if s.persistence != nil && s.tdb2Backend != nil {

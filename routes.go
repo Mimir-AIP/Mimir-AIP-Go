@@ -178,7 +178,7 @@ func (s *Server) setupRoutes() {
 	// Proxy non-API requests to Next.js server running on port 3000
 	nextJSURL := os.Getenv("NEXTJS_URL")
 	if nextJSURL == "" {
-		nextJSURL = "http://localhost:3000"
+		nextJSURL = "http://localhost:3001"
 	}
 
 	// Parse Next.js backend URL

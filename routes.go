@@ -131,6 +131,26 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/jobs/statistics", s.handleGetJobStatistics).Methods("GET")
 	v1.HandleFunc("/jobs/{id}/stop", s.handleStopJobExecution).Methods("POST")
 
+	// Digital Twin endpoints
+	v1.HandleFunc("/twin", s.handleListTwins).Methods("GET")
+	v1.HandleFunc("/twin/create", s.handleCreateTwin).Methods("POST")
+	v1.HandleFunc("/twin/{id}", s.handleGetTwin).Methods("GET")
+	v1.HandleFunc("/twin/{id}/state", s.handleGetTwinState).Methods("GET")
+	v1.HandleFunc("/twin/{id}/scenarios", s.handleListScenarios).Methods("GET")
+	v1.HandleFunc("/twin/{id}/scenarios", s.handleCreateScenario).Methods("POST")
+	v1.HandleFunc("/twin/{id}/scenarios/{sid}/run", s.handleRunSimulation).Methods("POST")
+	v1.HandleFunc("/twin/{id}/runs/{rid}", s.handleGetSimulationRun).Methods("GET")
+	v1.HandleFunc("/twin/{id}/runs/{rid}/timeline", s.handleGetSimulationTimeline).Methods("GET")
+	v1.HandleFunc("/twin/{id}/runs/{rid}/analyze", s.handleAnalyzeImpact).Methods("POST")
+
+	// Agent Chat endpoints
+	v1.HandleFunc("/chat", s.handleListConversations).Methods("GET")
+	v1.HandleFunc("/chat", s.handleCreateConversation).Methods("POST")
+	v1.HandleFunc("/chat/{id}", s.handleGetConversation).Methods("GET")
+	v1.HandleFunc("/chat/{id}", s.handleUpdateConversation).Methods("PUT")
+	v1.HandleFunc("/chat/{id}", s.handleDeleteConversation).Methods("DELETE")
+	v1.HandleFunc("/chat/{id}/message", s.handleSendMessage).Methods("POST")
+
 	// Configuration endpoints
 	v1.HandleFunc("/config", s.handleGetConfig).Methods("GET")
 	v1.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")

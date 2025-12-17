@@ -46,10 +46,10 @@ type OpenAIChoice struct {
 
 // OpenAIResponse represents the response from OpenAI API
 type OpenAIResponse struct {
-	ID      string                 `json:"id"`
-	Object  string                 `json:"object"`
-	Created int64                  `json:"created"`
-	Choices []OpenAIChoice         `json:"choices"`
+	ID      string         `json:"id"`
+	Object  string         `json:"object"`
+	Created int64          `json:"created"`
+	Choices []OpenAIChoice `json:"choices"`
 	Usage   map[string]any `json:"usage"`
 }
 

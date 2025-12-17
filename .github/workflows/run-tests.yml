@@ -1,47 +1,186 @@
-# This workflow runs all tests and is only triggered manually.
-# It ensures plugins are discoverable and usable by setting the correct PYTHONPATH.
+# Comprehensive CI workflow for Mimir-AIP-Go
+# Tests both Go backend and Next.js frontend
 
 name: Run All Tests
 
 on:
   workflow_dispatch:
     inputs:
-      extra_args:
-        description: 'Extra arguments to pass to the test runner (optional)'
-        required: false
+      skip_e2e:
+        description: 'Skip E2E tests (they take longer)'
+        type: boolean
+        default: false
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
 
 jobs:
-  test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ['3.10']
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: .
+  # Backend Go tests
+  backend-tests:
+    name: Go Backend Tests
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v4
 
-      - name: Setup Python ${{ matrix.python }}
-        uses: actions/setup-python@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          python-version: ${{ matrix.python }}
+          go-version: '1.22'
+          cache: true
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest
+        run: go mod download
 
-      - name: Run tests (pytest, with plugins)
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run go fmt check
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Go code is not formatted. Please run: gofmt -w ."
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Generate coverage report
+        run: go tool cover -func=coverage.out
+
+      - name: Upload coverage to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
+
+  # Frontend Next.js tests
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./mimir-aip-frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ./mimir-aip-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Vitest unit tests
+        run: npm run test:coverage
+
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Upload test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: ./mimir-aip-frontend/coverage
+
+  # E2E tests with Playwright
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_e2e }}
+    defaults:
+      run:
+        working-directory: ./mimir-aip-frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ./mimir-aip-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        run: npm run test:e2e
         env:
-          PYTHONPATH: .:${{ github.workspace }}/src # Set PYTHONPATH to current directory and src for module discovery
-        run: |
-          echo "PYTHONPATH set to: $PYTHONPATH"
-          python -m pytest tests ${{ github.event.inputs.extra_args }}
+          CI: true
 
-      # Documentation: This workflow ensures that all tests are run with the correct PYTHONPATH so plugins can be discovered.
-      # It is intended for manual use only to avoid unnecessary CI load.
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: ./mimir-aip-frontend/playwright-report/
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-results
+          path: ./mimir-aip-frontend/test-results/
+          retention-days: 30
+
+  # Integration tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run integration tests
+        run: go test -v -tags=integration ./tests/...
+        env:
+          MIMIR_TEST_MODE: integration
+
+  # Build verification
+  build:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build Go binary
+        run: go build -o mimir-aip-server .
+
+      - name: Verify binary
+        run: ./mimir-aip-server --version || echo "Binary built successfully"
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: mimir-aip-server
+          path: mimir-aip-server

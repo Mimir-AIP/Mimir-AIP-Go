@@ -14,6 +14,7 @@ import (
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/DigitalTwin"
+	knowledgegraph "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology/schema_inference"
 	storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
@@ -1798,4 +1799,212 @@ func (s *Server) generateSampleValue(columnName string, rowIndex int) interface{
 
 	// Default to string
 	return fmt.Sprintf("Value %d", rowIndex)
+}
+
+// DataImportRequest represents a request to import CSV data into TDB2
+type DataImportRequest struct {
+	UploadID   string `json:"upload_id"`
+	OntologyID string `json:"ontology_id"`
+}
+
+// handleDataImport imports CSV data into the TDB2 knowledge graph as RDF triples
+func (s *Server) handleDataImport(w http.ResponseWriter, r *http.Request) {
+	var req DataImportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	if req.UploadID == "" || req.OntologyID == "" {
+		writeBadRequestResponse(w, "upload_id and ontology_id are required")
+		return
+	}
+
+	// Check if TDB2 backend is available
+	if s.tdb2Backend == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "TDB2 backend is not available")
+		return
+	}
+
+	// Check if persistence backend is available
+	if s.persistence == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "Persistence backend is not available")
+		return
+	}
+
+	// Get ontology metadata
+	ontology, err := s.persistence.GetOntology(r.Context(), req.OntologyID)
+	if err != nil {
+		writeErrorResponse(w, http.StatusNotFound, fmt.Sprintf("Ontology not found: %v", err))
+		return
+	}
+
+	// Get the uploaded file path
+	uploadPath := fmt.Sprintf("/tmp/mimir-uploads/%s", req.UploadID)
+	if _, err := os.Stat(uploadPath); os.IsNotExist(err) {
+		writeErrorResponse(w, http.StatusNotFound, fmt.Sprintf("Upload file not found: %s", req.UploadID))
+		return
+	}
+
+	// Read and parse the CSV file
+	csvData, err := s.readAndParseCSV(uploadPath)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse CSV data: %v", err))
+		return
+	}
+
+	// Convert CSV rows to RDF triples
+	triples, stats, err := s.csvToTriples(csvData, req.OntologyID, ontology.TDB2Graph)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to convert CSV to triples: %v", err))
+		return
+	}
+
+	// Insert triples into TDB2 in batches
+	batchSize := 1000
+	totalInserted := 0
+	for i := 0; i < len(triples); i += batchSize {
+		end := i + batchSize
+		if end > len(triples) {
+			end = len(triples)
+		}
+		batch := triples[i:end]
+
+		err := s.tdb2Backend.InsertTriples(r.Context(), batch)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError,
+				fmt.Sprintf("Failed to insert triples (batch %d-%d): %v", i, end, err))
+			return
+		}
+		totalInserted += len(batch)
+	}
+
+	// Return success response with statistics
+	response := map[string]any{
+		"message":          "Data imported successfully",
+		"upload_id":        req.UploadID,
+		"ontology_id":      req.OntologyID,
+		"graph_uri":        ontology.TDB2Graph,
+		"entities_created": stats["entities_created"],
+		"triples_created":  totalInserted,
+		"rows_processed":   stats["rows_processed"],
+	}
+
+	writeJSONResponse(w, http.StatusOK, response)
+}
+
+// readAndParseCSV reads and parses a CSV file
+func (s *Server) readAndParseCSV(filePath string) ([]map[string]interface{}, error) {
+	// Use the CSV plugin to parse the file
+	plugin, err := s.registry.GetPlugin("Input", "csv")
+	if err != nil {
+		return nil, fmt.Errorf("CSV plugin not found: %w", err)
+	}
+
+	// Create a context for plugin execution
+	globalContext := pipelines.NewPluginContext()
+	stepConfig := pipelines.StepConfig{
+		Name:   "parse_csv",
+		Plugin: "Input.csv",
+		Config: map[string]any{
+			"file_path":   filePath,
+			"has_headers": true,
+		},
+		Output: "csv_data",
+	}
+
+	// Execute the plugin
+	result, err := plugin.ExecuteStep(context.Background(), stepConfig, globalContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CSV: %w", err)
+	}
+
+	// Get the parsed data
+	parsedData, ok := result.Get("csv_data")
+	if !ok {
+		return nil, fmt.Errorf("failed to get parsed CSV data from plugin")
+	}
+
+	// Convert to []map[string]interface{}
+	dataMap, ok := parsedData.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected data format from CSV plugin")
+	}
+
+	rows, ok := dataMap["rows"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("no rows found in CSV data")
+	}
+
+	// Convert to proper format
+	var csvRows []map[string]interface{}
+	for _, row := range rows {
+		if rowMap, ok := row.(map[string]interface{}); ok {
+			csvRows = append(csvRows, rowMap)
+		}
+	}
+
+	return csvRows, nil
+}
+
+// csvToTriples converts CSV rows to RDF triples based on ontology structure
+func (s *Server) csvToTriples(csvData []map[string]interface{}, ontologyID, graphURI string) ([]knowledgegraph.Triple, map[string]int, error) {
+	var triples []knowledgegraph.Triple
+	stats := map[string]int{
+		"entities_created": 0,
+		"rows_processed":   0,
+	}
+
+	// Base URI for entity generation
+	baseURI := "http://mimir-aip.io/data"
+
+	// Determine entity type from first row column names
+	// In a production system, this would use the ontology schema
+	entityType := "Entity"
+	if len(csvData) > 0 {
+		// Use the ontology ID as the entity type
+		entityType = strings.ReplaceAll(ontologyID, "-", "_")
+	}
+
+	// Process each row
+	for rowIndex, row := range csvData {
+		// Generate entity URI
+		entityURI := fmt.Sprintf("%s/%s/%s/%d", baseURI, ontologyID, entityType, rowIndex)
+
+		// Create rdf:type triple
+		triples = append(triples, knowledgegraph.Triple{
+			Subject:   entityURI,
+			Predicate: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+			Object:    fmt.Sprintf("http://mimir-aip.io/ontology/%s#%s", ontologyID, entityType),
+			Graph:     graphURI,
+		})
+
+		// Create datatype property triples for each column
+		for columnName, value := range row {
+			if value == nil {
+				continue
+			}
+
+			// Create property URI from column name
+			propertyName := strings.ReplaceAll(columnName, " ", "_")
+			propertyName = strings.ReplaceAll(propertyName, "-", "_")
+			propertyURI := fmt.Sprintf("http://mimir-aip.io/ontology/%s#%s", ontologyID, propertyName)
+
+			// Convert value to string
+			valueStr := fmt.Sprintf("%v", value)
+
+			// Create the triple
+			triples = append(triples, knowledgegraph.Triple{
+				Subject:   entityURI,
+				Predicate: propertyURI,
+				Object:    valueStr,
+				Graph:     graphURI,
+			})
+		}
+
+		stats["entities_created"]++
+		stats["rows_processed"]++
+	}
+
+	return triples, stats, nil
 }

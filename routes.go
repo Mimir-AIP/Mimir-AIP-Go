@@ -156,6 +156,7 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/data/upload", s.handleUploadData).Methods("POST")
 	v1.HandleFunc("/data/preview", s.handlePreviewData).Methods("POST")
 	v1.HandleFunc("/data/select", s.handleSelectData).Methods("POST")
+	v1.HandleFunc("/data/import", s.handleDataImport).Methods("POST")
 
 	// Configuration endpoints
 	v1.HandleFunc("/config", s.handleGetConfig).Methods("GET")

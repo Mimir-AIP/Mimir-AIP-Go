@@ -7,9 +7,11 @@ const navItems = [
   { name: 'Jobs', href: '/jobs' },
   { name: 'Ontologies', href: '/ontologies' },
   { name: 'Knowledge Graph', href: '/knowledge-graph' },
+  { name: 'Digital Twins', href: '/digital-twins' },
   { name: 'Extraction', href: '/extraction' },
   { name: 'Plugins', href: '/plugins' },
   { name: 'Config', href: '/config' },
+  { name: 'Settings', href: '/settings' },
   { name: 'Auth', href: '/login' },
 ];
 

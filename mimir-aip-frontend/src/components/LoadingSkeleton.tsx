@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 
-export function CardListSkeleton({ count = 3 }: { count?: number }) {
+export function LoadingSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
       {Array.from({ length: count }).map((_, i) => (
@@ -17,6 +17,10 @@ export function CardListSkeleton({ count = 3 }: { count?: number }) {
       ))}
     </div>
   );
+}
+
+export function CardListSkeleton({ count = 3 }: { count?: number }) {
+  return <LoadingSkeleton count={count} />;
 }
 
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
@@ -54,3 +58,4 @@ export function DetailsSkeleton() {
     </Card>
   );
 }
+

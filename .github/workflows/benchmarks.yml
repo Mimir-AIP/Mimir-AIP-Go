@@ -1,0 +1,287 @@
+# Performance Benchmark CI/CD Workflow
+# Runs benchmarks on PRs and commits to detect performance regressions
+
+name: Performance Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: 'Baseline ref to compare against (default: main)'
+        type: string
+        default: 'main'
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  benchmark:
+    name: Run Performance Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for comparison
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run current benchmarks
+        id: current_benchmarks
+        run: |
+          echo "Running benchmarks on current commit..."
+          mkdir -p benchmark-results
+          
+          # Run ML benchmarks with different dataset sizes
+          go test -bench=BenchmarkMLTraining -benchmem -run=^$ \
+            ./benchmarks/performance/... > benchmark-results/current-ml.txt
+          
+          # Run comprehensive benchmark suite
+          go test -bench=. -benchmem -run=^$ \
+            ./benchmarks/performance/... > benchmark-results/current-all.txt
+          
+          cat benchmark-results/current-ml.txt
+          echo "---"
+          cat benchmark-results/current-all.txt
+
+      - name: Checkout baseline (main branch)
+        if: github.ref != 'refs/heads/main'
+        run: |
+          git fetch origin main:main
+          git checkout main
+          
+      - name: Run baseline benchmarks
+        if: github.ref != 'refs/heads/main'
+        id: baseline_benchmarks
+        run: |
+          echo "Running benchmarks on baseline (main)..."
+          
+          # Run ML benchmarks
+          go test -bench=BenchmarkMLTraining -benchmem -run=^$ \
+            ./benchmarks/performance/... > benchmark-results/baseline-ml.txt 2>&1 || echo "No baseline ML benchmarks"
+          
+          # Run comprehensive benchmarks
+          go test -bench=. -benchmem -run=^$ \
+            ./benchmarks/performance/... > benchmark-results/baseline-all.txt 2>&1 || echo "No baseline benchmarks"
+          
+          cat benchmark-results/baseline-ml.txt
+          echo "---"
+          cat benchmark-results/baseline-all.txt
+          
+          # Return to PR branch
+          git checkout -
+
+      - name: Install benchstat for comparison
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Compare benchmarks
+        if: github.ref != 'refs/heads/main'
+        id: compare
+        run: |
+          echo "## Benchmark Comparison" > benchmark-results/comparison.md
+          echo "" >> benchmark-results/comparison.md
+          
+          if [ -f benchmark-results/baseline-ml.txt ] && [ -f benchmark-results/current-ml.txt ]; then
+            echo "### ML Training Performance" >> benchmark-results/comparison.md
+            echo '```' >> benchmark-results/comparison.md
+            benchstat benchmark-results/baseline-ml.txt benchmark-results/current-ml.txt >> benchmark-results/comparison.md || true
+            echo '```' >> benchmark-results/comparison.md
+            echo "" >> benchmark-results/comparison.md
+          fi
+          
+          if [ -f benchmark-results/baseline-all.txt ] && [ -f benchmark-results/current-all.txt ]; then
+            echo "### Overall Performance" >> benchmark-results/comparison.md
+            echo '```' >> benchmark-results/comparison.md
+            benchstat benchmark-results/baseline-all.txt benchmark-results/current-all.txt >> benchmark-results/comparison.md || true
+            echo '```' >> benchmark-results/comparison.md
+          fi
+          
+          cat benchmark-results/comparison.md
+
+      - name: Check for performance regressions
+        if: github.ref != 'refs/heads/main'
+        id: regression_check
+        run: |
+          # Define regression threshold (20% slower or 20% more memory)
+          REGRESSION_THRESHOLD=1.2
+          
+          # Parse benchmark results and check for regressions
+          python3 << 'EOF'
+          import re
+          import sys
+          
+          def parse_benchmark_line(line):
+              """Parse a Go benchmark result line"""
+              # Format: BenchmarkName-N    iterations    ns/op    B/op    allocs/op
+              pattern = r'Benchmark(\w+)-\d+\s+(\d+)\s+(\d+(?:\.\d+)?)\s+ns/op\s+(\d+)\s+B/op\s+(\d+)\s+allocs/op'
+              match = re.search(pattern, line)
+              if match:
+                  return {
+                      'name': match.group(1),
+                      'iterations': int(match.group(2)),
+                      'ns_per_op': float(match.group(3)),
+                      'bytes_per_op': int(match.group(4)),
+                      'allocs_per_op': int(match.group(5))
+                  }
+              return None
+          
+          def check_regressions(baseline_file, current_file, threshold):
+              """Check for performance regressions"""
+              regressions = []
+              
+              try:
+                  with open(baseline_file, 'r') as f:
+                      baseline_results = {}
+                      for line in f:
+                          result = parse_benchmark_line(line)
+                          if result:
+                              baseline_results[result['name']] = result
+              except FileNotFoundError:
+                  print("No baseline benchmarks found, skipping regression check")
+                  return []
+              
+              try:
+                  with open(current_file, 'r') as f:
+                      for line in f:
+                          result = parse_benchmark_line(line)
+                          if result and result['name'] in baseline_results:
+                              baseline = baseline_results[result['name']]
+                              
+                              # Check time regression
+                              time_ratio = result['ns_per_op'] / baseline['ns_per_op']
+                              if time_ratio > threshold:
+                                  regressions.append(
+                                      f"⚠️  {result['name']}: {time_ratio:.2f}x slower "
+                                      f"({baseline['ns_per_op']:.0f} -> {result['ns_per_op']:.0f} ns/op)"
+                                  )
+                              
+                              # Check memory regression
+                              if baseline['bytes_per_op'] > 0:
+                                  mem_ratio = result['bytes_per_op'] / baseline['bytes_per_op']
+                                  if mem_ratio > threshold:
+                                      regressions.append(
+                                          f"⚠️  {result['name']}: {mem_ratio:.2f}x more memory "
+                                          f"({baseline['bytes_per_op']} -> {result['bytes_per_op']} B/op)"
+                                      )
+              except FileNotFoundError:
+                  print("Current benchmark results not found")
+                  return []
+              
+              return regressions
+          
+          # Check for regressions
+          regressions = check_regressions(
+              'benchmark-results/baseline-ml.txt',
+              'benchmark-results/current-ml.txt',
+              1.2  # 20% threshold
+          )
+          
+          if regressions:
+              print("Performance Regressions Detected:")
+              for reg in regressions:
+                  print(reg)
+              with open('benchmark-results/regressions.txt', 'w') as f:
+                  f.write('\n'.join(regressions))
+              sys.exit(1)
+          else:
+              print("✅ No significant performance regressions detected")
+          EOF
+
+      - name: Comment PR with benchmark results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## 📊 Performance Benchmark Results\n\n';
+            
+            try {
+              const comparison = fs.readFileSync('benchmark-results/comparison.md', 'utf8');
+              comment += comparison;
+            } catch (e) {
+              comment += '_No baseline comparison available_\n\n';
+            }
+            
+            // Add current results
+            try {
+              const currentML = fs.readFileSync('benchmark-results/current-ml.txt', 'utf8');
+              comment += '\n### Current ML Benchmarks\n```\n' + currentML + '\n```\n';
+            } catch (e) {
+              comment += '\n_ML benchmark results not available_\n';
+            }
+            
+            // Check for regressions
+            try {
+              const regressions = fs.readFileSync('benchmark-results/regressions.txt', 'utf8');
+              comment += '\n## ⚠️ Performance Regressions Detected\n\n```\n' + regressions + '\n```\n';
+              comment += '\n**Action Required:** Please investigate and optimize before merging.\n';
+            } catch (e) {
+              comment += '\n## ✅ No Performance Regressions\n';
+            }
+            
+            // Find existing comment and update or create new
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Performance Benchmark Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark-results/
+          retention-days: 90
+
+      - name: Store benchmark baseline
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # Store benchmarks as baseline for future comparisons
+          mkdir -p .benchmark-baselines
+          cp benchmark-results/current-ml.txt .benchmark-baselines/baseline-ml-$(date +%Y%m%d).txt
+          cp benchmark-results/current-all.txt .benchmark-baselines/baseline-all-$(date +%Y%m%d).txt
+          
+          # Keep only last 30 days of baselines
+          find .benchmark-baselines -type f -mtime +30 -delete
+
+      - name: Fail on regression
+        if: failure() && steps.regression_check.outcome == 'failure'
+        run: |
+          echo "::error::Performance regression detected! Review benchmark results above."
+          exit 1

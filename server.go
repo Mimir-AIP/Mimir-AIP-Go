@@ -148,6 +148,11 @@ func NewServer() *Server {
 		s.scheduler.SetStorage(persistence)
 		s.scheduler.SetMonitoringExecutor(monitoringExecutor)
 		log.Println("Monitoring executor initialized and connected to scheduler")
+
+		// Recover scheduled jobs from database after crash/restart
+		if err := s.scheduler.RecoverJobsFromDatabase(); err != nil {
+			log.Printf("⚠️  Failed to recover scheduled jobs: %v", err)
+		}
 	}
 
 	return s

@@ -154,6 +154,11 @@ func (s *Scheduler) AddJob(id, name, pipeline, cronExpr string) error {
 	s.jobs[id] = job
 	s.updateNextRun(job)
 
+	// Persist to database for crash recovery
+	if err := s.PersistJob(job); err != nil {
+		log.Printf("⚠️  Warning: failed to persist job %s: %v", id, err)
+	}
+
 	log.Printf("Added scheduled job: %s (%s)", name, cronExpr)
 	return nil
 }
@@ -188,6 +193,11 @@ func (s *Scheduler) AddMonitoringJob(id, name, monitoringJobID, cronExpr string)
 	s.jobs[id] = job
 	s.updateNextRun(job)
 
+	// Persist to database for crash recovery
+	if err := s.PersistJob(job); err != nil {
+		log.Printf("⚠️  Warning: failed to persist monitoring job %s: %v", id, err)
+	}
+
 	log.Printf("Added scheduled monitoring job: %s (%s)", name, cronExpr)
 	return nil
 }
@@ -202,6 +212,19 @@ func (s *Scheduler) RemoveJob(id string) error {
 	}
 
 	delete(s.jobs, id)
+
+	// Delete from database
+	if s.storage != nil {
+		type schedulerJobDeleter interface {
+			DeleteSchedulerJob(ctx context.Context, id string) error
+		}
+		if deleter, ok := s.storage.(schedulerJobDeleter); ok {
+			if err := deleter.DeleteSchedulerJob(context.Background(), id); err != nil {
+				log.Printf("⚠️  Warning: failed to delete job %s from database: %v", id, err)
+			}
+		}
+	}
+
 	log.Printf("Removed scheduled job: %s", id)
 	return nil
 }

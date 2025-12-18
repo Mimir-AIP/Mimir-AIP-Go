@@ -533,6 +533,22 @@ func (p *PersistenceBackend) initSchema() error {
 		FOREIGN KEY (job_id) REFERENCES monitoring_jobs(id) ON DELETE CASCADE
 	);
 
+	-- Scheduler jobs table (for crash recovery of scheduled jobs)
+	CREATE TABLE IF NOT EXISTS scheduler_jobs (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		job_type TEXT NOT NULL,  -- 'pipeline' or 'monitoring'
+		pipeline TEXT,  -- Pipeline YAML path (for pipeline jobs)
+		monitoring_job_id TEXT,  -- Reference to monitoring_jobs (for monitoring jobs)
+		cron_expr TEXT NOT NULL,
+		is_enabled BOOLEAN NOT NULL DEFAULT 1,
+		next_run TIMESTAMP,
+		last_run TIMESTAMP,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (monitoring_job_id) REFERENCES monitoring_jobs(id) ON DELETE CASCADE
+	);
+
 	-- Create indexes for time series tables
 	CREATE INDEX IF NOT EXISTS idx_ts_data_entity_metric ON time_series_data(entity_id, metric_name);
 	CREATE INDEX IF NOT EXISTS idx_ts_data_timestamp ON time_series_data(timestamp DESC);
@@ -545,6 +561,9 @@ func (p *PersistenceBackend) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_monitoring_rules_entity ON monitoring_rules(entity_id, metric_name);
 	CREATE INDEX IF NOT EXISTS idx_monitoring_rules_enabled ON monitoring_rules(is_enabled);
+	CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_enabled ON scheduler_jobs(is_enabled);
+	CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_next_run ON scheduler_jobs(next_run);
+	CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_type ON scheduler_jobs(job_type);
 	`
 
 	_, err := p.db.Exec(schema)
@@ -1756,4 +1775,110 @@ func (p *PersistenceBackend) GetMonitoringJobRuns(ctx context.Context, jobID str
 	}
 
 	return runs, rows.Err()
+}
+
+// SaveSchedulerJob saves a scheduler job to the database
+func (p *PersistenceBackend) SaveSchedulerJob(ctx context.Context, id, name, jobType, pipeline, monitoringJobID, cronExpr string, enabled bool, nextRun, lastRun *time.Time) error {
+	query := `
+		INSERT INTO scheduler_jobs (id, name, job_type, pipeline, monitoring_job_id, cron_expr, is_enabled, next_run, last_run, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			job_type = excluded.job_type,
+			pipeline = excluded.pipeline,
+			monitoring_job_id = excluded.monitoring_job_id,
+			cron_expr = excluded.cron_expr,
+			is_enabled = excluded.is_enabled,
+			next_run = excluded.next_run,
+			last_run = excluded.last_run,
+			updated_at = CURRENT_TIMESTAMP
+	`
+
+	var nextRunVal, lastRunVal interface{}
+	if nextRun != nil {
+		nextRunVal = *nextRun
+	}
+	if lastRun != nil {
+		lastRunVal = *lastRun
+	}
+
+	_, err := p.db.ExecContext(ctx, query, id, name, jobType, pipeline, monitoringJobID, cronExpr, enabled, nextRunVal, lastRunVal)
+	return err
+}
+
+// GetAllSchedulerJobs retrieves all scheduler jobs from the database
+func (p *PersistenceBackend) GetAllSchedulerJobs(ctx context.Context) ([]SchedulerJobRecord, error) {
+	query := `
+		SELECT id, name, job_type, pipeline, monitoring_job_id, cron_expr, is_enabled, next_run, last_run, created_at, updated_at
+		FROM scheduler_jobs
+		ORDER BY created_at DESC
+	`
+
+	rows, err := p.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query scheduler jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []SchedulerJobRecord
+	for rows.Next() {
+		job := SchedulerJobRecord{}
+		var pipeline, monitoringJobID sql.NullString
+		var nextRun, lastRun sql.NullTime
+
+		err := rows.Scan(
+			&job.ID, &job.Name, &job.JobType, &pipeline, &monitoringJobID,
+			&job.CronExpr, &job.Enabled, &nextRun, &lastRun,
+			&job.CreatedAt, &job.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan scheduler job: %w", err)
+		}
+
+		if pipeline.Valid {
+			job.Pipeline = pipeline.String
+		}
+		if monitoringJobID.Valid {
+			job.MonitoringJobID = monitoringJobID.String
+		}
+		if nextRun.Valid {
+			job.NextRun = &nextRun.Time
+		}
+		if lastRun.Valid {
+			job.LastRun = &lastRun.Time
+		}
+
+		jobs = append(jobs, job)
+	}
+
+	return jobs, rows.Err()
+}
+
+// DeleteSchedulerJob deletes a scheduler job from the database
+func (p *PersistenceBackend) DeleteSchedulerJob(ctx context.Context, id string) error {
+	query := `DELETE FROM scheduler_jobs WHERE id = ?`
+	_, err := p.db.ExecContext(ctx, query, id)
+	return err
+}
+
+// UpdateSchedulerJobStatus updates the enabled status of a scheduler job
+func (p *PersistenceBackend) UpdateSchedulerJobStatus(ctx context.Context, id string, enabled bool) error {
+	query := `UPDATE scheduler_jobs SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+	_, err := p.db.ExecContext(ctx, query, enabled, id)
+	return err
+}
+
+// SchedulerJobRecord represents a scheduler job record in the database
+type SchedulerJobRecord struct {
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	JobType         string     `json:"job_type"`
+	Pipeline        string     `json:"pipeline,omitempty"`
+	MonitoringJobID string     `json:"monitoring_job_id,omitempty"`
+	CronExpr        string     `json:"cron_expr"`
+	Enabled         bool       `json:"enabled"`
+	NextRun         *time.Time `json:"next_run,omitempty"`
+	LastRun         *time.Time `json:"last_run,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }

@@ -189,3 +189,7 @@ node_modules
 mimir-aip-server
 benchmarks/benchmark_suite
 utils.test
+
+# Go build artifacts
+Mimir-AIP-Go
+mimir-test

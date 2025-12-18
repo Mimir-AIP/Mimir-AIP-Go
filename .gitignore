@@ -193,3 +193,7 @@ utils.test
 # Go build artifacts
 Mimir-AIP-Go
 mimir-test
+
+# Test data and runtime databases
+data/
+test_data.csv

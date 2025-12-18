@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
+	"github.com/google/uuid"
 )
 
 // AutoTrainer automatically trains ML models based on ontology analysis
@@ -348,24 +350,100 @@ func (at *AutoTrainer) setupAutomaticMonitoring(
 	ontologyID string,
 	capabilities *MLCapabilities,
 ) (*MonitoringSetupInfo, error) {
-	// For MVP, we'll return a placeholder
-	// In production, this would:
-	// 1. Create a monitoring job entry in the scheduler
-	// 2. Create monitoring rules in the database
-	// 3. Set up cron schedule
+	// Generate monitoring job ID
+	jobID := fmt.Sprintf("monitor_%s_%d", ontologyID, time.Now().Unix())
 
 	info := &MonitoringSetupInfo{
-		JobID:        fmt.Sprintf("monitor_%s_%d", ontologyID, time.Now().Unix()),
+		JobID:        jobID,
 		MetricsCount: len(capabilities.TimeSeriesMetrics),
 		RulesCreated: []string{},
 		CronSchedule: "*/15 * * * *", // Every 15 minutes
 	}
 
-	// Create rules for each suggested monitoring rule
+	// If no metrics to monitor, return early
+	if len(capabilities.TimeSeriesMetrics) == 0 {
+		return info, nil
+	}
+
+	// Collect all metric names (use PropertyLabel as metric name)
+	metricNames := []string{}
+	for _, metric := range capabilities.TimeSeriesMetrics {
+		metricNames = append(metricNames, metric.PropertyLabel)
+	}
+
+	// Marshal metrics to JSON
+	metricsJSON, err := json.Marshal(metricNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal metrics: %w", err)
+	}
+
+	// Create monitoring rules based on suggestions
+	ruleIDs := []string{}
 	for _, rule := range capabilities.MonitoringRules {
-		// In production, save to database
+		ruleID := uuid.New().String()
+
+		// Marshal condition to JSON string
+		conditionBytes, err := json.Marshal(rule.Condition)
+		if err != nil {
+			log.Printf("[AutoTrainer] Warning: Failed to marshal condition for rule %s: %v", rule.RuleName, err)
+			continue
+		}
+		conditionJSON := string(conditionBytes)
+
+		// Create the monitoring rule
+		// Note: entityID is empty for ontology-level monitoring
+		// metricName is the PropertyLabel
+		err = at.Storage.CreateMonitoringRule(
+			ctx,
+			ruleID,
+			ontologyID,
+			"",                 // entityID - empty for ontology-level rules
+			rule.PropertyLabel, // metricName
+			rule.RuleType,
+			conditionJSON,
+			rule.Severity,
+			true, // enabled
+			"",   // alert channels (future: email, slack, etc.)
+		)
+		if err != nil {
+			// Log error but continue with other rules
+			log.Printf("[AutoTrainer] Warning: Failed to create monitoring rule %s: %v", rule.RuleName, err)
+			continue
+		}
+
+		ruleIDs = append(ruleIDs, ruleID)
 		info.RulesCreated = append(info.RulesCreated, rule.RuleName)
 	}
+
+	// Marshal rule IDs to JSON
+	rulesJSON := "[]"
+	if len(ruleIDs) > 0 {
+		rulesBytes, err := json.Marshal(ruleIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal rule IDs: %w", err)
+		}
+		rulesJSON = string(rulesBytes)
+	}
+
+	// Create the monitoring job
+	job := &storage.MonitoringJob{
+		ID:          jobID,
+		Name:        fmt.Sprintf("Auto-Monitor: %s", ontologyID),
+		OntologyID:  ontologyID,
+		Description: fmt.Sprintf("Automatically monitors %d metrics with %d rules", len(metricNames), len(ruleIDs)),
+		CronExpr:    info.CronSchedule,
+		Metrics:     string(metricsJSON),
+		Rules:       rulesJSON,
+		IsEnabled:   true,
+	}
+
+	err = at.Storage.CreateMonitoringJob(ctx, job)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create monitoring job: %w", err)
+	}
+
+	log.Printf("[AutoTrainer] Created monitoring job '%s' with %d metrics and %d rules",
+		jobID, len(metricNames), len(ruleIDs))
 
 	return info, nil
 }

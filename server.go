@@ -10,6 +10,7 @@ import (
 	AI "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/AI"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Input"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/ML"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
@@ -134,6 +135,14 @@ func NewServer() *Server {
 	// Start the scheduler
 	if err := s.scheduler.Start(); err != nil {
 		utils.GetLogger().Error("Failed to start scheduler", err, utils.Component("server"))
+	}
+
+	// Initialize monitoring executor and connect to scheduler
+	if persistence != nil {
+		monitoringExecutor := ml.NewMonitoringExecutor(persistence)
+		s.scheduler.SetStorage(persistence)
+		s.scheduler.SetMonitoringExecutor(monitoringExecutor)
+		log.Println("Monitoring executor initialized and connected to scheduler")
 	}
 
 	return s

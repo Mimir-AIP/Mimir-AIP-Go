@@ -158,6 +158,24 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/data/select", s.handleSelectData).Methods("POST")
 	v1.HandleFunc("/data/import", s.handleDataImport).Methods("POST")
 
+	// Machine Learning endpoints
+	v1.HandleFunc("/models/train", s.handleTrainModel).Methods("POST")
+	v1.HandleFunc("/models", s.handleListModels).Methods("GET")
+	v1.HandleFunc("/models/{id}", s.handleGetModel).Methods("GET")
+	v1.HandleFunc("/models/{id}", s.handleDeleteModel).Methods("DELETE")
+	v1.HandleFunc("/models/{id}/predict", s.handlePredict).Methods("POST")
+	v1.HandleFunc("/models/{id}/status", s.handleUpdateModelStatus).Methods("PATCH")
+
+	// Auto-ML endpoints (ontology-driven)
+	v1.HandleFunc("/ontology/{id}/ml-capabilities", s.handleGetMLCapabilities).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/auto-train", s.handleAutoTrain).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/train-for-goal", s.handleTrainForGoal).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/ml-suggestions", s.handleGetMLSuggestions).Methods("GET")
+
+	// Anomaly Detection endpoints
+	v1.HandleFunc("/anomalies", s.handleListAnomalies).Methods("GET")
+	v1.HandleFunc("/anomalies/{id}", s.handleUpdateAnomalyStatus).Methods("PATCH")
+
 	// Configuration endpoints
 	v1.HandleFunc("/config", s.handleGetConfig).Methods("GET")
 	v1.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT")

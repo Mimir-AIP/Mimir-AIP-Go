@@ -42,10 +42,17 @@ export default function OntologyDetailsPage() {
   const [stats, setStats] = useState<OntologyStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "classes" | "properties" | "queries">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "classes" | "properties" | "queries" | "train">("overview");
   const [queryResult, setQueryResult] = useState<SPARQLQueryResult | null>(null);
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
+  
+  // Auto-train state
+  const [dataSourceType, setDataSourceType] = useState<"csv" | "excel" | "json">("csv");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [trainingLoading, setTrainingLoading] = useState(false);
+  const [trainingResult, setTrainingResult] = useState<any>(null);
+  const [trainingError, setTrainingError] = useState<string | null>(null);
 
   const loadOntologyData = useCallback(async () => {
     try {
@@ -93,6 +100,89 @@ export default function OntologyDetailsPage() {
   const handleExport = () => {
     if (!ontology) return;
     window.open(`/api/v1/ontology/${ontologyId}/export?format=${ontology.format}`, "_blank");
+  };
+  
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setUploadedFile(file);
+      setTrainingError(null);
+    }
+  };
+  
+  const handleAutoTrain = async () => {
+    if (!uploadedFile) {
+      setTrainingError("Please select a file to upload");
+      return;
+    }
+    
+    try {
+      setTrainingLoading(true);
+      setTrainingError(null);
+      setTrainingResult(null);
+      
+      // Read file as base64
+      const reader = new FileReader();
+      const fileContent = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(uploadedFile);
+      });
+      
+      // Extract base64 content (remove data:...;base64, prefix)
+      const base64Content = fileContent.split(',')[1];
+      
+      // Prepare request based on data source type
+      const dataSource: any = {
+        type: dataSourceType,
+        data: {}
+      };
+      
+      if (dataSourceType === 'json') {
+        // For JSON, try to parse and send as array
+        try {
+          const textContent = atob(base64Content);
+          const jsonData = JSON.parse(textContent);
+          dataSource.data.array = Array.isArray(jsonData) ? jsonData : [jsonData];
+        } catch {
+          dataSource.data.content = base64Content;
+        }
+      } else {
+        // For CSV/Excel, send as base64 content
+        dataSource.data.content = base64Content;
+        dataSource.data.has_headers = true;
+      }
+      
+      // Call auto-train API
+      const response = await fetch('/api/v1/auto-train-with-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ontology_id: ontologyId,
+          data_source: dataSource,
+          enable_regression: true,
+          enable_classification: true,
+          enable_monitoring: true,
+          min_confidence: 0.6,
+          max_models: 10,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Training failed');
+      }
+      
+      const result = await response.json();
+      setTrainingResult(result);
+      
+    } catch (err) {
+      setTrainingError(err instanceof Error ? err.message : "Training failed");
+    } finally {
+      setTrainingLoading(false);
+    }
   };
 
   const runSampleQuery = async (query: string) => {
@@ -315,7 +405,7 @@ LIMIT 50`,
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-4">
         <nav className="-mb-px flex space-x-8">
-          {(["overview", "classes", "properties", "queries"] as const).map((tab) => (
+          {(["overview", "classes", "properties", "queries", "train"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -531,6 +621,129 @@ LIMIT 50`,
                     )}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "train" && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Auto-Train with Data</h3>
+              <p className="text-gray-600 mb-6">
+                Upload your data to automatically train ML models and set up monitoring.
+                Supports CSV, Excel (.xlsx), and JSON formats.
+              </p>
+            </div>
+
+            {/* Data Source Selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Data Source Type
+              </label>
+              <div className="flex gap-4">
+                {(['csv', 'excel', 'json'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setDataSourceType(type)}
+                    className={`px-4 py-2 rounded-lg font-medium ${
+                      dataSourceType === type
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    {type.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* File Upload */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Upload File
+              </label>
+              <input
+                type="file"
+                accept={
+                  dataSourceType === 'csv' ? '.csv' :
+                  dataSourceType === 'excel' ? '.xlsx,.xls' :
+                  '.json'
+                }
+                onChange={handleFileChange}
+                className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+              />
+              {uploadedFile && (
+                <p className="mt-2 text-sm text-gray-600">
+                  Selected: {uploadedFile.name} ({(uploadedFile.size / 1024).toFixed(2)} KB)
+                </p>
+              )}
+            </div>
+
+            {/* Training Options */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-medium mb-2">Training Options</h4>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex items-center">
+                  <input type="checkbox" checked readOnly className="mr-2" />
+                  <span>Enable Regression Models</span>
+                </div>
+                <div className="flex items-center">
+                  <input type="checkbox" checked readOnly className="mr-2" />
+                  <span>Enable Classification Models</span>
+                </div>
+                <div className="flex items-center">
+                  <input type="checkbox" checked readOnly className="mr-2" />
+                  <span>Enable Automatic Monitoring</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Train Button */}
+            <button
+              onClick={handleAutoTrain}
+              disabled={!uploadedFile || trainingLoading}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {trainingLoading ? 'Training...' : 'Start Auto-Training'}
+            </button>
+
+            {/* Error Display */}
+            {trainingError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                <p className="font-medium">Training Failed</p>
+                <p className="text-sm mt-1">{trainingError}</p>
+              </div>
+            )}
+
+            {/* Results Display */}
+            {trainingResult && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h4 className="font-medium text-green-900 mb-3">Training Complete!</h4>
+                <div className="space-y-2 text-sm">
+                  <p>Models Created: <span className="font-bold">{trainingResult.models_created || 0}</span></p>
+                  <p>Monitoring Jobs: <span className="font-bold">{trainingResult.monitoring_jobs_created || 0}</span></p>
+                  <p>Rules Created: <span className="font-bold">{trainingResult.rules_created || 0}</span></p>
+                  
+                  {trainingResult.trained_models && trainingResult.trained_models.length > 0 && (
+                    <div className="mt-4">
+                      <p className="font-medium text-green-900 mb-2">Trained Models:</p>
+                      <ul className="list-disc list-inside space-y-1">
+                        {trainingResult.trained_models.map((model: any, idx: number) => (
+                          <li key={idx}>
+                            {model.model_type}: {model.target_property} 
+                            {model.r2_score && ` (R²: ${model.r2_score.toFixed(3)})`}
+                            {model.accuracy && ` (Acc: ${(model.accuracy * 100).toFixed(1)}%)`}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {trainingResult.summary && (
+                    <p className="mt-4 text-gray-700">{trainingResult.summary}</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

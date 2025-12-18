@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -498,6 +499,38 @@ func (p *PersistenceBackend) initSchema() error {
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
+	);
+
+	-- Monitoring jobs table (scheduled monitoring tasks)
+	CREATE TABLE IF NOT EXISTS monitoring_jobs (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		ontology_id TEXT NOT NULL,
+		description TEXT,
+		cron_expr TEXT NOT NULL,
+		metrics TEXT NOT NULL,  -- JSON: array of metric names to monitor
+		rules TEXT,  -- JSON: array of rule IDs to evaluate
+		is_enabled BOOLEAN NOT NULL DEFAULT 1,
+		last_run_at TIMESTAMP,
+		last_run_status TEXT,  -- 'success', 'failed', 'partial'
+		last_run_alerts INTEGER DEFAULT 0,  -- Count of alerts created in last run
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
+	);
+
+	-- Monitoring job execution history
+	CREATE TABLE IF NOT EXISTS monitoring_job_runs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		job_id TEXT NOT NULL,
+		started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		completed_at TIMESTAMP,
+		status TEXT NOT NULL,  -- 'running', 'success', 'failed', 'partial'
+		metrics_checked INTEGER DEFAULT 0,
+		rules_evaluated INTEGER DEFAULT 0,
+		alerts_created INTEGER DEFAULT 0,
+		error_message TEXT,
+		FOREIGN KEY (job_id) REFERENCES monitoring_jobs(id) ON DELETE CASCADE
 	);
 
 	-- Create indexes for time series tables
@@ -1438,4 +1471,289 @@ type MonitoringRule struct {
 	AlertChannels string    `json:"alert_channels"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// MonitoringJob represents a scheduled monitoring task
+type MonitoringJob struct {
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	OntologyID    string     `json:"ontology_id"`
+	Description   string     `json:"description"`
+	CronExpr      string     `json:"cron_expr"`
+	Metrics       string     `json:"metrics"` // JSON array
+	Rules         string     `json:"rules"`   // JSON array
+	IsEnabled     bool       `json:"is_enabled"`
+	LastRunAt     *time.Time `json:"last_run_at"`
+	LastRunStatus string     `json:"last_run_status"`
+	LastRunAlerts int        `json:"last_run_alerts"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// MonitoringJobRun represents execution history for a monitoring job
+type MonitoringJobRun struct {
+	ID             int        `json:"id"`
+	JobID          string     `json:"job_id"`
+	StartedAt      time.Time  `json:"started_at"`
+	CompletedAt    *time.Time `json:"completed_at"`
+	Status         string     `json:"status"`
+	MetricsChecked int        `json:"metrics_checked"`
+	AlertsCreated  int        `json:"alerts_created"`
+	ErrorMessage   string     `json:"error_message"`
+}
+
+// CreateMonitoringJob creates a new monitoring job
+func (p *PersistenceBackend) CreateMonitoringJob(ctx context.Context, job *MonitoringJob) error {
+	query := `
+		INSERT INTO monitoring_jobs (
+			id, name, ontology_id, description, cron_expr, metrics, rules,
+			is_enabled, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	now := time.Now()
+	_, err := p.db.ExecContext(ctx, query,
+		job.ID, job.Name, job.OntologyID, job.Description, job.CronExpr,
+		job.Metrics, job.Rules, job.IsEnabled, now, now,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create monitoring job: %w", err)
+	}
+	job.CreatedAt = now
+	job.UpdatedAt = now
+	return nil
+}
+
+// GetMonitoringJob retrieves a monitoring job by ID
+func (p *PersistenceBackend) GetMonitoringJob(ctx context.Context, id string) (*MonitoringJob, error) {
+	query := `
+		SELECT id, name, ontology_id, description, cron_expr, metrics, rules,
+			is_enabled, last_run_at, last_run_status, last_run_alerts,
+			created_at, updated_at
+		FROM monitoring_jobs
+		WHERE id = ?
+	`
+	job := &MonitoringJob{}
+	var lastRunAt sql.NullTime
+	var lastRunStatus, lastRunAlerts sql.NullString
+
+	err := p.db.QueryRowContext(ctx, query, id).Scan(
+		&job.ID, &job.Name, &job.OntologyID, &job.Description, &job.CronExpr,
+		&job.Metrics, &job.Rules, &job.IsEnabled, &lastRunAt, &lastRunStatus,
+		&lastRunAlerts, &job.CreatedAt, &job.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("monitoring job not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monitoring job: %w", err)
+	}
+
+	if lastRunAt.Valid {
+		job.LastRunAt = &lastRunAt.Time
+	}
+	if lastRunStatus.Valid {
+		job.LastRunStatus = lastRunStatus.String
+	}
+	if lastRunAlerts.Valid {
+		// Convert string to int
+		if alerts, err := strconv.Atoi(lastRunAlerts.String); err == nil {
+			job.LastRunAlerts = alerts
+		}
+	}
+
+	return job, nil
+}
+
+// ListMonitoringJobs retrieves monitoring jobs with optional filters
+func (p *PersistenceBackend) ListMonitoringJobs(ctx context.Context, ontologyID string, enabledOnly bool) ([]*MonitoringJob, error) {
+	query := `
+		SELECT id, name, ontology_id, description, cron_expr, metrics, rules,
+			is_enabled, last_run_at, last_run_status, last_run_alerts,
+			created_at, updated_at
+		FROM monitoring_jobs
+		WHERE 1=1
+	`
+	var args []interface{}
+
+	if ontologyID != "" {
+		query += " AND ontology_id = ?"
+		args = append(args, ontologyID)
+	}
+	if enabledOnly {
+		query += " AND is_enabled = 1"
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list monitoring jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []*MonitoringJob
+	for rows.Next() {
+		job := &MonitoringJob{}
+		var lastRunAt sql.NullTime
+		var lastRunStatus, lastRunAlerts sql.NullString
+
+		err := rows.Scan(
+			&job.ID, &job.Name, &job.OntologyID, &job.Description, &job.CronExpr,
+			&job.Metrics, &job.Rules, &job.IsEnabled, &lastRunAt, &lastRunStatus,
+			&lastRunAlerts, &job.CreatedAt, &job.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan monitoring job: %w", err)
+		}
+
+		if lastRunAt.Valid {
+			job.LastRunAt = &lastRunAt.Time
+		}
+		if lastRunStatus.Valid {
+			job.LastRunStatus = lastRunStatus.String
+		}
+		if lastRunAlerts.Valid {
+			if alerts, err := strconv.Atoi(lastRunAlerts.String); err == nil {
+				job.LastRunAlerts = alerts
+			}
+		}
+
+		jobs = append(jobs, job)
+	}
+
+	return jobs, rows.Err()
+}
+
+// UpdateMonitoringJob updates an existing monitoring job
+func (p *PersistenceBackend) UpdateMonitoringJob(ctx context.Context, job *MonitoringJob) error {
+	query := `
+		UPDATE monitoring_jobs
+		SET name = ?, description = ?, cron_expr = ?, metrics = ?, rules = ?,
+			is_enabled = ?, updated_at = ?
+		WHERE id = ?
+	`
+	now := time.Now()
+	result, err := p.db.ExecContext(ctx, query,
+		job.Name, job.Description, job.CronExpr, job.Metrics, job.Rules,
+		job.IsEnabled, now, job.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update monitoring job: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("monitoring job not found: %s", job.ID)
+	}
+
+	job.UpdatedAt = now
+	return nil
+}
+
+// DeleteMonitoringJob deletes a monitoring job
+func (p *PersistenceBackend) DeleteMonitoringJob(ctx context.Context, id string) error {
+	query := `DELETE FROM monitoring_jobs WHERE id = ?`
+	result, err := p.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete monitoring job: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("monitoring job not found: %s", id)
+	}
+
+	return nil
+}
+
+// UpdateMonitoringJobStatus updates the last run status of a monitoring job
+func (p *PersistenceBackend) UpdateMonitoringJobStatus(ctx context.Context, jobID string, status string, alertsCreated int) error {
+	query := `
+		UPDATE monitoring_jobs
+		SET last_run_at = ?, last_run_status = ?, last_run_alerts = ?, updated_at = ?
+		WHERE id = ?
+	`
+	now := time.Now()
+	_, err := p.db.ExecContext(ctx, query, now, status, alertsCreated, now, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to update monitoring job status: %w", err)
+	}
+	return nil
+}
+
+// RecordMonitoringRun creates a record of a monitoring job execution
+func (p *PersistenceBackend) RecordMonitoringRun(ctx context.Context, run *MonitoringJobRun) error {
+	query := `
+		INSERT INTO monitoring_job_runs (
+			job_id, started_at, completed_at, status, metrics_checked,
+			alerts_created, error_message
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+	result, err := p.db.ExecContext(ctx, query,
+		run.JobID, run.StartedAt, run.CompletedAt, run.Status,
+		run.MetricsChecked, run.AlertsCreated, run.ErrorMessage,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to record monitoring run: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("failed to get last insert ID: %w", err)
+	}
+	run.ID = int(id)
+
+	return nil
+}
+
+// GetMonitoringJobRuns retrieves execution history for a monitoring job
+func (p *PersistenceBackend) GetMonitoringJobRuns(ctx context.Context, jobID string, limit int) ([]*MonitoringJobRun, error) {
+	query := `
+		SELECT id, job_id, started_at, completed_at, status, metrics_checked,
+			alerts_created, error_message
+		FROM monitoring_job_runs
+		WHERE job_id = ?
+		ORDER BY started_at DESC
+	`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit)
+	}
+
+	rows, err := p.db.QueryContext(ctx, query, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monitoring job runs: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []*MonitoringJobRun
+	for rows.Next() {
+		run := &MonitoringJobRun{}
+		var completedAt sql.NullTime
+		var errorMessage sql.NullString
+
+		err := rows.Scan(
+			&run.ID, &run.JobID, &run.StartedAt, &completedAt, &run.Status,
+			&run.MetricsChecked, &run.AlertsCreated, &errorMessage,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan monitoring job run: %w", err)
+		}
+
+		if completedAt.Valid {
+			run.CompletedAt = &completedAt.Time
+		}
+		if errorMessage.Valid {
+			run.ErrorMessage = errorMessage.String
+		}
+
+		runs = append(runs, run)
+	}
+
+	return runs, rows.Err()
 }

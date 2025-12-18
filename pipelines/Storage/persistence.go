@@ -332,6 +332,186 @@ func (p *PersistenceBackend) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active);
 	CREATE INDEX IF NOT EXISTS idx_plugins_type ON plugins(type);
 	CREATE INDEX IF NOT EXISTS idx_plugins_enabled ON plugins(is_enabled);
+
+	-- Classifier models table (for ML pipeline)
+	CREATE TABLE IF NOT EXISTS classifier_models (
+		id TEXT PRIMARY KEY,
+		ontology_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		target_class TEXT NOT NULL,
+		algorithm TEXT NOT NULL DEFAULT 'decision_tree',
+		hyperparameters TEXT,  -- JSON: max_depth, min_samples_split, etc.
+		feature_columns TEXT,  -- JSON array: ["col1", "col2", ...]
+		class_labels TEXT,  -- JSON array: ["class1", "class2", ...]
+		train_accuracy REAL,
+		validate_accuracy REAL,
+		precision_score REAL,
+		recall_score REAL,
+		f1_score REAL,
+		confusion_matrix TEXT,  -- JSON: 2D array
+		model_artifact_path TEXT NOT NULL,  -- Path to serialized model file
+		model_size_bytes INTEGER,
+		training_rows INTEGER,
+		validation_rows INTEGER,
+		feature_importance TEXT,  -- JSON: {"feature": importance}
+		is_active BOOLEAN NOT NULL DEFAULT 1,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
+	);
+
+	-- Model training runs table (for tracking training history)
+	CREATE TABLE IF NOT EXISTS model_training_runs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		model_id TEXT NOT NULL,
+		dataset_size INTEGER NOT NULL,
+		training_duration_ms INTEGER,
+		epochs INTEGER DEFAULT 1,
+		final_train_accuracy REAL,
+		final_validate_accuracy REAL,
+		metrics TEXT,  -- JSON: full metrics snapshot
+		config TEXT,  -- JSON: hyperparameters used
+		status TEXT NOT NULL DEFAULT 'running',  -- running, completed, failed
+		error_message TEXT,
+		started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		completed_at TIMESTAMP,
+		FOREIGN KEY (model_id) REFERENCES classifier_models(id) ON DELETE CASCADE
+	);
+
+	-- Model predictions table (for tracking inference and anomaly detection)
+	CREATE TABLE IF NOT EXISTS model_predictions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		model_id TEXT NOT NULL,
+		input_data TEXT NOT NULL,  -- JSON: feature values
+		predicted_class TEXT NOT NULL,
+		confidence REAL NOT NULL,
+		actual_class TEXT,  -- If known (for validation)
+		is_correct BOOLEAN,  -- If actual_class is known
+		is_anomaly BOOLEAN DEFAULT 0,  -- Flagged as anomaly if confidence < threshold
+		anomaly_reason TEXT,  -- Why flagged as anomaly
+		predicted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (model_id) REFERENCES classifier_models(id) ON DELETE CASCADE
+	);
+
+	-- Anomalies table (for anomaly detection system)
+	CREATE TABLE IF NOT EXISTS anomalies (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		model_id TEXT NOT NULL,
+		prediction_id INTEGER,  -- Link to prediction if applicable
+		anomaly_type TEXT NOT NULL,  -- 'low_confidence', 'constraint_violation', 'outlier', 'drift'
+		data_row TEXT NOT NULL,  -- JSON: raw data that triggered anomaly
+		confidence REAL,  -- Model confidence (if prediction-based)
+		violations TEXT,  -- JSON: list of constraint violations
+		severity TEXT NOT NULL DEFAULT 'medium',  -- 'low', 'medium', 'high', 'critical'
+		status TEXT NOT NULL DEFAULT 'open',  -- 'open', 'investigating', 'resolved', 'false_positive'
+		assigned_to TEXT,
+		resolution_notes TEXT,
+		detected_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		resolved_at TIMESTAMP,
+		FOREIGN KEY (model_id) REFERENCES classifier_models(id) ON DELETE CASCADE,
+		FOREIGN KEY (prediction_id) REFERENCES model_predictions(id) ON DELETE SET NULL
+	);
+
+	-- Data quality metrics table (for profiling and monitoring)
+	CREATE TABLE IF NOT EXISTS data_quality_metrics (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ontology_id TEXT NOT NULL,
+		metric_type TEXT NOT NULL,  -- 'completeness', 'validity', 'consistency', 'accuracy'
+		entity_type TEXT,  -- Which class/table
+		column_name TEXT,  -- Which property/column
+		metric_value REAL NOT NULL,
+		threshold_min REAL,
+		threshold_max REAL,
+		is_passing BOOLEAN NOT NULL,
+		details TEXT,  -- JSON: additional context
+		measured_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
+	);
+
+	-- Create indexes for ML tables
+	CREATE INDEX IF NOT EXISTS idx_classifier_models_ontology ON classifier_models(ontology_id);
+	CREATE INDEX IF NOT EXISTS idx_classifier_models_active ON classifier_models(is_active);
+	CREATE INDEX IF NOT EXISTS idx_training_runs_model ON model_training_runs(model_id);
+	CREATE INDEX IF NOT EXISTS idx_training_runs_status ON model_training_runs(status);
+	CREATE INDEX IF NOT EXISTS idx_predictions_model ON model_predictions(model_id);
+	CREATE INDEX IF NOT EXISTS idx_predictions_anomaly ON model_predictions(is_anomaly);
+	CREATE INDEX IF NOT EXISTS idx_predictions_predicted_at ON model_predictions(predicted_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_anomalies_model ON anomalies(model_id);
+	CREATE INDEX IF NOT EXISTS idx_anomalies_status ON anomalies(status);
+	CREATE INDEX IF NOT EXISTS idx_anomalies_severity ON anomalies(severity);
+	CREATE INDEX IF NOT EXISTS idx_anomalies_detected_at ON anomalies(detected_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_data_quality_ontology ON data_quality_metrics(ontology_id);
+	CREATE INDEX IF NOT EXISTS idx_data_quality_measured_at ON data_quality_metrics(measured_at DESC);
+
+	-- Time series data table (for continuous monitoring)
+	CREATE TABLE IF NOT EXISTS time_series_data (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		entity_id TEXT NOT NULL,  -- e.g., "product_123", "supply_medical"
+		metric_name TEXT NOT NULL,  -- e.g., "price", "stock_level", "deliveries"
+		value REAL NOT NULL,
+		timestamp TIMESTAMP NOT NULL,
+		ontology_id TEXT,  -- Optional link to ontology
+		metadata TEXT,  -- JSON: additional context
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE SET NULL
+	);
+
+	-- Time series analysis results table
+	CREATE TABLE IF NOT EXISTS time_series_analyses (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		entity_id TEXT NOT NULL,
+		metric_name TEXT NOT NULL,
+		analysis_type TEXT NOT NULL,  -- 'trend', 'anomaly', 'forecast'
+		window_days INTEGER,
+		result TEXT NOT NULL,  -- JSON: analysis results
+		analyzed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	-- Alerts table (for continuous monitoring alerts)
+	CREATE TABLE IF NOT EXISTS alerts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		alert_type TEXT NOT NULL,  -- 'trend', 'anomaly', 'threshold', 'forecast'
+		entity_id TEXT NOT NULL,
+		metric_name TEXT NOT NULL,
+		severity TEXT NOT NULL,  -- 'low', 'medium', 'high', 'critical'
+		title TEXT NOT NULL,
+		message TEXT NOT NULL,
+		details TEXT,  -- JSON: additional details
+		status TEXT NOT NULL DEFAULT 'active',  -- 'active', 'acknowledged', 'resolved', 'dismissed'
+		acknowledged_by TEXT,
+		acknowledged_at TIMESTAMP,
+		resolved_at TIMESTAMP,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	-- Monitoring rules table (user-defined thresholds and rules)
+	CREATE TABLE IF NOT EXISTS monitoring_rules (
+		id TEXT PRIMARY KEY,
+		ontology_id TEXT,
+		entity_id TEXT,  -- NULL means apply to all entities
+		metric_name TEXT NOT NULL,
+		rule_type TEXT NOT NULL,  -- 'threshold', 'trend', 'anomaly', 'forecast'
+		condition TEXT NOT NULL,  -- JSON: rule conditions
+		severity TEXT NOT NULL DEFAULT 'medium',
+		is_enabled BOOLEAN NOT NULL DEFAULT 1,
+		alert_channels TEXT,  -- JSON: ['email', 'webhook', 'agent_chat']
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
+	);
+
+	-- Create indexes for time series tables
+	CREATE INDEX IF NOT EXISTS idx_ts_data_entity_metric ON time_series_data(entity_id, metric_name);
+	CREATE INDEX IF NOT EXISTS idx_ts_data_timestamp ON time_series_data(timestamp DESC);
+	CREATE INDEX IF NOT EXISTS idx_ts_data_ontology ON time_series_data(ontology_id);
+	CREATE INDEX IF NOT EXISTS idx_ts_analyses_entity ON time_series_analyses(entity_id, metric_name);
+	CREATE INDEX IF NOT EXISTS idx_ts_analyses_type ON time_series_analyses(analysis_type);
+	CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
+	CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
+	CREATE INDEX IF NOT EXISTS idx_alerts_entity ON alerts(entity_id, metric_name);
+	CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_monitoring_rules_entity ON monitoring_rules(entity_id, metric_name);
+	CREATE INDEX IF NOT EXISTS idx_monitoring_rules_enabled ON monitoring_rules(is_enabled);
 	`
 
 	_, err := p.db.Exec(schema)
@@ -560,4 +740,702 @@ func (p *PersistenceBackend) ListDigitalTwins(ctx context.Context) ([]map[string
 	}
 
 	return twins, rows.Err()
+}
+
+// ClassifierModel represents a classifier model in the database
+type ClassifierModel struct {
+	ID                string    `json:"id"`
+	OntologyID        string    `json:"ontology_id"`
+	Name              string    `json:"name"`
+	TargetClass       string    `json:"target_class"`
+	Algorithm         string    `json:"algorithm"`
+	Hyperparameters   string    `json:"hyperparameters"` // JSON
+	FeatureColumns    string    `json:"feature_columns"` // JSON array
+	ClassLabels       string    `json:"class_labels"`    // JSON array
+	TrainAccuracy     float64   `json:"train_accuracy"`
+	ValidateAccuracy  float64   `json:"validate_accuracy"`
+	PrecisionScore    float64   `json:"precision_score"`
+	RecallScore       float64   `json:"recall_score"`
+	F1Score           float64   `json:"f1_score"`
+	ConfusionMatrix   string    `json:"confusion_matrix"` // JSON
+	ModelArtifactPath string    `json:"model_artifact_path"`
+	ModelSizeBytes    int64     `json:"model_size_bytes"`
+	TrainingRows      int       `json:"training_rows"`
+	ValidationRows    int       `json:"validation_rows"`
+	FeatureImportance string    `json:"feature_importance"` // JSON
+	IsActive          bool      `json:"is_active"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+// CreateClassifierModel creates a new classifier model in the database
+func (p *PersistenceBackend) CreateClassifierModel(ctx context.Context, model *ClassifierModel) error {
+	query := `
+		INSERT INTO classifier_models (
+			id, ontology_id, name, target_class, algorithm, hyperparameters,
+			feature_columns, class_labels, train_accuracy, validate_accuracy,
+			precision_score, recall_score, f1_score, confusion_matrix,
+			model_artifact_path, model_size_bytes, training_rows, validation_rows,
+			feature_importance, is_active, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	`
+	_, err := p.db.ExecContext(ctx, query,
+		model.ID, model.OntologyID, model.Name, model.TargetClass, model.Algorithm,
+		model.Hyperparameters, model.FeatureColumns, model.ClassLabels,
+		model.TrainAccuracy, model.ValidateAccuracy, model.PrecisionScore,
+		model.RecallScore, model.F1Score, model.ConfusionMatrix,
+		model.ModelArtifactPath, model.ModelSizeBytes, model.TrainingRows,
+		model.ValidationRows, model.FeatureImportance, model.IsActive,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create classifier model: %w", err)
+	}
+	return nil
+}
+
+// GetClassifierModel retrieves a classifier model by ID
+func (p *PersistenceBackend) GetClassifierModel(ctx context.Context, id string) (*ClassifierModel, error) {
+	query := `
+		SELECT id, ontology_id, name, target_class, algorithm, hyperparameters,
+		       feature_columns, class_labels, train_accuracy, validate_accuracy,
+		       precision_score, recall_score, f1_score, confusion_matrix,
+		       model_artifact_path, model_size_bytes, training_rows, validation_rows,
+		       feature_importance, is_active, created_at, updated_at
+		FROM classifier_models
+		WHERE id = ?
+	`
+	model := &ClassifierModel{}
+	err := p.db.QueryRowContext(ctx, query, id).Scan(
+		&model.ID, &model.OntologyID, &model.Name, &model.TargetClass,
+		&model.Algorithm, &model.Hyperparameters, &model.FeatureColumns,
+		&model.ClassLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
+		&model.PrecisionScore, &model.RecallScore, &model.F1Score,
+		&model.ConfusionMatrix, &model.ModelArtifactPath, &model.ModelSizeBytes,
+		&model.TrainingRows, &model.ValidationRows, &model.FeatureImportance,
+		&model.IsActive, &model.CreatedAt, &model.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("classifier model not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get classifier model: %w", err)
+	}
+	return model, nil
+}
+
+// ListClassifierModels retrieves all classifier models for an ontology
+func (p *PersistenceBackend) ListClassifierModels(ctx context.Context, ontologyID string, activeOnly bool) ([]*ClassifierModel, error) {
+	var query string
+	var args []any
+
+	if activeOnly {
+		query = `
+			SELECT id, ontology_id, name, target_class, algorithm, hyperparameters,
+			       feature_columns, class_labels, train_accuracy, validate_accuracy,
+			       precision_score, recall_score, f1_score, confusion_matrix,
+			       model_artifact_path, model_size_bytes, training_rows, validation_rows,
+			       feature_importance, is_active, created_at, updated_at
+			FROM classifier_models
+			WHERE ontology_id = ? AND is_active = 1
+			ORDER BY created_at DESC
+		`
+		args = append(args, ontologyID)
+	} else if ontologyID != "" {
+		query = `
+			SELECT id, ontology_id, name, target_class, algorithm, hyperparameters,
+			       feature_columns, class_labels, train_accuracy, validate_accuracy,
+			       precision_score, recall_score, f1_score, confusion_matrix,
+			       model_artifact_path, model_size_bytes, training_rows, validation_rows,
+			       feature_importance, is_active, created_at, updated_at
+			FROM classifier_models
+			WHERE ontology_id = ?
+			ORDER BY created_at DESC
+		`
+		args = append(args, ontologyID)
+	} else {
+		query = `
+			SELECT id, ontology_id, name, target_class, algorithm, hyperparameters,
+			       feature_columns, class_labels, train_accuracy, validate_accuracy,
+			       precision_score, recall_score, f1_score, confusion_matrix,
+			       model_artifact_path, model_size_bytes, training_rows, validation_rows,
+			       feature_importance, is_active, created_at, updated_at
+			FROM classifier_models
+			ORDER BY created_at DESC
+		`
+	}
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list classifier models: %w", err)
+	}
+	defer rows.Close()
+
+	var models []*ClassifierModel
+	for rows.Next() {
+		model := &ClassifierModel{}
+		err := rows.Scan(
+			&model.ID, &model.OntologyID, &model.Name, &model.TargetClass,
+			&model.Algorithm, &model.Hyperparameters, &model.FeatureColumns,
+			&model.ClassLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
+			&model.PrecisionScore, &model.RecallScore, &model.F1Score,
+			&model.ConfusionMatrix, &model.ModelArtifactPath, &model.ModelSizeBytes,
+			&model.TrainingRows, &model.ValidationRows, &model.FeatureImportance,
+			&model.IsActive, &model.CreatedAt, &model.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan classifier model: %w", err)
+		}
+		models = append(models, model)
+	}
+
+	return models, rows.Err()
+}
+
+// UpdateClassifierModelStatus updates the is_active status of a model
+func (p *PersistenceBackend) UpdateClassifierModelStatus(ctx context.Context, id string, isActive bool) error {
+	query := `UPDATE classifier_models SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+	_, err := p.db.ExecContext(ctx, query, isActive, id)
+	if err != nil {
+		return fmt.Errorf("failed to update classifier model status: %w", err)
+	}
+	return nil
+}
+
+// DeleteClassifierModel deletes a classifier model
+func (p *PersistenceBackend) DeleteClassifierModel(ctx context.Context, id string) error {
+	query := `DELETE FROM classifier_models WHERE id = ?`
+	_, err := p.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete classifier model: %w", err)
+	}
+	return nil
+}
+
+// CreateTrainingRun creates a new training run record
+func (p *PersistenceBackend) CreateTrainingRun(ctx context.Context, modelID string, datasetSize, trainingDurationMs int, finalTrainAccuracy, finalValidateAccuracy float64, metrics, config, status, errorMessage string) (int64, error) {
+	query := `
+		INSERT INTO model_training_runs (
+			model_id, dataset_size, training_duration_ms, final_train_accuracy,
+			final_validate_accuracy, metrics, config, status, error_message,
+			started_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`
+	result, err := p.db.ExecContext(ctx, query,
+		modelID, datasetSize, trainingDurationMs, finalTrainAccuracy,
+		finalValidateAccuracy, metrics, config, status, errorMessage,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create training run: %w", err)
+	}
+
+	runID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get training run ID: %w", err)
+	}
+	return runID, nil
+}
+
+// UpdateTrainingRunStatus updates a training run's status and completion time
+func (p *PersistenceBackend) UpdateTrainingRunStatus(ctx context.Context, runID int64, status, errorMessage string) error {
+	query := `
+		UPDATE model_training_runs
+		SET status = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`
+	_, err := p.db.ExecContext(ctx, query, status, errorMessage, runID)
+	if err != nil {
+		return fmt.Errorf("failed to update training run status: %w", err)
+	}
+	return nil
+}
+
+// CreatePrediction creates a new prediction record
+func (p *PersistenceBackend) CreatePrediction(ctx context.Context, modelID, inputData, predictedClass string, confidence float64, actualClass string, isCorrect, isAnomaly bool, anomalyReason string) error {
+	query := `
+		INSERT INTO model_predictions (
+			model_id, input_data, predicted_class, confidence, actual_class,
+			is_correct, is_anomaly, anomaly_reason, predicted_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`
+	var actualClassPtr *string
+	if actualClass != "" {
+		actualClassPtr = &actualClass
+	}
+
+	_, err := p.db.ExecContext(ctx, query,
+		modelID, inputData, predictedClass, confidence, actualClassPtr,
+		isCorrect, isAnomaly, anomalyReason,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create prediction: %w", err)
+	}
+	return nil
+}
+
+// CreateAnomaly creates a new anomaly record
+func (p *PersistenceBackend) CreateAnomaly(ctx context.Context, modelID string, predictionID *int64, anomalyType, dataRow string, confidence *float64, violations, severity, status string) (int64, error) {
+	query := `
+		INSERT INTO anomalies (
+			model_id, prediction_id, anomaly_type, data_row, confidence,
+			violations, severity, status, detected_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`
+	result, err := p.db.ExecContext(ctx, query,
+		modelID, predictionID, anomalyType, dataRow, confidence,
+		violations, severity, status,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create anomaly: %w", err)
+	}
+
+	anomalyID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get anomaly ID: %w", err)
+	}
+	return anomalyID, nil
+}
+
+// ListAnomalies retrieves anomalies with optional filters
+func (p *PersistenceBackend) ListAnomalies(ctx context.Context, modelID, status, severity string, limit int) ([]map[string]interface{}, error) {
+	query := `
+		SELECT id, model_id, prediction_id, anomaly_type, data_row, confidence,
+		       violations, severity, status, assigned_to, resolution_notes,
+		       detected_at, resolved_at
+		FROM anomalies
+		WHERE 1=1
+	`
+	var args []any
+
+	if modelID != "" {
+		query += " AND model_id = ?"
+		args = append(args, modelID)
+	}
+	if status != "" {
+		query += " AND status = ?"
+		args = append(args, status)
+	}
+	if severity != "" {
+		query += " AND severity = ?"
+		args = append(args, severity)
+	}
+
+	query += " ORDER BY detected_at DESC"
+
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list anomalies: %w", err)
+	}
+	defer rows.Close()
+
+	var anomalies []map[string]interface{}
+	for rows.Next() {
+		var anomaly struct {
+			ID              int64
+			ModelID         string
+			PredictionID    sql.NullInt64
+			AnomalyType     string
+			DataRow         string
+			Confidence      sql.NullFloat64
+			Violations      sql.NullString
+			Severity        string
+			Status          string
+			AssignedTo      sql.NullString
+			ResolutionNotes sql.NullString
+			DetectedAt      time.Time
+			ResolvedAt      sql.NullTime
+		}
+
+		err := rows.Scan(
+			&anomaly.ID, &anomaly.ModelID, &anomaly.PredictionID, &anomaly.AnomalyType,
+			&anomaly.DataRow, &anomaly.Confidence, &anomaly.Violations,
+			&anomaly.Severity, &anomaly.Status, &anomaly.AssignedTo,
+			&anomaly.ResolutionNotes, &anomaly.DetectedAt, &anomaly.ResolvedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan anomaly: %w", err)
+		}
+
+		result := map[string]interface{}{
+			"id":           anomaly.ID,
+			"model_id":     anomaly.ModelID,
+			"anomaly_type": anomaly.AnomalyType,
+			"data_row":     anomaly.DataRow,
+			"severity":     anomaly.Severity,
+			"status":       anomaly.Status,
+			"detected_at":  anomaly.DetectedAt.Format(time.RFC3339),
+		}
+
+		if anomaly.PredictionID.Valid {
+			result["prediction_id"] = anomaly.PredictionID.Int64
+		}
+		if anomaly.Confidence.Valid {
+			result["confidence"] = anomaly.Confidence.Float64
+		}
+		if anomaly.Violations.Valid {
+			result["violations"] = anomaly.Violations.String
+		}
+		if anomaly.AssignedTo.Valid {
+			result["assigned_to"] = anomaly.AssignedTo.String
+		}
+		if anomaly.ResolutionNotes.Valid {
+			result["resolution_notes"] = anomaly.ResolutionNotes.String
+		}
+		if anomaly.ResolvedAt.Valid {
+			result["resolved_at"] = anomaly.ResolvedAt.Time.Format(time.RFC3339)
+		}
+
+		anomalies = append(anomalies, result)
+	}
+
+	return anomalies, rows.Err()
+}
+
+// UpdateAnomalyStatus updates an anomaly's status and resolution info
+func (p *PersistenceBackend) UpdateAnomalyStatus(ctx context.Context, id int64, status, assignedTo, resolutionNotes string) error {
+	query := `
+		UPDATE anomalies
+		SET status = ?, assigned_to = ?, resolution_notes = ?,
+		    resolved_at = CASE WHEN ? IN ('resolved', 'false_positive') THEN CURRENT_TIMESTAMP ELSE resolved_at END
+		WHERE id = ?
+	`
+	_, err := p.db.ExecContext(ctx, query, status, assignedTo, resolutionNotes, status, id)
+	if err != nil {
+		return fmt.Errorf("failed to update anomaly status: %w", err)
+	}
+	return nil
+}
+
+// AddTimeSeriesPoint adds a single data point to time series
+func (p *PersistenceBackend) AddTimeSeriesPoint(ctx context.Context, entityID, metricName string, value float64, timestamp time.Time, ontologyID, metadata string) error {
+	query := `
+		INSERT INTO time_series_data (entity_id, metric_name, value, timestamp, ontology_id, metadata)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+	_, err := p.db.ExecContext(ctx, query, entityID, metricName, value, timestamp, ontologyID, metadata)
+	if err != nil {
+		return fmt.Errorf("failed to add time series point: %w", err)
+	}
+	return nil
+}
+
+// AddTimeSeriesPoints adds multiple data points in a batch
+func (p *PersistenceBackend) AddTimeSeriesPoints(ctx context.Context, points []TimeSeriesPoint) error {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO time_series_data (entity_id, metric_name, value, timestamp, ontology_id, metadata)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, point := range points {
+		_, err := stmt.ExecContext(ctx, point.EntityID, point.MetricName, point.Value, point.Timestamp, point.OntologyID, point.Metadata)
+		if err != nil {
+			return fmt.Errorf("failed to insert point: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
+// TimeSeriesPoint represents a data point for batch insertion
+type TimeSeriesPoint struct {
+	EntityID   string
+	MetricName string
+	Value      float64
+	Timestamp  time.Time
+	OntologyID string
+	Metadata   string
+}
+
+// GetTimeSeries retrieves time series data for an entity/metric
+func (p *PersistenceBackend) GetTimeSeries(ctx context.Context, entityID, metricName string, fromTime, toTime time.Time, limit int) ([]TimeSeriesDataPoint, error) {
+	query := `
+		SELECT id, entity_id, metric_name, value, timestamp, ontology_id, metadata
+		FROM time_series_data
+		WHERE entity_id = ? AND metric_name = ?
+		  AND timestamp >= ? AND timestamp <= ?
+		ORDER BY timestamp DESC
+	`
+
+	args := []interface{}{entityID, metricName, fromTime, toTime}
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query time series: %w", err)
+	}
+	defer rows.Close()
+
+	var points []TimeSeriesDataPoint
+	for rows.Next() {
+		var point TimeSeriesDataPoint
+		var ontologyID, metadata sql.NullString
+
+		err := rows.Scan(&point.ID, &point.EntityID, &point.MetricName, &point.Value, &point.Timestamp, &ontologyID, &metadata)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan time series point: %w", err)
+		}
+
+		if ontologyID.Valid {
+			point.OntologyID = ontologyID.String
+		}
+		if metadata.Valid {
+			point.Metadata = metadata.String
+		}
+
+		points = append(points, point)
+	}
+
+	return points, rows.Err()
+}
+
+// TimeSeriesDataPoint represents a retrieved time series data point
+type TimeSeriesDataPoint struct {
+	ID         int64     `json:"id"`
+	EntityID   string    `json:"entity_id"`
+	MetricName string    `json:"metric_name"`
+	Value      float64   `json:"value"`
+	Timestamp  time.Time `json:"timestamp"`
+	OntologyID string    `json:"ontology_id,omitempty"`
+	Metadata   string    `json:"metadata,omitempty"`
+}
+
+// SaveTimeSeriesAnalysis saves analysis results
+func (p *PersistenceBackend) SaveTimeSeriesAnalysis(ctx context.Context, entityID, metricName, analysisType string, windowDays int, result string) error {
+	query := `
+		INSERT INTO time_series_analyses (entity_id, metric_name, analysis_type, window_days, result)
+		VALUES (?, ?, ?, ?, ?)
+	`
+	_, err := p.db.ExecContext(ctx, query, entityID, metricName, analysisType, windowDays, result)
+	if err != nil {
+		return fmt.Errorf("failed to save time series analysis: %w", err)
+	}
+	return nil
+}
+
+// CreateAlert creates a new alert
+func (p *PersistenceBackend) CreateAlert(ctx context.Context, alertType, entityID, metricName, severity, title, message, details string) (int64, error) {
+	query := `
+		INSERT INTO alerts (alert_type, entity_id, metric_name, severity, title, message, details)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+	result, err := p.db.ExecContext(ctx, query, alertType, entityID, metricName, severity, title, message, details)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create alert: %w", err)
+	}
+
+	alertID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get alert ID: %w", err)
+	}
+	return alertID, nil
+}
+
+// ListAlerts retrieves alerts with optional filters
+func (p *PersistenceBackend) ListAlerts(ctx context.Context, status, severity, entityID string, limit int) ([]map[string]interface{}, error) {
+	query := `
+		SELECT id, alert_type, entity_id, metric_name, severity, title, message, details,
+		       status, acknowledged_by, acknowledged_at, resolved_at, created_at
+		FROM alerts
+		WHERE 1=1
+	`
+	var args []interface{}
+
+	if status != "" {
+		query += " AND status = ?"
+		args = append(args, status)
+	}
+	if severity != "" {
+		query += " AND severity = ?"
+		args = append(args, severity)
+	}
+	if entityID != "" {
+		query += " AND entity_id = ?"
+		args = append(args, entityID)
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list alerts: %w", err)
+	}
+	defer rows.Close()
+
+	var alerts []map[string]interface{}
+	for rows.Next() {
+		var alert struct {
+			ID             int64
+			AlertType      string
+			EntityID       string
+			MetricName     string
+			Severity       string
+			Title          string
+			Message        string
+			Details        sql.NullString
+			Status         string
+			AcknowledgedBy sql.NullString
+			AcknowledgedAt sql.NullTime
+			ResolvedAt     sql.NullTime
+			CreatedAt      time.Time
+		}
+
+		err := rows.Scan(
+			&alert.ID, &alert.AlertType, &alert.EntityID, &alert.MetricName,
+			&alert.Severity, &alert.Title, &alert.Message, &alert.Details,
+			&alert.Status, &alert.AcknowledgedBy, &alert.AcknowledgedAt,
+			&alert.ResolvedAt, &alert.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan alert: %w", err)
+		}
+
+		result := map[string]interface{}{
+			"id":          alert.ID,
+			"alert_type":  alert.AlertType,
+			"entity_id":   alert.EntityID,
+			"metric_name": alert.MetricName,
+			"severity":    alert.Severity,
+			"title":       alert.Title,
+			"message":     alert.Message,
+			"status":      alert.Status,
+			"created_at":  alert.CreatedAt.Format(time.RFC3339),
+		}
+
+		if alert.Details.Valid {
+			result["details"] = alert.Details.String
+		}
+		if alert.AcknowledgedBy.Valid {
+			result["acknowledged_by"] = alert.AcknowledgedBy.String
+		}
+		if alert.AcknowledgedAt.Valid {
+			result["acknowledged_at"] = alert.AcknowledgedAt.Time.Format(time.RFC3339)
+		}
+		if alert.ResolvedAt.Valid {
+			result["resolved_at"] = alert.ResolvedAt.Time.Format(time.RFC3339)
+		}
+
+		alerts = append(alerts, result)
+	}
+
+	return alerts, rows.Err()
+}
+
+// UpdateAlertStatus updates an alert's status
+func (p *PersistenceBackend) UpdateAlertStatus(ctx context.Context, alertID int64, status, acknowledgedBy string) error {
+	query := `
+		UPDATE alerts
+		SET status = ?, acknowledged_by = ?,
+		    acknowledged_at = CASE WHEN ? != 'active' THEN CURRENT_TIMESTAMP ELSE acknowledged_at END,
+		    resolved_at = CASE WHEN ? IN ('resolved', 'dismissed') THEN CURRENT_TIMESTAMP ELSE resolved_at END
+		WHERE id = ?
+	`
+	_, err := p.db.ExecContext(ctx, query, status, acknowledgedBy, status, status, alertID)
+	if err != nil {
+		return fmt.Errorf("failed to update alert status: %w", err)
+	}
+	return nil
+}
+
+// CreateMonitoringRule creates a monitoring rule
+func (p *PersistenceBackend) CreateMonitoringRule(ctx context.Context, id, ontologyID, entityID, metricName, ruleType, condition, severity string, isEnabled bool, alertChannels string) error {
+	query := `
+		INSERT INTO monitoring_rules (id, ontology_id, entity_id, metric_name, rule_type, condition, severity, is_enabled, alert_channels)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := p.db.ExecContext(ctx, query, id, ontologyID, entityID, metricName, ruleType, condition, severity, isEnabled, alertChannels)
+	if err != nil {
+		return fmt.Errorf("failed to create monitoring rule: %w", err)
+	}
+	return nil
+}
+
+// GetMonitoringRules retrieves enabled monitoring rules
+func (p *PersistenceBackend) GetMonitoringRules(ctx context.Context, entityID, metricName string) ([]MonitoringRule, error) {
+	query := `
+		SELECT id, ontology_id, entity_id, metric_name, rule_type, condition, severity, is_enabled, alert_channels, created_at, updated_at
+		FROM monitoring_rules
+		WHERE is_enabled = 1
+	`
+	var args []interface{}
+
+	if entityID != "" {
+		query += " AND (entity_id = ? OR entity_id IS NULL)"
+		args = append(args, entityID)
+	}
+	if metricName != "" {
+		query += " AND metric_name = ?"
+		args = append(args, metricName)
+	}
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monitoring rules: %w", err)
+	}
+	defer rows.Close()
+
+	var rules []MonitoringRule
+	for rows.Next() {
+		var rule MonitoringRule
+		var ontologyID, entityIDNull sql.NullString
+
+		err := rows.Scan(
+			&rule.ID, &ontologyID, &entityIDNull, &rule.MetricName,
+			&rule.RuleType, &rule.Condition, &rule.Severity, &rule.IsEnabled,
+			&rule.AlertChannels, &rule.CreatedAt, &rule.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan monitoring rule: %w", err)
+		}
+
+		if ontologyID.Valid {
+			rule.OntologyID = ontologyID.String
+		}
+		if entityIDNull.Valid {
+			rule.EntityID = entityIDNull.String
+		}
+
+		rules = append(rules, rule)
+	}
+
+	return rules, rows.Err()
+}
+
+// MonitoringRule represents a monitoring rule
+type MonitoringRule struct {
+	ID            string    `json:"id"`
+	OntologyID    string    `json:"ontology_id"`
+	EntityID      string    `json:"entity_id"`
+	MetricName    string    `json:"metric_name"`
+	RuleType      string    `json:"rule_type"`
+	Condition     string    `json:"condition"`
+	Severity      string    `json:"severity"`
+	IsEnabled     bool      `json:"is_enabled"`
+	AlertChannels string    `json:"alert_channels"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }

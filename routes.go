@@ -172,6 +172,21 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/ontology/{id}/train-for-goal", s.handleTrainForGoal).Methods("POST")
 	v1.HandleFunc("/ontology/{id}/ml-suggestions", s.handleGetMLSuggestions).Methods("GET")
 
+	// Monitoring endpoints
+	v1.HandleFunc("/monitoring/jobs", s.handleListMonitoringJobs).Methods("GET")
+	v1.HandleFunc("/monitoring/jobs", s.handleCreateMonitoringJob).Methods("POST")
+	v1.HandleFunc("/monitoring/jobs/{id}", s.handleGetMonitoringJob).Methods("GET")
+	v1.HandleFunc("/monitoring/jobs/{id}", s.handleUpdateMonitoringJob).Methods("PUT")
+	v1.HandleFunc("/monitoring/jobs/{id}", s.handleDeleteMonitoringJob).Methods("DELETE")
+	v1.HandleFunc("/monitoring/jobs/{id}/enable", s.handleEnableMonitoringJob).Methods("POST")
+	v1.HandleFunc("/monitoring/jobs/{id}/disable", s.handleDisableMonitoringJob).Methods("POST")
+	v1.HandleFunc("/monitoring/jobs/{id}/runs", s.handleGetMonitoringJobRuns).Methods("GET")
+	v1.HandleFunc("/monitoring/rules", s.handleListMonitoringRules).Methods("GET")
+	v1.HandleFunc("/monitoring/rules", s.handleCreateMonitoringRule).Methods("POST")
+	v1.HandleFunc("/monitoring/rules/{id}", s.handleDeleteMonitoringRule).Methods("DELETE")
+	v1.HandleFunc("/monitoring/alerts", s.handleListAlerts).Methods("GET")
+	v1.HandleFunc("/monitoring/alerts/{id}", s.handleAcknowledgeAlert).Methods("PATCH")
+
 	// Anomaly Detection endpoints
 	v1.HandleFunc("/anomalies", s.handleListAnomalies).Methods("GET")
 	v1.HandleFunc("/anomalies/{id}", s.handleUpdateAnomalyStatus).Methods("PATCH")

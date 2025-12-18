@@ -7,7 +7,7 @@ version: '3.8'
 services:
   mimir-aip-unified:
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile.unified
     image: mimir-aip:unified-latest
     container_name: mimir-aip-unified
@@ -90,22 +90,10 @@ volumes:
     driver: local
   mimir_tdb2:
     driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/data/tdb2
-      o: bind
   mimir_ontologies:
     driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/data/ontologies
-      o: bind
   mimir_chromem:
     driver: local
-    driver_opts:
-      type: none
-      device: ${PWD}/data/chromem
-      o: bind
 
 # Networks
 networks:

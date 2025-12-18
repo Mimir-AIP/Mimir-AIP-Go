@@ -12,7 +12,7 @@ mkdir -p /app/data/ontologies
 
 # Start Jena Fuseki server in background
 echo "Starting Jena Fuseki server on port 3030..."
-cd $JENA_HOME
+cd /opt/jena
 java $JVM_ARGS -jar fuseki-server.jar \
     --port=3030 \
     --loc=/app/data/tdb2 \

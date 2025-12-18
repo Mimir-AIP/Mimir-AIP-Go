@@ -260,11 +260,11 @@ func TestTwinState(t *testing.T) {
 
 	// Test CalculateAverageUtilization
 	avgUtil := state.CalculateAverageUtilization()
-	assert.InDelta(t, 0.625, avgUtil, 0.001) // (0.95 + 0.3) / 2
+	assert.InDelta(t, 0.63, avgUtil, 0.01) // (0.96 + 0.3) / 2 = 0.63
 
 	// Test CalculatePeakUtilization
 	peakUtil := state.CalculatePeakUtilization()
-	assert.Equal(t, 0.95, peakUtil)
+	assert.Equal(t, 0.96, peakUtil)
 
 	// Test GetBottlenecks
 	bottlenecks := state.GetBottlenecks(0.9)

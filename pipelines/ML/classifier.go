@@ -235,11 +235,14 @@ func (dt *DecisionTreeClassifier) findBestSplit(X [][]float64, y []string, indic
 	bestFeature := -1
 	bestThreshold := 0.0
 
-	currentLabels := make([]string, len(indices))
-	for i, idx := range indices {
-		currentLabels[i] = y[idx]
-	}
-	parentGini := dt.giniImpurity(currentLabels)
+	// Calculate parent gini directly from indices
+	parentGini := dt.giniImpurityFromIndices(y, indices)
+
+	// Preallocate buffers to avoid repeated allocations
+	leftIndices := make([]int, 0, len(indices))
+	rightIndices := make([]int, 0, len(indices))
+	leftCounts := make(map[string]int)
+	rightCounts := make(map[string]int)
 
 	// Try each feature
 	for feature := 0; feature < dt.NumFeatures; feature++ {
@@ -254,24 +257,36 @@ func (dt *DecisionTreeClassifier) findBestSplit(X [][]float64, y []string, indic
 
 		// Try each threshold
 		for _, threshold := range thresholds {
-			leftIndices, rightIndices := dt.splitData(X, indices, feature, threshold)
+			// Reuse preallocated buffers
+			leftIndices = leftIndices[:0]
+			rightIndices = rightIndices[:0]
+
+			// Clear maps for reuse
+			for k := range leftCounts {
+				delete(leftCounts, k)
+			}
+			for k := range rightCounts {
+				delete(rightCounts, k)
+			}
+
+			// Split and count in one pass
+			for _, idx := range indices {
+				if X[idx][feature] <= threshold {
+					leftIndices = append(leftIndices, idx)
+					leftCounts[y[idx]]++
+				} else {
+					rightIndices = append(rightIndices, idx)
+					rightCounts[y[idx]]++
+				}
+			}
 
 			if len(leftIndices) == 0 || len(rightIndices) == 0 {
 				continue
 			}
 
-			// Calculate weighted Gini impurity
-			leftLabels := make([]string, len(leftIndices))
-			for i, idx := range leftIndices {
-				leftLabels[i] = y[idx]
-			}
-			rightLabels := make([]string, len(rightIndices))
-			for i, idx := range rightIndices {
-				rightLabels[i] = y[idx]
-			}
-
-			leftGini := dt.giniImpurity(leftLabels)
-			rightGini := dt.giniImpurity(rightLabels)
+			// Calculate Gini impurity from counts directly
+			leftGini := dt.giniImpurityFromCounts(leftCounts, len(leftIndices))
+			rightGini := dt.giniImpurityFromCounts(rightCounts, len(rightIndices))
 
 			n := float64(len(indices))
 			nLeft := float64(len(leftIndices))
@@ -289,6 +304,45 @@ func (dt *DecisionTreeClassifier) findBestSplit(X [][]float64, y []string, indic
 	}
 
 	return bestFeature, bestThreshold, bestGain
+}
+
+// giniImpurityFromIndices calculates Gini impurity directly from indices
+func (dt *DecisionTreeClassifier) giniImpurityFromIndices(y []string, indices []int) float64 {
+	if len(indices) == 0 {
+		return 0.0
+	}
+
+	counts := make(map[string]int, len(dt.Classes))
+	for _, idx := range indices {
+		counts[y[idx]]++
+	}
+
+	n := float64(len(indices))
+	gini := 1.0
+
+	for _, count := range counts {
+		p := float64(count) / n
+		gini -= p * p
+	}
+
+	return gini
+}
+
+// giniImpurityFromCounts calculates Gini impurity from pre-computed counts
+func (dt *DecisionTreeClassifier) giniImpurityFromCounts(counts map[string]int, total int) float64 {
+	if total == 0 {
+		return 0.0
+	}
+
+	n := float64(total)
+	gini := 1.0
+
+	for _, count := range counts {
+		p := float64(count) / n
+		gini -= p * p
+	}
+
+	return gini
 }
 
 // giniImpurity calculates the Gini impurity of a set of labels
@@ -638,11 +692,23 @@ func (dt *DecisionTreeClassifier) findBestSplitRegression(X [][]float64, y []flo
 	bestFeature := -1
 	bestThreshold := 0.0
 
-	currentValues := make([]float64, len(indices))
-	for i, idx := range indices {
-		currentValues[i] = y[idx]
+	// Calculate parent variance directly from indices
+	parentMean := 0.0
+	for _, idx := range indices {
+		parentMean += y[idx]
 	}
-	parentVariance := calculateVariance(currentValues, calculateMean(currentValues))
+	parentMean /= float64(len(indices))
+
+	parentVariance := 0.0
+	for _, idx := range indices {
+		diff := y[idx] - parentMean
+		parentVariance += diff * diff
+	}
+	parentVariance /= float64(len(indices))
+
+	// Preallocate buffers
+	leftIndices := make([]int, 0, len(indices))
+	rightIndices := make([]int, 0, len(indices))
 
 	// Try each feature
 	for feature := 0; feature < dt.NumFeatures; feature++ {
@@ -657,26 +723,49 @@ func (dt *DecisionTreeClassifier) findBestSplitRegression(X [][]float64, y []flo
 
 		// Try each threshold
 		for _, threshold := range thresholds {
-			leftIndices, rightIndices := dt.splitData(X, indices, feature, threshold)
+			// Reuse buffers
+			leftIndices = leftIndices[:0]
+			rightIndices = rightIndices[:0]
+
+			// Split data
+			for _, idx := range indices {
+				if X[idx][feature] <= threshold {
+					leftIndices = append(leftIndices, idx)
+				} else {
+					rightIndices = append(rightIndices, idx)
+				}
+			}
 
 			if len(leftIndices) == 0 || len(rightIndices) == 0 {
 				continue
 			}
 
-			// Calculate weighted variance
-			leftValues := make([]float64, len(leftIndices))
-			for i, idx := range leftIndices {
-				leftValues[i] = y[idx]
+			// Calculate means and variances in one pass
+			leftSum := 0.0
+			for _, idx := range leftIndices {
+				leftSum += y[idx]
 			}
-			rightValues := make([]float64, len(rightIndices))
-			for i, idx := range rightIndices {
-				rightValues[i] = y[idx]
-			}
+			leftMean := leftSum / float64(len(leftIndices))
 
-			leftMean := calculateMean(leftValues)
-			rightMean := calculateMean(rightValues)
-			leftVariance := calculateVariance(leftValues, leftMean)
-			rightVariance := calculateVariance(rightValues, rightMean)
+			rightSum := 0.0
+			for _, idx := range rightIndices {
+				rightSum += y[idx]
+			}
+			rightMean := rightSum / float64(len(rightIndices))
+
+			leftVariance := 0.0
+			for _, idx := range leftIndices {
+				diff := y[idx] - leftMean
+				leftVariance += diff * diff
+			}
+			leftVariance /= float64(len(leftIndices))
+
+			rightVariance := 0.0
+			for _, idx := range rightIndices {
+				diff := y[idx] - rightMean
+				rightVariance += diff * diff
+			}
+			rightVariance /= float64(len(rightIndices))
 
 			n := float64(len(indices))
 			nLeft := float64(len(leftIndices))

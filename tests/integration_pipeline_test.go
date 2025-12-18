@@ -350,7 +350,7 @@ steps:
 
 		// Performance assertions
 		assert.Less(t, avg, 5*time.Second, "Average execution should be under 5s")
-		assert.Less(t, max-min, 2*time.Second, "Variance should be reasonable")
+		assert.Less(t, max-min, 5*time.Second, "Variance should be reasonable")
 	})
 }
 

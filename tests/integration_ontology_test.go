@@ -237,7 +237,13 @@ func TestOntologyValidation(t *testing.T) {
 
 			valid, ok := result.Get("valid")
 			require.True(t, ok, "Result should contain valid field")
-			assert.Equal(t, tt.expectedValid, valid.(bool), "Validation result mismatch")
+			// PluginContext.Set wraps non-standard types in JSONData with {"value": actual}
+			validMap, isMap := valid.(map[string]any)
+			if isMap {
+				assert.Equal(t, tt.expectedValid, validMap["value"].(bool), "Validation result mismatch")
+			} else {
+				assert.Equal(t, tt.expectedValid, valid.(bool), "Validation result mismatch")
+			}
 		})
 	}
 }

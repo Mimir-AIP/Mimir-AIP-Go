@@ -170,14 +170,11 @@ func (p *ManagementPlugin) handleValidate(ctx context.Context, stepConfig pipeli
 	ontologyData, _ := stepConfig.Config["ontology_data"].(string)
 	format, _ := stepConfig.Config["format"].(string)
 
-	if ontologyData == "" {
-		return nil, fmt.Errorf("ontology_data is required")
-	}
-
 	if format == "" {
 		format = "turtle"
 	}
 
+	// Always validate, even if empty (validator will handle it)
 	validationResult := p.validateOntologyData(ontologyData, format)
 
 	result := pipelines.NewPluginContext()
@@ -351,12 +348,28 @@ func (p *ManagementPlugin) validateTurtle(data string) ValidationResult {
 		})
 	}
 
-	// Check for at least one triple pattern
-	if !strings.Contains(data, ".") {
+	// Check for at least one triple with proper terminator
+	// Look for lines that end with . (excluding prefix declarations)
+	lines := strings.Split(data, "\n")
+	hasValidTriple := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Skip empty lines, comments, and prefix declarations
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "@prefix") || strings.HasPrefix(line, "PREFIX") {
+			continue
+		}
+		// Check if line ends with a period (proper triple terminator)
+		if strings.HasSuffix(line, ".") {
+			hasValidTriple = true
+			break
+		}
+	}
+
+	if !hasValidTriple {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
 			Severity: "error",
-			Message:  "No triples found (missing '.' statement terminator)",
+			Message:  "No valid triples found (missing '.' statement terminator)",
 		})
 	}
 

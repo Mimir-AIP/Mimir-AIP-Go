@@ -11,31 +11,35 @@ import (
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 )
 
-// ScheduledJob represents a scheduled pipeline execution
+// ScheduledJob represents a scheduled pipeline or monitoring job execution
 type ScheduledJob struct {
-	ID         string                   `json:"id"`
-	Name       string                   `json:"name"`
-	Pipeline   string                   `json:"pipeline"`
-	CronExpr   string                   `json:"cron_expr"`
-	Enabled    bool                     `json:"enabled"`
-	NextRun    *time.Time               `json:"next_run,omitempty"`
-	LastRun    *time.Time               `json:"last_run,omitempty"`
-	LastResult *PipelineExecutionResult `json:"last_result,omitempty"`
-	CreatedAt  time.Time                `json:"created_at"`
-	UpdatedAt  time.Time                `json:"updated_at"`
+	ID              string                   `json:"id"`
+	Name            string                   `json:"name"`
+	JobType         string                   `json:"job_type"` // "pipeline" or "monitoring"
+	Pipeline        string                   `json:"pipeline,omitempty"`
+	MonitoringJobID string                   `json:"monitoring_job_id,omitempty"`
+	CronExpr        string                   `json:"cron_expr"`
+	Enabled         bool                     `json:"enabled"`
+	NextRun         *time.Time               `json:"next_run,omitempty"`
+	LastRun         *time.Time               `json:"last_run,omitempty"`
+	LastResult      *PipelineExecutionResult `json:"last_result,omitempty"`
+	CreatedAt       time.Time                `json:"created_at"`
+	UpdatedAt       time.Time                `json:"updated_at"`
 }
 
-// Scheduler manages cron-based pipeline execution
+// Scheduler manages cron-based pipeline and monitoring job execution
 type Scheduler struct {
-	jobs      map[string]*ScheduledJob
-	jobsMutex sync.RWMutex
-	running   bool
-	stopped   bool // Track if stopChan is closed
-	stopChan  chan struct{}
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	registry  *pipelines.PluginRegistry
+	jobs               map[string]*ScheduledJob
+	jobsMutex          sync.RWMutex
+	running            bool
+	stopped            bool // Track if stopChan is closed
+	stopChan           chan struct{}
+	ctx                context.Context
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
+	registry           *pipelines.PluginRegistry
+	storage            interface{} // PersistenceBackend interface (to avoid circular import)
+	monitoringExecutor interface{} // MonitoringExecutor interface
 }
 
 // NewScheduler creates a new scheduler instance
@@ -48,6 +52,16 @@ func NewScheduler(registry *pipelines.PluginRegistry) *Scheduler {
 		cancel:   cancel,
 		registry: registry,
 	}
+}
+
+// SetStorage sets the storage backend for monitoring jobs
+func (s *Scheduler) SetStorage(storage interface{}) {
+	s.storage = storage
+}
+
+// SetMonitoringExecutor sets the monitoring executor for monitoring jobs
+func (s *Scheduler) SetMonitoringExecutor(executor interface{}) {
+	s.monitoringExecutor = executor
 }
 
 // Start begins the scheduler
@@ -110,7 +124,7 @@ func (s *Scheduler) Stop() error {
 	}
 }
 
-// AddJob adds a new scheduled job
+// AddJob adds a new scheduled pipeline job
 func (s *Scheduler) AddJob(id, name, pipeline, cronExpr string) error {
 	s.jobsMutex.Lock()
 	defer s.jobsMutex.Unlock()
@@ -129,6 +143,7 @@ func (s *Scheduler) AddJob(id, name, pipeline, cronExpr string) error {
 	job := &ScheduledJob{
 		ID:        id,
 		Name:      name,
+		JobType:   "pipeline",
 		Pipeline:  pipeline,
 		CronExpr:  cronExpr,
 		Enabled:   true,
@@ -140,6 +155,40 @@ func (s *Scheduler) AddJob(id, name, pipeline, cronExpr string) error {
 	s.updateNextRun(job)
 
 	log.Printf("Added scheduled job: %s (%s)", name, cronExpr)
+	return nil
+}
+
+// AddMonitoringJob adds a new scheduled monitoring job
+func (s *Scheduler) AddMonitoringJob(id, name, monitoringJobID, cronExpr string) error {
+	s.jobsMutex.Lock()
+	defer s.jobsMutex.Unlock()
+
+	if _, exists := s.jobs[id]; exists {
+		return fmt.Errorf("job with ID %s already exists", id)
+	}
+
+	// Parse cron expression to validate it
+	_, err := parseCronExpression(cronExpr)
+	if err != nil {
+		return fmt.Errorf("invalid cron expression: %w", err)
+	}
+
+	now := time.Now()
+	job := &ScheduledJob{
+		ID:              id,
+		Name:            name,
+		JobType:         "monitoring",
+		MonitoringJobID: monitoringJobID,
+		CronExpr:        cronExpr,
+		Enabled:         true,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+
+	s.jobs[id] = job
+	s.updateNextRun(job)
+
+	log.Printf("Added scheduled monitoring job: %s (%s)", name, cronExpr)
 	return nil
 }
 
@@ -301,12 +350,22 @@ func (s *Scheduler) checkAndExecuteJobs() {
 	}
 }
 
-// executeJob executes a scheduled job
+// executeJob executes a scheduled job (pipeline or monitoring)
 func (s *Scheduler) executeJob(job *ScheduledJob) {
 	defer s.wg.Done()
 
-	log.Printf("Executing scheduled job: %s", job.Name)
+	log.Printf("Executing scheduled job: %s (type: %s)", job.Name, job.JobType)
 
+	// Route to appropriate execution handler based on job type
+	if job.JobType == "monitoring" {
+		s.executeMonitoringJob(job)
+	} else {
+		s.executePipelineJob(job)
+	}
+}
+
+// executePipelineJob executes a pipeline job
+func (s *Scheduler) executePipelineJob(job *ScheduledJob) {
 	// Execute pipeline with scheduler context for proper cancellation
 	result, err := ExecutePipeline(s.ctx, &PipelineConfig{
 		Name:  job.Name,
@@ -322,9 +381,45 @@ func (s *Scheduler) executeJob(job *ScheduledJob) {
 	s.jobsMutex.Unlock()
 
 	if err != nil {
-		log.Printf("Scheduled job %s failed: %v", job.Name, err)
+		log.Printf("Scheduled pipeline job %s failed: %v", job.Name, err)
 	} else {
-		log.Printf("Scheduled job %s completed successfully", job.Name)
+		log.Printf("Scheduled pipeline job %s completed successfully", job.Name)
+	}
+}
+
+// executeMonitoringJob executes a monitoring job
+func (s *Scheduler) executeMonitoringJob(job *ScheduledJob) {
+	if s.monitoringExecutor == nil {
+		log.Printf("Monitoring executor not set - skipping monitoring job %s", job.Name)
+		return
+	}
+
+	// Type assert to the executor interface
+	// The actual executor will be set by the main application
+	type MonitoringExecutor interface {
+		ExecuteMonitoringJob(ctx context.Context, jobID string) error
+	}
+
+	executor, ok := s.monitoringExecutor.(MonitoringExecutor)
+	if !ok {
+		log.Printf("Invalid monitoring executor type - skipping monitoring job %s", job.Name)
+		return
+	}
+
+	// Execute monitoring job
+	err := executor.ExecuteMonitoringJob(s.ctx, job.MonitoringJobID)
+
+	// Update job status
+	s.jobsMutex.Lock()
+	now := time.Now()
+	job.LastRun = &now
+	job.UpdatedAt = now
+	s.jobsMutex.Unlock()
+
+	if err != nil {
+		log.Printf("Scheduled monitoring job %s failed: %v", job.Name, err)
+	} else {
+		log.Printf("Scheduled monitoring job %s completed successfully", job.Name)
 	}
 }
 

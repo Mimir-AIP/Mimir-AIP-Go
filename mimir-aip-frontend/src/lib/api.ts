@@ -1678,3 +1678,241 @@ export async function reloadPlugin(id: string): Promise<void> {
     method: "POST",
   });
 }
+
+// ==================== MONITORING SYSTEM ====================
+
+export interface MonitoringJob {
+  id: string;
+  name: string;
+  ontology_id: string;
+  description: string;
+  cron_expr: string;
+  metrics: string; // JSON string array
+  rules: string; // JSON string array
+  is_enabled: boolean;
+  last_run_at?: string;
+  last_run_status?: string;
+  last_run_alerts?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MonitoringRule {
+  id: string;
+  ontology_id: string;
+  entity_id?: string;
+  metric_name: string;
+  rule_type: 'threshold' | 'trend' | 'anomaly';
+  condition: string; // JSON string
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  is_enabled: boolean;
+  alert_channels?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Alert {
+  id: string;
+  ontology_id: string;
+  entity_id?: string;
+  metric_name: string;
+  alert_type: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  message: string;
+  value: number;
+  threshold: string;
+  status: 'active' | 'acknowledged' | 'resolved';
+  created_at: string;
+  resolved_at?: string;
+}
+
+export interface MonitoringJobRun {
+  id: number;
+  job_id: string;
+  started_at: string;
+  completed_at?: string;
+  status: 'running' | 'success' | 'failed' | 'partial';
+  metrics_checked: number;
+  alerts_created: number;
+  error_message?: string;
+}
+
+export interface CreateMonitoringJobRequest {
+  name: string;
+  ontology_id: string;
+  description?: string;
+  cron_expr: string;
+  metrics: string[]; // Will be stringified to JSON
+  rules?: string[]; // Will be stringified to JSON
+  is_enabled: boolean;
+}
+
+export interface UpdateMonitoringJobRequest {
+  name?: string;
+  description?: string;
+  cron_expr?: string;
+  metrics?: string[];
+  rules?: string[];
+  is_enabled?: boolean;
+}
+
+export interface CreateMonitoringRuleRequest {
+  ontology_id: string;
+  entity_id?: string;
+  metric_name: string;
+  rule_type: 'threshold' | 'trend' | 'anomaly';
+  condition: Record<string, unknown>;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  is_enabled: boolean;
+  alert_channels?: string;
+}
+
+/**
+ * Create a monitoring job
+ * POST /api/v1/monitoring/jobs
+ */
+export async function createMonitoringJob(data: CreateMonitoringJobRequest): Promise<{ job_id: string; message: string }> {
+  return apiFetch("/api/v1/monitoring/jobs", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * List monitoring jobs
+ * GET /api/v1/monitoring/jobs
+ */
+export async function listMonitoringJobs(filters?: { 
+  ontology_id?: string; 
+  enabled_only?: boolean 
+}): Promise<{ jobs: MonitoringJob[]; count: number }> {
+  const params = new URLSearchParams();
+  if (filters?.ontology_id) params.append("ontology_id", filters.ontology_id);
+  if (filters?.enabled_only !== undefined) params.append("enabled_only", String(filters.enabled_only));
+  
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiFetch(`/api/v1/monitoring/jobs${query}`);
+}
+
+/**
+ * Get a monitoring job by ID
+ * GET /api/v1/monitoring/jobs/:id
+ */
+export async function getMonitoringJob(id: string): Promise<{ job: MonitoringJob }> {
+  return apiFetch(`/api/v1/monitoring/jobs/${id}`);
+}
+
+/**
+ * Update a monitoring job
+ * PUT /api/v1/monitoring/jobs/:id
+ */
+export async function updateMonitoringJob(id: string, data: UpdateMonitoringJobRequest): Promise<{ message: string }> {
+  return apiFetch(`/api/v1/monitoring/jobs/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Delete a monitoring job
+ * DELETE /api/v1/monitoring/jobs/:id
+ */
+export async function deleteMonitoringJob(id: string): Promise<{ message: string }> {
+  return apiFetch(`/api/v1/monitoring/jobs/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Enable a monitoring job
+ * POST /api/v1/monitoring/jobs/:id/enable
+ */
+export async function enableMonitoringJob(id: string): Promise<{ message: string }> {
+  return apiFetch(`/api/v1/monitoring/jobs/${id}/enable`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Disable a monitoring job
+ * POST /api/v1/monitoring/jobs/:id/disable
+ */
+export async function disableMonitoringJob(id: string): Promise<{ message: string }> {
+  return apiFetch(`/api/v1/monitoring/jobs/${id}/disable`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Get monitoring job execution history
+ * GET /api/v1/monitoring/jobs/:id/runs
+ */
+export async function getMonitoringJobRuns(id: string, limit = 10): Promise<{ runs: MonitoringJobRun[]; count: number }> {
+  return apiFetch(`/api/v1/monitoring/jobs/${id}/runs?limit=${limit}`);
+}
+
+/**
+ * Create a monitoring rule
+ * POST /api/v1/monitoring/rules
+ */
+export async function createMonitoringRule(data: CreateMonitoringRuleRequest): Promise<{ rule_id: string; message: string }> {
+  return apiFetch("/api/v1/monitoring/rules", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * List monitoring rules
+ * GET /api/v1/monitoring/rules
+ */
+export async function listMonitoringRules(filters?: { 
+  entity_id?: string; 
+  metric_name?: string 
+}): Promise<{ rules: MonitoringRule[]; count: number }> {
+  const params = new URLSearchParams();
+  if (filters?.entity_id) params.append("entity_id", filters.entity_id);
+  if (filters?.metric_name) params.append("metric_name", filters.metric_name);
+  
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiFetch(`/api/v1/monitoring/rules${query}`);
+}
+
+/**
+ * Delete a monitoring rule
+ * DELETE /api/v1/monitoring/rules/:id
+ */
+export async function deleteMonitoringRule(id: string): Promise<{ message: string }> {
+  return apiFetch(`/api/v1/monitoring/rules/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * List alerts
+ * GET /api/v1/monitoring/alerts
+ */
+export async function listAlerts(filters?: { 
+  ontology_id?: string; 
+  status?: string; 
+  severity?: string 
+}): Promise<{ alerts: Alert[]; count: number }> {
+  const params = new URLSearchParams();
+  if (filters?.ontology_id) params.append("ontology_id", filters.ontology_id);
+  if (filters?.status) params.append("status", filters.status);
+  if (filters?.severity) params.append("severity", filters.severity);
+  
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiFetch(`/api/v1/monitoring/alerts${query}`);
+}
+
+/**
+ * Update alert status (acknowledge/resolve)
+ * PATCH /api/v1/monitoring/alerts/:id
+ */
+export async function updateAlertStatus(id: string, status: 'acknowledged' | 'resolved'): Promise<{ message: string }> {
+  return apiFetch(`/api/v1/monitoring/alerts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}

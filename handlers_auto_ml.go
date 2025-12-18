@@ -161,3 +161,72 @@ func (s *Server) handleGetMLSuggestions(w http.ResponseWriter, r *http.Request) 
 		"summary":     suggestions.Summary,
 	})
 }
+
+// AutoTrainWithDataRequest represents a request to train models with uploaded data
+type AutoTrainWithDataRequest struct {
+	OntologyID           string              `json:"ontology_id"`
+	DataSource           ml.DataSourceConfig `json:"data_source"`
+	EnableRegression     bool                `json:"enable_regression"`
+	EnableClassification bool                `json:"enable_classification"`
+	EnableMonitoring     bool                `json:"enable_monitoring"`
+	MinConfidence        float64             `json:"min_confidence"`
+	MaxModels            int                 `json:"max_models"`
+}
+
+// handleAutoTrainWithData trains models using uploaded data
+func (s *Server) handleAutoTrainWithData(w http.ResponseWriter, r *http.Request) {
+	// Parse request
+	var req AutoTrainWithDataRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.OntologyID == "" {
+		http.Error(w, "ontology_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Set defaults
+	if req.MinConfidence == 0 {
+		req.MinConfidence = 0.6
+	}
+	if req.MaxModels == 0 {
+		req.MaxModels = 10
+	}
+
+	// Extract data using adapter system
+	registry := ml.GetGlobalAdapterRegistry()
+	dataset, err := registry.ExtractData(r.Context(), req.DataSource)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to extract data: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Log dataset info
+	fmt.Printf("📊 Extracted dataset: %d rows x %d columns from %s\n",
+		dataset.RowCount, dataset.ColumnCount, dataset.Source)
+
+	// Create auto-trainer options
+	options := &ml.AutoTrainOptions{
+		EnableRegression:     req.EnableRegression,
+		EnableClassification: req.EnableClassification,
+		EnableMonitoring:     req.EnableMonitoring,
+		MinConfidence:        req.MinConfidence,
+		MaxModels:            req.MaxModels,
+	}
+
+	// Create auto-trainer
+	autoTrainer := ml.NewAutoTrainer(s.persistence, s.tdb2Backend)
+
+	// Train models from data
+	result, err := autoTrainer.TrainFromData(r.Context(), req.OntologyID, dataset, options)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to train models: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(result)
+}

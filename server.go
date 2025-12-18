@@ -114,6 +114,11 @@ func NewServer() *Server {
 	}
 
 	s.registerDefaultPlugins()
+
+	// Initialize data adapter registry (must be after plugin registration)
+	ml.InitializeGlobalAdapterRegistry(s.registry)
+	log.Println("✅ Data adapter registry initialized with plugin integration")
+
 	s.setupRoutes()
 	_ = s.mcpServer.Initialize()
 

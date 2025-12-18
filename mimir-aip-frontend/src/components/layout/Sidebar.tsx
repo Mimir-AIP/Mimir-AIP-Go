@@ -10,6 +10,7 @@ const navItems = [
   { name: 'Knowledge Graph', href: '/knowledge-graph' },
   { name: 'Digital Twins', href: '/digital-twins' },
   { name: 'Extraction', href: '/extraction' },
+  { name: 'Monitoring', href: '/monitoring' },
   { name: 'Plugins', href: '/plugins' },
   { name: 'Config', href: '/config' },
   { name: 'Settings', href: '/settings' },

@@ -172,6 +172,9 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/ontology/{id}/train-for-goal", s.handleTrainForGoal).Methods("POST")
 	v1.HandleFunc("/ontology/{id}/ml-suggestions", s.handleGetMLSuggestions).Methods("GET")
 
+	// Data-based Auto-ML endpoint (new - accepts CSV/Excel/JSON data)
+	v1.HandleFunc("/auto-train-with-data", s.handleAutoTrainWithData).Methods("POST")
+
 	// Monitoring endpoints
 	v1.HandleFunc("/monitoring/jobs", s.handleListMonitoringJobs).Methods("GET")
 	v1.HandleFunc("/monitoring/jobs", s.handleCreateMonitoringJob).Methods("POST")

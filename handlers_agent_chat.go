@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/AI"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -521,8 +522,33 @@ func (s *Server) getConversationHistory(ctx context.Context, conversationID stri
 
 // callLLMWithTools calls the LLM and executes any tool calls
 func (s *Server) callLLMWithTools(ctx context.Context, provider, model string, messages []map[string]string) (string, []ToolCallInfo, error) {
+	// If using mock provider, use intelligent mock client for E2E testing
+	if provider == "mock" {
+		mockClient := AI.NewIntelligentMockLLMClient()
+
+		// Convert messages to LLMMessage format
+		llmMessages := make([]AI.LLMMessage, len(messages))
+		for i, msg := range messages {
+			llmMessages[i] = AI.LLMMessage{
+				Role:    msg["role"],
+				Content: msg["content"],
+			}
+		}
+
+		// Call mock LLM
+		response, err := mockClient.Complete(ctx, AI.LLMRequest{
+			Messages: llmMessages,
+		})
+		if err != nil {
+			return "", nil, err
+		}
+
+		// Return mock response
+		return response.Content, []ToolCallInfo{}, nil
+	}
+
 	// TODO: Integrate with actual LLM provider (OpenAI, Anthropic, etc.)
-	// For now, return a mock response
+	// For now, return a mock response for non-mock providers
 
 	// Check if user is asking about digital twins
 	lastMessage := messages[len(messages)-1]["content"]

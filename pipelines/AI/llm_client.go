@@ -14,6 +14,7 @@ const (
 	ProviderOllama    LLMProvider = "ollama"
 	ProviderAzure     LLMProvider = "azure"
 	ProviderGoogle    LLMProvider = "google"
+	ProviderMock      LLMProvider = "mock" // For cost-free testing
 )
 
 // LLMMessage represents a single message in a conversation
@@ -107,6 +108,8 @@ func NewLLMClient(config LLMClientConfig) (LLMClient, error) {
 		return NewAzureOpenAIClient(config)
 	case ProviderGoogle:
 		return NewGoogleClient(config)
+	case ProviderMock:
+		return NewIntelligentMockLLMClient(), nil
 	default:
 		return nil, fmt.Errorf("unsupported LLM provider: %s", config.Provider)
 	}

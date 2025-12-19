@@ -102,6 +102,11 @@ func (s *Server) handleListMonitoringJobs(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Ensure jobs is never nil - return empty array instead
+	if jobs == nil {
+		jobs = []*storage.MonitoringJob{}
+	}
+
 	writeSuccessResponse(w, map[string]any{
 		"jobs":  jobs,
 		"count": len(jobs),
@@ -415,6 +420,11 @@ func (s *Server) handleListAlerts(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		filteredAlerts = append(filteredAlerts, alert)
+	}
+
+	// Ensure alerts is never nil - return empty array instead
+	if filteredAlerts == nil {
+		filteredAlerts = []ml.Alert{}
 	}
 
 	writeSuccessResponse(w, map[string]any{

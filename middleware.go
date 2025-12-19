@@ -86,6 +86,39 @@ func (s *Server) versionMiddleware(version string) mux.MiddlewareFunc {
 	}
 }
 
+// defaultUserMiddleware injects a default anonymous user when auth is disabled
+func (s *Server) defaultUserMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Log immediately to verify middleware is called
+		fmt.Printf("=== DEFAULT USER MIDDLEWARE CALLED FOR %s ===\n", r.URL.Path)
+
+		// Only inject default user if auth is disabled and no user exists in context
+		cfg := s.config.GetConfig()
+		utils.GetLogger().Info("Default user middleware triggered",
+			utils.Bool("enable_auth", cfg.Security.EnableAuth),
+			utils.String("path", r.URL.Path),
+			utils.Component("middleware"))
+
+		if !cfg.Security.EnableAuth {
+			_, hasUser := utils.GetUserFromContext(r.Context())
+			if !hasUser {
+				// Create anonymous user with full permissions
+				defaultUser := &utils.User{
+					ID:       "anonymous",
+					Username: "anonymous",
+					Roles:    []string{"admin"}, // Give full access when auth is disabled
+				}
+				ctx := context.WithValue(r.Context(), "user", defaultUser)
+				r = r.WithContext(ctx)
+				utils.GetLogger().Info("Injected default anonymous user",
+					utils.String("path", r.URL.Path),
+					utils.Component("middleware"))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // responseWriter wraps http.ResponseWriter to capture status code
 type responseWriter struct {
 	http.ResponseWriter

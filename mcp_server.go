@@ -54,16 +54,29 @@ func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request)
 
 	tools := make([]map[string]any, 0)
 
-	// Optionally include built-in tools (ontology, digital twin) when requested via query parameter
-	if r.URL.Query().Get("include_builtin") == "true" {
-		tools = append(tools, ms.getOntologyTools()...)
-		tools = append(tools, ms.getDigitalTwinTools()...)
+	// Dynamically discover all allowed plugin types from the registry
+	// Only expose Input, Output, and Ontology plugins as tools
+	// (not AI, Storage, or internal plugins)
+	// These are the plugins that make sense for an AI agent to invoke
+	allowedPluginTypes := map[string]bool{
+		"Input":    true,
+		"Output":   true,
+		"Ontology": true,
 	}
 
-	// Add all registered plugins as tools
 	for pluginType, typePlugins := range ms.registry.GetAllPlugins() {
-		for pluginName := range typePlugins {
+		// Skip plugin types that shouldn't be exposed as tools
+		if !allowedPluginTypes[pluginType] {
+			continue
+		}
+
+		for pluginName, plugin := range typePlugins {
 			toolName := fmt.Sprintf("%s.%s", pluginType, pluginName)
+
+			// Get the plugin's input schema
+			pluginSchema := plugin.GetInputSchema()
+
+			// Wrap the plugin schema in a step_config structure
 			tools = append(tools, map[string]any{
 				"name":        toolName,
 				"description": fmt.Sprintf("%s plugin for Mimir AIP pipeline execution", toolName),
@@ -77,17 +90,13 @@ func (ms *MCPServer) handleToolDiscovery(w http.ResponseWriter, r *http.Request)
 									"type":        "string",
 									"description": "Name of the pipeline step",
 								},
-								"config": map[string]any{
-									"type":                 "object",
-									"description":          "Configuration parameters for the plugin",
-									"additionalProperties": true,
-								},
+								"config": pluginSchema, // Use plugin's actual schema
 								"output": map[string]any{
 									"type":        "string",
 									"description": "Output key for storing results in context",
 								},
 							},
-							"required": []string{"name"},
+							"required": []string{"name", "config"},
 						},
 						"context": map[string]any{
 							"type":                 "object",
@@ -322,16 +331,42 @@ func (ms *MCPServer) handleToolExecution(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Execute the plugin
-	result, err := plugin.ExecuteStep(context.Background(), stepConfig, globalContext)
+	resultContext, err := plugin.ExecuteStep(context.Background(), stepConfig, globalContext)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Plugin execution failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	// Extract the actual data from the context using the output key
+	var resultData any
+	if stepConfig.Output != "" {
+		if data, ok := resultContext.Get(stepConfig.Output); ok {
+			resultData = data
+		} else {
+			// If output key not found, return all keys with their values
+			resultMap := make(map[string]any)
+			for _, key := range resultContext.Keys() {
+				if val, ok := resultContext.Get(key); ok {
+					resultMap[key] = val
+				}
+			}
+			resultData = resultMap
+		}
+	} else {
+		// No output key specified, return all context data
+		resultMap := make(map[string]any)
+		for _, key := range resultContext.Keys() {
+			if val, ok := resultContext.Get(key); ok {
+				resultMap[key] = val
+			}
+		}
+		resultData = resultMap
+	}
+
 	// Return result in MCP-compatible format
 	response := map[string]any{
 		"success": true,
-		"result":  result,
+		"result":  resultData,
 	}
 
 	json.NewEncoder(w).Encode(response)

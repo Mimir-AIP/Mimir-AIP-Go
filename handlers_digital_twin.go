@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math"
 	"net/http"
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/DigitalTwin"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -71,6 +74,7 @@ func (s *Server) handleCreateTwin(w http.ResponseWriter, r *http.Request) {
 	if query == "" {
 		// Default query to get all entities
 		query = `
+			PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 			SELECT ?entity ?type ?label
 			WHERE {
 				?entity a ?type .
@@ -192,12 +196,36 @@ func (s *Server) handleCreateTwin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate and save default scenarios for the new twin
+	scenarios := s.generateDefaultScenariosForTwin(twin)
+	scenarioIDs := []string{}
+
+	for _, scenario := range scenarios {
+		eventsJSON, err := json.Marshal(scenario.Events)
+		if err != nil {
+			utils.GetLogger().Warn(fmt.Sprintf("Failed to serialize events for scenario %s: %v", scenario.Name, err))
+			continue
+		}
+
+		scenarioQuery := `
+			INSERT INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		_, err = db.Exec(scenarioQuery, scenario.ID, scenario.TwinID, scenario.Name, scenario.Description, scenario.Type, string(eventsJSON), scenario.Duration, scenario.CreatedAt)
+		if err != nil {
+			utils.GetLogger().Warn(fmt.Sprintf("Failed to save scenario %s: %v", scenario.Name, err))
+		} else {
+			scenarioIDs = append(scenarioIDs, scenario.ID)
+		}
+	}
+
 	writeSuccessResponse(w, map[string]interface{}{
 		"twin_id":            twin.ID,
 		"name":               twin.Name,
 		"model_type":         twin.ModelType,
 		"entity_count":       len(twin.Entities),
 		"relationship_count": len(twin.Relationships),
+		"scenarios_created":  len(scenarioIDs),
 		"message":            "Digital twin created successfully",
 	})
 }
@@ -283,6 +311,15 @@ func (s *Server) handleGetTwin(w http.ResponseWriter, r *http.Request) {
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse twin: %v", err))
 		return
 	}
+
+	// Populate metadata from database
+	twin.ID = twinID
+	twin.OntologyID = ontologyID
+	twin.Name = name
+	twin.Description = description
+	twin.ModelType = modelType
+	twin.CreatedAt = createdAt
+	twin.UpdatedAt = updatedAt
 
 	writeSuccessResponse(w, twin)
 }
@@ -410,7 +447,7 @@ func (s *Server) handleListScenarios(w http.ResponseWriter, r *http.Request) {
 
 	db := s.persistence.GetDB()
 	query := `
-		SELECT id, name, description, scenario_type, duration, created_at
+		SELECT id, name, description, scenario_type, events, duration, created_at
 		FROM simulation_scenarios
 		WHERE twin_id = ?
 		ORDER BY created_at DESC
@@ -424,13 +461,24 @@ func (s *Server) handleListScenarios(w http.ResponseWriter, r *http.Request) {
 
 	scenarios := []map[string]interface{}{}
 	for rows.Next() {
-		var id, name, description, scenarioType string
+		var id, name, description, scenarioType, eventsJSON string
 		var duration int
 		var createdAt time.Time
 
-		err := rows.Scan(&id, &name, &description, &scenarioType, &duration, &createdAt)
+		err := rows.Scan(&id, &name, &description, &scenarioType, &eventsJSON, &duration, &createdAt)
 		if err != nil {
 			continue
+		}
+
+		// Parse events JSON
+		var events []DigitalTwin.SimulationEvent
+		if eventsJSON != "" {
+			if err := json.Unmarshal([]byte(eventsJSON), &events); err != nil {
+				// If parsing fails, use empty array
+				events = []DigitalTwin.SimulationEvent{}
+			}
+		} else {
+			events = []DigitalTwin.SimulationEvent{}
 		}
 
 		scenarios = append(scenarios, map[string]interface{}{
@@ -438,6 +486,7 @@ func (s *Server) handleListScenarios(w http.ResponseWriter, r *http.Request) {
 			"name":          name,
 			"description":   description,
 			"scenario_type": scenarioType,
+			"events":        events,
 			"duration":      duration,
 			"created_at":    createdAt,
 		})
@@ -451,7 +500,10 @@ func (s *Server) handleListScenarios(w http.ResponseWriter, r *http.Request) {
 
 // handleRunSimulation executes a simulation scenario
 func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
+	log.Printf("DEBUG: handleRunSimulation called")
+
 	if s.persistence == nil {
+		log.Printf("DEBUG: Persistence is nil")
 		writeErrorResponse(w, http.StatusServiceUnavailable, "Digital twin service not available")
 		return
 	}
@@ -459,6 +511,7 @@ func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	twinID := vars["id"]
 	scenarioID := vars["sid"]
+	log.Printf("DEBUG: TwinID=%s, ScenarioID=%s", twinID, scenarioID)
 
 	db := s.persistence.GetDB()
 	// Load twin
@@ -466,15 +519,19 @@ func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT base_state FROM digital_twins WHERE id = ?`
 	err := db.QueryRow(query, twinID).Scan(&twinJSON)
 	if err != nil {
+		log.Printf("DEBUG: Failed to load twin: %v", err)
 		writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
 		return
 	}
+	log.Printf("DEBUG: Twin loaded, JSON length: %d", len(twinJSON))
 
 	var twin DigitalTwin.DigitalTwin
 	if err := twin.FromJSON(twinJSON); err != nil {
+		log.Printf("DEBUG: Failed to parse twin: %v", err)
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse twin: %v", err))
 		return
 	}
+	log.Printf("DEBUG: Twin parsed successfully, ID=%s", twin.ID)
 
 	// Load scenario
 	var eventsJSON string
@@ -483,15 +540,19 @@ func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	query = `SELECT name, scenario_type, events, duration FROM simulation_scenarios WHERE id = ?`
 	err = db.QueryRow(query, scenarioID).Scan(&scenarioName, &scenarioType, &eventsJSON, &duration)
 	if err != nil {
+		log.Printf("DEBUG: Failed to load scenario: %v", err)
 		writeErrorResponse(w, http.StatusNotFound, "Scenario not found")
 		return
 	}
+	log.Printf("DEBUG: Scenario loaded: name=%s, type=%s, duration=%d", scenarioName, scenarioType, duration)
 
 	var events []DigitalTwin.SimulationEvent
 	if err := json.Unmarshal([]byte(eventsJSON), &events); err != nil {
+		log.Printf("DEBUG: Failed to parse events: %v", err)
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse events: %v", err))
 		return
 	}
+	log.Printf("DEBUG: Parsed %d events", len(events))
 
 	scenario := &DigitalTwin.SimulationScenario{
 		ID:       scenarioID,
@@ -505,6 +566,7 @@ func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	// Parse request options
 	var req RunSimulationRequest
 	json.NewDecoder(r.Body).Decode(&req)
+	log.Printf("DEBUG: Request options: SnapshotInterval=%d, MaxSteps=%d", req.SnapshotInterval, req.MaxSteps)
 
 	// Create simulation engine
 	engine := DigitalTwin.NewSimulationEngine(&twin)
@@ -514,19 +576,24 @@ func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	if req.MaxSteps > 0 {
 		engine.SetMaxSteps(req.MaxSteps)
 	}
+	log.Printf("DEBUG: Simulation engine created")
 
 	// Run simulation
+	log.Printf("DEBUG: Starting simulation...")
 	run, err := engine.RunSimulation(scenario)
 	if err != nil {
+		log.Printf("DEBUG: Simulation failed: %v", err)
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Simulation failed: %v", err))
 		return
 	}
+	log.Printf("DEBUG: Simulation completed: RunID=%s, Status=%s, Metrics=%+v", run.ID, run.Status, run.Metrics)
 
 	// Store run in database
 	initialStateJSON, _ := json.Marshal(run.InitialState)
 	finalStateJSON, _ := json.Marshal(run.FinalState)
 	metricsJSON, _ := json.Marshal(run.Metrics)
 	eventsLogJSON, _ := json.Marshal(run.EventsLog)
+	log.Printf("DEBUG: Marshaled run data for storage")
 
 	query = `
 		INSERT INTO simulation_runs (id, scenario_id, status, start_time, end_time, initial_state, final_state, metrics, events_log, error_message)
@@ -534,25 +601,42 @@ func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	`
 	_, err = db.Exec(query, run.ID, run.ScenarioID, run.Status, run.StartTime, run.EndTime, string(initialStateJSON), string(finalStateJSON), string(metricsJSON), string(eventsLogJSON), run.Error)
 	if err != nil {
+		log.Printf("DEBUG: Failed to save run to database: %v", err)
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save run: %v", err))
 		return
 	}
+	log.Printf("DEBUG: Run saved to database")
 
 	// Store snapshots
 	tsm := DigitalTwin.NewTemporalStateManager(db)
-	for _, snapshot := range run.Snapshots {
+	for i, snapshot := range run.Snapshots {
 		if err := tsm.StoreSnapshot(snapshot); err != nil {
 			// Log error but don't fail the request
-			fmt.Printf("Failed to store snapshot: %v\n", err)
+			log.Printf("Failed to store snapshot %d: %v", i, err)
 		}
 	}
+	log.Printf("DEBUG: Stored %d snapshots", len(run.Snapshots))
 
-	writeSuccessResponse(w, map[string]interface{}{
+	// Fix NaN values in metrics before returning (JSON doesn't support NaN)
+	if math.IsNaN(run.Metrics.SystemStability) {
+		run.Metrics.SystemStability = 1.0 // Default to stable if calculation produces NaN
+	}
+	if math.IsNaN(run.Metrics.AverageUtilization) {
+		run.Metrics.AverageUtilization = 0.0
+	}
+	if math.IsNaN(run.Metrics.PeakUtilization) {
+		run.Metrics.PeakUtilization = 0.0
+	}
+
+	responseData := map[string]interface{}{
 		"run_id":  run.ID,
 		"status":  run.Status,
 		"metrics": run.Metrics,
 		"message": "Simulation completed successfully",
-	})
+	}
+	log.Printf("DEBUG: About to write success response: %+v", responseData)
+	writeSuccessResponse(w, responseData)
+	log.Printf("DEBUG: Success response written")
 }
 
 // handleGetSimulationRun retrieves simulation run results
@@ -675,4 +759,50 @@ func (s *Server) handleAnalyzeImpact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccessResponse(w, analysis)
+}
+
+// generateDefaultScenariosForTwin generates realistic simulation scenarios for a newly created Digital Twin
+func (s *Server) generateDefaultScenariosForTwin(twin *DigitalTwin.DigitalTwin) []DigitalTwin.SimulationScenario {
+	scenarios := []DigitalTwin.SimulationScenario{}
+
+	// Scenario 1: Baseline - Normal operations with no events
+	baselineScenario := DigitalTwin.SimulationScenario{
+		ID:          fmt.Sprintf("scenario_%s_baseline", twin.ID),
+		TwinID:      twin.ID,
+		Name:        "Baseline Operations",
+		Description: "Normal operating conditions with no disruptions. Establishes performance baseline for comparison.",
+		Type:        "baseline",
+		Events:      []DigitalTwin.SimulationEvent{},
+		Duration:    30,
+		CreatedAt:   time.Now(),
+	}
+	scenarios = append(scenarios, baselineScenario)
+
+	// Scenario 2: Data Quality Issues
+	dataQualityScenario := DigitalTwin.SimulationScenario{
+		ID:          fmt.Sprintf("scenario_%s_data_quality", twin.ID),
+		TwinID:      twin.ID,
+		Name:        "Data Quality Issues",
+		Description: "Simulates data quality problems including missing values, invalid data, and entity unavailability.",
+		Type:        "data_quality_issue",
+		Events:      []DigitalTwin.SimulationEvent{},
+		Duration:    40,
+		CreatedAt:   time.Now(),
+	}
+	scenarios = append(scenarios, dataQualityScenario)
+
+	// Scenario 3: Capacity Test
+	capacityScenario := DigitalTwin.SimulationScenario{
+		ID:          fmt.Sprintf("scenario_%s_capacity", twin.ID),
+		TwinID:      twin.ID,
+		Name:        "Capacity Stress Test",
+		Description: "Tests system behavior under high load conditions with demand surges and increased utilization.",
+		Type:        "capacity_test",
+		Events:      []DigitalTwin.SimulationEvent{},
+		Duration:    50,
+		CreatedAt:   time.Now(),
+	}
+	scenarios = append(scenarios, capacityScenario)
+
+	return scenarios
 }

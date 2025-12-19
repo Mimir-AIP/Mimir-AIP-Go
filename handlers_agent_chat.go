@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -343,10 +345,12 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Save assistant message
 	var toolCallsJSON, toolResultsJSON *string
+	var toolCallsRawMsg json.RawMessage
 	if len(toolCalls) > 0 {
 		tc, _ := json.Marshal(toolCalls)
 		tcStr := string(tc)
 		toolCallsJSON = &tcStr
+		toolCallsRawMsg = tc
 
 		// Extract tool results
 		tr, _ := json.Marshal(toolCalls)
@@ -382,6 +386,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			ConversationID: conversationID,
 			Role:           "assistant",
 			Content:        assistantReply,
+			ToolCalls:      toolCallsRawMsg,
 			CreatedAt:      time.Now(),
 		},
 		ToolCalls: toolCalls,
@@ -524,7 +529,8 @@ func (s *Server) getConversationHistory(ctx context.Context, conversationID stri
 func (s *Server) callLLMWithTools(ctx context.Context, provider, model string, messages []map[string]string) (string, []ToolCallInfo, error) {
 	// If using mock provider, use intelligent mock client for E2E testing
 	if provider == "mock" {
-		mockClient := AI.NewIntelligentMockLLMClient()
+		// Create mock client with specified model (supports mock-gpt-4, mock-claude-3, etc.)
+		mockClient := AI.NewIntelligentMockLLMClientWithModel(model)
 
 		// Convert messages to LLMMessage format
 		llmMessages := make([]AI.LLMMessage, len(messages))
@@ -543,8 +549,43 @@ func (s *Server) callLLMWithTools(ctx context.Context, provider, model string, m
 			return "", nil, err
 		}
 
-		// Return mock response
-		return response.Content, []ToolCallInfo{}, nil
+		// Execute tool calls via MCP server and collect results
+		toolCalls := []ToolCallInfo{}
+		for _, tc := range response.ToolCalls {
+			startTime := time.Now()
+			inputJSON, _ := json.Marshal(tc.Arguments)
+
+			// Execute tool via MCP server
+			output, err := s.executeToolViaMCP(ctx, tc.Name, tc.Arguments)
+			duration := time.Since(startTime).Milliseconds()
+
+			if err != nil {
+				// Tool execution failed, but don't fail the whole request
+				outputJSON, _ := json.Marshal(map[string]any{
+					"status": "error",
+					"error":  err.Error(),
+				})
+				toolCalls = append(toolCalls, ToolCallInfo{
+					ID:       tc.ID,
+					ToolName: tc.Name,
+					Input:    json.RawMessage(inputJSON),
+					Output:   json.RawMessage(outputJSON),
+					Duration: duration,
+				})
+			} else {
+				outputJSON, _ := json.Marshal(output)
+				toolCalls = append(toolCalls, ToolCallInfo{
+					ID:       tc.ID,
+					ToolName: tc.Name,
+					Input:    json.RawMessage(inputJSON),
+					Output:   json.RawMessage(outputJSON),
+					Duration: duration,
+				})
+			}
+		}
+
+		// Return mock response with actual tool results
+		return response.Content, toolCalls, nil
 	}
 
 	// TODO: Integrate with actual LLM provider (OpenAI, Anthropic, etc.)
@@ -580,6 +621,47 @@ func (s *Server) callLLMWithTools(ctx context.Context, provider, model string, m
 
 	// Default response
 	return "I'm your Digital Twin assistant. I can help you create scenarios, run simulations, and analyze results. What would you like to do?", toolCalls, nil
+}
+
+// executeToolViaMCP executes a tool by calling the MCP server
+func (s *Server) executeToolViaMCP(ctx context.Context, toolName string, arguments map[string]any) (map[string]any, error) {
+	// Call the MCP server's tool execution endpoint
+	requestBody := map[string]any{
+		"name":      toolName,
+		"arguments": arguments,
+	}
+
+	requestJSON, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal tool request: %w", err)
+	}
+
+	// Create HTTP request to MCP server
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://localhost:8080/mcp/tools/execute", bytes.NewReader(requestJSON))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tool request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute request
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute tool: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Parse response
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tool execution failed with status %d", resp.StatusCode)
+	}
+
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode tool response: %w", err)
+	}
+
+	return result, nil
 }
 
 func contains(s, substr string) bool {

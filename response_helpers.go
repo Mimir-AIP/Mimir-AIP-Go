@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -10,9 +11,15 @@ import (
 
 // writeJSONResponse writes a JSON response with the given status code
 func writeJSONResponse(w http.ResponseWriter, statusCode int, data any) {
+	log.Printf("DEBUG writeJSONResponse: statusCode=%d, data=%+v", statusCode, data)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
+	err := json.NewEncoder(w).Encode(data)
+	if err != nil {
+		log.Printf("ERROR: Failed to encode JSON: %v", err)
+	} else {
+		log.Printf("DEBUG: JSON encoded successfully")
+	}
 }
 
 // writeErrorResponse writes an error response with the given status code and message

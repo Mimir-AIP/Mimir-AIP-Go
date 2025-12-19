@@ -12,6 +12,7 @@ import (
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	ontology "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
+	Storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/gorilla/mux"
 )
 
@@ -139,6 +140,11 @@ func (s *Server) handleListOntologies(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to list ontologies: %v", err))
 		return
+	}
+
+	// Ensure we always return an array, never null
+	if ontologies == nil {
+		ontologies = []*Storage.Ontology{}
 	}
 
 	writeJSONResponse(w, http.StatusOK, ontologies)

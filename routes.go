@@ -156,6 +156,7 @@ func (s *Server) setupRoutes() {
 
 	// Schema inference endpoints
 	v1.HandleFunc("/data/{id}/infer-schema", s.handleInferSchemaFromImport).Methods("POST")
+	v1.HandleFunc("/schema/{id}/generate-ontology", s.handleGenerateOntologyFromSchema).Methods("POST")
 
 	// Agent Chat endpoints
 	v1.HandleFunc("/chat", s.handleListConversations).Methods("GET")

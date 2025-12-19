@@ -221,56 +221,37 @@ steps:
     // STEP 6: Train ML model on the ingested data
     // =========================================================================
     test.step('Train ML model on ingested data', async () => {
-      // Navigate to ML training page (could be on ontology page)
-      await page.goto('/ontology');
+      // Navigate to ML models page - MUST exist
+      await page.goto('/models');
+      await expectVisible(page, 'h1, h2');
       
-      // Look for auto-training or ML training section
-      const trainButton = page.locator('button:has-text("Train Model"), button:has-text("Auto-Train"), button:has-text("Start Training")');
+      // Train button MUST be visible
+      const trainButton = page.locator('button:has-text("Train"), button:has-text("Train Model"), button:has-text("New Model")');
+      await expect(trainButton.first()).toBeVisible({ timeout: 10000 });
+      await trainButton.first().click();
       
-      if (await trainButton.isVisible()) {
-        await trainButton.click();
-        
-        // Fill training configuration
-        await page.fill('input[name="model_name"], input[placeholder*="model name" i]', 'E2E Test Model');
-        await page.fill('input[name="target_column"], input[placeholder*="target" i]', 'category');
-        
-        // Select model type (decision tree)
-        const modelTypeSelect = page.locator('select[name="model_type"], select[name="algorithm"]');
-        if (await modelTypeSelect.isVisible()) {
-          await modelTypeSelect.selectOption({ value: 'decision_tree' });
-        }
-        
-        // Start training
-        await page.click('button[type="submit"]:has-text("Train"), button:has-text("Start Training")');
-        
-        // Wait for training to complete (this might take a while with optimizations)
-        await waitForToast(page, /training|completed|success/i, 60000);
-        await expectTextVisible(page, /model.*trained|training.*complete/i, 60000);
-      } else {
-        // Alternative: go directly to ML page if it exists
-        await page.goto('/ml');
-        
-        // Upload dataset for training
-        const mlFileInput = page.locator('input[type="file"]');
-        if (await mlFileInput.isVisible()) {
-          const trainingCSV = `feature1,feature2,feature3,label
-1.5,2.3,3.1,class_a
-2.1,3.4,1.9,class_b
-3.2,1.8,4.2,class_a
-1.9,4.1,2.3,class_b
-2.8,2.9,3.5,class_a`;
-          
-          await uploadFile(page, 'input[type="file"]', 'training_data.csv', trainingCSV, 'text/csv');
-          
-          // Configure and start training
-          await page.fill('input[name="model_name"]', 'E2E Test Model');
-          await page.fill('input[name="target_column"]', 'label');
-          await page.click('button:has-text("Train"), button:has-text("Start Training")');
-          
-          // Wait for completion
-          await waitForToast(page, /training|completed|success/i, 60000);
-        }
-      }
+      // Training form MUST appear
+      const modelNameInput = page.locator('input[name="model_name"], input[placeholder*="model name" i], input[name="name"]').first();
+      await expect(modelNameInput).toBeVisible({ timeout: 5000 });
+      await modelNameInput.fill('E2E Test Model');
+      
+      const targetInput = page.locator('input[name="target_column"], input[placeholder*="target" i]').first();
+      await expect(targetInput).toBeVisible({ timeout: 5000 });
+      await targetInput.fill('category');
+      
+      // Algorithm selector MUST exist
+      const modelTypeSelect = page.locator('select[name="model_type"], select[name="algorithm"]').first();
+      await expect(modelTypeSelect).toBeVisible({ timeout: 5000 });
+      await modelTypeSelect.selectOption({ value: 'decision_tree' });
+      
+      // Submit button MUST be visible
+      const submitButton = page.locator('button[type="submit"]:has-text("Train"), button:has-text("Start Training")').first();
+      await expect(submitButton).toBeVisible({ timeout: 5000 });
+      await submitButton.click();
+      
+      // Wait for training to complete
+      await waitForToast(page, /training|completed|success/i, 60000);
+      await expectTextVisible(page, /model.*trained|training.*complete/i, 60000);
     });
 
     // =========================================================================

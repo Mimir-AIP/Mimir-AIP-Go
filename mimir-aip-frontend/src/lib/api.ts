@@ -334,6 +334,7 @@ export interface LegacyPlugin {
   description?: string;
   version?: string;
   author?: string;
+  available_models?: string[];
   [key: string]: unknown;
 }
 
@@ -1138,11 +1139,11 @@ export interface DigitalTwin {
   name: string;
   description?: string;
   model_type: string;
-  base_state: Record<string, unknown>;
-  entities: TwinEntity[];
-  relationships: TwinRelationship[];
+  base_state?: Record<string, unknown>;
+  entities?: TwinEntity[];
+  relationships?: TwinRelationship[];
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface TwinEntity {
@@ -1296,10 +1297,11 @@ export async function createDigitalTwin(request: CreateTwinRequest): Promise<{
   relationship_count: number;
   message: string;
 }> {
-  return apiFetch("/api/v1/twin/create", {
+  const response = await apiFetch<{ success: boolean; data: any }>("/api/v1/twin/create", {
     method: "POST",
     body: JSON.stringify(request),
   });
+  return response.data;
 }
 
 /**
@@ -1307,7 +1309,9 @@ export async function createDigitalTwin(request: CreateTwinRequest): Promise<{
  * GET /api/v1/twin
  */
 export async function listDigitalTwins(): Promise<DigitalTwin[]> {
-  return apiFetch<DigitalTwin[]>("/api/v1/twin");
+  const response = await apiFetch<{ twins: DigitalTwin[] }>("/api/v1/twin");
+  // Backend returns {twins: [...]} so extract the array
+  return Array.isArray(response.twins) ? response.twins : [];
 }
 
 /**
@@ -1315,7 +1319,8 @@ export async function listDigitalTwins(): Promise<DigitalTwin[]> {
  * GET /api/v1/twin/:id
  */
 export async function getDigitalTwin(id: string): Promise<DigitalTwin> {
-  return apiFetch<DigitalTwin>(`/api/v1/twin/${id}`);
+  const response = await apiFetch<{ success: boolean; data: DigitalTwin }>(`/api/v1/twin/${id}`);
+  return response.data;
 }
 
 /**
@@ -1327,7 +1332,8 @@ export async function getTwinState(id: string): Promise<{
   state: Record<string, unknown>;
   entity_states: Record<string, EntityState>;
 }> {
-  return apiFetch(`/api/v1/twin/${id}/state`);
+  const response = await apiFetch<{ success: boolean; data: any }>(`/api/v1/twin/${id}/state`);
+  return response.data;
 }
 
 /**
@@ -1338,10 +1344,11 @@ export async function createScenario(twinId: string, request: CreateScenarioRequ
   scenario_id: string;
   message: string;
 }> {
-  return apiFetch(`/api/v1/twin/${twinId}/scenarios`, {
+  const response = await apiFetch<{ success: boolean; data: any }>(`/api/v1/twin/${twinId}/scenarios`, {
     method: "POST",
     body: JSON.stringify(request),
   });
+  return response.data;
 }
 
 /**
@@ -1349,7 +1356,8 @@ export async function createScenario(twinId: string, request: CreateScenarioRequ
  * GET /api/v1/twin/:id/scenarios
  */
 export async function listScenarios(twinId: string): Promise<SimulationScenario[]> {
-  return apiFetch<SimulationScenario[]>(`/api/v1/twin/${twinId}/scenarios`);
+  const response = await apiFetch<{ success: boolean; data: { scenarios: SimulationScenario[] } }>(`/api/v1/twin/${twinId}/scenarios`);
+  return response.data.scenarios || [];
 }
 
 /**
@@ -1360,11 +1368,17 @@ export async function runSimulation(
   twinId: string,
   scenarioId: string,
   request?: RunSimulationRequest
-): Promise<SimulationRun> {
-  return apiFetch(`/api/v1/twin/${twinId}/scenarios/${scenarioId}/run`, {
+): Promise<{
+  run_id: string;
+  status: string;
+  metrics: SimulationMetrics;
+  message: string;
+}> {
+  const response = await apiFetch<{ success: boolean; data: any }>(`/api/v1/twin/${twinId}/scenarios/${scenarioId}/run`, {
     method: "POST",
     body: JSON.stringify(request || {}),
   });
+  return response.data;
 }
 
 /**
@@ -1372,7 +1386,8 @@ export async function runSimulation(
  * GET /api/v1/twin/:id/runs/:rid
  */
 export async function getSimulationRun(twinId: string, runId: string): Promise<SimulationRun> {
-  return apiFetch<SimulationRun>(`/api/v1/twin/${twinId}/runs/${runId}`);
+  const response = await apiFetch<{ success: boolean; data: SimulationRun }>(`/api/v1/twin/${twinId}/runs/${runId}`);
+  return response.data;
 }
 
 /**
@@ -1383,7 +1398,8 @@ export async function getSimulationTimeline(twinId: string, runId: string): Prom
   snapshots: StateSnapshot[];
   count: number;
 }> {
-  return apiFetch(`/api/v1/twin/${twinId}/runs/${runId}/timeline`);
+  const response = await apiFetch<{ success: boolean; data: any }>(`/api/v1/twin/${twinId}/runs/${runId}/timeline`);
+  return response.data;
 }
 
 /**
@@ -1391,9 +1407,10 @@ export async function getSimulationTimeline(twinId: string, runId: string): Prom
  * POST /api/v1/twin/:id/runs/:rid/analyze
  */
 export async function analyzeSimulationImpact(twinId: string, runId: string): Promise<ImpactAnalysis> {
-  return apiFetch(`/api/v1/twin/${twinId}/runs/${runId}/analyze`, {
+  const response = await apiFetch<{ success: boolean; data: ImpactAnalysis }>(`/api/v1/twin/${twinId}/runs/${runId}/analyze`, {
     method: "POST",
   });
+  return response.data;
 }
 
 // ==================== AGENT CHAT ====================
@@ -1524,6 +1541,56 @@ export async function sendMessage(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Compact conversation context by summarizing older messages
+ * POST /api/v1/chat/:id/compact
+ */
+export async function compactContext(conversationId: string): Promise<{
+  tokens_saved: number;
+  new_token_count: number;
+}> {
+  return apiFetch(`/api/v1/chat/${conversationId}/compact`, {
+    method: "POST",
+  });
+}
+
+// ==================== MCP TOOLS ====================
+
+export interface MCPToolParameter {
+  type: string;
+  description: string;
+  enum?: string[];
+  default?: any;
+}
+
+export interface MCPToolSchema {
+  type: string;
+  properties: Record<string, MCPToolParameter>;
+  required: string[];
+}
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema: MCPToolSchema;
+}
+
+export interface MCPToolsResponse {
+  tools: MCPTool[];
+}
+
+/**
+ * Get available MCP tools with full JSON schemas
+ * GET /mcp/tools?include_builtin=true
+ */
+export async function getMCPTools(includeBuiltin = true): Promise<MCPToolsResponse> {
+  const params = new URLSearchParams();
+  if (includeBuiltin) {
+    params.append('include_builtin', 'true');
+  }
+  return apiFetch(`/mcp/tools?${params.toString()}`);
 }
 
 // ==================== API KEYS ====================
@@ -1914,5 +1981,220 @@ export async function updateAlertStatus(id: string, status: 'acknowledged' | 're
   return apiFetch(`/api/v1/monitoring/alerts/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+}
+
+// ==================== MACHINE LEARNING ====================
+
+export interface ClassifierModel {
+  id: string;
+  ontology_id: string;
+  name: string;
+  target_class: string;
+  algorithm: string;
+  hyperparameters: string; // JSON
+  feature_columns: string; // JSON array
+  class_labels: string; // JSON array
+  train_accuracy: number;
+  validate_accuracy: number;
+  precision_score: number;
+  recall_score: number;
+  f1_score: number;
+  confusion_matrix: string; // JSON
+  model_artifact_path: string;
+  model_size_bytes: number;
+  training_rows: number;
+  validation_rows: number;
+  feature_importance: string; // JSON
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  status?: string;
+}
+
+export interface TrainModelRequest {
+  ontology_id?: string;
+  name: string;
+  target_class: string;
+  algorithm: string;
+  training_data?: unknown; // CSV/JSON data
+  feature_columns?: string[];
+  hyperparameters?: Record<string, unknown>;
+}
+
+export interface AutoTrainWithDataRequest {
+  data: unknown; // CSV/JSON data
+  target_column: string;
+  model_name?: string;
+  algorithm?: string;
+  test_split?: number;
+}
+
+export interface PredictionRequest {
+  data: unknown; // Feature vector or multiple rows
+}
+
+export interface PredictionResponse {
+  predictions: unknown[];
+  probabilities?: unknown[];
+  model_id: string;
+  timestamp: string;
+}
+
+export interface MLCapabilities {
+  ontology_id: string;
+  suitable_for_ml: boolean;
+  suggested_target_classes: string[];
+  available_features: string[];
+  sample_size: number;
+  recommendations: string[];
+}
+
+export interface MLSuggestion {
+  algorithm: string;
+  target_class: string;
+  confidence: number;
+  reasoning: string;
+  estimated_accuracy: number;
+}
+
+/**
+ * Train a new ML model
+ * POST /api/v1/models/train
+ */
+export async function trainModel(request: TrainModelRequest): Promise<{
+  model_id: string;
+  accuracy: number;
+  message: string;
+}> {
+  return apiFetch("/api/v1/models/train", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * List all trained models
+ * GET /api/v1/models
+ */
+export async function listModels(ontologyId?: string, activeOnly?: boolean): Promise<{
+  models: ClassifierModel[];
+  count: number;
+}> {
+  const params = new URLSearchParams();
+  if (ontologyId) params.append("ontology_id", ontologyId);
+  if (activeOnly) params.append("active_only", "true");
+  
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiFetch(`/api/v1/models${query}`);
+}
+
+/**
+ * Get a specific model by ID
+ * GET /api/v1/models/:id
+ */
+export async function getModel(id: string): Promise<ClassifierModel> {
+  return apiFetch<ClassifierModel>(`/api/v1/models/${id}`);
+}
+
+/**
+ * Delete a model
+ * DELETE /api/v1/models/:id
+ */
+export async function deleteModel(id: string): Promise<{ message: string }> {
+  return apiFetch(`/api/v1/models/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Make predictions with a trained model
+ * POST /api/v1/models/:id/predict
+ */
+export async function predict(modelId: string, data: PredictionRequest): Promise<PredictionResponse> {
+  return apiFetch(`/api/v1/models/${modelId}/predict`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Update model status (activate/deactivate)
+ * PATCH /api/v1/models/:id/status
+ */
+export async function updateModelStatus(modelId: string, isActive: boolean): Promise<{ message: string }> {
+  return apiFetch(`/api/v1/models/${modelId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_active: isActive }),
+  });
+}
+
+/**
+ * Get ML capabilities for an ontology
+ * GET /api/v1/ontology/:id/ml-capabilities
+ */
+export async function getMLCapabilities(ontologyId: string): Promise<MLCapabilities> {
+  return apiFetch<MLCapabilities>(`/api/v1/ontology/${ontologyId}/ml-capabilities`);
+}
+
+/**
+ * Auto-train a model from ontology
+ * POST /api/v1/ontology/:id/auto-train
+ */
+export async function autoTrainFromOntology(ontologyId: string, request: {
+  target_class?: string;
+  algorithm?: string;
+}): Promise<{
+  model_id: string;
+  accuracy: number;
+  message: string;
+}> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/auto-train`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Train model for a specific goal
+ * POST /api/v1/ontology/:id/train-for-goal
+ */
+export async function trainForGoal(ontologyId: string, goal: string): Promise<{
+  model_id: string;
+  accuracy: number;
+  message: string;
+}> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/train-for-goal`, {
+    method: "POST",
+    body: JSON.stringify({ goal }),
+  });
+}
+
+/**
+ * Get ML suggestions for an ontology
+ * GET /api/v1/ontology/:id/ml-suggestions
+ */
+export async function getMLSuggestions(ontologyId: string): Promise<{
+  suggestions: MLSuggestion[];
+  count: number;
+}> {
+  return apiFetch(`/api/v1/ontology/${ontologyId}/ml-suggestions`);
+}
+
+/**
+ * Auto-train with raw data (CSV/JSON)
+ * POST /api/v1/auto-train-with-data
+ */
+export async function autoTrainWithData(request: AutoTrainWithDataRequest): Promise<{
+  model_id: string;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1_score: number;
+  message: string;
+}> {
+  return apiFetch("/api/v1/auto-train-with-data", {
+    method: "POST",
+    body: JSON.stringify(request),
   });
 }

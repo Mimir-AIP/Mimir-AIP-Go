@@ -17,6 +17,7 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 
 // Extended plugin info from backend
@@ -51,6 +52,7 @@ export default function DataUploadPage() {
     uploading: false,
     progress: 0,
   });
+  const [autonomousMode, setAutonomousMode] = useState(false);
 
   useEffect(() => {
     loadPlugins();
@@ -63,10 +65,12 @@ export default function DataUploadPage() {
         throw new Error("Failed to load plugins");
       }
       const data = await response.json();
-      setPlugins(data.plugins || []);
+      // Ensure plugins is always an array
+      setPlugins(Array.isArray(data.plugins) ? data.plugins : []);
     } catch (error) {
       console.error("Failed to load plugins:", error);
       toast.error("Failed to load available plugins");
+      setPlugins([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -102,8 +106,9 @@ export default function DataUploadPage() {
     if (file && selectedPlugin) {
       // Validate file type
       const fileExt = file.name.split(".").pop()?.toLowerCase();
-      if (!selectedPlugin.supported_formats.includes(fileExt || "")) {
-        toast.error(`Unsupported file type. Supported: ${selectedPlugin.supported_formats.join(", ")}`);
+      const supportedFormats = selectedPlugin.supported_formats || [];
+      if (supportedFormats.length > 0 && !supportedFormats.includes(fileExt || "")) {
+        toast.error(`Unsupported file type. Supported: ${supportedFormats.join(", ")}`);
         return;
       }
 
@@ -156,8 +161,44 @@ export default function DataUploadPage() {
       const result = await response.json();
       toast.success("File uploaded successfully!");
 
-      // Redirect to preview page
-      router.push(`/data/preview/${result.upload_id}`);
+      // If autonomous mode enabled, create and execute workflow
+      if (autonomousMode) {
+        try {
+          const workflowResponse = await fetch("/api/v1/workflows", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: `Autonomous: ${uploadState.file.name}`,
+              import_id: result.upload_id,
+            }),
+          });
+
+          if (!workflowResponse.ok) {
+            throw new Error("Failed to create workflow");
+          }
+
+          const workflowData = await workflowResponse.json();
+          
+          // Trigger execution
+          const executeResponse = await fetch(`/api/v1/workflows/${workflowData.workflow_id}/execute`, {
+            method: "POST",
+          });
+
+          if (!executeResponse.ok) {
+            throw new Error("Failed to start workflow execution");
+          }
+
+          toast.success("Autonomous workflow started!");
+          router.push(`/workflows/${workflowData.workflow_id}`);
+        } catch (workflowError) {
+          console.error("Workflow creation failed:", workflowError);
+          toast.error("Workflow setup failed. Check data preview instead.");
+          router.push(`/data/preview/${result.upload_id}`);
+        }
+      } else {
+        // Standard behavior - redirect to preview page
+        router.push(`/data/preview/${result.upload_id}`);
+      }
 
     } catch (error) {
       console.error("Upload failed:", error);
@@ -255,34 +296,46 @@ export default function DataUploadPage() {
 
       {!selectedPlugin ? (
         // Plugin Selection
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {plugins.map((plugin) => (
-            <Card
-              key={`${plugin.type}.${plugin.name}`}
-              className="cursor-pointer hover:shadow-lg transition-shadow"
-              onClick={() => selectPlugin(plugin)}
-            >
-              <CardHeader className="text-center">
-                {getPluginIcon(plugin.name)}
-                <CardTitle className="mt-4">{plugin.name.toUpperCase()}</CardTitle>
-                <CardDescription>{plugin.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {plugin.supported_formats.map((format) => (
-                    <Badge key={format} variant="outline" className="text-xs">
-                      .{format}
-                    </Badge>
-                  ))}
-                </div>
-                <Button className="w-full" variant="outline">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Select Plugin
-                </Button>
-              </CardContent>
+        <>
+          {plugins.length === 0 ? (
+            <Card className="p-12 text-center">
+              <AlertCircle className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-xl font-semibold mb-2">No Plugins Available</h3>
+              <p className="text-gray-500">
+                No data ingestion plugins are currently registered.
+              </p>
             </Card>
-          ))}
-        </div>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {plugins.map((plugin) => (
+                <Card
+                  key={`${plugin.type}.${plugin.name}`}
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => selectPlugin(plugin)}
+                >
+                  <CardHeader className="text-center">
+                    {getPluginIcon(plugin.name)}
+                    <CardTitle className="mt-4">{plugin.name.toUpperCase()}</CardTitle>
+                    <CardDescription>{plugin.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {(plugin.supported_formats || []).map((format) => (
+                        <Badge key={format} variant="outline" className="text-xs">
+                          .{format}
+                        </Badge>
+                      ))}
+                    </div>
+                    <Button className="w-full" variant="outline">
+                      <Upload className="h-4 w-4 mr-2" />
+                      Select Plugin
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
         // Upload Interface
         <div className="space-y-6">
@@ -311,7 +364,7 @@ export default function DataUploadPage() {
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                   <input
                     type="file"
-                    accept={selectedPlugin.supported_formats.map(f => `.${f}`).join(",")}
+                    accept={(selectedPlugin.supported_formats || []).map(f => `.${f}`).join(",")}
                     onChange={handleFileChange}
                     className="hidden"
                     id="file-upload"
@@ -322,7 +375,7 @@ export default function DataUploadPage() {
                       Click to upload or drag and drop
                     </p>
                     <p className="text-sm text-gray-500">
-                      Supported formats: {selectedPlugin.supported_formats.join(", ")}
+                      Supported formats: {(selectedPlugin.supported_formats || []).join(", ")}
                     </p>
                   </label>
                 </div>
@@ -335,6 +388,46 @@ export default function DataUploadPage() {
                       <p className="text-sm text-green-600">
                         {(uploadState.file.size / 1024).toFixed(1)} KB
                       </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Autonomous Mode Toggle */}
+              <div className="space-y-4 border-t pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-semibold">Autonomous Processing</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically generate ontology, train models, and create digital twin
+                    </p>
+                  </div>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autonomousMode}
+                      onChange={(e) => setAutonomousMode(e.target.checked)}
+                      className="rounded border-gray-300 h-5 w-5"
+                    />
+                    <span className="text-sm font-medium">Enable</span>
+                  </label>
+                </div>
+                
+                {autonomousMode && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start space-x-3">
+                      <Sparkles className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm">
+                        <p className="font-medium text-blue-900 mb-2">Automatic Pipeline Enabled</p>
+                        <ul className="text-blue-700 space-y-1">
+                          <li>• Infer data schema and detect relationships</li>
+                          <li>• Generate OWL ontology from schema</li>
+                          <li>• Extract entities and populate knowledge graph</li>
+                          <li>• Train machine learning models</li>
+                          <li>• Create digital twin with predictions</li>
+                          <li>• Setup monitoring and alerts</li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -371,6 +464,11 @@ export default function DataUploadPage() {
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Uploading...
+                    </>
+                  ) : autonomousMode ? (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Upload & Start Workflow
                     </>
                   ) : (
                     <>

@@ -187,6 +187,31 @@ func (p *CSVPlugin) ValidateConfig(config map[string]any) error {
 	return nil
 }
 
+// GetInputSchema returns the JSON Schema for CSV plugin configuration
+func (p *CSVPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"file_path": map[string]any{
+				"type":        "string",
+				"description": "Path to the CSV file to read. Can be absolute or relative to the working directory.",
+			},
+			"has_headers": map[string]any{
+				"type":        "boolean",
+				"description": "Whether the first row contains column headers. If false, columns will be named 'column_1', 'column_2', etc.",
+				"default":     true,
+			},
+			"delimiter": map[string]any{
+				"type":        "string",
+				"description": "Single character used as field delimiter in the CSV file.",
+				"default":     ",",
+				"pattern":     "^.$",
+			},
+		},
+		"required": []string{"file_path"},
+	}
+}
+
 func main() {
 	// Example usage
 	plugin := NewCSVPlugin()

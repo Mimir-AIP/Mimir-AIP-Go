@@ -87,6 +87,52 @@ func (p *ManagementPlugin) ValidateConfig(config map[string]any) error {
 	return nil
 }
 
+// GetInputSchema returns the JSON Schema for ontology management operations
+func (p *ManagementPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": "Manage ontology lifecycle operations including upload, validation, listing, retrieval, deletion, and statistics.",
+		"properties": map[string]any{
+			"operation": map[string]any{
+				"type":        "string",
+				"description": "Operation to perform",
+				"enum":        []string{"upload", "validate", "list", "get", "delete", "stats"},
+			},
+			"ontology_id": map[string]any{
+				"type":        "string",
+				"description": "ID of the ontology (required for get, delete, stats operations)",
+			},
+			"name": map[string]any{
+				"type":        "string",
+				"description": "Ontology name (required for upload)",
+			},
+			"description": map[string]any{
+				"type":        "string",
+				"description": "Ontology description (optional for upload)",
+			},
+			"version": map[string]any{
+				"type":        "string",
+				"description": "Ontology version (required for upload)",
+			},
+			"format": map[string]any{
+				"type":        "string",
+				"description": "Ontology format (turtle, rdfxml, ntriples, jsonld)",
+				"enum":        []string{"turtle", "rdfxml", "ntriples", "jsonld"},
+				"default":     "turtle",
+			},
+			"ontology_data": map[string]any{
+				"type":        "string",
+				"description": "Ontology data content (required for upload and validate)",
+			},
+			"created_by": map[string]any{
+				"type":        "string",
+				"description": "Creator username (optional for upload)",
+			},
+		},
+		"required": []string{"operation"},
+	}
+}
+
 // handleUpload handles ontology upload operation
 func (p *ManagementPlugin) handleUpload(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
 	// Extract configuration

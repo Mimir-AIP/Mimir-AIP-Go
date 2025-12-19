@@ -337,3 +337,32 @@ func (p *MarkdownPlugin) ValidateConfig(config map[string]any) error {
 
 	return nil
 }
+
+// GetInputSchema returns the JSON Schema for Markdown plugin configuration
+func (p *MarkdownPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"file_path": map[string]any{
+				"type":        "string",
+				"description": "Path to the Markdown file to read (.md, .markdown). Can be absolute or relative to the working directory.",
+			},
+			"extract_sections": map[string]any{
+				"type":        "boolean",
+				"description": "Extract document sections based on headings (# ## ### etc.). Each section includes title, content, and line numbers.",
+				"default":     true,
+			},
+			"extract_links": map[string]any{
+				"type":        "boolean",
+				"description": "Extract all links and images from the document, including URLs, titles, and line numbers.",
+				"default":     true,
+			},
+			"extract_metadata": map[string]any{
+				"type":        "boolean",
+				"description": "Extract YAML frontmatter metadata from the beginning of the document (between --- delimiters).",
+				"default":     true,
+			},
+		},
+		"required": []string{"file_path"},
+	}
+}

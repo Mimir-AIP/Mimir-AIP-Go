@@ -165,6 +165,10 @@ type BasePlugin interface {
 
 	// ValidateConfig validates the plugin configuration
 	ValidateConfig(config map[string]any) error
+
+	// GetInputSchema returns the JSON Schema for plugin configuration parameters
+	// This helps AI agents understand what parameters the plugin accepts
+	GetInputSchema() map[string]any
 }
 
 // PluginRegistry holds all registered plugins

@@ -55,7 +55,7 @@ func (p *ExtractionPlugin) GetPluginType() string {
 
 // GetPluginName implements BasePlugin.GetPluginName
 func (p *ExtractionPlugin) GetPluginName() string {
-	return "extraction"
+	return "extract"
 }
 
 // ValidateConfig implements BasePlugin.ValidateConfig
@@ -89,6 +89,46 @@ func (p *ExtractionPlugin) ValidateConfig(config map[string]any) error {
 	}
 
 	return nil
+}
+
+// GetInputSchema returns the JSON Schema for agent-friendly ontology extraction
+func (p *ExtractionPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": "Extract entities and relationships from data according to the ontology schema. Supports CSV, JSON, text, and HTML sources with deterministic or LLM-powered extraction.",
+		"properties": map[string]any{
+			"ontology_id": map[string]any{
+				"type":        "string",
+				"description": "ID of the ontology schema to use for extraction",
+			},
+			"data": map[string]any{
+				"type":        "object",
+				"description": "Data to extract entities from",
+			},
+			"source_type": map[string]any{
+				"type":        "string",
+				"description": "Type of data source (csv, json, text, html)",
+				"enum":        []string{"csv", "json", "text", "html"},
+			},
+			"extraction_type": map[string]any{
+				"type":        "string",
+				"description": "Extraction method (deterministic, llm, hybrid)",
+				"enum":        []string{"deterministic", "llm", "hybrid"},
+				"default":     "hybrid",
+			},
+			"job_name": map[string]any{
+				"type":        "string",
+				"description": "Name for the extraction job",
+			},
+			"operation": map[string]any{
+				"type":        "string",
+				"description": "Operation to perform (extract, get_job, list_jobs)",
+				"enum":        []string{"extract", "get_job", "list_jobs"},
+				"default":     "extract",
+			},
+		},
+		"required": []string{"ontology_id", "data", "source_type"},
+	}
 }
 
 // handleExtract performs entity extraction

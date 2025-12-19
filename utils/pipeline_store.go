@@ -61,7 +61,7 @@ func (ps *PipelineStore) Initialize() error {
 	}
 
 	// Load all pipeline files
-	return filepath.WalkDir(ps.storePath, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(ps.storePath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -77,8 +77,12 @@ func (ps *PipelineStore) Initialize() error {
 		}
 
 		ps.pipelines[pipeline.Metadata.ID] = pipeline
+		GetLogger().Info("Loaded pipeline from file", String("id", pipeline.Metadata.ID), String("name", pipeline.Metadata.Name), String("file", path))
 		return nil
 	})
+
+	GetLogger().Info("Pipeline store initialized", Int("count", len(ps.pipelines)), String("storePath", ps.storePath))
+	return err
 }
 
 // CreatePipeline creates a new pipeline

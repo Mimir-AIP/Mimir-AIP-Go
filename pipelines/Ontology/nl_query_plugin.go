@@ -71,7 +71,7 @@ func (p *NLQueryPlugin) GetPluginType() string {
 
 // GetPluginName implements BasePlugin.GetPluginName
 func (p *NLQueryPlugin) GetPluginName() string {
-	return "nl_query"
+	return "query"
 }
 
 // ValidateConfig implements BasePlugin.ValidateConfig
@@ -80,6 +80,34 @@ func (p *NLQueryPlugin) ValidateConfig(config map[string]any) error {
 		return fmt.Errorf("question is required")
 	}
 	return nil
+}
+
+// GetInputSchema returns the JSON Schema for agent-friendly ontology queries
+func (p *NLQueryPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": "Query the knowledge graph using natural language or SPARQL. Converts natural language questions to SPARQL queries and returns results from the RDF triplestore.",
+		"properties": map[string]any{
+			"ontology_id": map[string]any{
+				"type":        "string",
+				"description": "ID of the ontology to query",
+			},
+			"question": map[string]any{
+				"type":        "string",
+				"description": "Natural language question to query the knowledge graph",
+			},
+			"use_nl": map[string]any{
+				"type":        "boolean",
+				"description": "Use natural language translation (true) or provide raw SPARQL (false)",
+				"default":     true,
+			},
+			"sparql_query": map[string]any{
+				"type":        "string",
+				"description": "Raw SPARQL query (only if use_nl is false)",
+			},
+		},
+		"required": []string{"ontology_id"},
+	}
 }
 
 // translateToSPARQL uses LLM to convert natural language to SPARQL

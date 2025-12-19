@@ -153,3 +153,26 @@ func (p *ExcelPlugin) ValidateConfig(config map[string]any) error {
 
 	return nil
 }
+
+// GetInputSchema returns the JSON Schema for Excel plugin configuration
+func (p *ExcelPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"file_path": map[string]any{
+				"type":        "string",
+				"description": "Path to the Excel file to read (.xlsx format). Can be absolute or relative to the working directory.",
+			},
+			"sheet_name": map[string]any{
+				"type":        "string",
+				"description": "Name of the worksheet to read. If not specified, the first sheet will be used.",
+			},
+			"has_headers": map[string]any{
+				"type":        "boolean",
+				"description": "Whether the first row contains column headers. If false, columns will be named 'column_1', 'column_2', etc.",
+				"default":     true,
+			},
+		},
+		"required": []string{"file_path"},
+	}
+}

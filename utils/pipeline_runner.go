@@ -289,6 +289,45 @@ func (p *RealAPIPlugin) ValidateConfig(config map[string]any) error {
 	return nil
 }
 
+// GetInputSchema returns the JSON Schema for API plugin configuration
+func (p *RealAPIPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"url": map[string]any{
+				"type":        "string",
+				"description": "The HTTP(S) URL to fetch data from",
+				"format":      "uri",
+			},
+			"method": map[string]any{
+				"type":        "string",
+				"description": "HTTP method to use for the request",
+				"enum":        []string{"GET", "POST", "PUT", "DELETE", "PATCH"},
+				"default":     "GET",
+			},
+			"headers": map[string]any{
+				"type":        "object",
+				"description": "HTTP headers to include in the request (key-value pairs)",
+				"additionalProperties": map[string]any{
+					"type": "string",
+				},
+			},
+			"params": map[string]any{
+				"type":        "object",
+				"description": "URL query parameters to include in the request (key-value pairs)",
+				"additionalProperties": map[string]any{
+					"type": "string",
+				},
+			},
+			"data": map[string]any{
+				"type":        "object",
+				"description": "JSON payload to send in the request body (for POST/PUT/PATCH methods)",
+			},
+		},
+		"required": []string{"url"},
+	}
+}
+
 // MockHTMLPlugin is a temporary mock implementation for testing
 type MockHTMLPlugin struct{}
 
@@ -312,4 +351,32 @@ func (p *MockHTMLPlugin) GetPluginType() string { return "Output" }
 func (p *MockHTMLPlugin) GetPluginName() string { return "html" }
 func (p *MockHTMLPlugin) ValidateConfig(config map[string]any) error {
 	return nil // Mock validation
+}
+
+// GetInputSchema returns the JSON Schema for HTML Output plugin configuration
+func (p *MockHTMLPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"output_path": map[string]any{
+				"type":        "string",
+				"description": "Path where the HTML report will be saved. Can be absolute or relative to the working directory.",
+			},
+			"template": map[string]any{
+				"type":        "string",
+				"description": "Name of the HTML template to use for the report",
+				"enum":        []string{"default", "minimal", "detailed"},
+				"default":     "default",
+			},
+			"title": map[string]any{
+				"type":        "string",
+				"description": "Title to display in the HTML report",
+			},
+			"include_metadata": map[string]any{
+				"type":        "boolean",
+				"description": "Whether to include metadata section in the report",
+				"default":     true,
+			},
+		},
+	}
 }

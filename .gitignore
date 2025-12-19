@@ -197,3 +197,18 @@ mimir-test
 # Test data and runtime databases
 data/
 test_data.csv
+
+# Backup and temporary files
+*.bak
+handlers_workflow.go.bak
+
+# Performance profiling
+*.prof
+benchmark_output.txt
+benchmark_suite
+test-binary
+performance.test
+
+# Playwright test results
+mimir-aip-frontend/playwright-report/
+mimir-aip-frontend/test-results/

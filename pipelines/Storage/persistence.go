@@ -337,7 +337,7 @@ func (p *PersistenceBackend) initSchema() error {
 	-- Classifier models table (for ML pipeline)
 	CREATE TABLE IF NOT EXISTS classifier_models (
 		id TEXT PRIMARY KEY,
-		ontology_id TEXT NOT NULL,
+		ontology_id TEXT,  -- Made nullable to support standalone training
 		name TEXT NOT NULL,
 		target_class TEXT NOT NULL,
 		algorithm TEXT NOT NULL DEFAULT 'decision_tree',
@@ -471,6 +471,7 @@ func (p *PersistenceBackend) initSchema() error {
 	-- Alerts table (for continuous monitoring alerts)
 	CREATE TABLE IF NOT EXISTS alerts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ontology_id TEXT,  -- Optional link to ontology
 		alert_type TEXT NOT NULL,  -- 'trend', 'anomaly', 'threshold', 'forecast'
 		entity_id TEXT NOT NULL,
 		metric_name TEXT NOT NULL,
@@ -478,11 +479,14 @@ func (p *PersistenceBackend) initSchema() error {
 		title TEXT NOT NULL,
 		message TEXT NOT NULL,
 		details TEXT,  -- JSON: additional details
+		value REAL,  -- The metric value that triggered the alert
+		threshold REAL,  -- The threshold value (if applicable)
 		status TEXT NOT NULL DEFAULT 'active',  -- 'active', 'acknowledged', 'resolved', 'dismissed'
 		acknowledged_by TEXT,
 		acknowledged_at TIMESTAMP,
 		resolved_at TIMESTAMP,
-		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE SET NULL
 	);
 
 	-- Monitoring rules table (user-defined thresholds and rules)
@@ -558,16 +562,133 @@ func (p *PersistenceBackend) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
 	CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
 	CREATE INDEX IF NOT EXISTS idx_alerts_entity ON alerts(entity_id, metric_name);
+	CREATE INDEX IF NOT EXISTS idx_alerts_ontology ON alerts(ontology_id);
 	CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_monitoring_rules_entity ON monitoring_rules(entity_id, metric_name);
 	CREATE INDEX IF NOT EXISTS idx_monitoring_rules_enabled ON monitoring_rules(is_enabled);
 	CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_enabled ON scheduler_jobs(is_enabled);
 	CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_next_run ON scheduler_jobs(next_run);
 	CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_type ON scheduler_jobs(job_type);
+
+	-- Autonomous workflow tables
+	CREATE TABLE IF NOT EXISTS autonomous_workflows (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		import_id TEXT,  -- Link to imported data if applicable
+		status TEXT NOT NULL DEFAULT 'pending',  -- pending, schema_inference, ontology_creation, entity_extraction, ml_training, twin_creation, monitoring, completed, failed
+		current_step TEXT NOT NULL DEFAULT 'schema_inference',
+		total_steps INTEGER NOT NULL DEFAULT 7,
+		completed_steps INTEGER NOT NULL DEFAULT 0,
+		error_message TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		completed_at TIMESTAMP,
+		created_by TEXT,
+		metadata TEXT  -- JSON: additional context
+	);
+
+	CREATE TABLE IF NOT EXISTS workflow_steps (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		workflow_id TEXT NOT NULL,
+		step_name TEXT NOT NULL,  -- schema_inference, ontology_creation, entity_extraction, ml_training, twin_creation, monitoring
+		step_order INTEGER NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed, skipped
+		output_data TEXT,  -- JSON: output from this step (IDs, counts, etc.)
+		error_message TEXT,
+		started_at TIMESTAMP,
+		completed_at TIMESTAMP,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (workflow_id) REFERENCES autonomous_workflows(id) ON DELETE CASCADE
+	);
+
+	-- Inferred schemas table (from schema inference engine)
+	CREATE TABLE IF NOT EXISTS inferred_schemas (
+		id TEXT PRIMARY KEY,
+		workflow_id TEXT,
+		import_id TEXT,
+		name TEXT NOT NULL,
+		description TEXT,
+		schema_json TEXT NOT NULL,  -- Full DataSchema JSON from inference engine
+		column_count INTEGER NOT NULL DEFAULT 0,
+		relationship_count INTEGER NOT NULL DEFAULT 0,
+		fk_count INTEGER NOT NULL DEFAULT 0,
+		confidence REAL,  -- Overall confidence score
+		ai_enhanced BOOLEAN DEFAULT 0,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (workflow_id) REFERENCES autonomous_workflows(id) ON DELETE CASCADE
+	);
+
+	-- Inferred schema columns (detailed column info)
+	CREATE TABLE IF NOT EXISTS inferred_schema_columns (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		schema_id TEXT NOT NULL,
+		column_name TEXT NOT NULL,
+		data_type TEXT NOT NULL,  -- integer, float, string, boolean, date
+		ontology_type TEXT NOT NULL,  -- xsd:integer, xsd:string, etc.
+		is_primary_key BOOLEAN DEFAULT 0,
+		is_foreign_key BOOLEAN DEFAULT 0,
+		is_required BOOLEAN DEFAULT 0,
+		is_unique BOOLEAN DEFAULT 0,
+		cardinality INTEGER,
+		cardinality_percent REAL,
+		confidence REAL,
+		ai_enhanced BOOLEAN DEFAULT 0,
+		sample_values TEXT,  -- JSON array
+		constraints TEXT,  -- JSON object
+		description TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (schema_id) REFERENCES inferred_schemas(id) ON DELETE CASCADE
+	);
+
+	-- Workflow artifacts (links to created resources)
+	CREATE TABLE IF NOT EXISTS workflow_artifacts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		workflow_id TEXT NOT NULL,
+		artifact_type TEXT NOT NULL,  -- schema, ontology, extraction_job, model, twin
+		artifact_id TEXT NOT NULL,  -- ID of the created resource
+		artifact_name TEXT,
+		step_name TEXT NOT NULL,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (workflow_id) REFERENCES autonomous_workflows(id) ON DELETE CASCADE
+	);
+
+	-- Create indexes for workflow tables
+	CREATE INDEX IF NOT EXISTS idx_workflows_status ON autonomous_workflows(status);
+	CREATE INDEX IF NOT EXISTS idx_workflows_created_at ON autonomous_workflows(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow ON workflow_steps(workflow_id);
+	CREATE INDEX IF NOT EXISTS idx_workflow_steps_status ON workflow_steps(status);
+	CREATE INDEX IF NOT EXISTS idx_inferred_schemas_workflow ON inferred_schemas(workflow_id);
+	CREATE INDEX IF NOT EXISTS idx_schema_columns_schema ON inferred_schema_columns(schema_id);
+	CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_workflow ON workflow_artifacts(workflow_id);
+	CREATE INDEX IF NOT EXISTS idx_workflow_artifacts_type ON workflow_artifacts(artifact_type);
 	`
 
 	_, err := p.db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Run migrations for existing databases
+	return p.runMigrations()
+}
+
+// runMigrations applies schema updates for existing databases
+func (p *PersistenceBackend) runMigrations() error {
+	// Migration 1: Add ontology_id, value, and threshold columns to alerts table
+	migrations := []string{
+		// Check if ontology_id column exists, if not add it
+		`ALTER TABLE alerts ADD COLUMN ontology_id TEXT;`,
+		`ALTER TABLE alerts ADD COLUMN value REAL;`,
+		`ALTER TABLE alerts ADD COLUMN threshold REAL;`,
+		`CREATE INDEX IF NOT EXISTS idx_alerts_ontology ON alerts(ontology_id);`,
+	}
+
+	for _, migration := range migrations {
+		// Ignore errors for columns that already exist
+		_, _ = p.db.Exec(migration)
+	}
+
+	return nil
 }
 
 // Ontology represents an ontology in the database
@@ -831,8 +952,17 @@ func (p *PersistenceBackend) CreateClassifierModel(ctx context.Context, model *C
 			feature_importance, is_active, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`
+
+	// Handle nullable ontology_id
+	var ontologyID interface{}
+	if model.OntologyID == "" {
+		ontologyID = nil
+	} else {
+		ontologyID = model.OntologyID
+	}
+
 	_, err := p.db.ExecContext(ctx, query,
-		model.ID, model.OntologyID, model.Name, model.TargetClass, model.Algorithm,
+		model.ID, ontologyID, model.Name, model.TargetClass, model.Algorithm,
 		model.Hyperparameters, model.FeatureColumns, model.ClassLabels,
 		model.TrainAccuracy, model.ValidateAccuracy, model.PrecisionScore,
 		model.RecallScore, model.F1Score, model.ConfusionMatrix,
@@ -857,8 +987,9 @@ func (p *PersistenceBackend) GetClassifierModel(ctx context.Context, id string) 
 		WHERE id = ?
 	`
 	model := &ClassifierModel{}
+	var ontologyID sql.NullString
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
-		&model.ID, &model.OntologyID, &model.Name, &model.TargetClass,
+		&model.ID, &ontologyID, &model.Name, &model.TargetClass,
 		&model.Algorithm, &model.Hyperparameters, &model.FeatureColumns,
 		&model.ClassLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
 		&model.PrecisionScore, &model.RecallScore, &model.F1Score,
@@ -872,6 +1003,7 @@ func (p *PersistenceBackend) GetClassifierModel(ctx context.Context, id string) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get classifier model: %w", err)
 	}
+	model.OntologyID = ontologyID.String // Use empty string if NULL
 	return model, nil
 }
 
@@ -925,8 +1057,9 @@ func (p *PersistenceBackend) ListClassifierModels(ctx context.Context, ontologyI
 	var models []*ClassifierModel
 	for rows.Next() {
 		model := &ClassifierModel{}
+		var ontologyID sql.NullString
 		err := rows.Scan(
-			&model.ID, &model.OntologyID, &model.Name, &model.TargetClass,
+			&model.ID, &ontologyID, &model.Name, &model.TargetClass,
 			&model.Algorithm, &model.Hyperparameters, &model.FeatureColumns,
 			&model.ClassLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
 			&model.PrecisionScore, &model.RecallScore, &model.F1Score,
@@ -937,6 +1070,7 @@ func (p *PersistenceBackend) ListClassifierModels(ctx context.Context, ontologyI
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan classifier model: %w", err)
 		}
+		model.OntologyID = ontologyID.String // Use empty string if NULL
 		models = append(models, model)
 	}
 

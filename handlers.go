@@ -2881,3 +2881,632 @@ func sampleRows(rows []any, sampleSize int) []any {
 
 	return sampled
 }
+
+// AutonomousWorkflow represents a multi-step autonomous pipeline
+type AutonomousWorkflow struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	ImportID       string     `json:"import_id,omitempty"`
+	Status         string     `json:"status"`
+	CurrentStep    string     `json:"current_step"`
+	TotalSteps     int        `json:"total_steps"`
+	CompletedSteps int        `json:"completed_steps"`
+	ErrorMessage   string     `json:"error_message,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	CreatedBy      string     `json:"created_by,omitempty"`
+	Metadata       string     `json:"metadata,omitempty"`
+}
+
+// WorkflowStep represents a single step in the workflow
+type WorkflowStep struct {
+	ID           int        `json:"id"`
+	WorkflowID   string     `json:"workflow_id"`
+	StepName     string     `json:"step_name"`
+	StepOrder    int        `json:"step_order"`
+	Status       string     `json:"status"`
+	OutputData   string     `json:"output_data,omitempty"`
+	ErrorMessage string     `json:"error_message,omitempty"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// WorkflowArtifact represents a resource created during workflow
+type WorkflowArtifact struct {
+	ID           int       `json:"id"`
+	WorkflowID   string    `json:"workflow_id"`
+	ArtifactType string    `json:"artifact_type"`
+	ArtifactID   string    `json:"artifact_id"`
+	ArtifactName string    `json:"artifact_name,omitempty"`
+	StepName     string    `json:"step_name"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// InferredSchema represents a schema inferred from data
+type InferredSchema struct {
+	ID                string    `json:"id"`
+	WorkflowID        string    `json:"workflow_id,omitempty"`
+	ImportID          string    `json:"import_id,omitempty"`
+	Name              string    `json:"name"`
+	Description       string    `json:"description,omitempty"`
+	SchemaJSON        string    `json:"schema_json"`
+	ColumnCount       int       `json:"column_count"`
+	RelationshipCount int       `json:"relationship_count"`
+	FKCount           int       `json:"fk_count"`
+	Confidence        float64   `json:"confidence"`
+	AIEnhanced        bool      `json:"ai_enhanced"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+// POST /api/v1/workflows - Create a new autonomous workflow
+func (s *Server) handleCreateWorkflow(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name     string `json:"name"`
+		ImportID string `json:"import_id,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	if req.Name == "" {
+		writeBadRequestResponse(w, "name is required")
+		return
+	}
+
+	ctx := context.Background()
+	workflowID := uuid.New().String()
+
+	// Create workflow record
+	workflow := &AutonomousWorkflow{
+		ID:             workflowID,
+		Name:           req.Name,
+		ImportID:       req.ImportID,
+		Status:         "pending",
+		CurrentStep:    "schema_inference",
+		TotalSteps:     7,
+		CompletedSteps: 0,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+
+	if err := s.createWorkflow(ctx, workflow); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to create workflow: %v", err))
+		return
+	}
+
+	// Create workflow steps
+	steps := []string{
+		"schema_inference",
+		"ontology_creation",
+		"entity_extraction",
+		"ml_training",
+		"twin_creation",
+		"monitoring_setup",
+		"completed",
+	}
+
+	for i, stepName := range steps {
+		step := &WorkflowStep{
+			WorkflowID: workflowID,
+			StepName:   stepName,
+			StepOrder:  i + 1,
+			Status:     "pending",
+			CreatedAt:  time.Now(),
+		}
+		if err := s.createWorkflowStep(ctx, step); err != nil {
+			writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to create workflow step: %v", err))
+			return
+		}
+	}
+
+	writeSuccessResponse(w, map[string]interface{}{
+		"workflow_id": workflowID,
+		"workflow":    workflow,
+		"message":     "Workflow created successfully",
+	})
+}
+
+// GET /api/v1/workflows/:id - Get workflow details
+func (s *Server) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	workflowID := vars["id"]
+
+	if workflowID == "" {
+		writeBadRequestResponse(w, "workflow ID is required")
+		return
+	}
+
+	ctx := context.Background()
+	workflow, err := s.getWorkflow(ctx, workflowID)
+	if err != nil {
+		writeNotFoundResponse(w, fmt.Sprintf("Workflow not found: %v", err))
+		return
+	}
+
+	// Get workflow steps
+	steps, err := s.getWorkflowSteps(ctx, workflowID)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to get workflow steps: %v", err))
+		return
+	}
+
+	// Get workflow artifacts
+	artifacts, err := s.getWorkflowArtifacts(ctx, workflowID)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to get workflow artifacts: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, map[string]interface{}{
+		"workflow":  workflow,
+		"steps":     steps,
+		"artifacts": artifacts,
+	})
+}
+
+// GET /api/v1/workflows - List all workflows
+func (s *Server) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
+	utils.GetLogger().Info("=== handleListWorkflows called ===")
+	status := r.URL.Query().Get("status")
+
+	ctx := context.Background()
+	workflows, err := s.listWorkflows(ctx, status)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to list workflows: %v", err))
+		return
+	}
+
+	if workflows == nil {
+		workflows = []*AutonomousWorkflow{}
+	}
+
+	writeJSONResponse(w, http.StatusOK, workflows)
+}
+
+// POST /api/v1/workflows/:id/execute - Execute/resume a workflow
+func (s *Server) handleExecuteWorkflow(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	workflowID := vars["id"]
+
+	if workflowID == "" {
+		writeBadRequestResponse(w, "workflow ID is required")
+		return
+	}
+
+	ctx := context.Background()
+
+	// Get workflow
+	workflow, err := s.getWorkflow(ctx, workflowID)
+	if err != nil {
+		writeNotFoundResponse(w, fmt.Sprintf("Workflow not found: %v", err))
+		return
+	}
+
+	// Start workflow execution asynchronously
+	go s.executeWorkflow(context.Background(), workflow)
+
+	writeSuccessResponse(w, map[string]interface{}{
+		"workflow_id": workflowID,
+		"status":      "executing",
+		"message":     "Workflow execution started",
+	})
+}
+
+// POST /api/v1/data/:id/infer-schema - Infer schema from imported data
+func (s *Server) handleInferSchemaFromImport(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	importID := vars["id"]
+
+	if importID == "" {
+		writeBadRequestResponse(w, "import ID is required")
+		return
+	}
+
+	var req struct {
+		EnableAIFallback  bool `json:"enable_ai_fallback"`
+		EnableFKDetection bool `json:"enable_fk_detection"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	// TODO: Load imported data from storage
+	// For now, return error
+	writeInternalServerErrorResponse(w, "Data import retrieval not yet implemented. Need to implement GetImportedData method.")
+}
+
+// Database operations
+
+func (s *Server) createWorkflow(ctx context.Context, workflow *AutonomousWorkflow) error {
+	query := `
+		INSERT INTO autonomous_workflows (id, name, import_id, status, current_step, total_steps, completed_steps)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := s.persistence.GetDB().ExecContext(ctx, query,
+		workflow.ID, workflow.Name, workflow.ImportID, workflow.Status,
+		workflow.CurrentStep, workflow.TotalSteps, workflow.CompletedSteps,
+	)
+	return err
+}
+
+func (s *Server) createWorkflowStep(ctx context.Context, step *WorkflowStep) error {
+	query := `
+		INSERT INTO workflow_steps (workflow_id, step_name, step_order, status)
+		VALUES (?, ?, ?, ?)
+	`
+	_, err := s.persistence.GetDB().ExecContext(ctx, query,
+		step.WorkflowID, step.StepName, step.StepOrder, step.Status,
+	)
+	return err
+}
+
+func (s *Server) getWorkflow(ctx context.Context, workflowID string) (*AutonomousWorkflow, error) {
+	query := `
+		SELECT id, name, import_id, status, current_step, total_steps, completed_steps,
+		       error_message, created_at, updated_at, completed_at, created_by, metadata
+		FROM autonomous_workflows
+		WHERE id = ?
+	`
+	workflow := &AutonomousWorkflow{}
+	var completedAt sql.NullTime
+	var importID, errorMessage, createdBy, metadata sql.NullString
+
+	err := s.persistence.GetDB().QueryRowContext(ctx, query, workflowID).Scan(
+		&workflow.ID, &workflow.Name, &importID, &workflow.Status,
+		&workflow.CurrentStep, &workflow.TotalSteps, &workflow.CompletedSteps,
+		&errorMessage, &workflow.CreatedAt, &workflow.UpdatedAt, &completedAt,
+		&createdBy, &metadata,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("workflow not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if importID.Valid {
+		workflow.ImportID = importID.String
+	}
+	if errorMessage.Valid {
+		workflow.ErrorMessage = errorMessage.String
+	}
+	if createdBy.Valid {
+		workflow.CreatedBy = createdBy.String
+	}
+	if metadata.Valid {
+		workflow.Metadata = metadata.String
+	}
+	if completedAt.Valid {
+		workflow.CompletedAt = &completedAt.Time
+	}
+
+	return workflow, nil
+}
+
+func (s *Server) getWorkflowSteps(ctx context.Context, workflowID string) ([]*WorkflowStep, error) {
+	query := `
+		SELECT id, workflow_id, step_name, step_order, status, output_data,
+		       error_message, started_at, completed_at, created_at
+		FROM workflow_steps
+		WHERE workflow_id = ?
+		ORDER BY step_order ASC
+	`
+	rows, err := s.persistence.GetDB().QueryContext(ctx, query, workflowID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var steps []*WorkflowStep
+	for rows.Next() {
+		step := &WorkflowStep{}
+		var outputData, errorMessage sql.NullString
+		var startedAt, completedAt sql.NullTime
+
+		err := rows.Scan(
+			&step.ID, &step.WorkflowID, &step.StepName, &step.StepOrder,
+			&step.Status, &outputData, &errorMessage, &startedAt, &completedAt,
+			&step.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if outputData.Valid {
+			step.OutputData = outputData.String
+		}
+		if errorMessage.Valid {
+			step.ErrorMessage = errorMessage.String
+		}
+		if startedAt.Valid {
+			step.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			step.CompletedAt = &completedAt.Time
+		}
+
+		steps = append(steps, step)
+	}
+
+	return steps, nil
+}
+
+func (s *Server) getWorkflowArtifacts(ctx context.Context, workflowID string) ([]*WorkflowArtifact, error) {
+	query := `
+		SELECT id, workflow_id, artifact_type, artifact_id, artifact_name, step_name, created_at
+		FROM workflow_artifacts
+		WHERE workflow_id = ?
+		ORDER BY created_at ASC
+	`
+	rows, err := s.persistence.GetDB().QueryContext(ctx, query, workflowID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artifacts []*WorkflowArtifact
+	for rows.Next() {
+		artifact := &WorkflowArtifact{}
+		var artifactName sql.NullString
+
+		err := rows.Scan(
+			&artifact.ID, &artifact.WorkflowID, &artifact.ArtifactType,
+			&artifact.ArtifactID, &artifactName, &artifact.StepName,
+			&artifact.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if artifactName.Valid {
+			artifact.ArtifactName = artifactName.String
+		}
+
+		artifacts = append(artifacts, artifact)
+	}
+
+	return artifacts, nil
+}
+
+func (s *Server) listWorkflows(ctx context.Context, status string) ([]*AutonomousWorkflow, error) {
+	var query string
+	var args []interface{}
+
+	if status != "" {
+		query = `
+			SELECT id, name, import_id, status, current_step, total_steps, completed_steps,
+			       error_message, created_at, updated_at, completed_at
+			FROM autonomous_workflows
+			WHERE status = ?
+			ORDER BY created_at DESC
+			LIMIT 100
+		`
+		args = []interface{}{status}
+	} else {
+		query = `
+			SELECT id, name, import_id, status, current_step, total_steps, completed_steps,
+			       error_message, created_at, updated_at, completed_at
+			FROM autonomous_workflows
+			ORDER BY created_at DESC
+			LIMIT 100
+		`
+		args = []interface{}{}
+	}
+
+	rows, err := s.persistence.GetDB().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workflows []*AutonomousWorkflow
+	for rows.Next() {
+		workflow := &AutonomousWorkflow{}
+		var importID, errorMessage sql.NullString
+		var completedAt sql.NullTime
+
+		err := rows.Scan(
+			&workflow.ID, &workflow.Name, &importID, &workflow.Status,
+			&workflow.CurrentStep, &workflow.TotalSteps, &workflow.CompletedSteps,
+			&errorMessage, &workflow.CreatedAt, &workflow.UpdatedAt, &completedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if importID.Valid {
+			workflow.ImportID = importID.String
+		}
+		if errorMessage.Valid {
+			workflow.ErrorMessage = errorMessage.String
+		}
+		if completedAt.Valid {
+			workflow.CompletedAt = &completedAt.Time
+		}
+
+		workflows = append(workflows, workflow)
+	}
+
+	return workflows, nil
+}
+
+func (s *Server) updateWorkflowStatus(ctx context.Context, workflowID, status, currentStep string, completedSteps int) error {
+	query := `
+		UPDATE autonomous_workflows
+		SET status = ?, current_step = ?, completed_steps = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`
+	_, err := s.persistence.GetDB().ExecContext(ctx, query, status, currentStep, completedSteps, workflowID)
+	return err
+}
+
+func (s *Server) updateWorkflowStepStatus(ctx context.Context, workflowID, stepName, status string, outputData interface{}) error {
+	outputJSON, _ := json.Marshal(outputData)
+
+	var query string
+	var args []interface{}
+
+	if status == "running" {
+		query = `
+			UPDATE workflow_steps
+			SET status = ?, started_at = CURRENT_TIMESTAMP
+			WHERE workflow_id = ? AND step_name = ?
+		`
+		args = []interface{}{status, workflowID, stepName}
+	} else if status == "completed" {
+		query = `
+			UPDATE workflow_steps
+			SET status = ?, output_data = ?, completed_at = CURRENT_TIMESTAMP
+			WHERE workflow_id = ? AND step_name = ?
+		`
+		args = []interface{}{status, string(outputJSON), workflowID, stepName}
+	} else {
+		query = `
+			UPDATE workflow_steps
+			SET status = ?
+			WHERE workflow_id = ? AND step_name = ?
+		`
+		args = []interface{}{status, workflowID, stepName}
+	}
+
+	_, err := s.persistence.GetDB().ExecContext(ctx, query, args...)
+	return err
+}
+
+func (s *Server) addWorkflowArtifact(ctx context.Context, artifact *WorkflowArtifact) error {
+	query := `
+		INSERT INTO workflow_artifacts (workflow_id, artifact_type, artifact_id, artifact_name, step_name)
+		VALUES (?, ?, ?, ?, ?)
+	`
+	_, err := s.persistence.GetDB().ExecContext(ctx, query,
+		artifact.WorkflowID, artifact.ArtifactType, artifact.ArtifactID,
+		artifact.ArtifactName, artifact.StepName,
+	)
+	return err
+}
+
+// Workflow execution logic
+
+func (s *Server) executeWorkflow(ctx context.Context, workflow *AutonomousWorkflow) {
+	logger := utils.GetLogger()
+	logger.Info("Starting workflow execution")
+
+	// Update status to running
+	s.updateWorkflowStatus(ctx, workflow.ID, "running", "schema_inference", 0)
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "schema_inference", "running", nil)
+
+	// Step 1: Schema Inference
+	logger.Info("Step 1/7: Schema Inference - Simulating")
+	// TODO: Implement actual schema inference
+	// For now, just mark as completed after a delay
+	time.Sleep(2 * time.Second)
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "schema_inference", "completed", nil)
+	s.updateWorkflowStatus(ctx, workflow.ID, "running", "ontology_creation", 1)
+
+	// Step 2: Ontology Generation
+	logger.Info("Step 2/7: Ontology Generation - Simulating")
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "ontology_creation", "running", nil)
+	time.Sleep(2 * time.Second)
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "ontology_creation", "completed", nil)
+	s.updateWorkflowStatus(ctx, workflow.ID, "running", "entity_extraction", 2)
+
+	// Step 3: Entity Extraction
+	logger.Info("Step 3/7: Entity Extraction - Simulating")
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "entity_extraction", "running", nil)
+	time.Sleep(2 * time.Second)
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "entity_extraction", "completed", nil)
+	s.updateWorkflowStatus(ctx, workflow.ID, "running", "ml_training", 3)
+
+	// Step 4: ML Training
+	logger.Info("Step 4/7: ML Training - Simulating")
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "ml_training", "running", nil)
+	time.Sleep(2 * time.Second)
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "ml_training", "completed", nil)
+	s.updateWorkflowStatus(ctx, workflow.ID, "running", "twin_creation", 4)
+
+	// Step 5: Digital Twin Creation
+	logger.Info("Step 5/7: Digital Twin Creation - Simulating")
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "twin_creation", "running", nil)
+	time.Sleep(2 * time.Second)
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "twin_creation", "completed", nil)
+	s.updateWorkflowStatus(ctx, workflow.ID, "running", "monitoring_setup", 5)
+
+	// Step 6: Monitoring Setup
+	logger.Info("Step 6/7: Monitoring Setup - Simulating")
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "monitoring_setup", "running", nil)
+	time.Sleep(2 * time.Second)
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "monitoring_setup", "completed", nil)
+	s.updateWorkflowStatus(ctx, workflow.ID, "running", "completed", 6)
+
+	// Step 7: Mark workflow as completed
+	logger.Info("Step 7/7: Finalizing workflow")
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "completed", "completed", nil)
+	s.updateWorkflowStatus(ctx, workflow.ID, "completed", "completed", 7)
+
+	// Update completed_at timestamp
+	_, err := s.persistence.GetDB().ExecContext(ctx,
+		"UPDATE autonomous_workflows SET completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+		workflow.ID,
+	)
+	if err != nil {
+		logger.Warn("Failed to update completed_at timestamp")
+	}
+
+	logger.Info("Workflow execution completed successfully")
+}
+
+// Schema inference operations
+
+func (s *Server) saveInferredSchema(ctx context.Context, schema *InferredSchema) error {
+	query := `
+		INSERT INTO inferred_schemas (id, workflow_id, import_id, name, description, schema_json,
+		                              column_count, relationship_count, fk_count, confidence, ai_enhanced)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := s.persistence.GetDB().ExecContext(ctx, query,
+		schema.ID, schema.WorkflowID, schema.ImportID, schema.Name,
+		schema.Description, schema.SchemaJSON, schema.ColumnCount,
+		schema.RelationshipCount, schema.FKCount, schema.Confidence,
+		schema.AIEnhanced,
+	)
+	return err
+}
+
+func (s *Server) getInferredSchema(ctx context.Context, schemaID string) (*InferredSchema, error) {
+	query := `
+		SELECT id, workflow_id, import_id, name, description, schema_json,
+		       column_count, relationship_count, fk_count, confidence, ai_enhanced, created_at
+		FROM inferred_schemas
+		WHERE id = ?
+	`
+	schema := &InferredSchema{}
+	var workflowID, importID, description sql.NullString
+
+	err := s.persistence.GetDB().QueryRowContext(ctx, query, schemaID).Scan(
+		&schema.ID, &workflowID, &importID, &schema.Name, &description,
+		&schema.SchemaJSON, &schema.ColumnCount, &schema.RelationshipCount,
+		&schema.FKCount, &schema.Confidence, &schema.AIEnhanced, &schema.CreatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("schema not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if workflowID.Valid {
+		schema.WorkflowID = workflowID.String
+	}
+	if importID.Valid {
+		schema.ImportID = importID.String
+	}
+	if description.Valid {
+		schema.Description = description.String
+	}
+
+	return schema, nil
+}

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
+	"github.com/gorilla/mux"
 )
 
 // setupRoutes sets up the HTTP routes with API versioning
@@ -14,6 +16,7 @@ func (s *Server) setupRoutes() {
 	// Add middleware
 	s.router.Use(s.loggingMiddleware)
 	s.router.Use(s.errorRecoveryMiddleware)
+	s.router.Use(s.defaultUserMiddleware) // Inject anonymous user when auth is disabled
 	s.router.Use(utils.SecurityHeadersMiddleware)
 	s.router.Use(utils.InputValidationMiddleware)
 	s.router.Use(utils.PerformanceMiddleware)
@@ -27,6 +30,7 @@ func (s *Server) setupRoutes() {
 
 	// Create API version subrouters
 	v1 := s.router.PathPrefix("/api/v1").Subrouter()
+	v1.Use(s.defaultUserMiddleware) // Add first, before version middleware
 	v1.Use(s.versionMiddleware("v1"))
 
 	// Health check (no version)
@@ -143,6 +147,16 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/twin/{id}/runs/{rid}/timeline", s.handleGetSimulationTimeline).Methods("GET")
 	v1.HandleFunc("/twin/{id}/runs/{rid}/analyze", s.handleAnalyzeImpact).Methods("POST")
 
+	// Autonomous Workflow endpoints
+	v1.HandleFunc("/workflows", s.handleListWorkflows).Methods("GET")
+	v1.HandleFunc("/workflows", s.handleCreateWorkflow).Methods("POST")
+	v1.HandleFunc("/workflows/{id}", s.handleGetWorkflow).Methods("GET")
+	v1.HandleFunc("/workflows/{id}/execute", s.handleExecuteWorkflow).Methods("POST")
+	utils.GetLogger().Info("Registered workflow routes on v1 subrouter")
+
+	// Schema inference endpoints
+	v1.HandleFunc("/data/{id}/infer-schema", s.handleInferSchemaFromImport).Methods("POST")
+
 	// Agent Chat endpoints
 	v1.HandleFunc("/chat", s.handleListConversations).Methods("GET")
 	v1.HandleFunc("/chat", s.handleCreateConversation).Methods("POST")
@@ -208,6 +222,23 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/auth/users", s.handleListUsers).Methods("GET")
 	v1.HandleFunc("/auth/apikeys", s.handleCreateAPIKey).Methods("POST")
 
+	// Settings endpoints
+	v1.HandleFunc("/settings/api-keys", s.handleListAPIKeys).Methods("GET")
+	v1.HandleFunc("/settings/api-keys", s.handleCreateAPIKeyFromSettings).Methods("POST")
+	v1.HandleFunc("/settings/api-keys/{id}", s.handleDeleteAPIKey).Methods("DELETE")
+
+	// Settings endpoints
+	v1.HandleFunc("/settings/api-keys", s.handleListAPIKeys).Methods("GET")
+	v1.HandleFunc("/settings/api-keys", s.handleCreateAPIKey).Methods("POST")
+	v1.HandleFunc("/settings/api-keys/{id}", s.handleDeleteAPIKey).Methods("DELETE")
+
+	// Plugin management endpoints
+	v1.HandleFunc("/settings/plugins", s.handleListPluginMetadata).Methods("GET")
+	v1.HandleFunc("/settings/plugins/upload", s.handleUploadPlugin).Methods("POST")
+	v1.HandleFunc("/settings/plugins/{id}", s.handleUpdatePlugin).Methods("PUT")
+	v1.HandleFunc("/settings/plugins/{id}", s.handleDeletePlugin).Methods("DELETE")
+	v1.HandleFunc("/settings/plugins/{id}/reload", s.handleReloadPlugin).Methods("POST")
+
 	// Protected endpoints with authentication
 	protected := v1.PathPrefix("/protected").Subrouter()
 	protected.Use(auth.AuthMiddleware([]string{})) // Require authentication
@@ -241,4 +272,17 @@ func (s *Server) setupRoutes() {
 	} else {
 		utils.GetLogger().Warn("Failed to parse Next.js URL, serving API only")
 	}
+
+	// Debug: Log all registered routes
+	utils.GetLogger().Info("=== Registered Routes ===")
+	err = s.router.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		pathTemplate, _ := route.GetPathTemplate()
+		methods, _ := route.GetMethods()
+		utils.GetLogger().Info(fmt.Sprintf("  %v %s", methods, pathTemplate))
+		return nil
+	})
+	if err != nil {
+		utils.GetLogger().Warn(fmt.Sprintf("Failed to walk routes: %v", err))
+	}
+	utils.GetLogger().Info("=== End Routes ===")
 }

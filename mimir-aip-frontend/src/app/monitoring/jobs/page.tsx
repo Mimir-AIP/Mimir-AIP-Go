@@ -27,10 +27,11 @@ export default function MonitoringJobsPage() {
     try {
       setLoading(true);
       const response = await listMonitoringJobs(filter);
-      setJobs(response.jobs);
+      setJobs(response?.jobs || []);
     } catch (error) {
       toast.error('Failed to load monitoring jobs');
       console.error('Load jobs error:', error);
+      setJobs([]);
     } finally {
       setLoading(false);
     }

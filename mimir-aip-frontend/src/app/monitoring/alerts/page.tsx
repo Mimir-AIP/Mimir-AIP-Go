@@ -20,10 +20,11 @@ export default function AlertsPage() {
     try {
       setLoading(true);
       const response = await listAlerts(filter);
-      setAlerts(response.alerts);
+      setAlerts(response.alerts || []);
     } catch (error) {
       toast.error('Failed to load alerts');
       console.error('Load alerts error:', error);
+      setAlerts([]);
     } finally {
       setLoading(false);
     }

@@ -23,10 +23,12 @@ export default function MonitoringDashboard() {
         listMonitoringJobs(),
         listAlerts(),
       ]);
-      setJobs(jobsResponse.jobs);
-      setAlerts(alertsResponse.alerts);
+      setJobs(Array.isArray(jobsResponse.jobs) ? jobsResponse.jobs : []);
+      setAlerts(Array.isArray(alertsResponse.alerts) ? alertsResponse.alerts : []);
     } catch (error) {
       console.error('Load data error:', error);
+      setJobs([]);
+      setAlerts([]);
     } finally {
       setLoading(false);
     }

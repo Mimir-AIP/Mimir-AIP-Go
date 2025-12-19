@@ -1,140 +1,62 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
+import { useState, useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { Send, Loader2, Bot, User, Settings2 } from "lucide-react";
 import {
-  listConversations,
   createConversation,
-  getConversation,
-  deleteConversation,
   sendMessage,
-  type ChatConversation,
   type ChatMessage,
+  type MCPTool,
 } from "@/lib/api";
-import { ConversationSidebar } from "./ConversationSidebar";
-import { MessageList } from "./MessageList";
-import { MessageInput } from "./MessageInput";
 import { ModelSelector } from "./ModelSelector";
+import { MCPToolsPanel } from "./MCPToolsPanel";
 
 interface AgentChatProps {
   twinId?: string;
 }
 
 export function AgentChat({ twinId }: AgentChatProps) {
-  // State
-  const [conversations, setConversations] = useState<ChatConversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Model settings
-  const [modelProvider, setModelProvider] = useState("openai");
-  const [modelName, setModelName] = useState("gpt-4");
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [modelProvider, setModelProvider] = useState("mock");
+  const [modelName, setModelName] = useState("mock-gpt-4");
+  const [showModelSelector, setShowModelSelector] = useState(false);
+  const [availableTools, setAvailableTools] = useState<MCPTool[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load conversations on mount
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    loadConversations();
-  }, [twinId]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  // Load messages when conversation changes
+  // Create conversation on mount
   useEffect(() => {
-    if (activeConversationId) {
-      loadMessages(activeConversationId);
-    } else {
-      setMessages([]);
-    }
-  }, [activeConversationId]);
-
-  const loadConversations = async () => {
-    try {
-      setIsLoading(true);
-      const convs = await listConversations(twinId);
-      // Sort by updated_at descending
-      convs.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-      setConversations(convs);
-      
-      // If no active conversation and conversations exist, select first one
-      if (!activeConversationId && convs.length > 0) {
-        setActiveConversationId(convs[0].id);
+    const initConversation = async () => {
+      try {
+        const response = await createConversation({
+          twin_id: twinId,
+          title: `Chat ${new Date().toLocaleTimeString()}`,
+          model_provider: modelProvider,
+          model_name: modelName,
+          system_prompt: "You are Mimir, a helpful AI assistant for data analysis and pipeline orchestration.",
+        });
+        setConversationId(response.conversation.id);
+      } catch (error) {
+        toast.error("Failed to initialize chat");
+        console.error(error);
       }
-    } catch (error) {
-      toast.error("Error loading conversations", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
 
-  const loadMessages = async (conversationId: string) => {
-    try {
-      const data = await getConversation(conversationId);
-      setMessages(data.messages);
-      
-      // Update model settings from conversation
-      if (data.conversation.model_provider) {
-        setModelProvider(data.conversation.model_provider);
-      }
-      if (data.conversation.model_name) {
-        setModelName(data.conversation.model_name);
-      }
-    } catch (error) {
-      toast.error("Error loading messages", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  };
-
-  const handleNewConversation = async () => {
-    try {
-      const title = `Conversation ${new Date().toLocaleString()}`;
-      const response = await createConversation({
-        twin_id: twinId,
-        title,
-        model_provider: modelProvider,
-        model_name: modelName,
-        system_prompt: "You are a helpful AI assistant for the Mimir AIP Digital Twin system.",
-      });
-
-      setConversations((prev) => [response.conversation, ...prev]);
-      setActiveConversationId(response.conversation.id);
-      setMessages([]);
-      setInputValue("");
-
-      toast.success("New conversation created", {
-        description: "Start chatting with the agent",
-      });
-    } catch (error) {
-      toast.error("Error creating conversation", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  };
-
-  const handleDeleteConversation = async (id: string) => {
-    try {
-      await deleteConversation(id);
-      
-      setConversations((prev) => prev.filter((c) => c.id !== id));
-      
-      if (activeConversationId === id) {
-        const remaining = conversations.filter((c) => c.id !== id);
-        setActiveConversationId(remaining.length > 0 ? remaining[0].id : null);
-      }
-
-      toast.success("Conversation deleted");
-    } catch (error) {
-      toast.error("Error deleting conversation", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  };
+    initConversation();
+  }, [twinId, modelProvider, modelName]);
 
   const handleSendMessage = async () => {
-    if (!activeConversationId || !inputValue.trim()) return;
+    if (!conversationId || !inputValue.trim() || isSending) return;
 
     const userMessage = inputValue.trim();
     setInputValue("");
@@ -142,77 +64,210 @@ export function AgentChat({ twinId }: AgentChatProps) {
 
     try {
       const response = await sendMessage(
-        activeConversationId,
+        conversationId,
         userMessage,
         modelProvider,
         modelName
       );
 
-      // Add both user message and assistant reply to the list
+      // Add both user message and assistant reply
       setMessages((prev) => [...prev, response.user_message, response.assistant_reply]);
-
-      // Update conversation list to reflect new message count and updated_at
-      await loadConversations();
     } catch (error) {
-      toast.error("Error sending message", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-      // Restore input value on error
+      toast.error("Failed to send message");
+      console.error(error);
+      // Restore input on error
       setInputValue(userMessage);
     } finally {
       setIsSending(false);
     }
   };
 
-  if (isLoading) {
-    return (
-      <Card className="h-[600px] flex items-center justify-center">
-        <p className="text-muted-foreground">Loading conversations...</p>
-      </Card>
-    );
-  }
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
 
   return (
-    <Card className="h-[600px] flex overflow-hidden">
-      <ConversationSidebar
-        conversations={conversations}
-        activeId={activeConversationId}
-        onSelect={setActiveConversationId}
-        onNew={handleNewConversation}
-        onDelete={handleDeleteConversation}
-      />
+    <div className="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto bg-gradient-to-b from-navy to-blue/5 rounded-lg shadow-xl">
+      {/* Model Selector Toggle - Top Right */}
+      <div className="absolute top-4 right-4 z-10">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowModelSelector(!showModelSelector)}
+          className="bg-navy/80 backdrop-blur border-blue text-white hover:bg-navy hover:text-orange"
+          data-testid="model-selector-toggle"
+        >
+          <Settings2 className="h-4 w-4 mr-2" />
+          {modelName.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')}
+        </Button>
+      </div>
 
-      <div className="flex-1 flex flex-col">
-        {activeConversationId ? (
-          <>
-            <div className="p-3 border-b">
-              <ModelSelector
-                provider={modelProvider}
-                model={modelName}
-                onProviderChange={setModelProvider}
-                onModelChange={setModelName}
-              />
-            </div>
+      {/* Model Selector Panel */}
+      {showModelSelector && (
+        <div className="p-4 border-b border-blue bg-navy/60 backdrop-blur" data-testid="model-selector-panel">
+          <ModelSelector
+            provider={modelProvider}
+            model={modelName}
+            onProviderChange={setModelProvider}
+            onModelChange={setModelName}
+          />
+        </div>
+      )}
 
-            <MessageList messages={messages} />
+      {/* Tools Panel */}
+      <MCPToolsPanel onToolsLoaded={setAvailableTools} />
 
-            <MessageInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSend={handleSendMessage}
-              disabled={isSending}
-              placeholder="Ask the agent to create scenarios, run simulations, or analyze results..."
-            />
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center p-8">
-            <div className="text-center text-muted-foreground">
-              <p className="text-lg font-medium mb-2">No conversation selected</p>
-              <p className="text-sm">Create a new conversation to get started</p>
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <Bot className="h-16 w-16 text-orange mb-4" />
+            <h3 className="text-xl font-semibold text-white mb-2">
+              Chat with Mimir AI
+            </h3>
+            <p className="text-muted-foreground max-w-md">
+              Ask me about your data, create scenarios, run simulations, or analyze results.
+              I can help with pipelines, ontologies, and digital twins.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2 justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setInputValue("What can you help me with?")}
+                className="text-sm"
+              >
+                What can you do?
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setInputValue("Show me my data")}
+                className="text-sm"
+              >
+                Show my data
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setInputValue("TRIGGER_TOOL: create_scenario")}
+                className="text-sm"
+              >
+                Create a scenario
+              </Button>
             </div>
           </div>
         )}
+
+        {messages.map((message, index) => (
+          <div
+            key={index}
+            className={`flex gap-3 ${
+              message.role === "user" ? "justify-end" : "justify-start"
+            }`}
+          >
+            {message.role === "assistant" && (
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange flex items-center justify-center">
+                <Bot className="h-5 w-5 text-navy" />
+              </div>
+            )}
+            
+            <div
+              className={`max-w-[70%] rounded-2xl px-4 py-3 ${
+                message.role === "user"
+                  ? "bg-orange text-navy"
+                  : "bg-blue/30 text-white border border-blue"
+              }`}
+            >
+              <p className="text-sm whitespace-pre-wrap break-words">
+                {message.content}
+              </p>
+              
+              {/* Show tool calls if present */}
+              {message.tool_calls && message.tool_calls.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-blue/50">
+                  {message.tool_calls.map((tool, idx) => (
+                    <div key={idx} className="text-xs font-mono bg-navy/50 rounded p-2 mb-2">
+                      <div className="text-orange font-semibold mb-1">
+                        🔧 {tool.tool_name}
+                      </div>
+                      <div className="mb-2">
+                        <div className="text-muted-foreground font-semibold mb-1">Input:</div>
+                        <pre className="text-muted-foreground overflow-x-auto max-h-32">
+                          {JSON.stringify(tool.input, null, 2)}
+                        </pre>
+                      </div>
+                      {tool.output !== undefined && tool.output !== null && (
+                        <div>
+                          <div className="text-green-400 font-semibold mb-1">Output:</div>
+                          <pre className="text-muted-foreground overflow-x-auto max-h-48">
+                            {String(JSON.stringify(tool.output, null, 2))}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="text-xs mt-1 opacity-60">
+                {new Date(message.created_at).toLocaleTimeString()}
+              </div>
+            </div>
+
+            {message.role === "user" && (
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue flex items-center justify-center">
+                <User className="h-5 w-5 text-white" />
+              </div>
+            )}
+          </div>
+        ))}
+
+        {isSending && (
+          <div className="flex gap-3 justify-start">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange flex items-center justify-center">
+              <Bot className="h-5 w-5 text-navy" />
+            </div>
+            <div className="bg-blue/30 rounded-2xl px-4 py-3 border border-blue">
+              <Loader2 className="h-4 w-4 animate-spin text-orange" />
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
       </div>
-    </Card>
+
+      {/* Input Area */}
+      <div className="border-t border-blue bg-navy/50 p-4">
+        <div className="flex gap-3 items-end max-w-4xl mx-auto">
+          <Textarea
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyPress}
+            placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
+            disabled={isSending || !conversationId}
+            className="flex-1 min-h-[60px] max-h-[200px] resize-none bg-blue/20 border-blue text-white placeholder:text-muted-foreground rounded-xl"
+            rows={2}
+          />
+          <Button
+            onClick={handleSendMessage}
+            disabled={!inputValue.trim() || isSending || !conversationId}
+            size="lg"
+            className="bg-orange hover:bg-orange/90 text-navy rounded-xl px-6"
+          >
+            {isSending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2 text-center">
+          Powered by Mimir AI • Model: {modelName.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')} ({modelProvider}) • {availableTools.length} tools available
+        </p>
+      </div>
+    </div>
   );
 }

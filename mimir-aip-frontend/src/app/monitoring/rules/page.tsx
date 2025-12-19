@@ -21,10 +21,11 @@ export default function RulesPage() {
     try {
       setLoading(true);
       const response = await listMonitoringRules(filter);
-      setRules(response.rules);
+      setRules(response.rules || []);
     } catch (error) {
       toast.error('Failed to load monitoring rules');
       console.error('Load rules error:', error);
+      setRules([]);
     } finally {
       setLoading(false);
     }

@@ -81,7 +81,8 @@ RUN apk add --no-cache \
     ca-certificates \
     tzdata \
     tini \
-    libgcc
+    libgcc \
+    musl
 
 # Set working directory
 WORKDIR /app

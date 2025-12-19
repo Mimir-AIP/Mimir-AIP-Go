@@ -10,11 +10,12 @@ mkdir -p /app/logs
 mkdir -p /app/data/tdb2
 mkdir -p /app/data/ontologies
 
-# Start Jena Fuseki server in background
+# Start Jena Fuseki server in background with update support
 echo "Starting Jena Fuseki server on port 3030..."
 cd /opt/jena
 java $JVM_ARGS -jar fuseki-server.jar \
     --port=3030 \
+    --update \
     --loc=/app/data/tdb2 \
     /mimir > /app/logs/fuseki.log 2>&1 &
 FUSEKI_PID=$!
@@ -64,4 +65,4 @@ done
 echo "Starting Go backend server on port 8080..."
 echo "========================================="
 cd /app
-exec /app/mimir-aip-server --server 8080
+/app/mimir-aip-server --server 8080

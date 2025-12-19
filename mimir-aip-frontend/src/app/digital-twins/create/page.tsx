@@ -109,6 +109,7 @@ export default function CreateTwinPage() {
               </Label>
               <Input
                 id="name"
+                name="name"
                 placeholder="e.g., Q4 2024 Organization Model"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -121,7 +122,8 @@ export default function CreateTwinPage() {
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
-                placeholder="Describe what this digital twin represents..."
+                name="description"
+                placeholder="Enter description for this digital twin"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
@@ -148,6 +150,7 @@ export default function CreateTwinPage() {
               ) : (
                 <select
                   id="ontology"
+                  name="ontology"
                   className="w-full border rounded-md p-2"
                   value={formData.ontology_id}
                   onChange={(e) => setFormData({ ...formData, ontology_id: e.target.value })}
@@ -170,6 +173,7 @@ export default function CreateTwinPage() {
               </Label>
               <select
                 id="model_type"
+                name="type"
                 className="w-full border rounded-md p-2"
                 value={formData.model_type}
                 onChange={(e) => setFormData({ ...formData, model_type: e.target.value })}

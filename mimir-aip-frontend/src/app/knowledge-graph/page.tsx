@@ -329,7 +329,7 @@ export default function KnowledgeGraphPage() {
 
           {/* Results Display */}
           {queryResult && (
-            <div className="bg-blue rounded-lg shadow p-4">
+            <div className="bg-blue rounded-lg shadow p-4 results-section">
               <div className="flex justify-between items-center mb-3">
                 <div>
                   <h3 className="font-semibold text-white">Results</h3>

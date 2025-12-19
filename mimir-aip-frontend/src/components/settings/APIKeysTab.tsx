@@ -137,6 +137,7 @@ export default function APIKeysTab() {
               <div>
                 <Label htmlFor="provider">Provider</Label>
                 <Select
+                  name="provider"
                   value={formData.provider}
                   onValueChange={(value) => setFormData({ ...formData, provider: value })}
                 >
@@ -155,6 +156,7 @@ export default function APIKeysTab() {
                 <Label htmlFor="name">Name</Label>
                 <Input
                   id="name"
+                  name="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="My OpenAI Key"
@@ -165,6 +167,7 @@ export default function APIKeysTab() {
                 <Label htmlFor="key">API Key</Label>
                 <Input
                   id="key"
+                  name="key"
                   type="password"
                   value={formData.key_value}
                   onChange={(e) => setFormData({ ...formData, key_value: e.target.value })}
@@ -212,7 +215,7 @@ export default function APIKeysTab() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-4 api-keys-list">
           {apiKeys.map((key) => (
             <Card key={key.id} className="bg-blue border-blue">
               <CardHeader>

@@ -15,10 +15,12 @@ export default function PluginsPage() {
       try {
         setLoading(true);
         const data = await getPlugins();
-        setPlugins(data || []); // Handle null/undefined
+        console.log("Plugins loaded:", data); // Debug log
+        setPlugins(Array.isArray(data) ? data : []);
       } catch (err) {
+        console.error("Plugin load error:", err); // Debug log
         setError(err instanceof Error ? err.message : "Unknown error");
-        setPlugins([]); // Set empty array on error
+        setPlugins([]);
       } finally {
         setLoading(false);
       }
@@ -42,7 +44,17 @@ export default function PluginsPage() {
         </Link>
       </div>
 
-      {loading && <p>Loading...</p>}
+      {loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="bg-navy text-white border-blue p-4 animate-pulse">
+              <div className="h-6 bg-blue/50 rounded mb-2"></div>
+              <div className="h-4 bg-blue/30 rounded mb-2"></div>
+              <div className="h-4 bg-blue/30 rounded"></div>
+            </Card>
+          ))}
+        </div>
+      )}
       {error && (
         <div className="bg-red-900/20 border border-red-500 text-red-400 px-4 py-3 rounded mb-4">
           Error: {error}
@@ -60,27 +72,37 @@ export default function PluginsPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {plugins.map((plugin) => (
-          <Card key={plugin.name} className="bg-navy text-white border-blue p-4">
-            <h2 className="text-xl font-bold text-orange mb-2">{plugin.name}</h2>
-            <p className="mb-2 text-gray-300">
-              <span className="text-gray-400">Type:</span> {plugin.type || "Unknown"}
-            </p>
-            <p className="mb-2 text-gray-300">
-              <span className="text-gray-400">Version:</span> {plugin.version || "N/A"}
-            </p>
-            <p className="text-gray-300">
-              {plugin.description || "No description available"}
-            </p>
-            {plugin.author && (
-              <p className="mt-2 text-xs text-gray-500">
-                By: {plugin.author}
+      {!loading && plugins.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {plugins.map((plugin) => (
+            <Card key={plugin.name} className="bg-navy text-white border-blue p-4 plugin-card" data-testid="plugin-card">
+              <h2 className="text-xl font-bold text-orange mb-2">{plugin.name}</h2>
+              <p className="mb-2 text-gray-300">
+                <span className="text-gray-400">Type:</span> {plugin.type || "Unknown"}
               </p>
-            )}
-          </Card>
-        ))}
-      </div>
+              <p className="mb-2 text-gray-300">
+                <span className="text-gray-400">Version:</span> {plugin.version || "N/A"}
+              </p>
+              <p className="text-gray-300">
+                {plugin.description || "No description available"}
+              </p>
+              {plugin.author && (
+                <p className="mt-2 text-xs text-gray-500">
+                  By: {plugin.author}
+                </p>
+              )}
+              <div className="mt-4 flex gap-2">
+                <Button size="sm" variant="outline" className="border-blue text-white hover:bg-blue">
+                  Configure
+                </Button>
+                <Button size="sm" variant="outline" className="border-blue text-white hover:bg-blue">
+                  Enable
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -312,7 +312,7 @@ export default function CreateScenarioPage() {
                             onChange={(e) => updateEvent(event.id, { target_uri: e.target.value })}
                           >
                             <option value="">Select entity...</option>
-                            {twin.entities.map((entity) => (
+                            {(twin.entities || []).map((entity) => (
                               <option key={entity.uri} value={entity.uri}>
                                 {entity.label} ({entity.uri})
                               </option>

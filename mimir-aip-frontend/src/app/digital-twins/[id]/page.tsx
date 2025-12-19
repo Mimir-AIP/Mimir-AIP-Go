@@ -65,7 +65,7 @@ export default function TwinDetailPage() {
       toast.info("Starting simulation...");
       const run = await runSimulation(twinId, scenarioId, { snapshot_interval: 5 });
       toast.success("Simulation completed!");
-      router.push(`/digital-twins/${twinId}/runs/${run.id}`);
+      router.push(`/digital-twins/${twinId}/runs/${run.run_id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to run simulation";
       toast.error(message);
@@ -134,7 +134,7 @@ export default function TwinDetailPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                <p className="text-3xl font-bold">{twin.entities.length}</p>
+                <p className="text-3xl font-bold">{twin.entities?.length || 0}</p>
                 <p className="text-sm text-muted-foreground">Entities</p>
               </div>
             </CardContent>
@@ -142,7 +142,7 @@ export default function TwinDetailPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                <p className="text-3xl font-bold">{twin.relationships.length}</p>
+                <p className="text-3xl font-bold">{twin.relationships?.length || 0}</p>
                 <p className="text-sm text-muted-foreground">Relationships</p>
               </div>
             </CardContent>
@@ -222,7 +222,7 @@ export default function TwinDetailPage() {
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-muted-foreground">Last Updated</dt>
-                  <dd className="mt-1 text-sm">{formatDate(twin.updated_at)}</dd>
+                  <dd className="mt-1 text-sm">{twin.updated_at ? formatDate(twin.updated_at) : 'N/A'}</dd>
                 </div>
                 <div>
                   <dt className="text-sm font-medium text-muted-foreground">Model Type</dt>
@@ -240,7 +240,7 @@ export default function TwinDetailPage() {
             <CardContent>
               <div className="space-y-2">
                 {Object.entries(
-                  twin.entities.reduce((acc, entity) => {
+                  (twin.entities || []).reduce((acc, entity) => {
                     acc[entity.type] = (acc[entity.type] || 0) + 1;
                     return acc;
                   }, {} as Record<string, number>)

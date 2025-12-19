@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import yaml from "js-yaml";
 import {
   Dialog,
   DialogContent,
@@ -131,19 +132,18 @@ steps:
       // Parse YAML config
       let parsedConfig: any;
       try {
-        // Simple YAML parsing - in production you'd use a library like js-yaml
-        parsedConfig = {
-          steps: [],
-          name: createFormData.name,
-          description: createFormData.description,
-        };
+        parsedConfig = yaml.load(createFormData.yamlConfig) as any;
         
-        // Try to parse as JSON first (simpler for now)
-        // In reality, we'd need a YAML parser
-        const lines = createFormData.yamlConfig.split('\n');
-        // For now, just send the raw YAML as config
+        if (!parsedConfig || typeof parsedConfig !== 'object') {
+          throw new Error("Invalid YAML structure");
+        }
+        
+        if (!parsedConfig.steps || !Array.isArray(parsedConfig.steps) || parsedConfig.steps.length === 0) {
+          throw new Error("Pipeline must have at least one step");
+        }
       } catch (parseErr) {
-        toast.error("Invalid YAML configuration");
+        const message = parseErr instanceof Error ? parseErr.message : "Invalid YAML";
+        toast.error(`YAML parsing error: ${message}`);
         return;
       }
 
@@ -155,10 +155,11 @@ steps:
       };
 
       const config = {
-        name: createFormData.name,
-        description: createFormData.description,
+        name: parsedConfig.name || createFormData.name,
+        description: parsedConfig.description || createFormData.description,
+        version: parsedConfig.version || "1.0",
         enabled: true,
-        steps: [], // This would be parsed from YAML
+        steps: parsedConfig.steps,
       };
 
       await createPipeline(metadata, config);
@@ -318,6 +319,7 @@ steps:
               <Label htmlFor="create-name">Pipeline Name *</Label>
               <Input
                 id="create-name"
+                name="name"
                 value={createFormData.name}
                 onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })}
                 placeholder="my-pipeline"
@@ -338,9 +340,10 @@ steps:
               <Label htmlFor="create-yaml">Pipeline Configuration (YAML)</Label>
               <Textarea
                 id="create-yaml"
+                name="yamlConfig"
                 value={createFormData.yamlConfig}
                 onChange={(e) => setCreateFormData({ ...createFormData, yamlConfig: e.target.value })}
-                placeholder="Enter YAML configuration"
+                placeholder="Enter YAML config"
                 className="bg-blue/10 border-blue text-white font-mono text-sm min-h-[300px]"
               />
               <p className="text-xs text-white/60">

@@ -22,8 +22,42 @@ import (
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology/schema_inference"
 	storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
+
+// Version information
+const (
+	MimirMajorVersion = 0
+	MimirMinorVersion = 2
+	MimirPatchVersion = 0
+	MimirVersionType  = "dev" // "release", "feature", "bugfix", "dev"
+)
+
+// GetMimirVersion returns the full version string
+func GetMimirVersion() string {
+	version := fmt.Sprintf("v%d.%d.%d", MimirMajorVersion, MimirMinorVersion, MimirPatchVersion)
+	if MimirVersionType != "release" {
+		version += "-" + MimirVersionType
+	}
+	return version
+}
+
+// handleVersion returns version information
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	type VersionResponse struct {
+		Version string `json:"version"`
+		Build   string `json:"build"`
+		Commit  string `json:"commit,omitempty"`
+	}
+
+	response := VersionResponse{
+		Version: GetMimirVersion(),
+		Build:   fmt.Sprintf("Go %s (%s/%s)", runtime.Compiler, runtime.GOOS, runtime.GOARCH),
+	}
+
+	writeJSONResponse(w, http.StatusOK, response)
+}
 
 // handleHealth handles health check requests
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -3107,14 +3141,320 @@ func (s *Server) handleInferSchemaFromImport(w http.ResponseWriter, r *http.Requ
 	}
 
 	var req struct {
-		EnableAIFallback  bool `json:"enable_ai_fallback"`
-		EnableFKDetection bool `json:"enable_fk_detection"`
+		EnableAIFallback  bool   `json:"enable_ai_fallback"`
+		EnableFKDetection bool   `json:"enable_fk_detection"`
+		PluginType        string `json:"plugin_type"` // e.g. "Input"
+		PluginName        string `json:"plugin_name"` // e.g. "csv"
 	}
 	json.NewDecoder(r.Body).Decode(&req)
 
-	// TODO: Load imported data from storage
-	// For now, return error
-	writeInternalServerErrorResponse(w, "Data import retrieval not yet implemented. Need to implement GetImportedData method.")
+	// Default to CSV plugin if not specified
+	if req.PluginType == "" {
+		req.PluginType = "Input"
+	}
+	if req.PluginName == "" {
+		req.PluginName = "csv"
+	}
+
+	// 1. Get the plugin to parse the uploaded file
+	plugin, err := s.registry.GetPlugin(req.PluginType, req.PluginName)
+	if err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Plugin not found: %v", err))
+		return
+	}
+
+	// 2. Parse the uploaded file
+	filePath := fmt.Sprintf("/tmp/mimir-uploads/%s", importID)
+	stepConfig := pipelines.StepConfig{
+		Name:   "schema_inference_data_load",
+		Plugin: fmt.Sprintf("%s.%s", req.PluginType, req.PluginName),
+		Config: map[string]interface{}{
+			"file_path": filePath,
+		},
+		Output: "parsed_data",
+	}
+
+	globalContext := pipelines.NewPluginContext()
+
+	result, err := plugin.ExecuteStep(r.Context(), stepConfig, globalContext)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to parse data: %v", err))
+		return
+	}
+
+	parsedData, ok := result.Get("parsed_data")
+	if !ok {
+		writeInternalServerErrorResponse(w, "Failed to get parsed data from plugin")
+		return
+	}
+
+	// 3. Convert parsed data to []map[string]interface{} for schema inference
+	var dataRows []map[string]interface{}
+	switch data := parsedData.(type) {
+	case []map[string]interface{}:
+		dataRows = data
+	case map[string]interface{}:
+		// Handle case where plugin returns wrapper
+		if rows, ok := data["rows"].([]map[string]interface{}); ok {
+			dataRows = rows
+		} else if dataArray, ok := data["data"].([]map[string]interface{}); ok {
+			dataRows = dataArray
+		} else {
+			writeInternalServerErrorResponse(w, "Unexpected data format from plugin")
+			return
+		}
+	default:
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Unsupported data type: %T", parsedData))
+		return
+	}
+
+	if len(dataRows) == 0 {
+		writeBadRequestResponse(w, "No data rows found in uploaded file")
+		return
+	}
+
+	// 4. Create schema inference engine with proper config
+	config := schema_inference.InferenceConfig{
+		SampleSize:          100,
+		ConfidenceThreshold: 0.8,
+		EnableRelationships: true,
+		EnableConstraints:   true,
+		EnableAIFallback:    req.EnableAIFallback,
+		AIConfidenceBoost:   0.15,
+		EnableFKDetection:   req.EnableFKDetection,
+		FKMinConfidence:     0.8,
+	}
+
+	engine := schema_inference.NewSchemaInferenceEngine(config)
+
+	// 5. Infer schema from data
+	datasetName := fmt.Sprintf("Dataset_%s", strings.TrimPrefix(importID, "upload_"))
+	schema, err := engine.InferSchema(dataRows, datasetName)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Schema inference failed: %v", err))
+		return
+	}
+
+	// 6. Calculate overall confidence (average of column confidences)
+	var totalConfidence float64
+	var confidenceCount int
+	for _, column := range schema.Columns {
+		totalConfidence += column.AIConfidence
+		confidenceCount++
+	}
+	avgConfidence := 0.85 // Default confidence
+	if confidenceCount > 0 {
+		avgConfidence = totalConfidence / float64(confidenceCount)
+	}
+
+	// 7. Save schema to database
+	schemaID := uuid.New().String()
+	schemaJSON, _ := json.Marshal(schema)
+
+	insertQuery := `
+		INSERT INTO inferred_schemas (id, import_id, name, description, schema_json, 
+		                              column_count, fk_count, confidence, ai_enhanced)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.persistence.GetDB().Exec(insertQuery,
+		schemaID,
+		importID,
+		schema.Name,
+		schema.Description,
+		string(schemaJSON),
+		len(schema.Columns),
+		len(schema.ForeignKeys),
+		avgConfidence,
+		req.EnableAIFallback,
+	)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to save schema: %v", err))
+		return
+	}
+
+	// 8. Save column details
+	columnInsertQuery := `
+		INSERT INTO inferred_schema_columns (schema_id, column_name, data_type, ontology_type, 
+		                                   is_primary_key, is_foreign_key, is_required, is_unique, 
+		                                   confidence, ai_enhanced)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	for _, column := range schema.Columns {
+		_, err = s.persistence.GetDB().Exec(columnInsertQuery,
+			schemaID,
+			column.Name,
+			column.DataType,
+			column.OntologyType,
+			column.IsPrimaryKey,
+			column.IsForeignKey,
+			column.IsRequired,
+			column.IsUnique,
+			column.AIConfidence,
+			req.EnableAIFallback,
+		)
+		if err != nil {
+			// Don't fail the whole operation if one column fails to save
+			log.Printf("Warning: Failed to save column %s: %v", column.Name, err)
+		}
+	}
+
+	// 9. Return success response
+	writeSuccessResponse(w, map[string]interface{}{
+		"schema_id":    schemaID,
+		"schema":       schema,
+		"column_count": len(schema.Columns),
+		"fk_count":     len(schema.ForeignKeys),
+		"confidence":   avgConfidence,
+		"ai_enhanced":  req.EnableAIFallback,
+		"next_action":  "generate_ontology",
+		"message":      "Schema inferred successfully",
+	})
+}
+
+// handleGenerateOntologyFromSchema generates an OWL ontology from an inferred schema
+func (s *Server) handleGenerateOntologyFromSchema(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	schemaID := vars["id"]
+
+	if schemaID == "" {
+		writeBadRequestResponse(w, "schema ID is required")
+		return
+	}
+
+	// Parse request body for configuration options
+	type OntologyGenerationRequest struct {
+		BaseURI        string `json:"base_uri,omitempty"`
+		OntologyPrefix string `json:"ontology_prefix,omitempty"`
+		Format         string `json:"format,omitempty"` // turtle, rdfxml, etc.
+	}
+
+	var req OntologyGenerationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// Use defaults if body is empty or invalid
+		req.Format = "turtle"
+	}
+
+	// Set defaults
+	if req.Format == "" {
+		req.Format = "turtle"
+	}
+	if req.BaseURI == "" {
+		req.BaseURI = fmt.Sprintf("http://mimir-aip.io/ontology/%s", schemaID)
+	}
+	if req.OntologyPrefix == "" {
+		req.OntologyPrefix = "mimir"
+	}
+
+	// Load inferred schema from database
+	var schemaJSON string
+	var schemaName string
+	var workflowID sql.NullString
+	query := `SELECT schema_json, name, workflow_id FROM inferred_schemas WHERE id = ?`
+	err := s.persistence.GetDB().QueryRow(query, schemaID).Scan(&schemaJSON, &schemaName, &workflowID)
+	if err == sql.ErrNoRows {
+		writeNotFoundResponse(w, "Schema not found")
+		return
+	}
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to load schema: %v", err))
+		return
+	}
+
+	// Parse schema JSON into DataSchema object
+	var schema schema_inference.DataSchema
+	if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to parse schema JSON: %v", err))
+		return
+	}
+
+	// Create ontology generator configuration
+	config := schema_inference.OntologyConfig{
+		BaseURI:         req.BaseURI,
+		OntologyPrefix:  req.OntologyPrefix,
+		ClassNaming:     "pascal", // PascalCase for classes
+		PropertyNaming:  "camel",  // camelCase for properties
+		IncludeMetadata: true,
+		IncludeComments: true,
+	}
+
+	// Generate ontology
+	generator := schema_inference.NewOntologyGenerator(config)
+	ontology, err := generator.GenerateOntology(&schema)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to generate ontology: %v", err))
+		return
+	}
+
+	// Save ontology file to disk
+	ontologyDir := "/tmp/ontologies"
+	if err := os.MkdirAll(ontologyDir, 0755); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to create ontology directory: %v", err))
+		return
+	}
+
+	ontologyPath := fmt.Sprintf("%s/%s.ttl", ontologyDir, ontology.ID)
+	if err := os.WriteFile(ontologyPath, []byte(ontology.Content), 0644); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to save ontology file: %v", err))
+		return
+	}
+
+	// Store in database (ontologies table)
+	ontologyID := uuid.New().String()
+	insertQuery := `
+		INSERT INTO ontologies (id, name, description, version, format, file_path, tdb2_graph, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.persistence.GetDB().Exec(insertQuery,
+		ontologyID,
+		ontology.Name,
+		ontology.Description,
+		ontology.Version,
+		req.Format,
+		ontologyPath,
+		req.BaseURI,
+		"active",
+		time.Now(),
+	)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to store ontology metadata: %v", err))
+		return
+	}
+
+	// Upload to TDB2 if available
+	tdb2Loaded := false
+	if s.tdb2Backend != nil {
+		if err := s.tdb2Backend.LoadOntology(r.Context(), req.BaseURI, ontology.Content, req.Format); err != nil {
+			log.Printf("Warning: Failed to load ontology into TDB2: %v (ontology_id: %s)", err, ontologyID)
+			// Don't fail the request if TDB2 upload fails
+		} else {
+			tdb2Loaded = true
+		}
+	}
+
+	// If this was part of a workflow, create an artifact
+	if workflowID.Valid {
+		artifactQuery := `
+			INSERT INTO workflow_artifacts (workflow_id, artifact_type, artifact_id, artifact_name, step_name)
+			VALUES (?, 'ontology', ?, ?, 'ontology_creation')
+		`
+		_, _ = s.persistence.GetDB().Exec(artifactQuery, workflowID.String, ontologyID, ontology.Name)
+	}
+
+	// Return response
+	writeSuccessResponse(w, map[string]interface{}{
+		"ontology_id":    ontologyID,
+		"name":           ontology.Name,
+		"description":    ontology.Description,
+		"version":        ontology.Version,
+		"class_count":    len(ontology.Classes),
+		"property_count": len(ontology.Properties),
+		"file_path":      ontologyPath,
+		"graph_uri":      req.BaseURI,
+		"tdb2_loaded":    tdb2Loaded,
+		"next_action":    "entity_extraction",
+		"message":        "Ontology generated successfully",
+	})
 }
 
 // Database operations
@@ -3399,42 +3739,50 @@ func (s *Server) executeWorkflow(ctx context.Context, workflow *AutonomousWorkfl
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "schema_inference", "running", nil)
 
 	// Step 1: Schema Inference
-	logger.Info("Step 1/7: Schema Inference - Simulating")
-	// TODO: Implement actual schema inference
-	// For now, just mark as completed after a delay
-	time.Sleep(2 * time.Second)
-	s.updateWorkflowStepStatus(ctx, workflow.ID, "schema_inference", "completed", nil)
+	schemaID, err := s.executeSchemaInference(ctx, workflow)
+	if err != nil {
+		logger.Error("Schema inference failed", err)
+		s.updateWorkflowStepStatus(ctx, workflow.ID, "schema_inference", "failed", fmt.Sprintf(`{"error": "%s"}`, err.Error()))
+		s.updateWorkflowStatus(ctx, workflow.ID, "failed", "schema_inference", 0)
+		return
+	}
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "schema_inference", "completed", fmt.Sprintf(`{"schema_id": "%s"}`, schemaID))
 	s.updateWorkflowStatus(ctx, workflow.ID, "running", "ontology_creation", 1)
 
 	// Step 2: Ontology Generation
-	logger.Info("Step 2/7: Ontology Generation - Simulating")
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "ontology_creation", "running", nil)
-	time.Sleep(2 * time.Second)
-	s.updateWorkflowStepStatus(ctx, workflow.ID, "ontology_creation", "completed", nil)
+	ontologyID, err := s.executeOntologyGeneration(ctx, workflow, schemaID)
+	if err != nil {
+		logger.Error("Ontology generation failed", err)
+		s.updateWorkflowStepStatus(ctx, workflow.ID, "ontology_creation", "failed", fmt.Sprintf(`{"error": "%s"}`, err.Error()))
+		s.updateWorkflowStatus(ctx, workflow.ID, "failed", "ontology_creation", 1)
+		return
+	}
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "ontology_creation", "completed", fmt.Sprintf(`{"ontology_id": "%s"}`, ontologyID))
 	s.updateWorkflowStatus(ctx, workflow.ID, "running", "entity_extraction", 2)
 
-	// Step 3: Entity Extraction
+	// Step 3: Entity Extraction (simulated for now)
 	logger.Info("Step 3/7: Entity Extraction - Simulating")
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "entity_extraction", "running", nil)
 	time.Sleep(2 * time.Second)
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "entity_extraction", "completed", nil)
 	s.updateWorkflowStatus(ctx, workflow.ID, "running", "ml_training", 3)
 
-	// Step 4: ML Training
+	// Step 4: ML Training (simulated for now)
 	logger.Info("Step 4/7: ML Training - Simulating")
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "ml_training", "running", nil)
 	time.Sleep(2 * time.Second)
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "ml_training", "completed", nil)
 	s.updateWorkflowStatus(ctx, workflow.ID, "running", "twin_creation", 4)
 
-	// Step 5: Digital Twin Creation
+	// Step 5: Digital Twin Creation (simulated for now)
 	logger.Info("Step 5/7: Digital Twin Creation - Simulating")
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "twin_creation", "running", nil)
 	time.Sleep(2 * time.Second)
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "twin_creation", "completed", nil)
 	s.updateWorkflowStatus(ctx, workflow.ID, "running", "monitoring_setup", 5)
 
-	// Step 6: Monitoring Setup
+	// Step 6: Monitoring Setup (simulated for now)
 	logger.Info("Step 6/7: Monitoring Setup - Simulating")
 	s.updateWorkflowStepStatus(ctx, workflow.ID, "monitoring_setup", "running", nil)
 	time.Sleep(2 * time.Second)
@@ -3447,15 +3795,253 @@ func (s *Server) executeWorkflow(ctx context.Context, workflow *AutonomousWorkfl
 	s.updateWorkflowStatus(ctx, workflow.ID, "completed", "completed", 7)
 
 	// Update completed_at timestamp
-	_, err := s.persistence.GetDB().ExecContext(ctx,
+	_, dbErr := s.persistence.GetDB().ExecContext(ctx,
 		"UPDATE autonomous_workflows SET completed_at = CURRENT_TIMESTAMP WHERE id = ?",
 		workflow.ID,
 	)
-	if err != nil {
+	if dbErr != nil {
 		logger.Warn("Failed to update completed_at timestamp")
 	}
 
 	logger.Info("Workflow execution completed successfully")
+}
+
+// executeSchemaInference runs the schema inference step
+func (s *Server) executeSchemaInference(ctx context.Context, workflow *AutonomousWorkflow) (string, error) {
+	logger := utils.GetLogger()
+	logger.Info("Step 1/7: Schema Inference - Running real inference")
+
+	// 1. Get the plugin to parse uploaded file
+	plugin, err := s.registry.GetPlugin("Input", "csv")
+	if err != nil {
+		return "", fmt.Errorf("CSV plugin not found: %w", err)
+	}
+
+	// 2. Parse the uploaded file
+	filePath := fmt.Sprintf("/tmp/mimir-uploads/%s", workflow.ImportID)
+	stepConfig := pipelines.StepConfig{
+		Name:   "schema_inference_data_load",
+		Plugin: "Input.csv",
+		Config: map[string]interface{}{
+			"file_path": filePath,
+		},
+		Output: "parsed_data",
+	}
+
+	globalContext := pipelines.NewPluginContext()
+
+	result, err := plugin.ExecuteStep(ctx, stepConfig, globalContext)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse CSV: %w", err)
+	}
+
+	parsedData, ok := result.Get("parsed_data")
+	if !ok {
+		return "", fmt.Errorf("failed to get parsed data from plugin")
+	}
+
+	// 3. Convert parsed data to []map[string]interface{} for schema inference
+	var dataRows []map[string]interface{}
+	switch data := parsedData.(type) {
+	case []map[string]interface{}:
+		dataRows = data
+	case map[string]interface{}:
+		// Handle case where plugin returns wrapper
+		if rows, ok := data["rows"].([]map[string]interface{}); ok {
+			dataRows = rows
+		} else if dataArray, ok := data["data"].([]map[string]interface{}); ok {
+			dataRows = dataArray
+		} else {
+			return "", fmt.Errorf("unexpected data format from plugin")
+		}
+	default:
+		return "", fmt.Errorf("unsupported data type: %T", parsedData)
+	}
+
+	if len(dataRows) == 0 {
+		return "", fmt.Errorf("no data rows found in uploaded file")
+	}
+
+	// 4. Create schema inference engine with proper config
+	config := schema_inference.InferenceConfig{
+		SampleSize:          100,
+		ConfidenceThreshold: 0.8,
+		EnableRelationships: true,
+		EnableConstraints:   true,
+		EnableAIFallback:    true, // Enable AI fallback for better inference
+		AIConfidenceBoost:   0.15,
+		EnableFKDetection:   true, // Enable FK detection
+		FKMinConfidence:     0.8,
+	}
+
+	engine := schema_inference.NewSchemaInferenceEngine(config)
+
+	// 5. Infer schema from data
+	datasetName := workflow.Name
+	if workflow.ImportID != "" {
+		datasetName = strings.TrimPrefix(workflow.ImportID, "upload_")
+		datasetName = strings.TrimSuffix(datasetName, ".csv")
+	}
+
+	schema, err := engine.InferSchema(dataRows, datasetName)
+	if err != nil {
+		return "", fmt.Errorf("schema inference failed: %w", err)
+	}
+
+	// 6. Save schema to database
+	schemaID := uuid.New().String()
+	schemaJSON, _ := json.Marshal(schema)
+
+	insertQuery := `
+		INSERT INTO inferred_schemas (id, workflow_id, import_id, name, description, schema_json, 
+		                              column_count, fk_count, confidence, ai_enhanced)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.persistence.GetDB().ExecContext(ctx, insertQuery,
+		schemaID,
+		workflow.ID,
+		workflow.ImportID,
+		schema.Name,
+		schema.Description,
+		string(schemaJSON),
+		len(schema.Columns),
+		len(schema.ForeignKeys),
+		0.85, // Default confidence
+		true, // AI enhanced
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to save schema: %w", err)
+	}
+
+	// 7. Save column details
+	columnInsertQuery := `
+		INSERT INTO inferred_schema_columns (schema_id, column_name, data_type, ontology_type, 
+		                                   is_primary_key, is_foreign_key, is_required, is_unique, 
+		                                   confidence, ai_enhanced)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	for _, column := range schema.Columns {
+		_, err = s.persistence.GetDB().ExecContext(ctx, columnInsertQuery,
+			schemaID,
+			column.Name,
+			column.DataType,
+			column.OntologyType,
+			column.IsPrimaryKey,
+			column.IsForeignKey,
+			column.IsRequired,
+			column.IsUnique,
+			column.AIConfidence,
+			true, // AI enhanced
+		)
+		if err != nil {
+			// Don't fail the whole operation if one column fails to save
+			logger.Warn(fmt.Sprintf("Warning: Failed to save column %s: %v", column.Name, err))
+		}
+	}
+
+	// 8. Add workflow artifact
+	artifact := &WorkflowArtifact{
+		WorkflowID:   workflow.ID,
+		ArtifactType: "schema",
+		ArtifactID:   schemaID,
+		ArtifactName: schema.Name,
+		StepName:     "schema_inference",
+	}
+	_ = s.addWorkflowArtifact(ctx, artifact)
+
+	logger.Info(fmt.Sprintf("Schema inference completed successfully - schema_id: %s, columns: %d", schemaID, len(schema.Columns)))
+	return schemaID, nil
+}
+
+// executeOntologyGeneration runs the ontology generation step
+func (s *Server) executeOntologyGeneration(ctx context.Context, workflow *AutonomousWorkflow, schemaID string) (string, error) {
+	logger := utils.GetLogger()
+	logger.Info("Step 2/7: Ontology Generation - Running real generation")
+
+	// 1. Load inferred schema from database
+	var schemaJSON string
+	var schemaName string
+	query := `SELECT schema_json, name FROM inferred_schemas WHERE id = ?`
+	err := s.persistence.GetDB().QueryRowContext(ctx, query, schemaID).Scan(&schemaJSON, &schemaName)
+	if err != nil {
+		return "", fmt.Errorf("failed to load schema: %w", err)
+	}
+
+	// 2. Parse schema JSON
+	var schema schema_inference.DataSchema
+	if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {
+		return "", fmt.Errorf("failed to parse schema JSON: %w", err)
+	}
+
+	// 3. Generate ontology
+	config := schema_inference.OntologyConfig{
+		BaseURI:         fmt.Sprintf("http://mimir-aip.io/ontology/%s", schemaID),
+		OntologyPrefix:  "mimir",
+		ClassNaming:     "pascal",
+		PropertyNaming:  "camel",
+		IncludeMetadata: true,
+		IncludeComments: true,
+	}
+
+	generator := schema_inference.NewOntologyGenerator(config)
+	ontology, err := generator.GenerateOntology(&schema)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate ontology: %w", err)
+	}
+
+	// 4. Save ontology file
+	ontologyDir := "/tmp/ontologies"
+	if err := os.MkdirAll(ontologyDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create ontology directory: %w", err)
+	}
+
+	ontologyPath := fmt.Sprintf("%s/%s.ttl", ontologyDir, ontology.ID)
+	if err := os.WriteFile(ontologyPath, []byte(ontology.Content), 0644); err != nil {
+		return "", fmt.Errorf("failed to save ontology file: %w", err)
+	}
+
+	// 5. Store in database
+	ontologyID := uuid.New().String()
+	insertQuery := `
+		INSERT INTO ontologies (id, name, description, version, format, file_path, tdb2_graph, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.persistence.GetDB().ExecContext(ctx, insertQuery,
+		ontologyID,
+		ontology.Name,
+		ontology.Description,
+		ontology.Version,
+		"turtle",
+		ontologyPath,
+		config.BaseURI,
+		"active",
+		time.Now(),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to store ontology: %w", err)
+	}
+
+	// 6. Upload to TDB2 if available
+	if s.tdb2Backend != nil {
+		if err := s.tdb2Backend.LoadOntology(ctx, config.BaseURI, ontology.Content, "turtle"); err != nil {
+			logger.Warn(fmt.Sprintf("Failed to load ontology into TDB2: %v (ontology_id: %s)", err, ontologyID))
+			// Don't fail the request if TDB2 upload fails
+		}
+	}
+
+	// 7. Add workflow artifact
+	artifact := &WorkflowArtifact{
+		WorkflowID:   workflow.ID,
+		ArtifactType: "ontology",
+		ArtifactID:   ontologyID,
+		ArtifactName: ontology.Name,
+		StepName:     "ontology_creation",
+	}
+	_ = s.addWorkflowArtifact(ctx, artifact)
+
+	logger.Info(fmt.Sprintf("Ontology generation completed successfully - ontology_id: %s, classes: %d", ontologyID, len(ontology.Classes)))
+	return ontologyID, nil
 }
 
 // Schema inference operations

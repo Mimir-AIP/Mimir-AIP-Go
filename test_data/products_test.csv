@@ -1,0 +1,6 @@
+ProductID,ProductName,Category,Price,Stock,Supplier
+P001,Laptop,Electronics,999.99,50,TechCorp
+P002,Mouse,Electronics,29.99,200,TechCorp
+P003,Desk,Furniture,399.99,30,OfficePlus
+P004,Chair,Furniture,249.99,45,OfficePlus
+P005,Monitor,Electronics,499.99,75,TechCorp

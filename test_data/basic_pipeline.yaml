@@ -1,0 +1,35 @@
+name: Basic Product Data Processing
+description: Ingest product CSV and validate against ontology
+version: 1.0.0
+
+input:
+  plugin: csv
+  config:
+    file_path: test_data/products.csv
+    has_header: true
+    delimiter: ","
+
+steps:
+  - name: validate_schema
+    plugin: ontology_validation
+    config:
+      ontology_id: product_ontology
+      strict_mode: false
+      
+  - name: transform_data
+    plugin: data_transformer
+    config:
+      mappings:
+        id: productID
+        name: name
+        category: category
+        price: price
+        stock: stock
+        supplier: supplier
+        last_updated: lastUpdated
+
+output:
+  plugin: json
+  config:
+    file_path: output/products_processed.json
+    pretty_print: true

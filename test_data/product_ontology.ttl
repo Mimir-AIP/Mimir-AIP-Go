@@ -1,0 +1,79 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/product#> .
+
+# Classes
+ex:Product rdf:type rdfs:Class ;
+    rdfs:label "Product" ;
+    rdfs:comment "A product available in the inventory system" .
+
+ex:Category rdf:type rdfs:Class ;
+    rdfs:label "Category" ;
+    rdfs:comment "A product category" .
+
+ex:Supplier rdf:type rdfs:Class ;
+    rdfs:label "Supplier" ;
+    rdfs:comment "A product supplier" .
+
+# Properties
+ex:productID rdf:type rdf:Property ;
+    rdfs:label "product ID" ;
+    rdfs:domain ex:Product ;
+    rdfs:range xsd:string .
+
+ex:name rdf:type rdf:Property ;
+    rdfs:label "name" ;
+    rdfs:domain ex:Product ;
+    rdfs:range xsd:string .
+
+ex:category rdf:type rdf:Property ;
+    rdfs:label "category" ;
+    rdfs:domain ex:Product ;
+    rdfs:range ex:Category .
+
+ex:price rdf:type rdf:Property ;
+    rdfs:label "price" ;
+    rdfs:domain ex:Product ;
+    rdfs:range xsd:decimal .
+
+ex:stock rdf:type rdf:Property ;
+    rdfs:label "stock" ;
+    rdfs:domain ex:Product ;
+    rdfs:range xsd:integer .
+
+ex:supplier rdf:type rdf:Property ;
+    rdfs:label "supplier" ;
+    rdfs:domain ex:Product ;
+    rdfs:range ex:Supplier .
+
+ex:lastUpdated rdf:type rdf:Property ;
+    rdfs:label "last updated" ;
+    rdfs:domain ex:Product ;
+    rdfs:range xsd:date .
+
+# Category instances
+ex:Electronics rdf:type ex:Category ;
+    rdfs:label "Electronics" .
+
+ex:Furniture rdf:type ex:Category ;
+    rdfs:label "Furniture" .
+
+ex:Appliances rdf:type ex:Category ;
+    rdfs:label "Appliances" .
+
+ex:Stationery rdf:type ex:Category ;
+    rdfs:label "Stationery" .
+
+# Supplier instances
+ex:TechSupplyCo rdf:type ex:Supplier ;
+    rdfs:label "TechSupply Co" .
+
+ex:OfficeMaxInc rdf:type ex:Supplier ;
+    rdfs:label "OfficeMax Inc" .
+
+ex:HomeGoodsLtd rdf:type ex:Supplier ;
+    rdfs:label "HomeGoods Ltd" .
+
+ex:PaperWorld rdf:type ex:Supplier ;
+    rdfs:label "PaperWorld" .

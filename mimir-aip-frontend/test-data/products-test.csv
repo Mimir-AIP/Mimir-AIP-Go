@@ -1,0 +1,11 @@
+id,name,category,price,stock,rating,supplier
+1,Laptop Pro,Electronics,1299.99,45,4.5,TechCorp
+2,Office Chair,Furniture,299.99,120,4.2,HomeGoods
+3,Coffee Maker,Appliances,79.99,200,4.7,KitchenSupply
+4,Desk Lamp,Furniture,49.99,85,4.3,LightingCo
+5,Wireless Mouse,Electronics,29.99,350,4.6,TechCorp
+6,Water Bottle,Accessories,19.99,500,4.8,SportsGear
+7,Notebook Set,Stationery,12.99,450,4.4,OfficeMax
+8,Headphones,Electronics,199.99,150,4.5,AudioTech
+9,Standing Desk,Furniture,699.99,30,4.7,HomeGoods
+10,USB Hub,Electronics,39.99,220,4.3,TechCorp

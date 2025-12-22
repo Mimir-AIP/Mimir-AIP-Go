@@ -1,0 +1,55 @@
+@prefix : <http://mimir-aip.io/ontology/product#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# Ontology Declaration
+<http://mimir-aip.io/ontology/product> a owl:Ontology ;
+    rdfs:label "Product Catalog Ontology" ;
+    rdfs:comment "An ontology for product catalog data with suppliers and categories" .
+
+# Classes
+:Product a owl:Class ;
+    rdfs:label "Product" ;
+    rdfs:comment "A product in the catalog" .
+
+:Category a owl:Class ;
+    rdfs:label "Category" ;
+    rdfs:comment "A product category" .
+
+:Supplier a owl:Class ;
+    rdfs:label "Supplier" ;
+    rdfs:comment "A product supplier" .
+
+# Data Properties
+:productID a owl:DatatypeProperty ;
+    rdfs:label "product ID" ;
+    rdfs:domain :Product ;
+    rdfs:range xsd:string .
+
+:productName a owl:DatatypeProperty ;
+    rdfs:label "product name" ;
+    rdfs:domain :Product ;
+    rdfs:range xsd:string .
+
+:price a owl:DatatypeProperty ;
+    rdfs:label "price" ;
+    rdfs:domain :Product ;
+    rdfs:range xsd:decimal .
+
+:stock a owl:DatatypeProperty ;
+    rdfs:label "stock" ;
+    rdfs:domain :Product ;
+    rdfs:range xsd:integer .
+
+# Object Properties
+:hasCategory a owl:ObjectProperty ;
+    rdfs:label "has category" ;
+    rdfs:domain :Product ;
+    rdfs:range :Category .
+
+:hasSupplier a owl:ObjectProperty ;
+    rdfs:label "has supplier" ;
+    rdfs:domain :Product ;
+    rdfs:range :Supplier .

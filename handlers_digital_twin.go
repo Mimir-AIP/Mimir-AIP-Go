@@ -568,8 +568,19 @@ func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 	log.Printf("DEBUG: Request options: SnapshotInterval=%d, MaxSteps=%d", req.SnapshotInterval, req.MaxSteps)
 
-	// Create simulation engine
-	engine := DigitalTwin.NewSimulationEngine(&twin)
+	// Create simulation engine with ML integration if available
+	var engine *DigitalTwin.SimulationEngine
+	if db != nil {
+		engine = DigitalTwin.NewSimulationEngineWithML(&twin, db)
+		if engine.IsUsingML() {
+			log.Printf("DEBUG: Using ML-enhanced simulation engine")
+		} else {
+			log.Printf("DEBUG: No ML models available, using rule-based simulation")
+		}
+	} else {
+		engine = DigitalTwin.NewSimulationEngine(&twin)
+	}
+	
 	if req.SnapshotInterval > 0 {
 		engine.SetSnapshotInterval(req.SnapshotInterval)
 	}
@@ -805,4 +816,203 @@ func (s *Server) generateDefaultScenariosForTwin(twin *DigitalTwin.DigitalTwin) 
 	scenarios = append(scenarios, capacityScenario)
 
 	return scenarios
+}
+
+// handleWhatIfAnalysis performs natural language what-if analysis
+func (s *Server) handleWhatIfAnalysis(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "Digital twin service not available")
+		return
+	}
+
+	vars := mux.Vars(r)
+	twinID := vars["id"]
+
+	// Parse request
+	var req struct {
+		Question   string `json:"question"`
+		MaxResults int    `json:"max_results,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
+		return
+	}
+
+	if req.Question == "" {
+		writeErrorResponse(w, http.StatusBadRequest, "question is required")
+		return
+	}
+
+	// Load twin
+	db := s.persistence.GetDB()
+	var twinJSON string
+	query := `SELECT base_state FROM digital_twins WHERE id = ?`
+	err := db.QueryRow(query, twinID).Scan(&twinJSON)
+	if err != nil {
+		writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
+		return
+	}
+
+	var twin DigitalTwin.DigitalTwin
+	if err := twin.FromJSON(twinJSON); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse twin: %v", err))
+		return
+	}
+	twin.ID = twinID
+
+	// Create what-if engine with the configured LLM client and ML integration
+	whatIfEngine := DigitalTwin.NewWhatIfEngineWithDB(s.llmClient, db)
+
+	// Run analysis
+	response, err := whatIfEngine.AnalyzeQuestion(context.Background(), DigitalTwin.WhatIfQuery{
+		Question:   req.Question,
+		TwinID:     twinID,
+		MaxResults: req.MaxResults,
+	}, &twin)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Analysis failed: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, response)
+}
+
+// handleGenerateSmartScenarios generates intelligent scenarios based on ontology
+func (s *Server) handleGenerateSmartScenarios(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "Digital twin service not available")
+		return
+	}
+
+	vars := mux.Vars(r)
+	twinID := vars["id"]
+
+	// Load twin
+	db := s.persistence.GetDB()
+	var twinJSON string
+	query := `SELECT base_state FROM digital_twins WHERE id = ?`
+	err := db.QueryRow(query, twinID).Scan(&twinJSON)
+	if err != nil {
+		writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
+		return
+	}
+
+	var twin DigitalTwin.DigitalTwin
+	if err := twin.FromJSON(twinJSON); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse twin: %v", err))
+		return
+	}
+	twin.ID = twinID
+
+	// Create smart scenario generator with the configured LLM client
+	generator := DigitalTwin.NewSmartScenarioGenerator(s.llmClient)
+
+	// Generate scenarios
+	scenarios, err := generator.GenerateScenariosForTwin(context.Background(), &twin)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to generate scenarios: %v", err))
+		return
+	}
+
+	// Optionally save scenarios to database
+	saveParam := r.URL.Query().Get("save")
+	savedCount := 0
+	if saveParam == "true" {
+		for _, gs := range scenarios {
+			eventsJSON, _ := json.Marshal(gs.Scenario.Events)
+			insertQuery := `
+				INSERT INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`
+			_, err := db.Exec(insertQuery, gs.Scenario.ID, gs.Scenario.TwinID, gs.Scenario.Name, gs.Scenario.Description, gs.Scenario.Type, string(eventsJSON), gs.Scenario.Duration, gs.Scenario.CreatedAt)
+			if err == nil {
+				savedCount++
+			}
+		}
+	}
+
+	writeSuccessResponse(w, map[string]interface{}{
+		"scenarios":   scenarios,
+		"count":       len(scenarios),
+		"saved_count": savedCount,
+	})
+}
+
+// handleGetInsights generates proactive insights for a digital twin
+func (s *Server) handleGetInsights(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "Digital twin service not available")
+		return
+	}
+
+	vars := mux.Vars(r)
+	twinID := vars["id"]
+
+	// Load twin
+	db := s.persistence.GetDB()
+	var twinJSON string
+	query := `SELECT base_state FROM digital_twins WHERE id = ?`
+	err := db.QueryRow(query, twinID).Scan(&twinJSON)
+	if err != nil {
+		writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
+		return
+	}
+
+	var twin DigitalTwin.DigitalTwin
+	if err := twin.FromJSON(twinJSON); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse twin: %v", err))
+		return
+	}
+	twin.ID = twinID
+
+	// Create insight suggester with the configured LLM client
+	suggester := DigitalTwin.NewInsightSuggester(s.llmClient)
+
+	// Generate insights
+	report, err := suggester.GenerateInsights(context.Background(), &twin)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to generate insights: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, report)
+}
+
+// handleAnalyzeOntology analyzes the ontology for patterns and risks
+func (s *Server) handleAnalyzeOntology(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "Digital twin service not available")
+		return
+	}
+
+	vars := mux.Vars(r)
+	twinID := vars["id"]
+
+	// Load twin
+	db := s.persistence.GetDB()
+	var twinJSON string
+	query := `SELECT base_state FROM digital_twins WHERE id = ?`
+	err := db.QueryRow(query, twinID).Scan(&twinJSON)
+	if err != nil {
+		writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
+		return
+	}
+
+	var twin DigitalTwin.DigitalTwin
+	if err := twin.FromJSON(twinJSON); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse twin: %v", err))
+		return
+	}
+
+	// Create analyzer with the configured LLM client
+	analyzer := DigitalTwin.NewOntologyAnalyzer(s.llmClient)
+
+	// Run analysis
+	analysis, err := analyzer.AnalyzeOntology(context.Background(), twin.Entities, twin.Relationships)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Analysis failed: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, analysis)
 }

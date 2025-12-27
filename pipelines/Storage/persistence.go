@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -939,6 +940,70 @@ type ClassifierModel struct {
 	IsActive          bool      `json:"is_active"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+// SaveMLModelDirect saves an ML model with direct JSON inputs (used by auto_trainer)
+func (p *PersistenceBackend) SaveMLModelDirect(ctx context.Context, modelID, ontologyID, modelJSON, configJSON, metricsJSON string) error {
+	// Parse the metrics to extract accuracy information
+	var metrics struct {
+		TrainAccuracy     float64 `json:"train_accuracy,omitempty"`
+		ValidateAccuracy  float64 `json:"validate_accuracy,omitempty"`
+		PrecisionScore    float64 `json:"precision,omitempty"`
+		RecallScore       float64 `json:"recall,omitempty"`
+		F1Score           float64 `json:"f1,omitempty"`
+		ConfusionMatrix   string  `json:"confusion_matrix,omitempty"`
+		FeatureImportance string  `json:"feature_importance,omitempty"`
+		TrainingRows      int     `json:"training_rows,omitempty"`
+		ValidationRows    int     `json:"validation_rows,omitempty"`
+	}
+
+	if err := json.Unmarshal([]byte(metricsJSON), &metrics); err != nil {
+		// If parsing fails, use default values
+		metrics.TrainAccuracy = 0
+		metrics.ValidateAccuracy = 0
+	}
+
+	// Parse config to get algorithm and other details
+	var config struct {
+		Algorithm       string `json:"algorithm,omitempty"`
+		TargetClass     string `json:"target_class,omitempty"`
+		Hyperparameters string `json:"hyperparameters,omitempty"`
+		FeatureColumns  string `json:"feature_columns,omitempty"`
+		ClassLabels     string `json:"class_labels,omitempty"`
+	}
+
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		config.Algorithm = "random_forest" // default
+	}
+
+	// Create model artifact path (for now, store JSON directly)
+	modelArtifactPath := fmt.Sprintf("ml_models/%s.json", modelID)
+
+	// Create classifier model entry
+	model := &ClassifierModel{
+		ID:                modelID,
+		OntologyID:        ontologyID,
+		Name:              fmt.Sprintf("AutoML Model %s", modelID),
+		TargetClass:       config.TargetClass,
+		Algorithm:         config.Algorithm,
+		Hyperparameters:   config.Hyperparameters,
+		FeatureColumns:    config.FeatureColumns,
+		ClassLabels:       config.ClassLabels,
+		TrainAccuracy:     metrics.TrainAccuracy,
+		ValidateAccuracy:  metrics.ValidateAccuracy,
+		PrecisionScore:    metrics.PrecisionScore,
+		RecallScore:       metrics.RecallScore,
+		F1Score:           metrics.F1Score,
+		ConfusionMatrix:   metrics.ConfusionMatrix,
+		ModelArtifactPath: modelArtifactPath,
+		ModelSizeBytes:    int64(len(modelJSON)),
+		TrainingRows:      metrics.TrainingRows,
+		ValidationRows:    metrics.ValidationRows,
+		FeatureImportance: metrics.FeatureImportance,
+		IsActive:          true,
+	}
+
+	return p.CreateClassifierModel(ctx, model)
 }
 
 // CreateClassifierModel creates a new classifier model in the database

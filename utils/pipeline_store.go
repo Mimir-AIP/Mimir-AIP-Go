@@ -409,6 +409,12 @@ func generatePipelineID() string {
 var globalPipelineStore *PipelineStore
 var pipelineStoreOnce sync.Once
 
+// ResetGlobalPipelineStore resets the global store (for testing)
+func ResetGlobalPipelineStore() {
+	globalPipelineStore = nil
+	pipelineStoreOnce = sync.Once{}
+}
+
 // GetPipelineStore returns the global pipeline store instance
 func GetPipelineStore() *PipelineStore {
 	pipelineStoreOnce.Do(func() {
@@ -420,8 +426,11 @@ func GetPipelineStore() *PipelineStore {
 // InitializeGlobalPipelineStore initializes the global pipeline store
 func InitializeGlobalPipelineStore(storePath string) error {
 	store := GetPipelineStore()
+	GetLogger().Info("=== InitializeGlobalPipelineStore: store pointer", String("ptr", fmt.Sprintf("%p", store)))
 	if storePath != "" {
 		store.storePath = storePath
 	}
-	return store.Initialize()
+	err := store.Initialize()
+	GetLogger().Info("=== After Initialize: pipeline count", Int("count", len(store.pipelines)))
+	return err
 }

@@ -84,6 +84,11 @@ func (e *ExcelDataAdapter) Extract(ctx context.Context, config DataSourceConfig)
 		sheetName = sn
 	}
 
+	listSheets := false
+	if ls, ok := dataMap["list_sheets"].(bool); ok {
+		listSheets = ls
+	}
+
 	// Use Excel plugin from registry
 	excelPlugin, err := e.pluginRegistry.GetPlugin("Input", "excel")
 	if err != nil {
@@ -97,6 +102,7 @@ func (e *ExcelDataAdapter) Extract(ctx context.Context, config DataSourceConfig)
 			"file_path":   filePath,
 			"has_headers": hasHeaders,
 			"sheet_name":  sheetName,
+			"list_sheets": listSheets,
 		},
 		Output: "excel_data",
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"strings"
 	"time"
@@ -372,6 +373,38 @@ func (at *AutoTrainer) prepareTrainingDataFromDataset(dataset *UnifiedDataset, t
 		return nil, fmt.Errorf("no valid feature columns found")
 	}
 
+	// Create categorical encoding mappings
+	categoricalMaps := make(map[string]map[string]float64)
+	for _, colName := range featureColumns {
+		for _, col := range dataset.Columns {
+			if col.Name == colName && !col.IsNumeric {
+				// Build mapping for categorical column
+				catMap := make(map[string]float64)
+				uniqueValues := make(map[string]bool)
+
+				// Collect unique values
+				for _, row := range dataset.Rows {
+					if val, exists := row[colName]; exists && val != nil {
+						if strVal, ok := val.(string); ok {
+							uniqueValues[strVal] = true
+						}
+					}
+				}
+
+				// Assign numerical values to categories
+				i := 0.0
+				for val := range uniqueValues {
+					catMap[val] = i
+					i++
+				}
+
+				categoricalMaps[colName] = catMap
+				log.Printf("📋 Categorical mapping for %s: %d unique values", colName, len(catMap))
+				break
+			}
+		}
+	}
+
 	// Build feature matrix X and target vector y
 	X := make([][]float64, 0, dataset.RowCount)
 	var yNumeric []float64
@@ -402,9 +435,20 @@ func (at *AutoTrainer) prepareTrainingDataFromDataset(dataset *UnifiedDataset, t
 			case int:
 				featureVec[i] = float64(v)
 			case string:
-				// For categorical features, use simple encoding (hash or ordinal)
-				// This is a simplified approach - real implementation would use proper encoding
-				featureVec[i] = float64(len(v)) // Placeholder: use string length
+				// For categorical features, use proper encoding with mappings
+				if catMap, exists := categoricalMaps[colName]; exists {
+					if encoded, ok := catMap[v]; ok {
+						featureVec[i] = encoded
+					} else {
+						// Unknown categorical value - assign average value
+						featureVec[i] = float64(len(catMap)) / 2.0
+					}
+				} else {
+					// Fallback: use hash of string
+					h := fnv.New32a()
+					h.Write([]byte(v))
+					featureVec[i] = float64(h.Sum32() % 1000)
+				}
 			default:
 				validRow = false
 				break
@@ -534,14 +578,15 @@ func (at *AutoTrainer) trainModelFromDataset(
 		}
 	}
 
-	// Try to save to storage (use existing SaveMLModelDirect if available)
-	// For now, log that we would save it
-	log.Printf("📦 Would save model %s to storage (model: %d bytes, config: %d bytes, metrics: %d bytes)",
-		modelID, len(modelJSON), len(configJSON), len(metricsJSON))
-
-	// Note: Actual persistence would call something like:
-	// at.Storage.SaveMLModelDirect(ctx, modelID, ontologyID, modelJSON, configJSON, metricsJSON)
-	// But this method might not exist yet, so we'll skip for now
+	// Try to save to storage using the SaveMLModelDirect method
+	err = at.Storage.SaveMLModelDirect(ctx, modelID, ontologyID, string(modelJSON), string(configJSON), string(metricsJSON))
+	if err != nil {
+		log.Printf("⚠️  Failed to save model %s to storage: %v", modelID, err)
+		// Don't return error - model training succeeded, just saving failed
+	} else {
+		log.Printf("📦 Model %s saved to storage (model: %d bytes, config: %d bytes, metrics: %d bytes)",
+			modelID, len(modelJSON), len(configJSON), len(metricsJSON))
+	}
 
 	log.Printf("✅ Model trained in %v (ID: %s)", trainingDuration, modelID)
 

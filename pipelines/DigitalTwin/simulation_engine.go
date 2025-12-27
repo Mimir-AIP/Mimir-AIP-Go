@@ -1,6 +1,7 @@
 package DigitalTwin
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -16,6 +17,8 @@ type SimulationEngine struct {
 	processor        *EventProcessor
 	snapshotInterval int // Take snapshot every N steps (0 = disable)
 	maxSteps         int
+	mlPredictor      *MLPredictor // Optional ML-based predictor
+	useML            bool          // Whether to use ML predictions
 	mu               sync.RWMutex
 }
 
@@ -26,7 +29,29 @@ func NewSimulationEngine(twin *DigitalTwin) *SimulationEngine {
 		processor:        NewEventProcessor(),
 		snapshotInterval: 10, // Default: snapshot every 10 steps
 		maxSteps:         1000,
+		useML:            false,
 	}
+}
+
+// NewSimulationEngineWithML creates a simulation engine with ML integration
+func NewSimulationEngineWithML(twin *DigitalTwin, db *sql.DB) *SimulationEngine {
+	engine := NewSimulationEngine(twin)
+	
+	if db != nil && twin.OntologyID != "" {
+		predictor := NewMLPredictor(db, twin.OntologyID)
+		if err := predictor.LoadModels(nil); err == nil && predictor.HasModels() {
+			engine.mlPredictor = predictor
+			engine.useML = true
+		}
+	}
+	
+	return engine
+}
+
+// SetMLPredictor sets the ML predictor for enhanced simulations
+func (se *SimulationEngine) SetMLPredictor(predictor *MLPredictor) {
+	se.mlPredictor = predictor
+	se.useML = predictor != nil && predictor.HasModels()
 }
 
 // SetSnapshotInterval configures how often state snapshots are taken
@@ -37,6 +62,19 @@ func (se *SimulationEngine) SetSnapshotInterval(interval int) {
 // SetMaxSteps sets the maximum number of simulation steps
 func (se *SimulationEngine) SetMaxSteps(maxSteps int) {
 	se.maxSteps = maxSteps
+}
+
+// IsUsingML returns whether ML predictions are enabled
+func (se *SimulationEngine) IsUsingML() bool {
+	return se.useML
+}
+
+// GetMLModelInfo returns info about loaded ML models
+func (se *SimulationEngine) GetMLModelInfo() []map[string]interface{} {
+	if se.mlPredictor == nil {
+		return []map[string]interface{}{}
+	}
+	return se.mlPredictor.GetLoadedModels()
 }
 
 // RunSimulation executes a simulation scenario
@@ -110,8 +148,18 @@ func (se *SimulationEngine) RunSimulation(scenario *SimulationScenario) (*Simula
 				TargetURI: event.TargetURI,
 			}
 
-			// Process the event
-			changes, err := se.processor.ProcessEvent(event, se.twin, state)
+			// Process the event (with optional ML enhancement)
+			var changes []StateChange
+			var mlUsed bool
+			
+			if se.useML && se.mlPredictor != nil {
+				changes, mlUsed, err = se.processEventWithML(event, state)
+			}
+			if !mlUsed || err != nil {
+				// Fall back to rule-based processing
+				changes, err = se.processor.ProcessEvent(event, se.twin, state)
+			}
+			
 			if err != nil {
 				logEntry.Success = false
 				logEntry.Message = fmt.Sprintf("Error: %v", err)
@@ -125,9 +173,19 @@ func (se *SimulationEngine) RunSimulation(scenario *SimulationScenario) (*Simula
 			for _, change := range changes {
 				logEntry.StateChanges[fmt.Sprintf("%s.%s", change.EntityURI, change.Field)] = change.NewValue
 			}
+			
+			// Track ML usage in log
+			if mlUsed {
+				logEntry.Message = "ML-enhanced prediction"
+			}
 
-			// Propagate impact through relationships
-			propagatedChanges, err := se.processor.PropagateImpact(event, se.twin, state, changes)
+			// Propagate impact through relationships (with optional ML enhancement)
+			var propagatedChanges []StateChange
+			if se.useML && se.mlPredictor != nil {
+				propagatedChanges, err = se.propagateWithML(event, state, changes)
+			} else {
+				propagatedChanges, err = se.processor.PropagateImpact(event, se.twin, state, changes)
+			}
 			if err != nil {
 				logEntry.Message = fmt.Sprintf("Warning: propagation error: %v", err)
 			} else if len(propagatedChanges) > 0 {
@@ -219,6 +277,227 @@ func (se *SimulationEngine) initializeState() (*TwinState, error) {
 	state.Flags["stable"] = true
 
 	return state, nil
+}
+
+// processEventWithML uses ML models to predict event impact
+func (se *SimulationEngine) processEventWithML(event *SimulationEvent, state *TwinState) ([]StateChange, bool, error) {
+	changes := []StateChange{}
+	
+	// Find the target entity
+	var targetEntity *TwinEntity
+	for i := range se.twin.Entities {
+		if se.twin.Entities[i].URI == event.TargetURI {
+			targetEntity = &se.twin.Entities[i]
+			break
+		}
+	}
+	
+	if targetEntity == nil {
+		return nil, false, fmt.Errorf("target entity not found: %s", event.TargetURI)
+	}
+	
+	// Get current state
+	currentState, exists := state.Entities[event.TargetURI]
+	if !exists {
+		return nil, false, fmt.Errorf("entity state not found: %s", event.TargetURI)
+	}
+	
+	// Use ML predictor
+	prediction, err := se.mlPredictor.PredictEntityState(targetEntity, event, &currentState)
+	if err != nil {
+		return nil, false, err
+	}
+	
+	if prediction.UsedFallback {
+		// ML couldn't help, fall back to rule-based
+		return nil, false, nil
+	}
+	
+	// Apply predicted changes
+	if predMap, ok := prediction.PredictedValue.(map[string]interface{}); ok {
+		for field, value := range predMap {
+			changes = append(changes, StateChange{
+				EntityURI: event.TargetURI,
+				Field:     field,
+				OldValue:  getFieldValue(&currentState, field),
+				NewValue:  value,
+			})
+			
+			// Update state
+			applyChange(&currentState, field, value)
+		}
+		state.Entities[event.TargetURI] = currentState
+	} else if prediction.PredictedValue != nil {
+		// Single value prediction - apply to utilization
+		changes = append(changes, StateChange{
+			EntityURI: event.TargetURI,
+			Field:     "predicted_value",
+			OldValue:  currentState.Utilization,
+			NewValue:  prediction.PredictedValue,
+		})
+	}
+	
+	return changes, true, nil
+}
+
+// propagateWithML uses ML to predict impact propagation
+func (se *SimulationEngine) propagateWithML(event *SimulationEvent, state *TwinState, sourceChanges []StateChange) ([]StateChange, error) {
+	propagatedChanges := []StateChange{}
+	
+	// Find source entity
+	var sourceEntity *TwinEntity
+	for i := range se.twin.Entities {
+		if se.twin.Entities[i].URI == event.TargetURI {
+			sourceEntity = &se.twin.Entities[i]
+			break
+		}
+	}
+	if sourceEntity == nil {
+		return propagatedChanges, nil
+	}
+	
+	// Find relationships from source
+	for _, rel := range se.twin.Relationships {
+		if rel.SourceURI != event.TargetURI {
+			continue
+		}
+		
+		// Find target entity
+		var targetEntity *TwinEntity
+		for i := range se.twin.Entities {
+			if se.twin.Entities[i].URI == rel.TargetURI {
+				targetEntity = &se.twin.Entities[i]
+				break
+			}
+		}
+		if targetEntity == nil {
+			continue
+		}
+		
+		// Build source change map
+		sourceChangeMap := make(map[string]interface{})
+		for _, change := range sourceChanges {
+			if change.EntityURI == event.TargetURI {
+				sourceChangeMap[change.Field] = change.NewValue
+			}
+		}
+		
+		// Predict propagation factor using ML
+		propagationFactor, err := se.mlPredictor.PredictImpactPropagation(
+			sourceEntity, &rel, targetEntity, sourceChangeMap,
+		)
+		if err != nil || propagationFactor < 0.1 {
+			continue
+		}
+		
+		// Apply propagated impact
+		targetState, exists := state.Entities[rel.TargetURI]
+		if !exists {
+			continue
+		}
+		
+		// Propagate utilization changes
+		for _, change := range sourceChanges {
+			if change.Field != "utilization" {
+				continue
+			}
+			
+			if newVal, ok := change.NewValue.(float64); ok {
+				if oldVal, ok := change.OldValue.(float64); ok {
+					delta := (newVal - oldVal) * propagationFactor
+					newTargetUtil := targetState.Utilization + delta
+					
+					// Clamp to valid range
+					if newTargetUtil < 0 {
+						newTargetUtil = 0
+					}
+					if newTargetUtil > 2.0 {
+						newTargetUtil = 2.0
+					}
+					
+					propagatedChanges = append(propagatedChanges, StateChange{
+						EntityURI: rel.TargetURI,
+						Field:     "utilization",
+						OldValue:  targetState.Utilization,
+						NewValue:  newTargetUtil,
+					})
+					
+					targetState.Utilization = newTargetUtil
+					state.Entities[rel.TargetURI] = targetState
+				}
+			}
+		}
+		
+		// Propagate availability changes
+		for _, change := range sourceChanges {
+			if change.Field != "available" {
+				continue
+			}
+			
+			if available, ok := change.NewValue.(bool); ok && !available {
+				// If source becomes unavailable, affect target based on propagation factor
+				if propagationFactor > 0.5 {
+					targetState.Status = "degraded"
+					state.Entities[rel.TargetURI] = targetState
+					
+					propagatedChanges = append(propagatedChanges, StateChange{
+						EntityURI: rel.TargetURI,
+						Field:     "status",
+						OldValue:  "active",
+						NewValue:  "degraded",
+					})
+				}
+			}
+		}
+	}
+	
+	return propagatedChanges, nil
+}
+
+// getFieldValue extracts a field value from entity state
+func getFieldValue(state *EntityState, field string) interface{} {
+	switch field {
+	case "status":
+		return state.Status
+	case "capacity":
+		return state.Capacity
+	case "utilization":
+		return state.Utilization
+	case "available":
+		return state.Available
+	default:
+		if v, ok := state.Metrics[field]; ok {
+			return v
+		}
+		return nil
+	}
+}
+
+// applyChange applies a change to entity state
+func applyChange(state *EntityState, field string, value interface{}) {
+	switch field {
+	case "status":
+		if v, ok := value.(string); ok {
+			state.Status = v
+		}
+	case "capacity":
+		if v, ok := value.(float64); ok {
+			state.Capacity = v
+		}
+	case "utilization":
+		if v, ok := value.(float64); ok {
+			state.Utilization = v
+		}
+	case "available":
+		if v, ok := value.(bool); ok {
+			state.Available = v
+		}
+	default:
+		if v, ok := value.(float64); ok {
+			state.Metrics[field] = v
+		}
+	}
+	state.LastUpdated = time.Now()
 }
 
 // createSnapshot creates a state snapshot

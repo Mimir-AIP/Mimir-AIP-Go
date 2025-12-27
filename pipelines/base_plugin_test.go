@@ -37,6 +37,10 @@ func (m *MockPlugin) ValidateConfig(config map[string]any) error {
 	return nil
 }
 
+func (m *MockPlugin) GetInputSchema() map[string]any {
+	return map[string]any{}
+}
+
 func TestNewPluginContext(t *testing.T) {
 	ctx := NewPluginContext()
 

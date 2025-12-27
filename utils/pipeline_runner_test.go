@@ -41,6 +41,10 @@ func (m *MockPlugin) ValidateConfig(config map[string]any) error {
 	return nil
 }
 
+func (m *MockPlugin) GetInputSchema() map[string]any {
+	return map[string]any{}
+}
+
 func TestExecutePipeline(t *testing.T) {
 	tests := []struct {
 		name          string

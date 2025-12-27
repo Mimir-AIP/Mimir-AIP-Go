@@ -176,6 +176,7 @@ func (p *panicPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.Step
 func (p *panicPlugin) GetPluginType() string                      { return "Test" }
 func (p *panicPlugin) GetPluginName() string                      { return "panic_plugin" }
 func (p *panicPlugin) ValidateConfig(config map[string]any) error { return nil }
+func (p *panicPlugin) GetInputSchema() map[string]any             { return map[string]any{} }
 
 // TestPluginExecution_Panic tests that plugin panics are handled gracefully
 func TestPluginExecution_Panic(t *testing.T) {
@@ -423,6 +424,7 @@ func (p *networkErrorPlugin) ExecuteStep(ctx context.Context, stepConfig pipelin
 func (p *networkErrorPlugin) GetPluginType() string                      { return "Test" }
 func (p *networkErrorPlugin) GetPluginName() string                      { return "network_error_plugin" }
 func (p *networkErrorPlugin) ValidateConfig(config map[string]any) error { return nil }
+func (p *networkErrorPlugin) GetInputSchema() map[string]any             { return map[string]any{} }
 
 // TestPluginExecution_NetworkError tests network error handling
 func TestPluginExecution_NetworkError(t *testing.T) {

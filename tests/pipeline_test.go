@@ -63,6 +63,10 @@ func (mp *MockPlugin) ValidateConfig(config map[string]any) error {
 	return nil
 }
 
+func (mp *MockPlugin) GetInputSchema() map[string]any {
+	return map[string]any{}
+}
+
 func TestPipelineExecution_Success(t *testing.T) {
 	// Create a simple pipeline configuration
 	config := &utils.PipelineConfig{

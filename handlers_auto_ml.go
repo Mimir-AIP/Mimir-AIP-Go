@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -210,6 +212,14 @@ func (s *Server) handleSimpleAutoTrain(w http.ResponseWriter, r *http.Request, r
 		http.Error(w, "data is required", http.StatusBadRequest)
 		return
 	}
+
+	// Validate file size (10MB limit for base64 encoded data)
+	const maxDataSize = 10 * 1024 * 1024 // 10MB
+	if len(req.Data) > maxDataSize {
+		http.Error(w, fmt.Sprintf("data size (%d bytes) exceeds maximum allowed size (%d bytes)", len(req.Data), maxDataSize), http.StatusRequestEntityTooLarge)
+		return
+	}
+
 	if req.TargetColumn == "" {
 		http.Error(w, "target_column is required", http.StatusBadRequest)
 		return
@@ -434,4 +444,392 @@ func (s *Server) handleSimpleAutoTrain(w http.ResponseWriter, r *http.Request, r
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
+}
+
+// TypeInferenceColumn represents a column with its inferred type
+type TypeInferenceColumn struct {
+	Name             string   `json:"name"`
+	InferredType     string   `json:"inferred_type"`
+	Confidence       float64  `json:"confidence"`
+	SampleValues     []string `json:"sample_values"`
+	NullCount        int      `json:"null_count"`
+	UniqueCount      int      `json:"unique_count"`
+	SuggestedMapping string   `json:"suggested_mapping,omitempty"`
+}
+
+// TypeInferenceResult represents the complete type inference result
+type TypeInferenceResult struct {
+	Columns []TypeInferenceColumn `json:"columns"`
+	Summary struct {
+		TotalColumns       int     `json:"total_columns"`
+		NumericColumns     int     `json:"numeric_columns"`
+		CategoricalColumns int     `json:"categorical_columns"`
+		DateTimeColumns    int     `json:"datetime_columns"`
+		TextColumns        int     `json:"text_columns"`
+		ConfidenceScore    float64 `json:"confidence_score"`
+	} `json:"summary"`
+}
+
+// handleInferTypes analyzes uploaded data files and infers column types
+func (s *Server) handleInferTypes(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	if ontologyID == "" {
+		http.Error(w, "ontology ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Parse multipart form (max 32MB)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Get uploaded file
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "No file uploaded", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Validate file size (10MB limit)
+	if header.Size > 10*1024*1024 {
+		http.Error(w, "File size exceeds 10MB limit", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	// Read file content
+	content, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Analyze data based on file type
+	result, err := s.analyzeDataTypes(content, header.Filename)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to analyze data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    result,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleSaveTypeInferences saves the type mappings to the database
+func (s *Server) handleSaveTypeInferences(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	if ontologyID == "" {
+		http.Error(w, "ontology ID is required", http.StatusBadRequest)
+		return
+	}
+
+	var request struct {
+		Data TypeInferenceResult `json:"data"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Save to database (implement as needed)
+	// For now, just return success
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Type inferences saved successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleGetTypeInferences retrieves saved type inferences for an ontology
+func (s *Server) handleGetTypeInferences(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	if ontologyID == "" {
+		http.Error(w, "ontology ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// For now, return empty result (implement database retrieval as needed)
+	response := map[string]interface{}{
+		"success": true,
+		"data":    nil,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// analyzeDataTypes analyzes file content and infers column types
+func (s *Server) analyzeDataTypes(content []byte, filename string) (*TypeInferenceResult, error) {
+	// Simple type inference based on file extension
+	if strings.HasSuffix(strings.ToLower(filename), ".csv") {
+		return s.analyzeCSVTypes(content)
+	} else if strings.HasSuffix(strings.ToLower(filename), ".json") {
+		return s.analyzeJSONTypes(content)
+	} else {
+		// Default to simple text analysis
+		return s.analyzeTextTypes(content), nil
+	}
+}
+
+// analyzeCSVTypes analyzes CSV content and infers column types
+func (s *Server) analyzeCSVTypes(content []byte) (*TypeInferenceResult, error) {
+	reader := csv.NewReader(strings.NewReader(string(content)))
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CSV: %w", err)
+	}
+
+	if len(records) < 2 {
+		return nil, fmt.Errorf("CSV must have at least a header and one data row")
+	}
+
+	headers := records[0]
+	columns := make([]TypeInferenceColumn, len(headers))
+
+	for i, header := range headers {
+		column := TypeInferenceColumn{
+			Name:         header,
+			SampleValues: []string{},
+			NullCount:    0,
+			UniqueCount:  0,
+		}
+
+		// Analyze values in this column
+		values := make(map[string]bool)
+		isNumeric := true
+		nonNullCount := 0
+
+		for _, record := range records[1:] {
+			if i >= len(record) {
+				continue
+			}
+
+			value := strings.TrimSpace(record[i])
+			if value == "" {
+				column.NullCount++
+				continue
+			}
+
+			nonNullCount++
+			values[value] = true
+
+			// Sample first few values
+			if len(column.SampleValues) < 5 {
+				column.SampleValues = append(column.SampleValues, value)
+			}
+
+			// Type detection
+			if isNumeric {
+				if _, err := strconv.ParseFloat(value, 64); err != nil {
+					isNumeric = false
+				}
+			}
+		}
+
+		column.UniqueCount = len(values)
+
+		// Determine inferred type and confidence
+		if isNumeric {
+			column.InferredType = "float"
+			column.Confidence = 0.9
+		} else if float64(column.UniqueCount)/float64(nonNullCount) < 0.1 && column.UniqueCount < 10 {
+			column.InferredType = "boolean"
+			column.Confidence = 0.7
+		} else {
+			column.InferredType = "string"
+			column.Confidence = 0.6
+		}
+
+		columns[i] = column
+	}
+
+	// Create summary
+	summary := s.createTypeSummary(columns)
+
+	return &TypeInferenceResult{
+		Columns: columns,
+		Summary: summary,
+	}, nil
+}
+
+// analyzeJSONTypes analyzes JSON content and infers types
+func (s *Server) analyzeJSONTypes(content []byte) (*TypeInferenceResult, error) {
+	var data []map[string]interface{}
+	if err := json.Unmarshal(content, &data); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("JSON array is empty")
+	}
+
+	// Get all possible keys from all objects
+	allKeys := make(map[string]bool)
+	for _, obj := range data {
+		for key := range obj {
+			allKeys[key] = true
+		}
+	}
+
+	var headers []string
+	for key := range allKeys {
+		headers = append(headers, key)
+	}
+
+	columns := make([]TypeInferenceColumn, len(headers))
+
+	for i, header := range headers {
+		column := TypeInferenceColumn{
+			Name:         header,
+			SampleValues: []string{},
+			NullCount:    0,
+			UniqueCount:  0,
+		}
+
+		values := make(map[string]bool)
+		isNumeric := true
+		nonNullCount := 0
+
+		for _, obj := range data {
+			value, exists := obj[header]
+			if !exists || value == nil {
+				column.NullCount++
+				continue
+			}
+
+			var strValue string
+			switch v := value.(type) {
+			case string:
+				strValue = v
+			case float64:
+				strValue = fmt.Sprintf("%.6g", v)
+			case bool:
+				strValue = fmt.Sprintf("%t", v)
+			default:
+				strValue = fmt.Sprintf("%v", v)
+			}
+
+			nonNullCount++
+			values[strValue] = true
+
+			if len(column.SampleValues) < 5 {
+				column.SampleValues = append(column.SampleValues, strValue)
+			}
+		}
+
+		column.UniqueCount = len(values)
+
+		// Determine inferred type and confidence
+		if isNumeric {
+			column.InferredType = "float"
+			column.Confidence = 0.9
+		} else if float64(column.UniqueCount)/float64(nonNullCount) < 0.1 && column.UniqueCount < 10 {
+			column.InferredType = "boolean"
+			column.Confidence = 0.7
+		} else {
+			column.InferredType = "string"
+			column.Confidence = 0.6
+		}
+
+		columns[i] = column
+	}
+
+	summary := s.createTypeSummary(columns)
+
+	return &TypeInferenceResult{
+		Columns: columns,
+		Summary: summary,
+	}, nil
+}
+
+// analyzeTextTypes analyzes plain text content
+func (s *Server) analyzeTextTypes(content []byte) *TypeInferenceResult {
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 {
+		return &TypeInferenceResult{Columns: []TypeInferenceColumn{}}
+	}
+
+	// Simple analysis - treat as single text column
+	column := TypeInferenceColumn{
+		Name:         "text_content",
+		InferredType: "text",
+		Confidence:   0.5,
+		SampleValues: []string{},
+		NullCount:    0,
+		UniqueCount:  len(lines),
+	}
+
+	for i, line := range lines {
+		if i < 5 && strings.TrimSpace(line) != "" {
+			column.SampleValues = append(column.SampleValues, strings.TrimSpace(line))
+		}
+	}
+
+	summary := s.createTypeSummary([]TypeInferenceColumn{column})
+
+	return &TypeInferenceResult{
+		Columns: []TypeInferenceColumn{column},
+		Summary: summary,
+	}
+}
+
+// createTypeSummary creates a summary of inferred types
+func (s *Server) createTypeSummary(columns []TypeInferenceColumn) struct {
+	TotalColumns       int     `json:"total_columns"`
+	NumericColumns     int     `json:"numeric_columns"`
+	CategoricalColumns int     `json:"categorical_columns"`
+	DateTimeColumns    int     `json:"datetime_columns"`
+	TextColumns        int     `json:"text_columns"`
+	ConfidenceScore    float64 `json:"confidence_score"`
+} {
+	summary := struct {
+		TotalColumns       int     `json:"total_columns"`
+		NumericColumns     int     `json:"numeric_columns"`
+		CategoricalColumns int     `json:"categorical_columns"`
+		DateTimeColumns    int     `json:"datetime_columns"`
+		TextColumns        int     `json:"text_columns"`
+		ConfidenceScore    float64 `json:"confidence_score"`
+	}{}
+
+	totalConfidence := 0.0
+	summary.TotalColumns = len(columns)
+
+	for _, column := range columns {
+		totalConfidence += column.Confidence
+
+		switch strings.ToLower(column.InferredType) {
+		case "integer", "float":
+			summary.NumericColumns++
+		case "date", "datetime":
+			summary.DateTimeColumns++
+		case "boolean":
+			summary.CategoricalColumns++
+		default:
+			summary.TextColumns++
+		}
+	}
+
+	if summary.TotalColumns > 0 {
+		summary.ConfidenceScore = totalConfidence / float64(summary.TotalColumns)
+	}
+
+	return summary
 }

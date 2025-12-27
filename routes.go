@@ -147,6 +147,12 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/twin/{id}/runs/{rid}/timeline", s.handleGetSimulationTimeline).Methods("GET")
 	v1.HandleFunc("/twin/{id}/runs/{rid}/analyze", s.handleAnalyzeImpact).Methods("POST")
 
+	// Smart Digital Twin endpoints (AI-powered)
+	v1.HandleFunc("/twin/{id}/whatif", s.handleWhatIfAnalysis).Methods("POST")                   // Natural language what-if analysis
+	v1.HandleFunc("/twin/{id}/smart-scenarios", s.handleGenerateSmartScenarios).Methods("POST") // Auto-generate relevant scenarios
+	v1.HandleFunc("/twin/{id}/analyze", s.handleAnalyzeOntology).Methods("GET")                  // Analyze ontology for patterns/risks
+	v1.HandleFunc("/twin/{id}/insights", s.handleGetInsights).Methods("GET")                     // Proactive insights & suggestions
+
 	// Autonomous Workflow endpoints
 	v1.HandleFunc("/workflows", s.handleListWorkflows).Methods("GET")
 	v1.HandleFunc("/workflows", s.handleCreateWorkflow).Methods("POST")
@@ -192,6 +198,11 @@ func (s *Server) setupRoutes() {
 
 	// Data-based Auto-ML endpoint (new - accepts CSV/Excel/JSON data)
 	v1.HandleFunc("/auto-train-with-data", s.handleAutoTrainWithData).Methods("POST")
+
+	// Type inference endpoints
+	v1.HandleFunc("/ontology/{id}/infer-types", s.handleInferTypes).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/inferred-types", s.handleSaveTypeInferences).Methods("POST")
+	v1.HandleFunc("/ontology/{id}/inferred-types", s.handleGetTypeInferences).Methods("GET")
 
 	// Monitoring endpoints
 	v1.HandleFunc("/monitoring/jobs", s.handleListMonitoringJobs).Methods("GET")

@@ -28,11 +28,11 @@ test.describe('Happy Path - Full Application Navigation', () => {
     await expect(page.locator('h1, h2').first()).toBeVisible({ timeout: 5000 });
     console.log('   ✓ Dashboard loaded');
 
-    // 2. Data Ingestion
-    console.log('2. Testing Data Ingestion...');
-    await page.goto('/data/upload', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    // 2. Pipelines (Data Ingestion)
+    console.log('2. Testing Pipelines...');
+    await page.goto('/pipelines', { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForTimeout(500);
-    const uploadPage = page.locator('text=/upload|data|file/i').first();
+    const pipelinesPage = page.locator('text=/pipeline|create/i').first();
     await expect(uploadPage).toBeVisible({ timeout: 5000 });
     console.log('   ✓ Data Ingestion loaded');
 
@@ -287,9 +287,9 @@ test.describe('Happy Path - Full Application Navigation', () => {
 
     const pagesToTest = [
       '/dashboard',
-      '/data/upload',
       '/pipelines',
       '/jobs',
+      '/workflows',
       '/ontologies',
       '/ontologies/upload',
       '/knowledge-graph',
@@ -345,9 +345,9 @@ test.describe('Happy Path - Full Application Navigation', () => {
 
     const sidebarLinks = [
       { text: 'Dashboard', href: '/dashboard' },
-      { text: 'Data Ingestion', href: '/data/upload' },
       { text: 'Pipelines', href: '/pipelines' },
       { text: 'Jobs', href: '/jobs' },
+      { text: 'Workflows', href: '/workflows' },
       { text: 'Agent Chat', href: '/chat' },
       { text: 'Monitoring', href: '/monitoring' },
       { text: 'Plugins', href: '/plugins' },

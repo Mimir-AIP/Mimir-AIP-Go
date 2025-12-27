@@ -97,20 +97,20 @@ steps:
     await expect(jobCard).toBeVisible({ timeout: 5000 });
   });
 
-  test('3. Data Ingestion - Full Workflow', async ({ page }) => {
-    await page.goto('/data/upload');
+  test('3. Pipelines - Create Ingestion Pipeline', async ({ page }) => {
+    await page.goto('/pipelines');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
     
-    // CSV plugin MUST be available
-    const csvPlugin = page.locator('text=/csv/i').first();
-    await expect(csvPlugin).toBeVisible({ timeout: 5000 });
-    await csvPlugin.click();
+    // Create Pipeline button MUST be available
+    const createButton = page.getByRole('button', { name: 'Create Pipeline' }).first();
+    await expect(createButton).toBeVisible({ timeout: 5000 });
+    await createButton.click();
     await page.waitForTimeout(1000);
     
-    // Upload file - file input MUST exist
-    const fileInput = page.locator('input[type="file"]').first();
-    await expect(fileInput).toBeAttached({ timeout: 5000 });
+    // Dialog should open
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 5000 });
     const csvPath = path.join(__dirname, '../../test_data/products.csv');
     await fileInput.setInputFiles(csvPath);
     await page.waitForTimeout(2000);

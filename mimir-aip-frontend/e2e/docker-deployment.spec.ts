@@ -79,11 +79,11 @@ test.describe('Docker Deployment - Full Application Test', () => {
   test('can navigate to data ingestion page', async ({ page }) => {
     await page.goto('/dashboard');
     
-    // Click data ingestion link
-    await page.click('aside >> text=Data Ingestion');
+    // Click pipelines link (data ingestion via pipelines)
+    await page.click('aside >> text=Pipelines');
     
-    // Should navigate to data upload
-    await page.waitForURL('**/data/upload', { timeout: 5000 });
+    // Should navigate to pipelines
+    await page.waitForURL('**/pipelines', { timeout: 5000 });
   });
 
   test('can navigate to ontologies page', async ({ page }) => {

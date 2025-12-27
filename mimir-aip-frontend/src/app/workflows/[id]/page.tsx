@@ -199,8 +199,8 @@ export default function WorkflowDetailPage() {
                   {workflow.completed_at && ` • Completed ${formatDate(workflow.completed_at)}`}
                 </CardDescription>
                 <div className="flex items-center space-x-4 text-sm text-gray-500">
-                  <span>Import ID: {workflow.import_id}</span>
-                  <span>Workflow ID: {workflow.id}</span>
+                  <span className="font-mono bg-blue/20 px-2 py-0.5 rounded">ID: {String(workflow.id).slice(0, 8)}...</span>
+                  <span>Steps: {workflow.completed_steps}/{workflow.total_steps}</span>
                 </div>
               </div>
               {workflow.status === "running" && (
@@ -319,11 +319,11 @@ export default function WorkflowDetailPage() {
                                       onClick={() => {
                                         // Navigate to artifact based on type
                                         if (artifact.artifact_type === "ontology") {
-                                          router.push(`/ontology/${artifact.artifact_id}`);
+                                          router.push(`/ontologies/${artifact.artifact_id}`);
                                         } else if (artifact.artifact_type === "model") {
-                                          router.push(`/ml/models/${artifact.artifact_id}`);
+                                          router.push(`/models/${artifact.artifact_id}`);
                                         } else if (artifact.artifact_type === "twin") {
-                                          router.push(`/twin/${artifact.artifact_id}`);
+                                          router.push(`/digital-twins/${artifact.artifact_id}`);
                                         }
                                       }}
                                     >
@@ -352,9 +352,9 @@ export default function WorkflowDetailPage() {
 
       {/* Actions */}
       <div className="mt-6 flex justify-between">
-        <Link href={`/data/preview/${workflow.import_id}`}>
+        <Link href="/pipelines">
           <Button variant="outline">
-            View Source Data
+            View Pipelines
           </Button>
         </Link>
         

@@ -79,7 +79,12 @@ export default function JobsPage() {
       setLoading(true);
       setError(null);
       const data = await getJobs();
-      setJobs(data);
+      if (data) {
+        setJobs(Array.isArray(data) ? data : []);
+      } else {
+        setJobs([]);
+      }
+      setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setError(message);

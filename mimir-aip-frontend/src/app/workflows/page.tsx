@@ -134,7 +134,7 @@ export default function WorkflowsPage() {
               Track automated data processing pipelines
             </p>
           </div>
-          <Link href="/data/upload">
+          <Link href="/ontologies">
             <Button>
               <PlayCircle className="h-4 w-4 mr-2" />
               Start New Workflow
@@ -159,18 +159,26 @@ export default function WorkflowsPage() {
 
       {/* Workflows List */}
       {workflows.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Workflow className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-xl font-semibold mb-2">No Workflows Found</h3>
-          <p className="text-gray-500 mb-4">
-            Start a new autonomous workflow by uploading data with autonomous mode enabled.
+        <Card className="p-12 text-center bg-gradient-to-br from-navy to-blue/20 border-blue">
+          <Workflow className="h-16 w-16 mx-auto text-orange mb-4" />
+          <h3 className="text-xl font-semibold mb-2 text-white">No Workflows Found</h3>
+          <p className="text-gray-400 mb-6">
+            Start an autonomous workflow by creating an ontology from your ingestion pipelines.
+            Mimir will automatically extract entities, train ML models, and create digital twins.
           </p>
-          <Link href="/data/upload">
-            <Button>
-              <PlayCircle className="h-4 w-4 mr-2" />
-              Upload Data
-            </Button>
-          </Link>
+          <div className="flex justify-center gap-3">
+            <Link href="/pipelines">
+              <Button variant="outline" className="border-blue hover:border-orange">
+                <PlayCircle className="h-4 w-4 mr-2" />
+                Create Pipeline
+              </Button>
+            </Link>
+            <Link href="/ontologies">
+              <Button className="bg-orange hover:bg-orange/90 text-navy">
+                ✨ Create Ontology
+              </Button>
+            </Link>
+          </div>
         </Card>
       ) : (
         <div className="space-y-4">
@@ -215,7 +223,9 @@ export default function WorkflowsPage() {
                       <span className="text-sm font-medium">Current Step:</span>
                       <Badge variant="outline">{workflow.current_step.replace(/_/g, " ")}</Badge>
                     </div>
-                    <span className="text-sm text-gray-500">Import ID: {workflow.import_id}</span>
+                    <span className="text-xs font-mono text-gray-500 bg-blue/10 px-2 py-1 rounded">
+                      {String(workflow.id).slice(0, 8)}...
+                    </span>
                   </div>
 
                   {/* Error Message */}

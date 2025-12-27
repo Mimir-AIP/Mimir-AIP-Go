@@ -39,12 +39,72 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
 // ==================== PIPELINES ====================
 
+// Backend response structure
+interface PipelineMetadata {
+  id: string;
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+  version?: number;
+}
+
+interface PipelineConfig {
+  Name: string;
+  Enabled?: boolean;
+  Description?: string;
+  Steps?: Array<{
+    Name: string;
+    Plugin: string;
+    Config?: Record<string, unknown>;
+    Output?: string;
+  }>;
+}
+
+interface PipelineResponse {
+  metadata: PipelineMetadata;
+  config: PipelineConfig;
+}
+
+// Flattened Pipeline for frontend use
 export interface Pipeline {
   id: string;
   name: string;
+  description?: string;
+  enabled?: boolean;
   status?: string;
   steps?: unknown[];
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+  version?: number;
+  // Keep raw data for advanced use
+  metadata?: PipelineMetadata;
+  config?: PipelineConfig;
   [key: string]: unknown;
+}
+
+// Transform backend response to frontend Pipeline
+function transformPipeline(response: PipelineResponse): Pipeline {
+  return {
+    id: response.metadata?.id || "",
+    name: response.metadata?.name || response.config?.Name || "",
+    description: response.metadata?.description || response.config?.Description || "",
+    enabled: response.metadata?.enabled ?? response.config?.Enabled ?? false,
+    status: response.metadata?.enabled ? "active" : "inactive",
+    steps: response.config?.Steps || [],
+    tags: response.metadata?.tags || [],
+    created_at: response.metadata?.created_at,
+    updated_at: response.metadata?.updated_at,
+    created_by: response.metadata?.created_by,
+    version: response.metadata?.version,
+    metadata: response.metadata,
+    config: response.config,
+  };
 }
 
 /**
@@ -52,7 +112,8 @@ export interface Pipeline {
  * GET /api/v1/pipelines
  */
 export async function getPipelines(): Promise<Pipeline[]> {
-  return apiFetch<Pipeline[]>("/api/v1/pipelines");
+  const response = await apiFetch<PipelineResponse[]>("/api/v1/pipelines");
+  return response.map(transformPipeline);
 }
 
 /**
@@ -60,7 +121,8 @@ export async function getPipelines(): Promise<Pipeline[]> {
  * GET /api/v1/pipelines/:id
  */
 export async function getPipeline(id: string): Promise<Pipeline> {
-  return apiFetch<Pipeline>(`/api/v1/pipelines/${id}`);
+  const response = await apiFetch<PipelineResponse>(`/api/v1/pipelines/${id}`);
+  return transformPipeline(response);
 }
 
 /**
@@ -82,10 +144,11 @@ export async function executePipeline(id: string, body: Record<string, unknown>)
  * POST /api/v1/pipelines
  */
 export async function createPipeline(metadata: Record<string, unknown>, config: Record<string, unknown>): Promise<Pipeline> {
-  return apiFetch("/api/v1/pipelines", {
+  const response = await apiFetch<PipelineResponse>("/api/v1/pipelines", {
     method: "POST",
     body: JSON.stringify({ metadata, config }),
   });
+  return transformPipeline(response);
 }
 
 /**
@@ -93,10 +156,11 @@ export async function createPipeline(metadata: Record<string, unknown>, config: 
  * PUT /api/v1/pipelines/:id
  */
 export async function updatePipeline(id: string, metadata?: Record<string, unknown>, config?: Record<string, unknown>): Promise<Pipeline> {
-  return apiFetch(`/api/v1/pipelines/${id}`, {
+  const response = await apiFetch<PipelineResponse>(`/api/v1/pipelines/${id}`, {
     method: "PUT",
     body: JSON.stringify({ metadata, config }),
   });
+  return transformPipeline(response);
 }
 
 /**
@@ -114,10 +178,11 @@ export async function deletePipeline(id: string): Promise<{ message: string; id:
  * POST /api/v1/pipelines/:id/clone
  */
 export async function clonePipeline(id: string, name: string): Promise<Pipeline> {
-  return apiFetch(`/api/v1/pipelines/${id}/clone`, {
+  const response = await apiFetch<PipelineResponse>(`/api/v1/pipelines/${id}/clone`, {
     method: "POST",
     body: JSON.stringify({ name }),
   });
+  return transformPipeline(response);
 }
 
 /**
@@ -1410,6 +1475,164 @@ export async function analyzeSimulationImpact(twinId: string, runId: string): Pr
   const response = await apiFetch<{ success: boolean; data: ImpactAnalysis }>(`/api/v1/twin/${twinId}/runs/${runId}/analyze`, {
     method: "POST",
   });
+  return response.data;
+}
+
+// ==================== SMART DIGITAL TWIN ====================
+
+export interface WhatIfKeyFinding {
+  type: "impact" | "risk" | "opportunity" | "warning";
+  entity?: string;
+  description: string;
+  severity?: string;
+  value?: number;
+}
+
+export interface WhatIfResponse {
+  question: string;
+  interpretation: string;
+  summary: string;
+  key_findings: WhatIfKeyFinding[];
+  recommendations: string[];
+  confidence: number;
+  processing_time_ms: number;
+  results?: {
+    status: string;
+    metrics: {
+      average_utilization: number;
+      peak_utilization: number;
+      system_stability: number;
+      events_processed: number;
+      total_steps: number;
+    };
+  };
+}
+
+export interface GeneratedScenario {
+  scenario: {
+    id: string;
+    name: string;
+    description: string;
+    type: string;
+    duration: number;
+    events: Array<{
+      type: string;
+      target_uri: string;
+      timestamp: number;
+    }>;
+  };
+  explanation: string;
+  risk_addressed?: string;
+  confidence: number;
+}
+
+export interface OntologyAnalysis {
+  domain_type: string;
+  domain_keywords: string[];
+  entity_patterns: Array<{
+    entity_type: string;
+    pattern_type: string;
+    key_property: string;
+    importance: number;
+    depends_on: string[];
+    depended_by: string[];
+  }>;
+  critical_entities: string[];
+  risk_factors: Array<{
+    name: string;
+    description: string;
+    severity: string;
+    entities: string[];
+    mitigation?: string;
+  }>;
+  suggested_metrics: Array<{
+    name: string;
+    description: string;
+    formula?: string;
+    unit?: string;
+    entities?: string[];
+  }>;
+}
+
+/**
+ * Run What-If analysis on a digital twin
+ * POST /api/v1/twin/:id/whatif
+ */
+export async function runWhatIfAnalysis(twinId: string, question: string): Promise<WhatIfResponse> {
+  const response = await apiFetch<{ data: WhatIfResponse }>(`/api/v1/twin/${twinId}/whatif`, {
+    method: "POST",
+    body: JSON.stringify({ question }),
+  });
+  return response.data;
+}
+
+/**
+ * Generate smart scenarios for a digital twin
+ * POST /api/v1/twin/:id/smart-scenarios
+ */
+export async function generateSmartScenarios(twinId: string, save = false): Promise<{ scenarios: GeneratedScenario[]; count: number; saved_count: number }> {
+  const url = save 
+    ? `/api/v1/twin/${twinId}/smart-scenarios?save=true`
+    : `/api/v1/twin/${twinId}/smart-scenarios`;
+  const response = await apiFetch<{ data: { scenarios: GeneratedScenario[]; count: number; saved_count: number } }>(url, {
+    method: "POST",
+  });
+  return response.data;
+}
+
+/**
+ * Analyze ontology patterns and risks for a digital twin
+ * GET /api/v1/twin/:id/analyze
+ */
+export async function analyzeOntologyPatterns(twinId: string): Promise<OntologyAnalysis> {
+  const response = await apiFetch<{ data: OntologyAnalysis }>(`/api/v1/twin/${twinId}/analyze`);
+  return response.data;
+}
+
+// Insight types
+export interface Insight {
+  id: string;
+  type: "risk" | "opportunity" | "warning" | "trend" | "question";
+  title: string;
+  description: string;
+  severity?: "low" | "medium" | "high" | "critical";
+  entities?: string[];
+  actions?: InsightAction[];
+  confidence: number;
+  created_at: string;
+}
+
+export interface InsightAction {
+  type: "simulate" | "investigate" | "configure";
+  label: string;
+  description: string;
+  parameters?: Record<string, unknown>;
+}
+
+export interface SuggestedQuestion {
+  question: string;
+  reason: string;
+  relevance: number;
+  category: string;
+  related_to?: string[];
+}
+
+export interface InsightReport {
+  twin_id: string;
+  generated_at: string;
+  insights: Insight[];
+  suggested_questions: SuggestedQuestion[];
+  risk_score: number;
+  health_score: number;
+  summary: string;
+}
+
+/**
+ * Get proactive insights for a digital twin
+ * GET /api/v1/twin/:id/insights
+ */
+export async function getInsights(twinId: string): Promise<InsightReport> {
+  const response = await apiFetch<{ data: InsightReport }>(`/api/v1/twin/${twinId}/insights`);
   return response.data;
 }
 

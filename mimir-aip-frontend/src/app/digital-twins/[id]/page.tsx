@@ -16,6 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { AgentChat } from "@/components/chat/AgentChat";
+import { WhatIfAnalyzer } from "@/components/digital-twin/WhatIfAnalyzer";
+import { SmartScenarios } from "@/components/digital-twin/SmartScenarios";
+import { InsightsPanel } from "@/components/digital-twin/InsightsPanel";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -27,6 +30,7 @@ import {
   MessageSquare,
   BarChart3,
   Settings,
+  Sparkles,
 } from "lucide-react";
 
 export default function TwinDetailPage() {
@@ -37,7 +41,7 @@ export default function TwinDetailPage() {
   const [twin, setTwin] = useState<DigitalTwin | null>(null);
   const [scenarios, setScenarios] = useState<SimulationScenario[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "scenarios" | "chat">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "insights" | "whatif" | "scenarios" | "smart" | "chat">("overview");
 
   useEffect(() => {
     loadData();
@@ -160,10 +164,10 @@ export default function TwinDetailPage() {
 
       {/* Tabs */}
       <div className="border-b mb-6">
-        <div className="flex gap-6">
+        <div className="flex gap-4 overflow-x-auto">
           <button
             onClick={() => setActiveTab("overview")}
-            className={`pb-3 px-1 border-b-2 transition-colors ${
+            className={`pb-3 px-1 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === "overview"
                 ? "border-primary text-primary font-medium"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -175,8 +179,47 @@ export default function TwinDetailPage() {
             </div>
           </button>
           <button
+            onClick={() => setActiveTab("insights")}
+            className={`pb-3 px-1 border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "insights"
+                ? "border-primary text-primary font-medium"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              Insights
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab("whatif")}
+            className={`pb-3 px-1 border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "whatif"
+                ? "border-primary text-primary font-medium"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              What-If Analysis
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab("smart")}
+            className={`pb-3 px-1 border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === "smart"
+                ? "border-primary text-primary font-medium"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              Smart Scenarios
+            </div>
+          </button>
+          <button
             onClick={() => setActiveTab("scenarios")}
-            className={`pb-3 px-1 border-b-2 transition-colors ${
+            className={`pb-3 px-1 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === "scenarios"
                 ? "border-primary text-primary font-medium"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -189,7 +232,7 @@ export default function TwinDetailPage() {
           </button>
           <button
             onClick={() => setActiveTab("chat")}
-            className={`pb-3 px-1 border-b-2 transition-colors ${
+            className={`pb-3 px-1 border-b-2 transition-colors whitespace-nowrap ${
               activeTab === "chat"
                 ? "border-primary text-primary font-medium"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -254,6 +297,29 @@ export default function TwinDetailPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {activeTab === "insights" && twin && (
+        <InsightsPanel 
+          twinId={twinId} 
+          twinName={twin.name}
+          onQuestionClick={(question) => {
+            setActiveTab("whatif");
+            // The WhatIfAnalyzer will need to accept a default question - for now just switch tabs
+          }}
+        />
+      )}
+
+      {activeTab === "whatif" && twin && (
+        <WhatIfAnalyzer twinId={twinId} twinName={twin.name} />
+      )}
+
+      {activeTab === "smart" && twin && (
+        <SmartScenarios 
+          twinId={twinId} 
+          twinName={twin.name}
+          onScenarioRun={(scenarioId) => handleRunScenario(scenarioId)}
+        />
       )}
 
       {activeTab === "scenarios" && (

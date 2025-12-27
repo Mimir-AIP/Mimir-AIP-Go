@@ -11,6 +11,7 @@ import {
   type Ontology,
   type SPARQLQueryResult,
 } from "@/lib/api";
+import { TypeInference } from "@/components/ontologies/TypeInference";
 
 interface OntologyStats {
   total_classes: number;
@@ -42,7 +43,7 @@ export default function OntologyDetailsPage() {
   const [stats, setStats] = useState<OntologyStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "classes" | "properties" | "queries" | "train">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "classes" | "properties" | "queries" | "train" | "types">("overview");
   const [queryResult, setQueryResult] = useState<SPARQLQueryResult | null>(null);
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
@@ -405,7 +406,7 @@ LIMIT 50`,
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-4">
         <nav className="-mb-px flex space-x-8">
-          {(["overview", "classes", "properties", "queries", "train"] as const).map((tab) => (
+          {(["overview", "classes", "properties", "queries", "train", "types"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -748,7 +749,11 @@ LIMIT 50`,
             )}
           </div>
         )}
-      </div>
-    </div>
-  );
-}
+
+        {activeTab === "types" && (
+          <TypeInference ontologyId={ontologyId} />
+        )}
+       </div>
+     </div>
+   );
+ }

@@ -44,6 +44,10 @@ func (m *MockPlugin) ValidateConfig(config map[string]any) error {
 	return nil
 }
 
+func (m *MockPlugin) GetInputSchema() map[string]any {
+	return map[string]any{}
+}
+
 func TestNewMCPServer(t *testing.T) {
 	registry := pipelines.NewPluginRegistry()
 	server := NewMCPServer(registry)

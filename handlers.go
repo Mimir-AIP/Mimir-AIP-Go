@@ -138,7 +138,10 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 	// DEBUG: Log what we're about to return
 	log.Printf("DEBUG: Returning %d pipelines for JSON encoding", len(pipelines))
 	for i, p := range pipelines {
-		log.Printf("DEBUG: Pipeline[%d] - Metadata.ID=%s", i, p.Metadata.ID)
+		log.Printf("DEBUG: Pipeline[%d] - Metadata.ID=%s, Pipeline.ID=%s", i, p.Metadata.ID, p.ID)
+		if p.ID != p.Metadata.ID {
+			log.Printf("WARNING: Pipeline ID mismatch! ID=%s, Metadata.ID=%s", p.ID, p.Metadata.ID)
+		}
 	}
 
 	// Return array directly as frontend expects Pipeline[]

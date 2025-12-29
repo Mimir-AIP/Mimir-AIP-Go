@@ -30,7 +30,10 @@ type PipelineMetadata struct {
 }
 
 // PipelineDefinition holds the complete pipeline definition
+// ID field is reconstructed from Metadata.ID when loading from file
+// ID field is serialized to JSON for API responses
 type PipelineDefinition struct {
+	ID       string           `json:"id"` // Not serialized to YAML, populated from metadata.ID
 	Metadata PipelineMetadata `json:"metadata" yaml:"metadata"`
 	Config   PipelineConfig   `json:"config" yaml:"config"`
 }
@@ -114,6 +117,7 @@ func (ps *PipelineStore) CreatePipeline(metadata PipelineMetadata, config Pipeli
 	}
 
 	pipeline := &PipelineDefinition{
+		ID:       metadata.ID, // Set ID from metadata for API compatibility
 		Metadata: metadata,
 		Config:   config,
 	}
@@ -207,6 +211,9 @@ func (ps *PipelineStore) UpdatePipeline(id string, updates *PipelineMetadata, co
 	if err := ps.savePipelineToFile(pipeline); err != nil {
 		return nil, fmt.Errorf("failed to save updated pipeline: %w", err)
 	}
+
+	// Update ID from metadata for API compatibility
+	pipeline.ID = pipeline.Metadata.ID
 
 	GetLogger().Info("Pipeline updated", String("id", id), String("version", fmt.Sprintf("%d", pipeline.Metadata.Version)), String("updated_by", updatedBy))
 	return pipeline, nil
@@ -351,10 +358,14 @@ func (ps *PipelineStore) loadPipelineFromFile(filePath string) (*PipelineDefinit
 		if err := yaml.Unmarshal(data, &pipeline); err != nil {
 			return nil, fmt.Errorf("failed to parse YAML: %w", err)
 		}
+		// Populate ID from metadata for API compatibility
+		pipeline.ID = pipeline.Metadata.ID
 	case ".json":
 		if err := json.Unmarshal(data, &pipeline); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON: %w", err)
 		}
+		// Populate ID from metadata for API compatibility
+		pipeline.ID = pipeline.Metadata.ID
 	default:
 		return nil, fmt.Errorf("unsupported file format: %s", ext)
 	}
@@ -363,6 +374,12 @@ func (ps *PipelineStore) loadPipelineFromFile(filePath string) (*PipelineDefinit
 	if err := ps.validatePipelineConfig(&pipeline.Config); err != nil {
 		return nil, fmt.Errorf("invalid pipeline configuration: %w", err)
 	}
+
+	// Populate ID from metadata for API compatibility
+	pipeline.ID = pipeline.Metadata.ID
+
+	// DEBUG: Log ID after loading
+	GetLogger().Info("Pipeline loaded from file", String("file", filePath), String("metadata_id", pipeline.Metadata.ID), String("pipeline_id", pipeline.ID))
 
 	return &pipeline, nil
 }

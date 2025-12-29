@@ -31,7 +31,6 @@ type PipelineMetadata struct {
 
 // PipelineDefinition holds the complete pipeline definition
 type PipelineDefinition struct {
-	ID       string           `json:"id"`
 	Metadata PipelineMetadata `json:"metadata" yaml:"metadata"`
 	Config   PipelineConfig   `json:"config" yaml:"config"`
 }
@@ -115,7 +114,6 @@ func (ps *PipelineStore) CreatePipeline(metadata PipelineMetadata, config Pipeli
 	}
 
 	pipeline := &PipelineDefinition{
-		ID:       metadata.ID,
 		Metadata: metadata,
 		Config:   config,
 	}
@@ -353,14 +351,10 @@ func (ps *PipelineStore) loadPipelineFromFile(filePath string) (*PipelineDefinit
 		if err := yaml.Unmarshal(data, &pipeline); err != nil {
 			return nil, fmt.Errorf("failed to parse YAML: %w", err)
 		}
-		// Copy ID from metadata to top-level for consistency
-		pipeline.ID = pipeline.Metadata.ID
 	case ".json":
 		if err := json.Unmarshal(data, &pipeline); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON: %w", err)
 		}
-		// Copy ID from metadata to top-level for consistency
-		pipeline.ID = pipeline.Metadata.ID
 	default:
 		return nil, fmt.Errorf("unsupported file format: %s", ext)
 	}

@@ -39,15 +39,20 @@ type PipelineDefinition struct {
 }
 
 // MarshalJSON flattens the structure for API responses
+// Implements json.Marshaler interface to control JSON serialization
 func (p *PipelineDefinition) MarshalJSON() ([]byte, error) {
-	// Create flattened structure for frontend
-	flat := map[string]any{
-		"id":       p.ID,
-		"name":     p.Metadata.Name,
-		"metadata": p.Metadata,
-		"config":   p.Config,
+	// Create flattened structure for frontend compatibility
+	type flattenedPipeline struct {
+		ID     string         `json:"id"`
+		Name   string         `json:"name"`
+		Config PipelineConfig `json:"config"`
 	}
-	return json.Marshal(flat)
+
+	return json.Marshal(&flattenedPipeline{
+		ID:     p.ID,
+		Name:   p.Metadata.Name,
+		Config: p.Config,
+	})
 }
 
 // PipelineStore manages pipeline storage and retrieval

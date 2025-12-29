@@ -30,12 +30,24 @@ type PipelineMetadata struct {
 }
 
 // PipelineDefinition holds the complete pipeline definition
-// ID field is reconstructed from Metadata.ID when loading from file
-// ID field is serialized to JSON for API responses
+// API returns flattened structure with id and name at top level for frontend compatibility
 type PipelineDefinition struct {
-	ID       string           `json:"id"` // Not serialized to YAML, populated from metadata.ID
+	ID       string           `json:"id"`   // Alias for metadata.id
+	Name     string           `json:"name"` // Alias for metadata.name
 	Metadata PipelineMetadata `json:"metadata" yaml:"metadata"`
 	Config   PipelineConfig   `json:"config" yaml:"config"`
+}
+
+// MarshalJSON flattens the structure for API responses
+func (p *PipelineDefinition) MarshalJSON() ([]byte, error) {
+	// Create flattened structure for frontend
+	flat := map[string]any{
+		"id":       p.ID,
+		"name":     p.Metadata.Name,
+		"metadata": p.Metadata,
+		"config":   p.Config,
+	}
+	return json.Marshal(flat)
 }
 
 // PipelineStore manages pipeline storage and retrieval
@@ -117,7 +129,8 @@ func (ps *PipelineStore) CreatePipeline(metadata PipelineMetadata, config Pipeli
 	}
 
 	pipeline := &PipelineDefinition{
-		ID:       metadata.ID, // Set ID from metadata for API compatibility
+		ID:       metadata.ID,   // Set ID from metadata for API compatibility
+		Name:     metadata.Name, // Set Name from metadata for API compatibility
 		Metadata: metadata,
 		Config:   config,
 	}
@@ -212,8 +225,9 @@ func (ps *PipelineStore) UpdatePipeline(id string, updates *PipelineMetadata, co
 		return nil, fmt.Errorf("failed to save updated pipeline: %w", err)
 	}
 
-	// Update ID from metadata for API compatibility
+	// Update ID and Name from metadata for API compatibility
 	pipeline.ID = pipeline.Metadata.ID
+	pipeline.Name = pipeline.Metadata.Name
 
 	GetLogger().Info("Pipeline updated", String("id", id), String("version", fmt.Sprintf("%d", pipeline.Metadata.Version)), String("updated_by", updatedBy))
 	return pipeline, nil
@@ -375,11 +389,12 @@ func (ps *PipelineStore) loadPipelineFromFile(filePath string) (*PipelineDefinit
 		return nil, fmt.Errorf("invalid pipeline configuration: %w", err)
 	}
 
-	// Populate ID from metadata for API compatibility
+	// Populate ID and Name from metadata for API compatibility
 	pipeline.ID = pipeline.Metadata.ID
+	pipeline.Name = pipeline.Metadata.Name
 
 	// DEBUG: Log ID after loading
-	GetLogger().Info("Pipeline loaded from file", String("file", filePath), String("metadata_id", pipeline.Metadata.ID), String("pipeline_id", pipeline.ID))
+	GetLogger().Info("Pipeline loaded from file", String("file", filePath), String("metadata_id", pipeline.Metadata.ID), String("pipeline_id", pipeline.ID), String("pipeline_name", pipeline.Name))
 
 	return &pipeline, nil
 }

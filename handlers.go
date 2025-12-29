@@ -130,9 +130,17 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 	pipelines, err := store.ListPipelines(nil)
 	log.Printf("=== ListPipelines returned %d pipelines, err=%v ===", len(pipelines), err)
 	if err != nil {
+		log.Printf("ERROR: Failed to list pipelines: %v", err)
 		writeJSONResponse(w, http.StatusOK, []*utils.PipelineDefinition{})
 		return
 	}
+
+	// DEBUG: Log what we're about to return
+	log.Printf("DEBUG: Returning %d pipelines for JSON encoding", len(pipelines))
+	for i, p := range pipelines {
+		log.Printf("DEBUG: Pipeline[%d] - ID=%s, Metadata.ID=%s", i, p.ID, p.Metadata.ID)
+	}
+
 	// Return array directly as frontend expects Pipeline[]
 	writeJSONResponse(w, http.StatusOK, pipelines)
 }
@@ -3030,7 +3038,7 @@ func (s *Server) handleCreateWorkflow(w http.ResponseWriter, r *http.Request) {
 
 	// Create workflow steps - includes pipeline execution for new flow
 	steps := []string{
-		"pipeline_execution",  // Run ingestion pipeline(s)
+		"pipeline_execution", // Run ingestion pipeline(s)
 		"schema_inference",
 		"ontology_creation",
 		"entity_extraction",
@@ -3764,7 +3772,7 @@ func (s *Server) executeWorkflow(ctx context.Context, workflow *AutonomousWorkfl
 	if len(metadata.PipelineIDs) > 0 {
 		s.updateWorkflowStatus(ctx, workflow.ID, "running", "pipeline_execution", 0)
 		s.updateWorkflowStepStatus(ctx, workflow.ID, "pipeline_execution", "running", nil)
-		
+
 		logger.Info("Executing ingestion pipelines", utils.Int("count", len(metadata.PipelineIDs)))
 		for _, pipelineID := range metadata.PipelineIDs {
 			// Execute each pipeline
@@ -3774,7 +3782,7 @@ func (s *Server) executeWorkflow(ctx context.Context, workflow *AutonomousWorkfl
 				// Continue with other pipelines even if one fails
 			}
 		}
-		s.updateWorkflowStepStatus(ctx, workflow.ID, "pipeline_execution", "completed", 
+		s.updateWorkflowStepStatus(ctx, workflow.ID, "pipeline_execution", "completed",
 			fmt.Sprintf(`{"pipelines_executed": %d}`, len(metadata.PipelineIDs)))
 	}
 
@@ -3812,7 +3820,7 @@ func (s *Server) executeWorkflow(ctx context.Context, workflow *AutonomousWorkfl
 		logger.Warn("Entity extraction had issues (continuing)", utils.String("error", err.Error()))
 		// Non-fatal - continue with workflow
 	}
-	s.updateWorkflowStepStatus(ctx, workflow.ID, "entity_extraction", "completed", 
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "entity_extraction", "completed",
 		fmt.Sprintf(`{"extraction_job": "%s"}`, extractionJobID))
 	s.updateWorkflowStatus(ctx, workflow.ID, "running", "ml_training", 3)
 
@@ -3824,7 +3832,7 @@ func (s *Server) executeWorkflow(ctx context.Context, workflow *AutonomousWorkfl
 		logger.Warn("ML training had issues (continuing)", utils.String("error", err.Error()))
 		// Non-fatal - continue with workflow
 	}
-	s.updateWorkflowStepStatus(ctx, workflow.ID, "ml_training", "completed", 
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "ml_training", "completed",
 		fmt.Sprintf(`{"model_id": "%s"}`, modelID))
 	s.updateWorkflowStatus(ctx, workflow.ID, "running", "twin_creation", 4)
 
@@ -3836,7 +3844,7 @@ func (s *Server) executeWorkflow(ctx context.Context, workflow *AutonomousWorkfl
 		logger.Warn("Digital twin creation had issues (continuing)", utils.String("error", err.Error()))
 		// Non-fatal - continue with workflow
 	}
-	s.updateWorkflowStepStatus(ctx, workflow.ID, "twin_creation", "completed", 
+	s.updateWorkflowStepStatus(ctx, workflow.ID, "twin_creation", "completed",
 		fmt.Sprintf(`{"twin_id": "%s"}`, twinID))
 	s.updateWorkflowStatus(ctx, workflow.ID, "running", "monitoring_setup", 5)
 
@@ -3912,7 +3920,7 @@ func (s *Server) executeEntityExtraction(ctx context.Context, workflow *Autonomo
 		// Fallback: create a simple extraction job record
 		jobID := fmt.Sprintf("extraction_%s", uuid.New().String()[:8])
 		logger.Warn("Extraction plugin not available, creating placeholder job", utils.String("job_id", jobID))
-		
+
 		// Store extraction job in database
 		if s.persistence != nil {
 			_, dbErr := s.persistence.GetDB().ExecContext(ctx,
@@ -3992,10 +4000,10 @@ func (s *Server) executeAutoMLTraining(ctx context.Context, workflow *Autonomous
 				Name:   "auto_ml_train",
 				Plugin: "ML.AutoML",
 				Config: map[string]any{
-					"operation":       "train",
-					"ontology_id":     ontologyID,
-					"model_name":      modelName,
-					"auto_detect":     true,
+					"operation":   "train",
+					"ontology_id": ontologyID,
+					"model_name":  modelName,
+					"auto_detect": true,
 				},
 			}
 
@@ -4028,8 +4036,8 @@ func (s *Server) executeAutoMLTraining(ctx context.Context, workflow *Autonomous
 		StepName:     "ml_training",
 	})
 
-	logger.Info("ML model trained", 
-		utils.String("model_id", modelID), 
+	logger.Info("ML model trained",
+		utils.String("model_id", modelID),
 		utils.String("ontology", ontology.Name))
 	return modelID, nil
 }
@@ -4140,8 +4148,8 @@ func (s *Server) executeMonitoringSetup(ctx context.Context, workflow *Autonomou
 		if err != nil {
 			logger.Warn("Failed to create scheduled job", utils.String("error", err.Error()))
 		} else {
-			logger.Info("Created scheduled job for pipeline", 
-				utils.String("job_id", jobID), 
+			logger.Info("Created scheduled job for pipeline",
+				utils.String("job_id", jobID),
 				utils.String("pipeline_id", pipelineID))
 		}
 	}

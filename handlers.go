@@ -137,22 +137,21 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 
 	// DEBUG: Log what we're about to return
 	log.Printf("DEBUG: Returning %d pipelines for JSON encoding", len(pipelines))
-	for i, p := range pipelines {
-		log.Printf("DEBUG: Pipeline[%d] - Metadata.ID=%s, Pipeline.ID=%s, Pipeline.Name=%s", i, p.Metadata.ID, p.ID, p.Name)
-	}
 
 	// Manually flatten for JSON encoding - json.NewEncoder doesn't call custom MarshalJSON on slices
 	flattened := make([]map[string]interface{}, len(pipelines))
 	for i, p := range pipelines {
+		log.Printf("DEBUG: Flattening Pipeline[%d] - Metadata.ID=%s, Pipeline.ID=%s, Pipeline.Name=%s", i, p.Metadata.ID, p.ID, p.Name)
 		flattened[i] = map[string]interface{}{
 			"id":       p.ID,
 			"name":     p.Name,
 			"metadata": p.Metadata,
 			"config":   p.Config,
 		}
-		log.Printf("DEBUG: Flattened Pipeline[%d] - id=%s, name=%s", i, p.ID, p.Name)
+		log.Printf("DEBUG: Flattened Pipeline[%d] - id=%s, name=%s", i, flattened[i]["id"], flattened[i]["name"])
 	}
 
+	log.Printf("DEBUG: Sending flattened response with %d pipelines", len(flattened))
 	writeJSONResponse(w, http.StatusOK, flattened)
 }
 

@@ -138,14 +138,22 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 	// DEBUG: Log what we're about to return
 	log.Printf("DEBUG: Returning %d pipelines for JSON encoding", len(pipelines))
 	for i, p := range pipelines {
-		log.Printf("DEBUG: Pipeline[%d] - Metadata.ID=%s, Pipeline.ID=%s", i, p.Metadata.ID, p.ID)
-		if p.ID != p.Metadata.ID {
-			log.Printf("WARNING: Pipeline ID mismatch! ID=%s, Metadata.ID=%s", p.ID, p.Metadata.ID)
-		}
+		log.Printf("DEBUG: Pipeline[%d] - Metadata.ID=%s, Pipeline.ID=%s, Pipeline.Name=%s", i, p.Metadata.ID, p.ID, p.Name)
 	}
 
-	// Return array directly as frontend expects Pipeline[]
-	writeJSONResponse(w, http.StatusOK, pipelines)
+	// Manually flatten for JSON encoding - json.NewEncoder doesn't call custom MarshalJSON on slices
+	flattened := make([]map[string]interface{}, len(pipelines))
+	for i, p := range pipelines {
+		flattened[i] = map[string]interface{}{
+			"id":       p.ID,
+			"name":     p.Name,
+			"metadata": p.Metadata,
+			"config":   p.Config,
+		}
+		log.Printf("DEBUG: Flattened Pipeline[%d] - id=%s, name=%s", i, p.ID, p.Name)
+	}
+
+	writeJSONResponse(w, http.StatusOK, flattened)
 }
 
 // handleGetPipeline handles requests to get a specific pipeline

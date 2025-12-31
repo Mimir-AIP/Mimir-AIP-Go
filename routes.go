@@ -87,6 +87,7 @@ func (s *Server) setupRoutes() {
 
 	// Ontology management endpoints
 	v1.HandleFunc("/ontology", s.handleListOntologies).Methods("GET")
+	v1.HandleFunc("/ontologies", s.handleListOntologies).Methods("GET")
 	v1.HandleFunc("/ontology", s.handleUploadOntology).Methods("POST")
 	v1.HandleFunc("/ontology/{id}", s.handleGetOntology).Methods("GET")
 	v1.HandleFunc("/ontology/{id}", s.handleUpdateOntology).Methods("PUT")
@@ -136,6 +137,7 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/jobs/{id}/stop", s.handleStopJobExecution).Methods("POST")
 
 	// Digital Twin endpoints
+	v1.HandleFunc("/twins", s.handleListTwins).Methods("GET")
 	v1.HandleFunc("/twin", s.handleListTwins).Methods("GET")
 	v1.HandleFunc("/twin/create", s.handleCreateTwin).Methods("POST")
 	v1.HandleFunc("/twin/{id}", s.handleGetTwin).Methods("GET")
@@ -148,10 +150,10 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/twin/{id}/runs/{rid}/analyze", s.handleAnalyzeImpact).Methods("POST")
 
 	// Smart Digital Twin endpoints (AI-powered)
-	v1.HandleFunc("/twin/{id}/whatif", s.handleWhatIfAnalysis).Methods("POST")                   // Natural language what-if analysis
+	v1.HandleFunc("/twin/{id}/whatif", s.handleWhatIfAnalysis).Methods("POST")                  // Natural language what-if analysis
 	v1.HandleFunc("/twin/{id}/smart-scenarios", s.handleGenerateSmartScenarios).Methods("POST") // Auto-generate relevant scenarios
-	v1.HandleFunc("/twin/{id}/analyze", s.handleAnalyzeOntology).Methods("GET")                  // Analyze ontology for patterns/risks
-	v1.HandleFunc("/twin/{id}/insights", s.handleGetInsights).Methods("GET")                     // Proactive insights & suggestions
+	v1.HandleFunc("/twin/{id}/analyze", s.handleAnalyzeOntology).Methods("GET")                 // Analyze ontology for patterns/risks
+	v1.HandleFunc("/twin/{id}/insights", s.handleGetInsights).Methods("GET")                    // Proactive insights & suggestions
 
 	// Autonomous Workflow endpoints
 	v1.HandleFunc("/workflows", s.handleListWorkflows).Methods("GET")

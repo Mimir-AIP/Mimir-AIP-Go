@@ -32,8 +32,8 @@ type PipelineMetadata struct {
 // PipelineDefinition holds the complete pipeline definition
 // ID and Name fields are populated from Metadata for API compatibility
 type PipelineDefinition struct {
-	ID       string           `json:"id,omitempty"`   // Alias for metadata.id, omitted if empty
-	Name     string           `json:"name,omitempty"` // Alias for metadata.name, omitted if empty
+	ID       string           `json:"id"`
+	Name     string           `json:"name"`
 	Metadata PipelineMetadata `json:"metadata" yaml:"metadata"`
 	Config   PipelineConfig   `json:"config" yaml:"config"`
 }

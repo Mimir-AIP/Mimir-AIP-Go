@@ -16,6 +16,8 @@ type TrainingConfig struct {
 	RandomSeed      int64   `json:"random_seed"`       // For reproducibility
 	Shuffle         bool    `json:"shuffle"`           // Shuffle data before split
 	Stratify        bool    `json:"stratify"`          // Stratified split (maintain class distribution)
+	// Random Forest specific
+	NumTrees        int     `json:"num_trees"`         // Number of trees in forest (0 = single tree)
 }
 
 // DefaultTrainingConfig returns a training config with sensible defaults
@@ -33,17 +35,19 @@ func DefaultTrainingConfig() *TrainingConfig {
 
 // TrainingResult holds the results of a training run
 type TrainingResult struct {
-	Model              *DecisionTreeClassifier `json:"-"` // Don't serialize model directly
-	TrainMetrics       *EvaluationMetrics      `json:"train_metrics,omitempty"`
-	ValidateMetrics    *EvaluationMetrics      `json:"validate_metrics,omitempty"`
-	TrainMetricsReg    *RegressionMetrics      `json:"train_metrics_reg,omitempty"`
-	ValidateMetricsReg *RegressionMetrics      `json:"validate_metrics_reg,omitempty"`
-	TrainingRows       int                     `json:"training_rows"`
-	ValidationRows     int                     `json:"validation_rows"`
-	TrainingDuration   time.Duration           `json:"training_duration"`
-	FeatureImportance  map[string]float64      `json:"feature_importance"`
-	ModelInfo          map[string]interface{}  `json:"model_info"`
-	ModelType          string                  `json:"model_type"` // "classification" or "regression"
+	Model              *DecisionTreeClassifier   `json:"-"` // Don't serialize model directly (single tree)
+	ModelRF            *RandomForestClassifier   `json:"-"` // Random Forest model
+	TrainMetrics       *EvaluationMetrics        `json:"train_metrics,omitempty"`
+	ValidateMetrics    *EvaluationMetrics        `json:"validate_metrics,omitempty"`
+	TrainMetricsReg    *RegressionMetrics        `json:"train_metrics_reg,omitempty"`
+	ValidateMetricsReg *RegressionMetrics        `json:"validate_metrics_reg,omitempty"`
+	TrainingRows       int                       `json:"training_rows"`
+	ValidationRows     int                       `json:"validation_rows"`
+	TrainingDuration   time.Duration             `json:"training_duration"`
+	FeatureImportance  map[string]float64        `json:"feature_importance"`
+	ModelInfo          map[string]interface{}    `json:"model_info"`
+	ModelType          string                    `json:"model_type"` // "classification" or "regression"
+	Algorithm          string                    `json:"algorithm"`  // "decision_tree" or "random_forest"
 }
 
 // Trainer orchestrates the training process
@@ -124,6 +128,7 @@ func (t *Trainer) Train(X [][]float64, y []string, featureNames []string) (*Trai
 		FeatureImportance: featureImportance,
 		ModelInfo:         modelInfo,
 		ModelType:         "classification",
+		Algorithm:         "decision_tree",
 	}
 
 	return result, nil
@@ -190,6 +195,7 @@ func (t *Trainer) TrainRegression(X [][]float64, y []float64, featureNames []str
 		FeatureImportance:  featureImportance,
 		ModelInfo:          modelInfo,
 		ModelType:          "regression",
+		Algorithm:          "decision_tree",
 	}
 
 	return result, nil
@@ -613,4 +619,152 @@ func (ht *HyperparameterTuner) Tune(X [][]float64, y []string, featureNames []st
 		BestAccuracy: bestAccuracy,
 		AllResults:   allResults,
 	}, nil
+}
+
+// TrainRandomForest trains a Random Forest classifier on the provided data
+func (t *Trainer) TrainRandomForest(X [][]float64, y []string, featureNames []string) (*TrainingResult, error) {
+if len(X) == 0 || len(y) == 0 {
+return nil, fmt.Errorf("empty training data")
+}
+if len(X) != len(y) {
+return nil, fmt.Errorf("X and y must have same number of samples")
+}
+if len(featureNames) != len(X[0]) {
+return nil, fmt.Errorf("feature names must match number of features")
+}
+
+startTime := time.Now()
+
+// Split data into train and validation sets
+trainX, trainY, valX, valY, err := t.TrainTestSplit(X, y)
+if err != nil {
+return nil, fmt.Errorf("failed to split data: %w", err)
+}
+
+// Determine number of trees (default 100 if not specified)
+numTrees := t.Config.NumTrees
+if numTrees == 0 {
+numTrees = 100
+}
+
+// Train the Random Forest
+rf := NewRandomForestClassifier(
+numTrees,
+t.Config.MaxDepth,
+t.Config.MinSamplesSplit,
+t.Config.MinSamplesLeaf,
+)
+
+if err := rf.Train(trainX, trainY, featureNames); err != nil {
+return nil, fmt.Errorf("failed to train random forest: %w", err)
+}
+
+trainingDuration := time.Since(startTime)
+
+// Evaluate on training set
+trainMetrics, err := EvaluateRandomForest(rf, trainX, trainY)
+if err != nil {
+return nil, fmt.Errorf("failed to evaluate on training set: %w", err)
+}
+
+// Evaluate on validation set
+valMetrics, err := EvaluateRandomForest(rf, valX, valY)
+if err != nil {
+return nil, fmt.Errorf("failed to evaluate on validation set: %w", err)
+}
+
+// Get feature importance
+featureImportance := rf.GetFeatureImportance()
+
+// Get model info
+modelInfo := rf.GetModelInfo()
+
+result := &TrainingResult{
+ModelRF:           rf,
+TrainMetrics:      trainMetrics,
+ValidateMetrics:   valMetrics,
+TrainingRows:      len(trainX),
+ValidationRows:    len(valX),
+TrainingDuration:  trainingDuration,
+FeatureImportance: featureImportance,
+ModelInfo:         modelInfo,
+ModelType:         "classification",
+Algorithm:         "random_forest",
+}
+
+return result, nil
+}
+
+// TrainRandomForestRegression trains a Random Forest regressor on the provided data
+func (t *Trainer) TrainRandomForestRegression(X [][]float64, y []float64, featureNames []string) (*TrainingResult, error) {
+if len(X) == 0 || len(y) == 0 {
+return nil, fmt.Errorf("empty training data")
+}
+if len(X) != len(y) {
+return nil, fmt.Errorf("X and y must have same number of samples")
+}
+if len(featureNames) != len(X[0]) {
+return nil, fmt.Errorf("feature names must match number of features")
+}
+
+startTime := time.Now()
+
+// Split data into train and validation sets
+trainX, trainY, valX, valY, err := t.TrainTestSplitRegression(X, y)
+if err != nil {
+return nil, fmt.Errorf("failed to split data: %w", err)
+}
+
+// Determine number of trees (default 100 if not specified)
+numTrees := t.Config.NumTrees
+if numTrees == 0 {
+numTrees = 100
+}
+
+// Train the Random Forest
+rf := NewRandomForestClassifier(
+numTrees,
+t.Config.MaxDepth,
+t.Config.MinSamplesSplit,
+t.Config.MinSamplesLeaf,
+)
+
+if err := rf.TrainRegression(trainX, trainY, featureNames); err != nil {
+return nil, fmt.Errorf("failed to train random forest: %w", err)
+}
+
+trainingDuration := time.Since(startTime)
+
+// Evaluate on training set
+trainMetrics, err := EvaluateRandomForestRegression(rf, trainX, trainY)
+if err != nil {
+return nil, fmt.Errorf("failed to evaluate on training set: %w", err)
+}
+
+// Evaluate on validation set
+valMetrics, err := EvaluateRandomForestRegression(rf, valX, valY)
+if err != nil {
+return nil, fmt.Errorf("failed to evaluate on validation set: %w", err)
+}
+
+// Get feature importance
+featureImportance := rf.GetFeatureImportance()
+
+// Get model info
+modelInfo := rf.GetModelInfo()
+
+result := &TrainingResult{
+ModelRF:            rf,
+TrainMetricsReg:    trainMetrics,
+ValidateMetricsReg: valMetrics,
+TrainingRows:       len(trainX),
+ValidationRows:     len(valX),
+TrainingDuration:   trainingDuration,
+FeatureImportance:  featureImportance,
+ModelInfo:          modelInfo,
+ModelType:          "regression",
+Algorithm:          "random_forest",
+}
+
+return result, nil
 }

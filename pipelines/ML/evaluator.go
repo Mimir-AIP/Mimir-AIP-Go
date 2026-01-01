@@ -513,3 +513,49 @@ func (m *RegressionMetrics) FormatRegressionMetrics() string {
 	output += fmt.Sprintf("  Std Dev:               %.4f\n", m.StdPred)
 	return output
 }
+
+// EvaluateRandomForest evaluates a Random Forest classifier on test data
+func EvaluateRandomForest(rf *RandomForestClassifier, X [][]float64, yTrue []string) (*EvaluationMetrics, error) {
+if len(X) == 0 || len(yTrue) == 0 {
+return nil, fmt.Errorf("empty test data")
+}
+if len(X) != len(yTrue) {
+return nil, fmt.Errorf("X and yTrue must have same length")
+}
+
+// Make predictions
+yPred := make([]string, len(X))
+for i, x := range X {
+pred, _, err := rf.Predict(x)
+if err != nil {
+return nil, fmt.Errorf("prediction failed at index %d: %w", i, err)
+}
+yPred[i] = pred
+}
+
+// Calculate metrics
+return CalculateMetrics(yTrue, yPred, rf.Classes)
+}
+
+// EvaluateRandomForestRegression evaluates a Random Forest regressor on test data
+func EvaluateRandomForestRegression(rf *RandomForestClassifier, X [][]float64, yTrue []float64) (*RegressionMetrics, error) {
+if len(X) == 0 || len(yTrue) == 0 {
+return nil, fmt.Errorf("empty test data")
+}
+if len(X) != len(yTrue) {
+return nil, fmt.Errorf("X and yTrue must have same length")
+}
+
+// Make predictions
+yPred := make([]float64, len(X))
+for i, x := range X {
+pred, err := rf.PredictRegression(x)
+if err != nil {
+return nil, fmt.Errorf("prediction failed at index %d: %w", i, err)
+}
+yPred[i] = pred
+}
+
+// Calculate regression metrics
+return CalculateRegressionMetrics(yTrue, yPred)
+}

@@ -19,7 +19,8 @@ import (
 type TrainModelRequest struct {
 	OntologyID     string             `json:"ontology_id"`
 	ModelName      string             `json:"model_name"`
-	ModelType      string             `json:"model_type"` // "classification" or "regression"
+	ModelType      string             `json:"model_type"`      // "classification" or "regression"
+	Algorithm      string             `json:"algorithm"`       // "decision_tree" or "random_forest"
 	TargetColumn   string             `json:"target_column"`
 	FeatureColumns []string           `json:"feature_columns,omitempty"` // Optional, auto-detect if empty
 	TrainData      [][]string         `json:"train_data"`                // CSV-like data including header
@@ -82,13 +83,23 @@ func (s *Server) handleTrainModel(w http.ResponseWriter, r *http.Request) {
 		config = ml.DefaultTrainingConfig()
 	}
 
+	// Default to decision tree if not specified
+	algorithm := req.Algorithm
+	if algorithm == "" {
+		algorithm = "decision_tree"
+	}
+	if algorithm != "decision_tree" && algorithm != "random_forest" {
+		writeBadRequestResponse(w, "algorithm must be 'decision_tree' or 'random_forest'")
+		return
+	}
+
 	// Create trainer
 	trainer := ml.NewTrainer(config)
 
 	// Variables to hold result data
 	var featureNames []string
 
-	// Train model based on type
+	// Train model based on type and algorithm
 	var result *ml.TrainingResult
 	if modelType == "regression" {
 		// Prepare regression data
@@ -99,8 +110,12 @@ func (s *Server) handleTrainModel(w http.ResponseWriter, r *http.Request) {
 		}
 		featureNames = fnames
 
-		// Train regressor
-		result, err = trainer.TrainRegression(X, y, featureNames)
+		// Train regressor based on algorithm
+		if algorithm == "random_forest" {
+			result, err = trainer.TrainRandomForestRegression(X, y, featureNames)
+		} else {
+			result, err = trainer.TrainRegression(X, y, featureNames)
+		}
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Regression training failed: %v", err))
 			return
@@ -114,8 +129,12 @@ func (s *Server) handleTrainModel(w http.ResponseWriter, r *http.Request) {
 		}
 		featureNames = fnames
 
-		// Train classifier
-		result, err = trainer.Train(X, y, featureNames)
+		// Train classifier based on algorithm
+		if algorithm == "random_forest" {
+			result, err = trainer.TrainRandomForest(X, y, featureNames)
+		} else {
+			result, err = trainer.Train(X, y, featureNames)
+		}
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Classification training failed: %v", err))
 			return
@@ -131,9 +150,18 @@ func (s *Server) handleTrainModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	artifactPath := filepath.Join(artifactDir, fmt.Sprintf("%s.json", modelID))
-	if err := result.Model.Save(artifactPath); err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save model artifact: %v", err))
-		return
+	
+	// Save model based on algorithm type
+	if algorithm == "random_forest" {
+		if err := result.ModelRF.Save(artifactPath); err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save model artifact: %v", err))
+			return
+		}
+	} else {
+		if err := result.Model.Save(artifactPath); err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save model artifact: %v", err))
+			return
+		}
 	}
 
 	// Get model size
@@ -149,13 +177,19 @@ func (s *Server) handleTrainModel(w http.ResponseWriter, r *http.Request) {
 		"min_samples_split": config.MinSamplesSplit,
 		"min_samples_leaf":  config.MinSamplesLeaf,
 		"train_test_split":  config.TrainTestSplit,
+		"num_trees":         config.NumTrees,
+		"algorithm":         algorithm,
 	})
 	featureColumnsJSON, _ := json.Marshal(featureNames)
 
 	// Prepare class labels and confusion matrix (classification only)
 	var classLabelsJSON, confusionMatrixJSON []byte
 	if modelType == "classification" {
-		classLabelsJSON, _ = json.Marshal(result.Model.Classes)
+		if algorithm == "random_forest" {
+			classLabelsJSON, _ = json.Marshal(result.ModelRF.Classes)
+		} else {
+			classLabelsJSON, _ = json.Marshal(result.Model.Classes)
+		}
 		confusionMatrixJSON, _ = json.Marshal(result.ValidateMetrics.ConfusionMatrix)
 	}
 
@@ -186,7 +220,7 @@ func (s *Server) handleTrainModel(w http.ResponseWriter, r *http.Request) {
 		OntologyID:        req.OntologyID,
 		Name:              req.ModelName,
 		TargetClass:       req.TargetColumn,
-		Algorithm:         "decision_tree",
+		Algorithm:         algorithm,
 		Hyperparameters:   string(hyperparamsJSON),
 		FeatureColumns:    string(featureColumnsJSON),
 		ClassLabels:       string(classLabelsJSON),
@@ -248,7 +282,7 @@ func (s *Server) handleTrainModel(w http.ResponseWriter, r *http.Request) {
 		"model_name":           req.ModelName,
 		"ontology_id":          req.OntologyID,
 		"model_type":           modelType,
-		"algorithm":            "decision_tree",
+		"algorithm":            algorithm,
 		"training_rows":        result.TrainingRows,
 		"validation_rows":      result.ValidationRows,
 		"training_duration_ms": trainingDurationMs,
@@ -301,16 +335,139 @@ func (s *Server) handlePredict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load model artifact
-	classifier := &ml.DecisionTreeClassifier{}
-	if err := classifier.Load(modelMeta.ModelArtifactPath); err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load model: %v", err))
+	// Load model artifact based on algorithm
+	var featureNames []string
+	var modelType string
+	
+	// Try loading as Random Forest first
+	rf := &ml.RandomForestClassifier{}
+	err = rf.Load(modelMeta.ModelArtifactPath)
+	if err == nil && len(rf.Trees) > 0 {
+		// It's a Random Forest
+		featureNames = rf.FeatureNames
+		modelType = rf.ModelType
+	} else {
+		// Try loading as Decision Tree
+		classifier := &ml.DecisionTreeClassifier{}
+		if err := classifier.Load(modelMeta.ModelArtifactPath); err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load model: %v", err))
+			return
+		}
+		featureNames = classifier.FeatureNames
+		modelType = classifier.ModelType
+		
+		// Prepare input features and make prediction for Decision Tree
+		features := make([]float64, len(featureNames))
+		for i, featureName := range featureNames {
+			val, exists := req.InputData[featureName]
+			if !exists {
+				writeBadRequestResponse(w, fmt.Sprintf("Missing feature: %s", featureName))
+				return
+			}
+			features[i] = val
+		}
+
+		// Make prediction based on model type
+		if modelType == "regression" {
+			// Regression prediction with confidence interval
+			value, lower, upper, err := classifier.PredictRegressionWithInterval(features)
+			if err != nil {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Prediction failed: %v", err))
+				return
+			}
+
+			// Return regression prediction
+			writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+				"model_id":            modelID,
+				"algorithm":           "decision_tree",
+				"model_type":          "regression",
+				"predicted_value":     value,
+				"confidence_lower":    lower,
+				"confidence_upper":    upper,
+				"confidence_interval": fmt.Sprintf("[%.4f, %.4f]", lower, upper),
+				"input_features":      req.InputData,
+			})
+			return
+		}
+
+		// Classification prediction
+		predictedClass, _, err := classifier.Predict(features)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Prediction failed: %v", err))
+			return
+		}
+
+		// Get class probabilities
+		proba, err := classifier.PredictProba(features)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get probabilities: %v", err))
+			return
+		}
+
+		confidence := proba[predictedClass]
+
+		// Check if low confidence (potential anomaly)
+		isAnomaly := false
+		anomalyReason := ""
+		confidenceThreshold := 0.7
+
+		if confidence < confidenceThreshold {
+			isAnomaly = true
+			anomalyReason = fmt.Sprintf("Low confidence prediction: %.2f < %.2f", confidence, confidenceThreshold)
+		}
+
+		// Save prediction to database
+		inputDataJSON, _ := json.Marshal(req.InputData)
+		err = s.persistence.CreatePrediction(
+			ctx,
+			modelID,
+			string(inputDataJSON),
+			predictedClass,
+			confidence,
+			"", // actual_class unknown
+			false,
+			isAnomaly,
+			anomalyReason,
+		)
+		if err != nil {
+			utils.GetLogger().Warn(fmt.Sprintf("Failed to save prediction: %v", err))
+		}
+
+		// If anomaly detected, create anomaly record
+		if isAnomaly {
+			_, err = s.persistence.CreateAnomaly(
+				ctx,
+				modelID,
+				nil,
+				"low_confidence",
+				string(inputDataJSON),
+				&confidence,
+				"",
+				"medium",
+				"open",
+			)
+			if err != nil {
+				utils.GetLogger().Warn(fmt.Sprintf("Failed to create anomaly record: %v", err))
+			}
+		}
+
+		// Return response
+		writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+			"model_id":        modelID,
+			"algorithm":       "decision_tree",
+			"predicted_class": predictedClass,
+			"confidence":      confidence,
+			"probabilities":   proba,
+			"is_anomaly":      isAnomaly,
+			"anomaly_reason":  anomalyReason,
+			"input_features":  req.InputData,
+		})
 		return
 	}
 
-	// Prepare input features in correct order
-	features := make([]float64, len(classifier.FeatureNames))
-	for i, featureName := range classifier.FeatureNames {
+	// Random Forest prediction
+	features := make([]float64, len(featureNames))
+	for i, featureName := range featureNames {
 		val, exists := req.InputData[featureName]
 		if !exists {
 			writeBadRequestResponse(w, fmt.Sprintf("Missing feature: %s", featureName))
@@ -320,9 +477,9 @@ func (s *Server) handlePredict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Make prediction based on model type
-	if classifier.ModelType == "regression" {
+	if modelType == "regression" {
 		// Regression prediction with confidence interval
-		value, lower, upper, err := classifier.PredictRegressionWithInterval(features)
+		value, lower, upper, err := rf.PredictRegressionWithInterval(features)
 		if err != nil {
 			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Prediction failed: %v", err))
 			return
@@ -331,6 +488,7 @@ func (s *Server) handlePredict(w http.ResponseWriter, r *http.Request) {
 		// Return regression prediction
 		writeJSONResponse(w, http.StatusOK, map[string]interface{}{
 			"model_id":            modelID,
+			"algorithm":           "random_forest",
 			"model_type":          "regression",
 			"predicted_value":     value,
 			"confidence_lower":    lower,
@@ -342,20 +500,18 @@ func (s *Server) handlePredict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Classification prediction
-	predictedClass, _, err := classifier.Predict(features)
+	predictedClass, confidence, err := rf.Predict(features)
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Prediction failed: %v", err))
 		return
 	}
 
 	// Get class probabilities
-	proba, err := classifier.PredictProba(features)
+	proba, err := rf.PredictProba(features)
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get probabilities: %v", err))
 		return
 	}
-
-	confidence := proba[predictedClass]
 
 	// Check if low confidence (potential anomaly)
 	isAnomaly := false
@@ -405,6 +561,7 @@ func (s *Server) handlePredict(w http.ResponseWriter, r *http.Request) {
 	// Return response
 	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
 		"model_id":        modelID,
+		"algorithm":       "random_forest",
 		"predicted_class": predictedClass,
 		"confidence":      confidence,
 		"probabilities":   proba,

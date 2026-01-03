@@ -500,13 +500,16 @@ func (at *AutoTrainer) prepareTrainingDataFromDataset(dataset *UnifiedDataset, t
 
 // AlgorithmRecommendation contains the recommended algorithm and reasoning
 type AlgorithmRecommendation struct {
-	Algorithm string  `json:"algorithm"` // "decision_tree" or "random_forest"
-	Reasoning string  `json:"reasoning"`
-	Confidence float64 `json:"confidence"`
-	NumTrees   int     `json:"num_trees,omitempty"` // For random forest
+	Algorithm           string   `json:"algorithm"` // "decision_tree", "random_forest", "time_series", etc.
+	AlternativeOptions  []string `json:"alternative_options,omitempty"` // Other viable algorithms
+	Reasoning           string   `json:"reasoning"`
+	Confidence          float64  `json:"confidence"`
+	NumTrees            int      `json:"num_trees,omitempty"`            // For random forest
+	TimeSeriesSupported bool     `json:"time_series_supported,omitempty"` // If temporal analysis is viable
 }
 
 // recommendAlgorithm intelligently selects the best algorithm based on dataset characteristics
+// Considers: decision_tree, random_forest, and time_series analysis
 func (at *AutoTrainer) recommendAlgorithm(dataset *TrainingDataset, modelType string) *AlgorithmRecommendation {
 	sampleCount := len(dataset.X)
 	featureCount := dataset.FeatureCount
@@ -524,41 +527,87 @@ func (at *AutoTrainer) recommendAlgorithm(dataset *TrainingDataset, modelType st
 		}
 	}
 	
+	// Check if data has temporal characteristics (could benefit from time series)
+	hasTemporalFeatures := at.detectTemporalFeatures(dataset)
+	alternatives := []string{}
+	
 	// Decision logic based on dataset characteristics
 	
-	// Use decision tree for very small datasets (< 50 samples)
+	// Very small datasets (< 20 samples) - only decision tree is appropriate
+	if sampleCount < 20 {
+		return &AlgorithmRecommendation{
+			Algorithm:           "decision_tree",
+			AlternativeOptions:  []string{},
+			Reasoning:           fmt.Sprintf("Very small dataset (%d samples) - only decision tree can work without severe overfitting. Consider collecting more data.", sampleCount),
+			Confidence:          0.95,
+			TimeSeriesSupported: hasTemporalFeatures,
+		}
+	}
+	
+	// Small datasets (20-50 samples) - decision tree preferred
 	if sampleCount < 50 {
+		alternatives = []string{}
+		if sampleCount >= 30 {
+			alternatives = append(alternatives, "random_forest_small") // Can try RF with very few trees
+		}
 		return &AlgorithmRecommendation{
-			Algorithm: "decision_tree",
-			Reasoning: fmt.Sprintf("Small dataset (%d samples) - decision tree is more appropriate to avoid overfitting", sampleCount),
-			Confidence: 0.9,
+			Algorithm:           "decision_tree",
+			AlternativeOptions:  alternatives,
+			Reasoning:           fmt.Sprintf("Small dataset (%d samples) - decision tree is most appropriate to avoid overfitting. Random forest with 10-20 trees may work if model is underfitting.", sampleCount),
+			Confidence:          0.9,
+			TimeSeriesSupported: hasTemporalFeatures,
 		}
 	}
 	
-	// Use decision tree for few features (< 5)
+	// Few features (< 5) - simpler models work well
 	if featureCount < 5 {
+		alternatives = []string{"random_forest"}
+		if sampleCount >= 100 {
+			alternatives = append(alternatives, "ensemble_methods")
+		}
 		return &AlgorithmRecommendation{
-			Algorithm: "decision_tree",
-			Reasoning: fmt.Sprintf("Few features (%d) - decision tree is sufficient and more interpretable", featureCount),
-			Confidence: 0.8,
+			Algorithm:           "decision_tree",
+			AlternativeOptions:  alternatives,
+			Reasoning:           fmt.Sprintf("Few features (%d) - decision tree is sufficient and more interpretable. With %d samples, random forest could also work.", featureCount, sampleCount),
+			Confidence:          0.8,
+			TimeSeriesSupported: hasTemporalFeatures,
 		}
 	}
 	
-	// Use random forest for multiclass problems with many classes (> 5)
+	// Binary classification with moderate size - both work well
+	if modelType == "classification" && numClasses == 2 && sampleCount >= 50 && sampleCount < 200 {
+		numTrees := 50
+		alternatives = []string{"decision_tree", "gradient_boosting"}
+		return &AlgorithmRecommendation{
+			Algorithm:           "random_forest",
+			AlternativeOptions:  alternatives,
+			Reasoning:           fmt.Sprintf("Binary classification with %d samples - random forest provides good balance. Decision tree acceptable if interpretability is crucial.", sampleCount),
+			Confidence:          0.8,
+			NumTrees:            numTrees,
+			TimeSeriesSupported: hasTemporalFeatures,
+		}
+	}
+	
+	// Large multiclass (> 5 classes) - random forest strongly recommended
 	if modelType == "classification" && numClasses > 5 {
 		numTrees := 100
 		if sampleCount < 200 {
 			numTrees = 50
+		} else if sampleCount >= 500 {
+			numTrees = 150
 		}
+		alternatives = []string{"gradient_boosting", "neural_network"}
 		return &AlgorithmRecommendation{
-			Algorithm: "random_forest",
-			Reasoning: fmt.Sprintf("Multiclass problem (%d classes) with %d samples - random forest provides better accuracy", numClasses, sampleCount),
-			Confidence: 0.95,
-			NumTrees: numTrees,
+			Algorithm:           "random_forest",
+			AlternativeOptions:  alternatives,
+			Reasoning:           fmt.Sprintf("Multiclass problem (%d classes) with %d samples - random forest provides superior accuracy for complex classification. Gradient boosting could offer even better performance.", numClasses, sampleCount),
+			Confidence:          0.95,
+			NumTrees:            numTrees,
+			TimeSeriesSupported: hasTemporalFeatures,
 		}
 	}
 	
-	// Use random forest for larger datasets with more features
+	// Large datasets with many features - random forest is best
 	if sampleCount >= 100 && featureCount >= 5 {
 		// Determine optimal number of trees based on data size
 		numTrees := 50
@@ -569,30 +618,87 @@ func (at *AutoTrainer) recommendAlgorithm(dataset *TrainingDataset, modelType st
 			numTrees = 150
 		}
 		
+		alternatives = []string{"gradient_boosting"}
+		if sampleCount >= 500 {
+			alternatives = append(alternatives, "neural_network")
+		}
+		
 		return &AlgorithmRecommendation{
-			Algorithm: "random_forest",
-			Reasoning: fmt.Sprintf("Substantial dataset (%d samples, %d features) - random forest will provide better generalization", sampleCount, featureCount),
-			Confidence: 0.85,
-			NumTrees: numTrees,
+			Algorithm:           "random_forest",
+			AlternativeOptions:  alternatives,
+			Reasoning:           fmt.Sprintf("Substantial dataset (%d samples, %d features) - random forest provides excellent generalization. With this data size, gradient boosting or neural networks could be explored for potentially better performance.", sampleCount, featureCount),
+			Confidence:          0.85,
+			NumTrees:            numTrees,
+			TimeSeriesSupported: hasTemporalFeatures,
 		}
 	}
 	
-	// Use random forest for medium-sized datasets (50-100 samples)
+	// Medium datasets (50-100 samples) - random forest with fewer trees
 	if sampleCount >= 50 && sampleCount < 100 {
+		alternatives = []string{"decision_tree"}
 		return &AlgorithmRecommendation{
-			Algorithm: "random_forest",
-			Reasoning: fmt.Sprintf("Medium dataset (%d samples, %d features) - random forest with fewer trees reduces overfitting risk", sampleCount, featureCount),
-			Confidence: 0.75,
-			NumTrees: 30,
+			Algorithm:           "random_forest",
+			AlternativeOptions:  alternatives,
+			Reasoning:           fmt.Sprintf("Medium dataset (%d samples, %d features) - random forest with fewer trees (30) reduces overfitting risk while maintaining ensemble benefits.", sampleCount, featureCount),
+			Confidence:          0.75,
+			NumTrees:            30,
+			TimeSeriesSupported: hasTemporalFeatures,
+		}
+	}
+	
+	// Regression with many samples - random forest preferred
+	if modelType == "regression" && sampleCount >= 100 {
+		numTrees := 100
+		if sampleCount >= 1000 {
+			numTrees = 150
+		}
+		alternatives = []string{"gradient_boosting", "linear_models"}
+		return &AlgorithmRecommendation{
+			Algorithm:           "random_forest",
+			AlternativeOptions:  alternatives,
+			Reasoning:           fmt.Sprintf("Regression with %d samples and %d features - random forest handles non-linear relationships well. Linear models may work if relationships are simple.", sampleCount, featureCount),
+			Confidence:          0.85,
+			NumTrees:            numTrees,
+			TimeSeriesSupported: hasTemporalFeatures,
 		}
 	}
 	
 	// Default to decision tree for edge cases
+	alternatives = []string{"random_forest"}
 	return &AlgorithmRecommendation{
-		Algorithm: "decision_tree",
-		Reasoning: fmt.Sprintf("Default choice for dataset with %d samples and %d features", sampleCount, featureCount),
-		Confidence: 0.6,
+		Algorithm:           "decision_tree",
+		AlternativeOptions:  alternatives,
+		Reasoning:           fmt.Sprintf("Default choice for dataset with %d samples and %d features. Start with decision tree for baseline, then consider random forest if underfitting.", sampleCount, featureCount),
+		Confidence:          0.6,
+		TimeSeriesSupported: hasTemporalFeatures,
 	}
+}
+
+// detectTemporalFeatures checks if dataset has temporal characteristics
+func (at *AutoTrainer) detectTemporalFeatures(dataset *TrainingDataset) bool {
+	// Check if any column names suggest temporal data
+	temporalKeywords := []string{"time", "date", "timestamp", "day", "month", "year", "hour", "minute", "second", "period"}
+	
+	for _, colName := range dataset.FeatureNames {
+		colLower := strings.ToLower(colName)
+		for _, keyword := range temporalKeywords {
+			if strings.Contains(colLower, keyword) {
+				return true
+			}
+		}
+	}
+	
+	// Check target name as well
+	if dataset.TargetName != "" {
+		targetLower := strings.ToLower(dataset.TargetName)
+		for _, keyword := range temporalKeywords {
+			if strings.Contains(targetLower, keyword) {
+				return true
+			}
+		}
+	}
+	
+	return false
 }
 
 // trainModelFromDataset trains a model using prepared dataset
@@ -613,6 +719,12 @@ func (at *AutoTrainer) trainModelFromDataset(
 	recommendation := at.recommendAlgorithm(dataset, target.ModelType)
 	log.Printf("📊 Algorithm recommendation: %s (confidence: %.2f)", recommendation.Algorithm, recommendation.Confidence)
 	log.Printf("   Reasoning: %s", recommendation.Reasoning)
+	if len(recommendation.AlternativeOptions) > 0 {
+		log.Printf("   Alternative options: %v", recommendation.AlternativeOptions)
+	}
+	if recommendation.TimeSeriesSupported {
+		log.Printf("   ⏱️  Note: Dataset has temporal characteristics - time series analysis may be beneficial")
+	}
 
 	// Train model
 	trainingStart := time.Now()
@@ -837,6 +949,12 @@ func (at *AutoTrainer) trainModelForTarget(
 	recommendation := at.recommendAlgorithm(dataset, modelType)
 	log.Printf("📊 Algorithm recommendation: %s (confidence: %.2f)", recommendation.Algorithm, recommendation.Confidence)
 	log.Printf("   Reasoning: %s", recommendation.Reasoning)
+	if len(recommendation.AlternativeOptions) > 0 {
+		log.Printf("   Alternative options: %v", recommendation.AlternativeOptions)
+	}
+	if recommendation.TimeSeriesSupported {
+		log.Printf("   ⏱️  Note: Dataset has temporal characteristics - time series analysis may be beneficial")
+	}
 
 	// Train model
 	trainingStart := time.Now()

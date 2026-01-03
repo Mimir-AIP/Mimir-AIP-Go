@@ -134,6 +134,12 @@ func TestAlgorithmRecommendation(t *testing.T) {
 
 			t.Logf("✓ Algorithm: %s (confidence: %.2f)", recommendation.Algorithm, recommendation.Confidence)
 			t.Logf("  Reasoning: %s", recommendation.Reasoning)
+			if len(recommendation.AlternativeOptions) > 0 {
+				t.Logf("  Alternative options: %v", recommendation.AlternativeOptions)
+			}
+			if recommendation.TimeSeriesSupported {
+				t.Logf("  ⏱️  Temporal features detected")
+			}
 			if recommendation.Algorithm == "random_forest" {
 				t.Logf("  Trees: %d", recommendation.NumTrees)
 			}
@@ -178,4 +184,110 @@ func TestAlgorithmRecommendationEdgeCases(t *testing.T) {
 			t.Error("Should recommend random forest for many features")
 		}
 	})
+}
+
+// TestAlgorithmRecommendationWithAlternatives tests alternative option suggestions
+func TestAlgorithmRecommendationWithAlternatives(t *testing.T) {
+at := &AutoTrainer{}
+
+t.Run("Large dataset should suggest alternatives", func(t *testing.T) {
+dataset := &TrainingDataset{
+X:            make([][]float64, 1000),
+Y:            make([]float64, 1000),
+FeatureCount: 20,
+SampleCount:  1000,
+FeatureNames: []string{"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", 
+                       "f11", "f12", "f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20"},
+}
+for i := range dataset.X {
+dataset.X[i] = make([]float64, 20)
+}
+
+recommendation := at.recommendAlgorithm(dataset, "regression")
+
+if len(recommendation.AlternativeOptions) == 0 {
+t.Error("Large dataset should have alternative options")
+}
+
+t.Logf("Primary: %s", recommendation.Algorithm)
+t.Logf("Alternatives: %v", recommendation.AlternativeOptions)
+})
+
+t.Run("Temporal features should be detected", func(t *testing.T) {
+dataset := &TrainingDataset{
+X:            make([][]float64, 100),
+Y:            make([]string, 100),
+FeatureCount: 5,
+SampleCount:  100,
+FeatureNames: []string{"timestamp", "value1", "value2", "value3", "value4"},
+}
+for i := range dataset.X {
+dataset.X[i] = make([]float64, 5)
+}
+
+recommendation := at.recommendAlgorithm(dataset, "classification")
+
+if !recommendation.TimeSeriesSupported {
+t.Error("Should detect temporal features from 'timestamp' column")
+}
+
+t.Logf("Temporal detection: %v", recommendation.TimeSeriesSupported)
+})
+
+t.Run("Very small dataset should have no alternatives", func(t *testing.T) {
+dataset := &TrainingDataset{
+X:            make([][]float64, 15),
+Y:            make([]string, 15),
+FeatureCount: 3,
+SampleCount:  15,
+FeatureNames: []string{"f1", "f2", "f3"},
+}
+for i := range dataset.X {
+dataset.X[i] = make([]float64, 3)
+}
+
+recommendation := at.recommendAlgorithm(dataset, "classification")
+
+if len(recommendation.AlternativeOptions) > 0 {
+t.Error("Very small dataset should not suggest alternatives")
+}
+if recommendation.Confidence < 0.9 {
+t.Error("Very small dataset recommendation should be very confident")
+}
+
+t.Logf("Very small dataset - algorithm: %s, confidence: %.2f", 
+       recommendation.Algorithm, recommendation.Confidence)
+})
+
+t.Run("Multiclass should suggest gradient boosting", func(t *testing.T) {
+dataset := &TrainingDataset{
+X:            make([][]float64, 300),
+FeatureCount: 10,
+SampleCount:  300,
+FeatureNames: []string{"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10"},
+}
+yData := make([]string, 300)
+for i := range dataset.X {
+dataset.X[i] = make([]float64, 10)
+// Create 8 classes
+yData[i] = string(rune('A' + (i % 8)))
+}
+dataset.Y = yData
+
+recommendation := at.recommendAlgorithm(dataset, "classification")
+
+hasGradientBoosting := false
+for _, alt := range recommendation.AlternativeOptions {
+if alt == "gradient_boosting" {
+hasGradientBoosting = true
+break
+}
+}
+
+if !hasGradientBoosting {
+t.Error("Multiclass problem should suggest gradient_boosting as alternative")
+}
+
+t.Logf("Multiclass alternatives: %v", recommendation.AlternativeOptions)
+})
 }

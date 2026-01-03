@@ -498,6 +498,103 @@ func (at *AutoTrainer) prepareTrainingDataFromDataset(dataset *UnifiedDataset, t
 	return trainingDataset, nil
 }
 
+// AlgorithmRecommendation contains the recommended algorithm and reasoning
+type AlgorithmRecommendation struct {
+	Algorithm string  `json:"algorithm"` // "decision_tree" or "random_forest"
+	Reasoning string  `json:"reasoning"`
+	Confidence float64 `json:"confidence"`
+	NumTrees   int     `json:"num_trees,omitempty"` // For random forest
+}
+
+// recommendAlgorithm intelligently selects the best algorithm based on dataset characteristics
+func (at *AutoTrainer) recommendAlgorithm(dataset *TrainingDataset, modelType string) *AlgorithmRecommendation {
+	sampleCount := len(dataset.X)
+	featureCount := dataset.FeatureCount
+	
+	// Calculate unique classes for classification
+	var numClasses int
+	if modelType == "classification" {
+		yCateg, ok := dataset.Y.([]string)
+		if ok {
+			classSet := make(map[string]bool)
+			for _, class := range yCateg {
+				classSet[class] = true
+			}
+			numClasses = len(classSet)
+		}
+	}
+	
+	// Decision logic based on dataset characteristics
+	
+	// Use decision tree for very small datasets (< 50 samples)
+	if sampleCount < 50 {
+		return &AlgorithmRecommendation{
+			Algorithm: "decision_tree",
+			Reasoning: fmt.Sprintf("Small dataset (%d samples) - decision tree is more appropriate to avoid overfitting", sampleCount),
+			Confidence: 0.9,
+		}
+	}
+	
+	// Use decision tree for few features (< 5)
+	if featureCount < 5 {
+		return &AlgorithmRecommendation{
+			Algorithm: "decision_tree",
+			Reasoning: fmt.Sprintf("Few features (%d) - decision tree is sufficient and more interpretable", featureCount),
+			Confidence: 0.8,
+		}
+	}
+	
+	// Use random forest for multiclass problems with many classes (> 5)
+	if modelType == "classification" && numClasses > 5 {
+		numTrees := 100
+		if sampleCount < 200 {
+			numTrees = 50
+		}
+		return &AlgorithmRecommendation{
+			Algorithm: "random_forest",
+			Reasoning: fmt.Sprintf("Multiclass problem (%d classes) with %d samples - random forest provides better accuracy", numClasses, sampleCount),
+			Confidence: 0.95,
+			NumTrees: numTrees,
+		}
+	}
+	
+	// Use random forest for larger datasets with more features
+	if sampleCount >= 100 && featureCount >= 5 {
+		// Determine optimal number of trees based on data size
+		numTrees := 50
+		if sampleCount >= 500 {
+			numTrees = 100
+		}
+		if sampleCount >= 1000 {
+			numTrees = 150
+		}
+		
+		return &AlgorithmRecommendation{
+			Algorithm: "random_forest",
+			Reasoning: fmt.Sprintf("Substantial dataset (%d samples, %d features) - random forest will provide better generalization", sampleCount, featureCount),
+			Confidence: 0.85,
+			NumTrees: numTrees,
+		}
+	}
+	
+	// Use random forest for medium-sized datasets (50-100 samples)
+	if sampleCount >= 50 && sampleCount < 100 {
+		return &AlgorithmRecommendation{
+			Algorithm: "random_forest",
+			Reasoning: fmt.Sprintf("Medium dataset (%d samples, %d features) - random forest with fewer trees reduces overfitting risk", sampleCount, featureCount),
+			Confidence: 0.75,
+			NumTrees: 30,
+		}
+	}
+	
+	// Default to decision tree for edge cases
+	return &AlgorithmRecommendation{
+		Algorithm: "decision_tree",
+		Reasoning: fmt.Sprintf("Default choice for dataset with %d samples and %d features", sampleCount, featureCount),
+		Confidence: 0.6,
+	}
+}
+
 // trainModelFromDataset trains a model using prepared dataset
 func (at *AutoTrainer) trainModelFromDataset(
 	ctx context.Context,
@@ -512,9 +609,20 @@ func (at *AutoTrainer) trainModelFromDataset(
 		return nil, fmt.Errorf("dataset validation failed: %w", err)
 	}
 
+	// Get algorithm recommendation
+	recommendation := at.recommendAlgorithm(dataset, target.ModelType)
+	log.Printf("📊 Algorithm recommendation: %s (confidence: %.2f)", recommendation.Algorithm, recommendation.Confidence)
+	log.Printf("   Reasoning: %s", recommendation.Reasoning)
+
 	// Train model
 	trainingStart := time.Now()
 	config := DefaultTrainingConfig()
+	
+	// Configure for random forest if recommended
+	if recommendation.Algorithm == "random_forest" && recommendation.NumTrees > 0 {
+		config.NumTrees = recommendation.NumTrees
+	}
+	
 	trainer := NewTrainer(config)
 
 	var trainingResult *TrainingResult
@@ -525,13 +633,25 @@ func (at *AutoTrainer) trainModelFromDataset(
 		if !ok {
 			return nil, fmt.Errorf("expected numeric target for regression")
 		}
-		trainingResult, trainErr = trainer.TrainRegression(dataset.X, yNumeric, dataset.FeatureNames)
+		
+		// Use recommended algorithm
+		if recommendation.Algorithm == "random_forest" {
+			trainingResult, trainErr = trainer.TrainRandomForestRegression(dataset.X, yNumeric, dataset.FeatureNames)
+		} else {
+			trainingResult, trainErr = trainer.TrainRegression(dataset.X, yNumeric, dataset.FeatureNames)
+		}
 	} else {
 		yCateg, ok := dataset.Y.([]string)
 		if !ok {
 			return nil, fmt.Errorf("expected categorical target for classification")
 		}
-		trainingResult, trainErr = trainer.Train(dataset.X, yCateg, dataset.FeatureNames)
+		
+		// Use recommended algorithm
+		if recommendation.Algorithm == "random_forest" {
+			trainingResult, trainErr = trainer.TrainRandomForest(dataset.X, yCateg, dataset.FeatureNames)
+		} else {
+			trainingResult, trainErr = trainer.Train(dataset.X, yCateg, dataset.FeatureNames)
+		}
 	}
 
 	if trainErr != nil {
@@ -543,8 +663,14 @@ func (at *AutoTrainer) trainModelFromDataset(
 	// Save model to database
 	modelID := fmt.Sprintf("auto_%s_%s_%d", ontologyID, sanitizeModelID(target.ColumnName), time.Now().Unix())
 
-	// Serialize model
-	modelJSON, err := json.Marshal(trainingResult.Model)
+	// Serialize model (handle both decision tree and random forest)
+	var modelJSON []byte
+	var err error
+	if recommendation.Algorithm == "random_forest" {
+		modelJSON, err = json.Marshal(trainingResult.ModelRF)
+	} else {
+		modelJSON, err = json.Marshal(trainingResult.Model)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize model: %w", err)
 	}
@@ -601,7 +727,7 @@ func (at *AutoTrainer) trainModelFromDataset(
 		FeatureCount:   len(dataset.FeatureNames),
 		TrainingTime:   trainingDuration,
 		Confidence:     target.Confidence,
-		Reasoning:      fmt.Sprintf("Trained from uploaded dataset with %d samples and %d features", target.SampleSize, target.FeatureCount),
+		Reasoning:      fmt.Sprintf("Trained %s from uploaded dataset with %d samples and %d features. %s", recommendation.Algorithm, target.SampleSize, target.FeatureCount, recommendation.Reasoning),
 	}, nil
 }
 
@@ -707,9 +833,20 @@ func (at *AutoTrainer) trainModelForTarget(
 		return nil, fmt.Errorf("dataset validation failed: %w", err)
 	}
 
+	// Get algorithm recommendation
+	recommendation := at.recommendAlgorithm(dataset, modelType)
+	log.Printf("📊 Algorithm recommendation: %s (confidence: %.2f)", recommendation.Algorithm, recommendation.Confidence)
+	log.Printf("   Reasoning: %s", recommendation.Reasoning)
+
 	// Train model
 	trainingStart := time.Now()
 	config := DefaultTrainingConfig()
+	
+	// Configure for random forest if recommended
+	if recommendation.Algorithm == "random_forest" && recommendation.NumTrees > 0 {
+		config.NumTrees = recommendation.NumTrees
+	}
+	
 	trainer := NewTrainer(config)
 
 	var trainingResult *TrainingResult
@@ -720,13 +857,25 @@ func (at *AutoTrainer) trainModelForTarget(
 		if !ok {
 			return nil, fmt.Errorf("expected numeric target for regression")
 		}
-		trainingResult, trainErr = trainer.TrainRegression(dataset.X, yNumeric, dataset.FeatureNames)
+		
+		// Use recommended algorithm
+		if recommendation.Algorithm == "random_forest" {
+			trainingResult, trainErr = trainer.TrainRandomForestRegression(dataset.X, yNumeric, dataset.FeatureNames)
+		} else {
+			trainingResult, trainErr = trainer.TrainRegression(dataset.X, yNumeric, dataset.FeatureNames)
+		}
 	} else {
 		yCateg, ok := dataset.Y.([]string)
 		if !ok {
 			return nil, fmt.Errorf("expected categorical target for classification")
 		}
-		trainingResult, trainErr = trainer.Train(dataset.X, yCateg, dataset.FeatureNames)
+		
+		// Use recommended algorithm
+		if recommendation.Algorithm == "random_forest" {
+			trainingResult, trainErr = trainer.TrainRandomForest(dataset.X, yCateg, dataset.FeatureNames)
+		} else {
+			trainingResult, trainErr = trainer.Train(dataset.X, yCateg, dataset.FeatureNames)
+		}
 	}
 
 	if trainErr != nil {
@@ -738,8 +887,13 @@ func (at *AutoTrainer) trainModelForTarget(
 	// Save model to database
 	modelID := fmt.Sprintf("auto_%s_%s_%d", ontologyID, sanitizeModelID(target.PropertyLabel), time.Now().Unix())
 
-	// Serialize model
-	modelJSON, err := json.Marshal(trainingResult.Model)
+	// Serialize model (handle both decision tree and random forest)
+	var modelJSON []byte
+	if recommendation.Algorithm == "random_forest" {
+		modelJSON, err = json.Marshal(trainingResult.ModelRF)
+	} else {
+		modelJSON, err = json.Marshal(trainingResult.Model)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize model: %w", err)
 	}
@@ -788,7 +942,7 @@ func (at *AutoTrainer) trainModelForTarget(
 		Name:              fmt.Sprintf("Auto: Predict %s", target.PropertyLabel),
 		OntologyID:        ontologyID,
 		TargetClass:       target.PropertyLabel,
-		Algorithm:         fmt.Sprintf("decision_tree_%s", modelType),
+		Algorithm:         recommendation.Algorithm,
 		Hyperparameters:   string(configJSON),
 		FeatureColumns:    featureColumnsJSON,
 		ClassLabels:       classLabelsJSON,
@@ -821,7 +975,7 @@ func (at *AutoTrainer) trainModelForTarget(
 		FeatureCount:   dataset.FeatureCount,
 		TrainingTime:   trainingDuration,
 		Confidence:     target.Confidence,
-		Reasoning:      target.Reasoning,
+		Reasoning:      fmt.Sprintf("%s. Algorithm: %s (%s)", target.Reasoning, recommendation.Algorithm, recommendation.Reasoning),
 	}
 
 	if modelType == "regression" && trainingResult.ValidateMetricsReg != nil {

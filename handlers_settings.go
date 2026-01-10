@@ -37,6 +37,31 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	writeNotImplementedResponse(w, "API key management is not yet implemented")
 }
 
+// handleUpdateAPIKey updates an existing API key
+func (s *Server) handleUpdateAPIKey(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	keyID := vars["id"]
+
+	if keyID == "" {
+		writeBadRequestResponse(w, "Key ID is required")
+		return
+	}
+
+	var req struct {
+		Name      *string `json:"name,omitempty"`
+		KeyValue  *string `json:"key_value,omitempty"`
+		IsActive  *bool   `json:"is_active,omitempty"`
+		Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request: %v", err))
+		return
+	}
+
+	// For now, return 501 Not Implemented
+	writeNotImplementedResponse(w, "API key update is not yet implemented")
+}
+
 // handleDeleteAPIKey deletes an API key
 func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -49,6 +74,20 @@ func (s *Server) handleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	// For now, return 501 Not Implemented
 	writeNotImplementedResponse(w, "API key deletion is not yet implemented")
+}
+
+// handleTestAPIKey tests if an API key is valid
+func (s *Server) handleTestAPIKey(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	keyID := vars["id"]
+
+	if keyID == "" {
+		writeBadRequestResponse(w, "Key ID is required")
+		return
+	}
+
+	// For now, return 501 Not Implemented
+	writeNotImplementedResponse(w, "API key testing is not yet implemented")
 }
 
 // writeNotImplementedResponse writes a 501 Not Implemented response

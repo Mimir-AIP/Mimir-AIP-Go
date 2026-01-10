@@ -239,15 +239,12 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/auth/users", s.handleListUsers).Methods("GET")
 	v1.HandleFunc("/auth/apikeys", s.handleCreateAPIKey).Methods("POST")
 
-	// Settings endpoints
+	// Settings - API Keys Management
 	v1.HandleFunc("/settings/api-keys", s.handleListAPIKeys).Methods("GET")
 	v1.HandleFunc("/settings/api-keys", s.handleCreateAPIKeyFromSettings).Methods("POST")
+	v1.HandleFunc("/settings/api-keys/{id}", s.handleUpdateAPIKey).Methods("PUT")
 	v1.HandleFunc("/settings/api-keys/{id}", s.handleDeleteAPIKey).Methods("DELETE")
-
-	// Settings endpoints
-	v1.HandleFunc("/settings/api-keys", s.handleListAPIKeys).Methods("GET")
-	v1.HandleFunc("/settings/api-keys", s.handleCreateAPIKey).Methods("POST")
-	v1.HandleFunc("/settings/api-keys/{id}", s.handleDeleteAPIKey).Methods("DELETE")
+	v1.HandleFunc("/settings/api-keys/{id}/test", s.handleTestAPIKey).Methods("POST")
 
 	// Plugin management endpoints
 	v1.HandleFunc("/settings/plugins", s.handleListPluginMetadata).Methods("GET")

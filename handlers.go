@@ -107,8 +107,41 @@ func (s *Server) handleExecutePipeline(w http.ResponseWriter, r *http.Request) {
 	// Execute pipeline
 	result, err := utils.ExecutePipeline(ctx, config)
 	if err != nil {
+		// Publish pipeline failed event
+		utils.GetEventBus().Publish(utils.Event{
+			Type:   utils.EventPipelineFailed,
+			Source: "pipeline-execution-handler",
+			Payload: map[string]any{
+				"pipeline_file": pipelineFile,
+				"pipeline_name": req.PipelineName,
+				"error":         err.Error(),
+			},
+		})
 		writeInternalServerErrorResponse(w, fmt.Sprintf("Pipeline execution failed: %v", err))
 		return
+	}
+
+	// Publish appropriate event based on result
+	if result.Success {
+		utils.GetEventBus().Publish(utils.Event{
+			Type:   utils.EventPipelineCompleted,
+			Source: "pipeline-execution-handler",
+			Payload: map[string]any{
+				"pipeline_file": pipelineFile,
+				"pipeline_name": req.PipelineName,
+				"context":       result.Context,
+			},
+		})
+	} else {
+		utils.GetEventBus().Publish(utils.Event{
+			Type:   utils.EventPipelineFailed,
+			Source: "pipeline-execution-handler",
+			Payload: map[string]any{
+				"pipeline_file": pipelineFile,
+				"pipeline_name": req.PipelineName,
+				"error":         result.Error,
+			},
+		})
 	}
 
 	// Return response

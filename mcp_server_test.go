@@ -471,14 +471,14 @@ func TestMCPServerToolExecutionMissingRequiredFields(t *testing.T) {
 func TestMCPServerMultiplePlugins(t *testing.T) {
 	registry := pipelines.NewPluginRegistry()
 
-	// Register multiple plugins of different types
+	// Register multiple plugins of different types (only allowed types: Input, Output, Ontology)
 	inputPlugin := &MockPlugin{pluginType: "Input", pluginName: "api"}
 	outputPlugin := &MockPlugin{pluginType: "Output", pluginName: "html"}
-	processingPlugin := &MockPlugin{pluginType: "Processing", pluginName: "transform"}
+	ontologyPlugin := &MockPlugin{pluginType: "Ontology", pluginName: "validator"}
 
 	registry.RegisterPlugin(inputPlugin)
 	registry.RegisterPlugin(outputPlugin)
-	registry.RegisterPlugin(processingPlugin)
+	registry.RegisterPlugin(ontologyPlugin)
 
 	server := NewMCPServer(registry)
 
@@ -506,7 +506,7 @@ func TestMCPServerMultiplePlugins(t *testing.T) {
 
 	assert.Contains(t, toolNames, "Input.api")
 	assert.Contains(t, toolNames, "Output.html")
-	assert.Contains(t, toolNames, "Processing.transform")
+	assert.Contains(t, toolNames, "Ontology.validator")
 }
 
 func TestMCPServerConcurrentRequests(t *testing.T) {

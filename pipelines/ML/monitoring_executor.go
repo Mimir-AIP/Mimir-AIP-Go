@@ -8,6 +8,7 @@ import (
 	"time"
 
 	storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
 
 // MonitoringExecutor orchestrates the execution of monitoring jobs
@@ -87,6 +88,23 @@ func (me *MonitoringExecutor) ExecuteMonitoringJob(ctx context.Context, jobID st
 			} else {
 				log.Printf("[Monitoring] Created alert: %s - %s", alert.Severity, alert.Message)
 				totalAlerts++
+
+				// Publish anomaly.detected event to trigger alert actions
+				utils.GetEventBus().Publish(utils.Event{
+					Type:   utils.EventAnomalyDetected,
+					Source: "monitoring-executor",
+					Payload: map[string]any{
+						"alert_id":    alert.ID,
+						"ontology_id": alert.OntologyID,
+						"entity_id":   alert.EntityID,
+						"metric_name": alert.MetricName,
+						"alert_type":  alert.AlertType,
+						"severity":    alert.Severity,
+						"message":     alert.Message,
+						"value":       alert.Value,
+						"threshold":   alert.Threshold,
+					},
+				})
 			}
 		}
 

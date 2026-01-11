@@ -241,6 +241,18 @@ func (p *MockPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines.StepC
 	return result, nil
 }
 
+func (p *MockPlugin) GetInputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"operation": map[string]any{
+				"type":        "string",
+				"description": "Operation to perform",
+			},
+		},
+	}
+}
+
 func (p *MockPlugin) GetPluginType() string                      { return p.pluginType }
 func (p *MockPlugin) GetPluginName() string                      { return p.name }
 func (p *MockPlugin) ValidateConfig(config map[string]any) error { return nil }

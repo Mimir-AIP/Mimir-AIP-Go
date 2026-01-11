@@ -16,17 +16,19 @@ import (
 
 // PipelineMetadata holds metadata for a pipeline
 type PipelineMetadata struct {
-	ID          string    `json:"id" yaml:"id"`
-	Name        string    `json:"name" yaml:"name"`
-	Description string    `json:"description" yaml:"description"`
-	Tags        []string  `json:"tags" yaml:"tags"`
-	Enabled     bool      `json:"enabled" yaml:"enabled"`
-	Schedule    string    `json:"schedule,omitempty" yaml:"schedule,omitempty"`
-	CreatedAt   time.Time `json:"created_at" yaml:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" yaml:"updated_at"`
-	CreatedBy   string    `json:"created_by" yaml:"created_by"`
-	UpdatedBy   string    `json:"updated_by" yaml:"updated_by"`
-	Version     int       `json:"version" yaml:"version"`
+	ID                 string    `json:"id" yaml:"id"`
+	Name               string    `json:"name" yaml:"name"`
+	Description        string    `json:"description" yaml:"description"`
+	Tags               []string  `json:"tags" yaml:"tags"`
+	Enabled            bool      `json:"enabled" yaml:"enabled"`
+	Schedule           string    `json:"schedule,omitempty" yaml:"schedule,omitempty"`
+	AutoExtractOntology bool     `json:"auto_extract_ontology" yaml:"auto_extract_ontology"`
+	TargetOntologyID   string    `json:"target_ontology_id,omitempty" yaml:"target_ontology_id,omitempty"`
+	CreatedAt          time.Time `json:"created_at" yaml:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at" yaml:"updated_at"`
+	CreatedBy          string    `json:"created_by" yaml:"created_by"`
+	UpdatedBy          string    `json:"updated_by" yaml:"updated_by"`
+	Version            int       `json:"version" yaml:"version"`
 }
 
 // PipelineDefinition holds the complete pipeline definition
@@ -208,7 +210,11 @@ func (ps *PipelineStore) UpdatePipeline(id string, updates *PipelineMetadata, co
 		if updates.Schedule != "" {
 			pipeline.Metadata.Schedule = updates.Schedule
 		}
+		if updates.TargetOntologyID != "" {
+			pipeline.Metadata.TargetOntologyID = updates.TargetOntologyID
+		}
 		pipeline.Metadata.Enabled = updates.Enabled
+		pipeline.Metadata.AutoExtractOntology = updates.AutoExtractOntology
 		pipeline.Metadata.UpdatedBy = updatedBy
 		pipeline.Metadata.UpdatedAt = time.Now()
 		pipeline.Metadata.Version++

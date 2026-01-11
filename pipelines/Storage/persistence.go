@@ -538,6 +538,35 @@ func (p *PersistenceBackend) initSchema() error {
 		FOREIGN KEY (job_id) REFERENCES monitoring_jobs(id) ON DELETE CASCADE
 	);
 
+	-- Alert actions table (defines automated actions when alerts are triggered)
+	CREATE TABLE IF NOT EXISTS alert_actions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		rule_id TEXT,  -- Optional: link to specific monitoring rule
+		alert_type TEXT,  -- Optional: trigger for specific alert types ('threshold', 'anomaly', etc.)
+		severity TEXT,  -- Optional: trigger for specific severity levels
+		action_type TEXT NOT NULL,  -- 'execute_pipeline', 'send_email', 'webhook', 'agent_notification'
+		config TEXT NOT NULL,  -- JSON: action-specific configuration
+		is_enabled BOOLEAN NOT NULL DEFAULT 1,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (rule_id) REFERENCES monitoring_rules(id) ON DELETE CASCADE
+	);
+
+	-- Alert action execution history
+	CREATE TABLE IF NOT EXISTS alert_action_executions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		action_id INTEGER NOT NULL,
+		alert_id INTEGER NOT NULL,
+		status TEXT NOT NULL,  -- 'success', 'failed'
+		started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		completed_at TIMESTAMP,
+		error_message TEXT,
+		result TEXT,  -- JSON: execution result details
+		FOREIGN KEY (action_id) REFERENCES alert_actions(id) ON DELETE CASCADE,
+		FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE
+	);
+
 	-- Scheduler jobs table (for crash recovery of scheduled jobs)
 	CREATE TABLE IF NOT EXISTS scheduler_jobs (
 		id TEXT PRIMARY KEY,

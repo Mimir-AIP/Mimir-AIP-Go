@@ -210,6 +210,9 @@ func NewServer() *Server {
 		log.Printf("Failed to initialize pipeline store: %v", err)
 	}
 
+	// Initialize pipeline auto-extraction (must be after plugin registration and pipeline store)
+	utils.InitializePipelineAutoExtraction(s.registry, utils.GetPipelineStore())
+
 	// Start the scheduler
 	if err := s.scheduler.Start(); err != nil {
 		utils.GetLogger().Error("Failed to start scheduler", err, utils.Component("server"))

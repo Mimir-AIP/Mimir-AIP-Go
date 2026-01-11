@@ -52,6 +52,7 @@ func (p *PersistenceBackend) initSchema() error {
 		tdb2_graph TEXT NOT NULL,
 		format TEXT NOT NULL DEFAULT 'turtle',
 		status TEXT NOT NULL DEFAULT 'active',
+		auto_train_models BOOLEAN NOT NULL DEFAULT 0,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		created_by TEXT,

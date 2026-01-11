@@ -218,6 +218,9 @@ func NewServer() *Server {
 		utils.InitializeAlertActionExecutor(persistence.GetDB(), s.registry)
 	}
 
+	// Initialize auto-ML handler (must be after persistence and TDB2 backends)
+	ml.InitializeAutoMLHandler(persistence, tdb2Backend)
+
 	// Start the scheduler
 	if err := s.scheduler.Start(); err != nil {
 		utils.GetLogger().Error("Failed to start scheduler", err, utils.Component("server"))

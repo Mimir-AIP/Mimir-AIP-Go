@@ -186,6 +186,7 @@ rss_feed_raw.xml
 node_modules
 
 # Go build artifacts
+mimir-aip
 mimir-aip-server
 benchmarks/benchmark_suite
 utils.test

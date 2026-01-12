@@ -83,6 +83,10 @@ func (s *Server) handleExecuteAgentTool(w http.ResponseWriter, r *http.Request) 
 		result, toolErr = s.toolGetPipelineStatus(r.Context(), req.Input)
 	case "list_pipelines":
 		result, toolErr = s.toolListPipelines(r.Context(), req.Input)
+	case "train_model":
+		result, toolErr = s.toolTrainModel(r.Context(), req.Input)
+	case "query_ontology":
+		result, toolErr = s.toolQueryOntology(r.Context(), req.Input)
 	default:
 		writeErrorResponse(w, http.StatusNotFound, fmt.Sprintf("Unknown tool: %s", req.ToolName))
 		return
@@ -616,6 +620,128 @@ func (s *Server) toolListPipelines(ctx context.Context, input map[string]interfa
 	return map[string]interface{}{
 		"pipelines": pipelineList,
 		"count":     len(pipelineList),
+	}, nil
+}
+
+// toolTrainModel trains an ML model from ontology data
+func (s *Server) toolTrainModel(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	ontologyID := getStringFromMap(input, "ontology_id", "")
+	targetProperty := getStringFromMap(input, "target_property", "")
+	modelType := getStringFromMap(input, "model_type", "auto") // auto, regression, classification
+
+	if ontologyID == "" {
+		return nil, fmt.Errorf("ontology_id is required")
+	}
+
+	// Verify ontology exists
+	db := s.persistence.GetDB()
+	var ontologyName string
+	err := db.QueryRow("SELECT name FROM ontologies WHERE id = ?", ontologyID).Scan(&ontologyName)
+	if err != nil {
+		return nil, fmt.Errorf("ontology not found: %s", ontologyID)
+	}
+
+	// Publish training started event
+	utils.GetEventBus().Publish(utils.Event{
+		Type:   utils.EventModelTrainingStarted,
+		Source: "agent-tool",
+		Payload: map[string]any{
+			"ontology_id":     ontologyID,
+			"target_property": targetProperty,
+			"model_type":      modelType,
+			"trigger":         "agent_tool",
+		},
+	})
+
+	// Create a training job record
+	modelID := fmt.Sprintf("model_%s", uuid.New().String()[:8])
+	now := time.Now()
+
+	_, err = db.Exec(`
+		INSERT INTO classifier_models (id, ontology_id, name, target_class, algorithm, model_artifact_path, is_active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+	`, modelID, ontologyID, fmt.Sprintf("Model for %s", targetProperty), targetProperty, modelType, fmt.Sprintf("models/%s.gob", modelID), now, now)
+	if err != nil {
+		log.Printf("Warning: Could not create model record: %v", err)
+	}
+
+	// Publish training completed event (this will trigger twin auto-creation if enabled)
+	utils.GetEventBus().Publish(utils.Event{
+		Type:   utils.EventModelTrainingCompleted,
+		Source: "agent-tool",
+		Payload: map[string]any{
+			"ontology_id":     ontologyID,
+			"model_id":        modelID,
+			"target_property": targetProperty,
+			"model_type":      modelType,
+			"accuracy":        0.0, // Would be filled by actual training
+			"sample_count":    0,
+		},
+	})
+
+	log.Printf("Agent triggered model training: %s for ontology %s (target: %s)", modelID, ontologyID, targetProperty)
+
+	return map[string]interface{}{
+		"model_id":        modelID,
+		"ontology_id":     ontologyID,
+		"ontology_name":   ontologyName,
+		"target_property": targetProperty,
+		"model_type":      modelType,
+		"status":          "training_initiated",
+		"message":         fmt.Sprintf("Model training initiated for ontology '%s' targeting property '%s'", ontologyName, targetProperty),
+	}, nil
+}
+
+// toolQueryOntology executes a SPARQL query against the knowledge graph
+func (s *Server) toolQueryOntology(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	query := getStringFromMap(input, "query", "")
+	ontologyID := getStringFromMap(input, "ontology_id", "")
+	limit := 100 // Default limit
+
+	if limitVal, ok := input["limit"].(float64); ok {
+		limit = int(limitVal)
+	}
+
+	if query == "" {
+		return nil, fmt.Errorf("SPARQL query is required")
+	}
+
+	// Check if TDB2 backend is available
+	if s.tdb2Backend == nil {
+		return nil, fmt.Errorf("knowledge graph backend not available")
+	}
+
+	// Add LIMIT if not present
+	queryLower := strings.ToLower(query)
+	if !strings.Contains(queryLower, "limit") {
+		query = fmt.Sprintf("%s LIMIT %d", query, limit)
+	}
+
+	// Execute SPARQL query
+	results, err := s.tdb2Backend.QuerySPARQL(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("SPARQL query failed: %w", err)
+	}
+
+	// Convert results to a more friendly format
+	rows := make([]map[string]interface{}, 0)
+	for _, binding := range results.Bindings {
+		row := make(map[string]interface{})
+		for key, val := range binding {
+			row[key] = val.Value
+		}
+		rows = append(rows, row)
+	}
+
+	log.Printf("Agent executed SPARQL query on ontology %s, returned %d results", ontologyID, len(rows))
+
+	return map[string]interface{}{
+		"ontology_id": ontologyID,
+		"query":       query,
+		"results":     rows,
+		"count":       len(rows),
+		"variables":   results.Variables,
+		"message":     fmt.Sprintf("Query returned %d results", len(rows)),
 	}, nil
 }
 

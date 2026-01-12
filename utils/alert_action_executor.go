@@ -296,7 +296,7 @@ Timestamp: %v
 		Int("recipients", len(config.To)),
 		String("subject", subject))
 
-	// Get email sender (will be implemented in next step)
+	// Get email sender (configured via SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM env vars)
 	sender := GetEmailSender()
 	if sender == nil {
 		return nil, fmt.Errorf("email sender not configured")

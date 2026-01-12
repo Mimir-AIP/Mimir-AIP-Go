@@ -195,6 +195,11 @@ func NewServer() *Server {
 	// Initialize auto-ML handler (must be after persistence and TDB2 backends)
 	ml.InitializeAutoMLHandler(persistence, tdb2Backend)
 
+	// Initialize twin auto-creator (creates twins when models finish training)
+	if persistence != nil {
+		utils.InitializeTwinAutoCreator(persistence.GetDB())
+	}
+
 	// Start the scheduler
 	if err := s.scheduler.Start(); err != nil {
 		utils.GetLogger().Error("Failed to start scheduler", err, utils.Component("server"))

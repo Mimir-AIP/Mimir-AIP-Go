@@ -705,13 +705,19 @@ func (p *PersistenceBackend) initSchema() error {
 
 // runMigrations applies schema updates for existing databases
 func (p *PersistenceBackend) runMigrations() error {
-	// Migration 1: Add ontology_id, value, and threshold columns to alerts table
 	migrations := []string{
-		// Check if ontology_id column exists, if not add it
+		// Alerts table columns
 		`ALTER TABLE alerts ADD COLUMN ontology_id TEXT;`,
 		`ALTER TABLE alerts ADD COLUMN value REAL;`,
 		`ALTER TABLE alerts ADD COLUMN threshold REAL;`,
 		`CREATE INDEX IF NOT EXISTS idx_alerts_ontology ON alerts(ontology_id);`,
+
+		// Ontologies: auto-twin creation flag
+		`ALTER TABLE ontologies ADD COLUMN auto_create_twins BOOLEAN NOT NULL DEFAULT 0;`,
+
+		// Digital twins: link to model that created it
+		`ALTER TABLE digital_twins ADD COLUMN model_id TEXT;`,
+		`CREATE INDEX IF NOT EXISTS idx_digital_twins_model ON digital_twins(model_id);`,
 	}
 
 	for _, migration := range migrations {

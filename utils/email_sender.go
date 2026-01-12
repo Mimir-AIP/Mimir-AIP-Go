@@ -2,6 +2,8 @@ package utils
 
 import (
 	"crypto/tls"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/smtp"
 	"os"
@@ -26,6 +28,7 @@ type EmailConfig struct {
 	Username string
 	Password string
 	From     string
+	source   string // "database" or "environment" (internal tracking)
 }
 
 // NewEmailSender creates a new email sender
@@ -157,28 +160,18 @@ func (s *EmailSender) buildMessage(to []string, subject string, body string) str
 var (
 	globalEmailSender     *EmailSender
 	globalEmailSenderOnce sync.Once
+	globalEmailDB         *sql.DB
 )
+
+// SetEmailSenderDB sets the database connection for email sender config
+func SetEmailSenderDB(db *sql.DB) {
+	globalEmailDB = db
+}
 
 // GetEmailSender returns the global email sender instance
 func GetEmailSender() *EmailSender {
 	globalEmailSenderOnce.Do(func() {
-		// Initialize from environment variables
-		config := EmailConfig{
-			Host:     os.Getenv("SMTP_HOST"),
-			Port:     os.Getenv("SMTP_PORT"),
-			Username: os.Getenv("SMTP_USERNAME"),
-			Password: os.Getenv("SMTP_PASSWORD"),
-			From:     os.Getenv("SMTP_FROM"),
-		}
-
-		// Set defaults
-		if config.Port == "" {
-			config.Port = "587" // Default SMTP submission port
-		}
-
-		if config.From == "" && config.Username != "" {
-			config.From = config.Username
-		}
+		config := loadEmailConfig()
 
 		// Only create sender if SMTP is configured
 		if config.Host != "" {
@@ -186,13 +179,105 @@ func GetEmailSender() *EmailSender {
 			GetLogger().Info("Email sender initialized",
 				String("host", config.Host),
 				String("port", config.Port),
-				String("from", config.From))
+				String("from", config.From),
+				String("source", config.source))
 		} else {
-			GetLogger().Warn("Email sender not configured (SMTP_HOST not set)")
+			GetLogger().Warn("Email sender not configured (set SMTP_HOST env var or configure via Settings > Notifications)")
 		}
 	})
 
 	return globalEmailSender
+}
+
+// loadEmailConfig loads config from database first, then falls back to env vars
+func loadEmailConfig() EmailConfig {
+	config := EmailConfig{}
+
+	// Try loading from database (plugin_config table)
+	if globalEmailDB != nil {
+		dbConfig := loadEmailConfigFromDB()
+		if dbConfig != nil {
+			return *dbConfig
+		}
+	}
+
+	// Fall back to environment variables
+	config.Host = os.Getenv("SMTP_HOST")
+	config.Port = os.Getenv("SMTP_PORT")
+	config.Username = os.Getenv("SMTP_USERNAME")
+	config.Password = os.Getenv("SMTP_PASSWORD")
+	config.From = os.Getenv("SMTP_FROM")
+	config.source = "environment"
+
+	// Set defaults
+	if config.Port == "" {
+		config.Port = "587"
+	}
+	if config.From == "" && config.Username != "" {
+		config.From = config.Username
+	}
+
+	return config
+}
+
+// loadEmailConfigFromDB loads SMTP config from the plugin_config table
+func loadEmailConfigFromDB() *EmailConfig {
+	if globalEmailDB == nil {
+		return nil
+	}
+
+	var configJSON string
+	err := globalEmailDB.QueryRow(`
+		SELECT config FROM plugin_config WHERE plugin_name = 'smtp' OR plugin_name = 'email'
+	`).Scan(&configJSON)
+
+	if err != nil {
+		return nil
+	}
+
+	var dbConfig struct {
+		Host     string `json:"host"`
+		Port     string `json:"port"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+		From     string `json:"from"`
+		UseTLS   bool   `json:"use_tls"`
+	}
+
+	if err := json.Unmarshal([]byte(configJSON), &dbConfig); err != nil {
+		GetLogger().Warn("Failed to parse SMTP config from database", Error(err))
+		return nil
+	}
+
+	if dbConfig.Host == "" {
+		return nil
+	}
+
+	config := &EmailConfig{
+		Host:     dbConfig.Host,
+		Port:     dbConfig.Port,
+		Username: dbConfig.Username,
+		Password: dbConfig.Password,
+		From:     dbConfig.From,
+		source:   "database",
+	}
+
+	// Set defaults
+	if config.Port == "" {
+		config.Port = "587"
+	}
+	if config.From == "" && config.Username != "" {
+		config.From = config.Username
+	}
+
+	return config
+}
+
+// RefreshEmailSender reloads the email sender with updated config
+func RefreshEmailSender() {
+	globalEmailSender = nil
+	globalEmailSenderOnce = sync.Once{}
+	GetEmailSender() // Reinitialize
 }
 
 // ResetGlobalEmailSender resets the global email sender (for testing)

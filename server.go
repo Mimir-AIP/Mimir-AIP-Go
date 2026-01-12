@@ -190,6 +190,8 @@ func NewServer() *Server {
 	// Initialize alert action executor (must be after persistence backend and plugin registry)
 	if persistence != nil {
 		utils.InitializeAlertActionExecutor(persistence.GetDB(), s.registry)
+		// Enable email sender to read SMTP config from database
+		utils.SetEmailSenderDB(persistence.GetDB())
 	}
 
 	// Initialize auto-ML handler (must be after persistence and TDB2 backends)

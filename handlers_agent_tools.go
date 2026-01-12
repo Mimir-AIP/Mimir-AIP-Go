@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	DigitalTwin "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/DigitalTwin"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/google/uuid"
@@ -463,27 +464,104 @@ func (s *Server) toolGetTwinStatus(ctx context.Context, input map[string]interfa
 // toolSimulateScenario runs a what-if scenario on a digital twin
 func (s *Server) toolSimulateScenario(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 	twinID := getStringFromMap(input, "twin_id", "")
-	scenario := getStringFromMap(input, "scenario", "")
-	parameters, _ := input["parameters"].(map[string]interface{})
+	scenarioID := getStringFromMap(input, "scenario_id", "")
+	scenarioDesc := getStringFromMap(input, "scenario", "")
 
 	if twinID == "" {
 		return nil, fmt.Errorf("twin_id is required")
 	}
-	if scenario == "" {
-		return nil, fmt.Errorf("scenario description is required")
+
+	db := s.persistence.GetDB()
+
+	// Load the twin
+	var twinJSON string
+	err := db.QueryRow("SELECT base_state FROM digital_twins WHERE id = ?", twinID).Scan(&twinJSON)
+	if err != nil {
+		return nil, fmt.Errorf("digital twin not found: %s", twinID)
 	}
 
-	simulatedResult := fmt.Sprintf("Simulated '%s' with parameters: %v", scenario, parameters)
+	var twin DigitalTwin.DigitalTwin
+	if err := twin.FromJSON(twinJSON); err != nil {
+		return nil, fmt.Errorf("failed to parse twin: %w", err)
+	}
+	twin.ID = twinID
 
-	return map[string]interface{}{
-		"twin_id":    twinID,
-		"scenario":   scenario,
-		"parameters": parameters,
-		"result":     simulatedResult,
-		"prediction": fmt.Sprintf("Based on simulation, expected outcome is: [prediction would appear here]"),
-		"confidence": 0.85,
-		"message":    "Scenario simulation completed",
-	}, nil
+	// Get or create scenario
+	var scenario *DigitalTwin.SimulationScenario
+
+	if scenarioID != "" {
+		// Load existing scenario
+		var eventsJSON string
+		var scenarioName, scenarioType string
+		var duration int
+		err = db.QueryRow("SELECT name, scenario_type, events, duration FROM simulation_scenarios WHERE id = ?", scenarioID).
+			Scan(&scenarioName, &scenarioType, &eventsJSON, &duration)
+		if err != nil {
+			return nil, fmt.Errorf("scenario not found: %s", scenarioID)
+		}
+
+		var events []DigitalTwin.SimulationEvent
+		json.Unmarshal([]byte(eventsJSON), &events)
+
+		scenario = &DigitalTwin.SimulationScenario{
+			ID:       scenarioID,
+			TwinID:   twinID,
+			Name:     scenarioName,
+			Type:     scenarioType,
+			Events:   events,
+			Duration: duration,
+		}
+	} else {
+		// Create an ad-hoc scenario from description
+		scenario = &DigitalTwin.SimulationScenario{
+			ID:          fmt.Sprintf("adhoc_%s", uuid.New().String()[:8]),
+			TwinID:      twinID,
+			Name:        scenarioDesc,
+			Type:        "adhoc",
+			Description: scenarioDesc,
+			Events:      []DigitalTwin.SimulationEvent{},
+			Duration:    30,
+		}
+	}
+
+	// Create simulation engine with ML if available
+	engine := DigitalTwin.NewSimulationEngineWithML(&twin, db)
+
+	// Run simulation
+	run, err := engine.RunSimulation(scenario)
+	if err != nil {
+		return nil, fmt.Errorf("simulation failed: %w", err)
+	}
+
+	// Analyze impact
+	analysis, _ := engine.AnalyzeImpact(run)
+
+	log.Printf("Agent executed simulation %s on twin %s: status=%s", run.ID, twinID, run.Status)
+
+	result := map[string]interface{}{
+		"twin_id":       twinID,
+		"run_id":        run.ID,
+		"scenario_id":   scenario.ID,
+		"scenario_name": scenario.Name,
+		"status":        run.Status,
+		"metrics": map[string]interface{}{
+			"total_steps":         run.Metrics.TotalSteps,
+			"events_processed":    run.Metrics.EventsProcessed,
+			"entities_affected":   run.Metrics.EntitiesAffected,
+			"average_utilization": run.Metrics.AverageUtilization,
+			"peak_utilization":    run.Metrics.PeakUtilization,
+			"system_stability":    run.Metrics.SystemStability,
+		},
+		"message": fmt.Sprintf("Simulation completed: %d steps, %d events processed", run.Metrics.TotalSteps, run.Metrics.EventsProcessed),
+	}
+
+	if analysis != nil {
+		result["overall_impact"] = analysis.OverallImpact
+		result["risk_score"] = analysis.RiskScore
+		result["insights"] = analysis.Insights
+	}
+
+	return result, nil
 }
 
 // toolDetectAnomalies detects anomalies in recent data

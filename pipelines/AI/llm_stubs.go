@@ -5,11 +5,6 @@ import (
 	"fmt"
 )
 
-// NewAnthropicClient creates a new Anthropic client (stub for now)
-func NewAnthropicClient(config LLMClientConfig) (LLMClient, error) {
-	return nil, fmt.Errorf("Anthropic client not yet implemented - coming soon")
-}
-
 // NewOllamaClient creates a new Ollama client (stub for now)
 func NewOllamaClient(config LLMClientConfig) (LLMClient, error) {
 	return nil, fmt.Errorf("Ollama client not yet implemented - coming soon")

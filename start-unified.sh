@@ -9,6 +9,21 @@ echo "========================================="
 mkdir -p /app/logs
 mkdir -p /app/data/tdb2
 mkdir -p /app/data/ontologies
+mkdir -p /app/models
+mkdir -p /app/llama.cpp
+
+# Check if model exists, download if needed (first use)
+if [ ! -f /app/models/tinyllama-1.1b-chat.q4_0.gguf ]; then
+    echo "TinyLlama model not found - will be downloaded on first use of Local LLM"
+    echo "To pre-download, run inside container:"
+    echo "  curl -L -o /app/models/tinyllama-1.1b-chat.q4_0.gguf \\"
+    echo "    https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_0.gguf"
+fi
+
+# Verify llama.cpp binary exists
+if [ ! -f /app/llama.cpp/main ]; then
+    echo "Warning: llama.cpp binary not found, Local LLM will use Ollama if available"
+fi
 
 # Start Jena Fuseki server in background with update support
 echo "Starting Jena Fuseki server on port 3030..."

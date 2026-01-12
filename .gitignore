@@ -213,3 +213,4 @@ performance.test
 # Playwright test results
 mimir-aip-frontend/playwright-report/
 mimir-aip-frontend/test-results/
+models/*.gguf

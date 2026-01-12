@@ -55,6 +55,16 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/plugins/{type}", s.handleListPluginsByType).Methods("GET")
 	v1.HandleFunc("/plugins/{type}/{name}", s.handleGetPlugin).Methods("GET")
 
+	// Plugin configuration
+	v1.HandleFunc("/plugins/config", s.handleListPluginConfigs).Methods("GET")
+	v1.HandleFunc("/plugins/{name}/config", s.handleGetPluginConfig).Methods("GET")
+	v1.HandleFunc("/plugins/{name}/config", s.handleSetPluginConfig).Methods("PUT", "POST")
+	v1.HandleFunc("/plugins/{name}/config", s.handleDeletePluginConfig).Methods("DELETE")
+
+	// AI Providers management
+	v1.HandleFunc("/ai/providers", s.handleListAIProviders).Methods("GET")
+	v1.HandleFunc("/ai/providers/{provider}/models", s.handleFetchProviderModels).Methods("GET")
+
 	// Agentic features
 	v1.HandleFunc("/agent/execute", s.handleAgentExecute).Methods("POST")
 
@@ -177,6 +187,9 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/chat/{id}", s.handleDeleteConversation).Methods("DELETE")
 	v1.HandleFunc("/chat/{id}/message", s.handleSendMessage).Methods("POST")
 
+	// Agent Tools endpoints
+	s.setupAgentToolRoutes()
+
 	// Data Ingestion endpoints
 	v1.HandleFunc("/data/plugins", s.handleListInputPlugins).Methods("GET")
 	v1.HandleFunc("/data/upload", s.handleUploadData).Methods("POST")
@@ -245,6 +258,9 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/settings/api-keys/{id}", s.handleUpdateAPIKey).Methods("PUT")
 	v1.HandleFunc("/settings/api-keys/{id}", s.handleDeleteAPIKey).Methods("DELETE")
 	v1.HandleFunc("/settings/api-keys/{id}/test", s.handleTestAPIKey).Methods("POST")
+
+	// Data management endpoints
+	v1.HandleFunc("/settings/data/clear", s.handleClearData).Methods("POST")
 
 	// Plugin management endpoints
 	v1.HandleFunc("/settings/plugins", s.handleListPluginMetadata).Methods("GET")

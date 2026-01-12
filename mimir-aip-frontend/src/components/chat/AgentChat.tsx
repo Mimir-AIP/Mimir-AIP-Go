@@ -128,8 +128,8 @@ export function AgentChat({ twinId }: AgentChatProps) {
             <h3 className="text-xl font-semibold text-white mb-2">
               Chat with Mimir AI
             </h3>
-            <p className="text-muted-foreground max-w-md">
-              Ask me about your data, create scenarios, run simulations, or analyze results.
+            <p className="text-gray-400 max-w-md">
+              Send a message to start a conversation. Ask about your data, create scenarios, run simulations, or analyze results.
               I can help with pipelines, ontologies, and digital twins.
             </p>
             <div className="mt-6 flex flex-wrap gap-2 justify-center">
@@ -137,7 +137,7 @@ export function AgentChat({ twinId }: AgentChatProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setInputValue("What can you help me with?")}
-                className="text-sm"
+                className="text-sm border-blue text-blue-400 hover:bg-blue/20"
               >
                 What can you do?
               </Button>
@@ -145,7 +145,7 @@ export function AgentChat({ twinId }: AgentChatProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setInputValue("Show me my data")}
-                className="text-sm"
+                className="text-sm border-blue text-blue-400 hover:bg-blue/20"
               >
                 Show my data
               </Button>
@@ -153,7 +153,7 @@ export function AgentChat({ twinId }: AgentChatProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setInputValue("TRIGGER_TOOL: create_scenario")}
-                className="text-sm"
+                className="text-sm border-blue text-blue-400 hover:bg-blue/20"
               >
                 Create a scenario
               </Button>
@@ -248,7 +248,7 @@ export function AgentChat({ twinId }: AgentChatProps) {
             onKeyDown={handleKeyPress}
             placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
             disabled={isSending || !conversationId}
-            className="flex-1 min-h-[60px] max-h-[200px] resize-none bg-blue/20 border-blue text-white placeholder:text-muted-foreground rounded-xl"
+            className="flex-1 min-h-[60px] max-h-[200px] resize-none bg-blue/20 border-blue text-white placeholder:text-gray-500 rounded-xl"
             rows={2}
           />
           <Button
@@ -264,7 +264,7 @@ export function AgentChat({ twinId }: AgentChatProps) {
             )}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-2 text-center">
+        <p className="text-xs text-gray-400 mt-2 text-center">
           Powered by Mimir AI • Model: {modelName.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')} ({modelProvider}) • {availableTools.length} tools available
         </p>
       </div>

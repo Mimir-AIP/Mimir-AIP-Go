@@ -123,25 +123,11 @@ func (p *JSONPlugin) ValidateConfig(config map[string]any) error {
 }
 
 // GetInputSchema returns the JSON Schema for plugin configuration
+// NOTE: This only contains plugin-level settings. Step-level parameters like
+// 'input', 'file_path', etc. should be defined in pipeline steps.
 func (p *JSONPlugin) GetInputSchema() map[string]any {
 	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"input": map[string]any{
-				"type":        "string",
-				"description": "Context key containing the data to output as JSON",
-			},
-			"file_path": map[string]any{
-				"type":        "string",
-				"description": "Path to write JSON file (optional - if not provided, returns JSON string)",
-			},
-			"pretty_print": map[string]any{
-				"type":        "boolean",
-				"description": "Pretty print JSON with indentation (default: true)",
-				"default":     true,
-			},
-		},
-		"required":    []string{"input"},
-		"description": "Writes data to JSON format (file or string)",
+		"type":       "object",
+		"properties": map[string]any{},
 	}
 }

@@ -1779,6 +1779,90 @@ export async function compactContext(conversationId: string): Promise<{
   });
 }
 
+// ==================== AGENT TOOLS ====================
+
+export interface AgentToolRequest {
+  tool_name: string;
+  input: Record<string, unknown>;
+}
+
+export interface AgentToolResponse {
+  success: boolean;
+  result?: Record<string, unknown>;
+  error?: string;
+  duration_ms: number;
+}
+
+/**
+ * Execute an agent tool
+ * POST /api/v1/agent/tools/execute
+ */
+export async function executeAgentTool(
+  toolName: string,
+  input: Record<string, unknown>
+): Promise<AgentToolResponse> {
+  return apiFetch(`/api/v1/agent/tools/execute`, {
+    method: "POST",
+    body: JSON.stringify({
+      tool_name: toolName,
+      input,
+    } as AgentToolRequest),
+  });
+}
+
+/**
+ * Create a pipeline using agent tools
+ */
+export async function agentCreatePipeline(
+  name: string,
+  description: string
+): Promise<AgentToolResponse> {
+  return executeAgentTool("create_pipeline", {
+    name,
+    description,
+  });
+}
+
+/**
+ * List all pipelines using agent tools
+ */
+export async function agentListPipelines(): Promise<AgentToolResponse> {
+  return executeAgentTool("list_pipelines", {});
+}
+
+/**
+ * Get model recommendations using agent tools
+ */
+export async function agentRecommendModels(
+  useCase: string
+): Promise<AgentToolResponse> {
+  return executeAgentTool("recommend_models", {
+    use_case: useCase,
+  });
+}
+
+/**
+ * List ontologies using agent tools
+ */
+export async function agentListOntologies(): Promise<AgentToolResponse> {
+  return executeAgentTool("list_ontologies", {});
+}
+
+/**
+ * Create a digital twin using agent tools
+ */
+export async function agentCreateTwin(
+  name: string,
+  description: string,
+  ontologyId: string
+): Promise<AgentToolResponse> {
+  return executeAgentTool("create_twin", {
+    name,
+    description,
+    ontology_id: ontologyId,
+  });
+}
+
 // ==================== MCP TOOLS ====================
 
 export interface MCPToolParameter {
@@ -1891,6 +1975,16 @@ export async function testAPIKey(id: string): Promise<{ success: boolean; messag
   });
 }
 
+/**
+ * Clear system data
+ */
+export async function clearData(target: string): Promise<{ message: string }> {
+  return apiFetch("/api/v1/settings/data/clear", {
+    method: "POST",
+    body: JSON.stringify({ target }),
+  });
+}
+
 // ==================== PLUGINS ====================
 
 export interface Plugin {
@@ -1904,8 +1998,15 @@ export interface Plugin {
   is_enabled: boolean;
   is_builtin: boolean;
   config?: Record<string, unknown>;
+  input_schema?: Record<string, unknown>; // Schema for plugin configuration
   created_at: string;
   updated_at: string;
+}
+
+export interface PluginConfig {
+  plugin_name: string;
+  configured: boolean;
+  config?: Record<string, unknown>;
 }
 
 export interface UpdatePluginRequest {
@@ -1966,6 +2067,32 @@ export async function deletePlugin(id: string): Promise<void> {
 export async function reloadPlugin(id: string): Promise<void> {
   return apiFetch(`/api/v1/settings/plugins/${id}/reload`, {
     method: "POST",
+  });
+}
+
+/**
+ * Get plugin configuration
+ */
+export async function getPluginConfig(pluginName: string): Promise<PluginConfig> {
+  return apiFetch<PluginConfig>(`/api/v1/settings/plugins/${pluginName}/config`);
+}
+
+/**
+ * Save plugin configuration
+ */
+export async function savePluginConfig(pluginName: string, config: Record<string, unknown>): Promise<PluginConfig> {
+  return apiFetch<PluginConfig>(`/api/v1/settings/plugins/${pluginName}/config`, {
+    method: "PUT",
+    body: JSON.stringify({ config }),
+  });
+}
+
+/**
+ * Delete plugin configuration
+ */
+export async function deletePluginConfig(pluginName: string): Promise<void> {
+  return apiFetch(`/api/v1/settings/plugins/${pluginName}/config`, {
+    method: "DELETE",
   });
 }
 
@@ -2235,6 +2362,19 @@ export interface ClassifierModel {
   status?: string;
 }
 
+export interface ModelRecommendation {
+  name: string;
+  algorithm: string;
+  description: string;
+  confidence: number;
+  use_cases: string[];
+  parameters?: Record<string, unknown>;
+}
+
+export interface RecommendModelsResponse {
+  recommendations: ModelRecommendation[];
+}
+
 export interface TrainModelRequest {
   ontology_id?: string;
   name: string;
@@ -2310,6 +2450,17 @@ export async function listModels(ontologyId?: string, activeOnly?: boolean): Pro
   
   const query = params.toString() ? `?${params.toString()}` : "";
   return apiFetch(`/api/v1/models${query}`);
+}
+
+/**
+ * Get model recommendations based on use case
+ * POST /api/v1/agent/tools/execute with recommend_models tool
+ */
+export async function recommendModels(input: { use_case: string }): Promise<RecommendModelsResponse> {
+  const response = await agentRecommendModels(input.use_case);
+  return {
+    recommendations: (response.result?.recommendations as ModelRecommendation[]) || [],
+  };
 }
 
 /**

@@ -32,6 +32,7 @@ Select.displayName = "Select"
 
 const SelectTrigger = Select
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const SelectValue = ({ placeholder }: { placeholder?: string }) => null
 
 const SelectContent = ({ children }: { children?: React.ReactNode }) => <>{children}</>
@@ -39,7 +40,7 @@ const SelectContent = ({ children }: { children?: React.ReactNode }) => <>{child
 const SelectItem = React.forwardRef<
   HTMLOptionElement,
   React.OptionHTMLAttributes<HTMLOptionElement> & { value: string; children: React.ReactNode }
->(({ className, children, ...props }, ref) => (
+>(({ children, ...props }, ref) => (
   <option ref={ref} {...props}>
     {children}
   </option>

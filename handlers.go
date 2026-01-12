@@ -191,9 +191,17 @@ func (s *Server) handleListPipelines(w http.ResponseWriter, r *http.Request) {
 // handleGetPipeline handles requests to get a specific pipeline
 func (s *Server) handleGetPipeline(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	pipelineName := vars["name"]
+	pipelineID := vars["id"]
 
-	// Try to find pipeline in config
+	// Try to find pipeline in the dynamic store first (for API-created pipelines)
+	store := utils.GetPipelineStore()
+	pipeline, err := store.GetPipeline(pipelineID)
+	if err == nil && pipeline != nil {
+		writeJSONResponse(w, http.StatusOK, pipeline)
+		return
+	}
+
+	// Fall back to config file for static pipelines (matched by name)
 	configPath := "config.yaml"
 	pipelines, err := utils.ParseAllPipelines(configPath)
 	if err != nil {
@@ -201,9 +209,9 @@ func (s *Server) handleGetPipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, pipeline := range pipelines {
-		if pipeline.Name == pipelineName {
-			writeJSONResponse(w, http.StatusOK, pipeline)
+	for _, p := range pipelines {
+		if p.Name == pipelineID {
+			writeJSONResponse(w, http.StatusOK, p)
 			return
 		}
 	}

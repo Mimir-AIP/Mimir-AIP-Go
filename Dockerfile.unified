@@ -82,7 +82,8 @@ RUN apk add --no-cache \
     tzdata \
     tini \
     libgcc \
-    musl
+    musl \
+    wget
 
 # Set working directory
 WORKDIR /app

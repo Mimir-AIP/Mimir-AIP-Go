@@ -202,14 +202,14 @@ func (p *PersistenceBackend) initSchema() error {
 	-- Digital twins table
 	CREATE TABLE IF NOT EXISTS digital_twins (
 		id TEXT PRIMARY KEY,
-		ontology_id TEXT NOT NULL,
+		ontology_id TEXT,
 		name TEXT NOT NULL,
 		description TEXT,
-		model_type TEXT NOT NULL,
-		base_state TEXT NOT NULL,
+		model_type TEXT NOT NULL DEFAULT 'default_model',
+		base_state TEXT NOT NULL DEFAULT '{}',
+		status TEXT NOT NULL DEFAULT 'active',
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
 	-- Simulation scenarios table
@@ -2110,4 +2110,154 @@ type SchedulerJobRecord struct {
 	LastRun         *time.Time `json:"last_run,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+// ==================== API KEYS ====================
+
+// StoredAPIKey represents an API key in the database
+type StoredAPIKey struct {
+	ID          string     `json:"id"`
+	Provider    string     `json:"provider"`
+	Name        string     `json:"name"`
+	KeyValue    string     `json:"-"` // Never returned - encrypted
+	EndpointURL string     `json:"endpoint_url,omitempty"`
+	IsActive    bool       `json:"is_active"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+	Metadata    string     `json:"metadata,omitempty"`
+}
+
+// CreateAPIKey inserts a new API key into the database
+func (p *PersistenceBackend) CreateAPIKey(ctx context.Context, key *StoredAPIKey) error {
+	query := `
+		INSERT INTO api_keys (id, provider, name, key_value, endpoint_url, is_active, created_at, updated_at, metadata)
+		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+	`
+	_, err := p.db.ExecContext(ctx, query,
+		key.ID, key.Provider, key.Name, key.KeyValue, key.EndpointURL, key.IsActive, key.Metadata,
+	)
+	return err
+}
+
+// GetAPIKey retrieves an API key by ID
+func (p *PersistenceBackend) GetAPIKey(ctx context.Context, id string) (*StoredAPIKey, error) {
+	query := `
+		SELECT id, provider, name, key_value, endpoint_url, is_active, created_at, updated_at, last_used_at, metadata
+		FROM api_keys
+		WHERE id = ?
+	`
+	key := &StoredAPIKey{}
+	var lastUsedAt sql.NullTime
+	var metadata sql.NullString
+	err := p.db.QueryRowContext(ctx, query, id).Scan(
+		&key.ID, &key.Provider, &key.Name, &key.KeyValue, &key.EndpointURL,
+		&key.IsActive, &key.CreatedAt, &key.UpdatedAt, &lastUsedAt, &metadata,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("API key not found: %s", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lastUsedAt.Valid {
+		key.LastUsedAt = &lastUsedAt.Time
+	}
+	if metadata.Valid {
+		key.Metadata = metadata.String
+	}
+	return key, nil
+}
+
+// ListAPIKeys returns all API keys
+func (p *PersistenceBackend) ListAPIKeys(ctx context.Context) ([]*StoredAPIKey, error) {
+	query := `
+		SELECT id, provider, name, key_value, endpoint_url, is_active, created_at, updated_at, last_used_at, metadata
+		FROM api_keys
+		ORDER BY created_at DESC
+	`
+	rows, err := p.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []*StoredAPIKey
+	for rows.Next() {
+		key := &StoredAPIKey{}
+		var lastUsedAt sql.NullTime
+		var metadata sql.NullString
+		if err := rows.Scan(
+			&key.ID, &key.Provider, &key.Name, &key.KeyValue, &key.EndpointURL,
+			&key.IsActive, &key.CreatedAt, &key.UpdatedAt, &lastUsedAt, &metadata,
+		); err != nil {
+			return nil, err
+		}
+		if lastUsedAt.Valid {
+			key.LastUsedAt = &lastUsedAt.Time
+		}
+		if metadata.Valid {
+			key.Metadata = metadata.String
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+// UpdateAPIKey updates an API key's active status
+func (p *PersistenceBackend) UpdateAPIKey(ctx context.Context, id string, isActive bool) error {
+	query := `UPDATE api_keys SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+	_, err := p.db.ExecContext(ctx, query, isActive, id)
+	return err
+}
+
+// UpdateAPIKeyLastUsed updates the last_used_at timestamp
+func (p *PersistenceBackend) UpdateAPIKeyLastUsed(ctx context.Context, id string) error {
+	query := `UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?`
+	_, err := p.db.ExecContext(ctx, query, id)
+	return err
+}
+
+// DeleteAPIKey deletes an API key
+func (p *PersistenceBackend) DeleteAPIKey(ctx context.Context, id string) error {
+	query := `DELETE FROM api_keys WHERE id = ?`
+	_, err := p.db.ExecContext(ctx, query, id)
+	return err
+}
+
+// ==================== DATA MANAGEMENT ====================
+
+// ClearAllPipelines deletes all pipeline files and data
+func (p *PersistenceBackend) ClearAllPipelines(ctx context.Context) error {
+	query := `DELETE FROM pipelines`
+	_, err := p.db.ExecContext(ctx, query)
+	return err
+}
+
+// ClearAllJobs deletes all scheduler jobs
+func (p *PersistenceBackend) ClearAllJobs(ctx context.Context) error {
+	query := `DELETE FROM scheduler_jobs`
+	_, err := p.db.ExecContext(ctx, query)
+	return err
+}
+
+// ClearAllDigitalTwins deletes all digital twins
+func (p *PersistenceBackend) ClearAllDigitalTwins(ctx context.Context) error {
+	query := `DELETE FROM digital_twins`
+	_, err := p.db.ExecContext(ctx, query)
+	return err
+}
+
+// ClearAllOntologies deletes all ontologies
+func (p *PersistenceBackend) ClearAllOntologies(ctx context.Context) error {
+	query := `DELETE FROM ontologies`
+	_, err := p.db.ExecContext(ctx, query)
+	return err
+}
+
+// ClearAllJobsExecutionHistory deletes all job execution history
+func (p *PersistenceBackend) ClearAllJobsExecutionHistory(ctx context.Context) error {
+	query := `DELETE FROM job_executions`
+	_, err := p.db.ExecContext(ctx, query)
+	return err
 }

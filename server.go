@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -37,6 +39,7 @@ type Server struct {
 	persistence *storage.PersistenceBackend
 	tdb2Backend *knowledgegraph.TDB2Backend
 	llmClient   AI.LLMClient
+	llmClients  map[AI.LLMProvider]AI.LLMClient // Map of all available LLM clients by provider
 }
 
 // PipelineExecutionRequest represents a request to execute a pipeline
@@ -90,89 +93,38 @@ func NewServer() *Server {
 	}
 	tdb2Backend := knowledgegraph.NewTDB2Backend(fusekiURL, dataset)
 
-	// Initialize LLM client with plugin-based architecture
-	// Supports: OpenAI, Anthropic, Ollama (local), Azure OpenAI, Google Gemini
-	// Falls back to intelligent mock for testing/demo without API keys
-	var llmClient AI.LLMClient
+	// Initialize LLM client map for configurable plugins
+	llmClients := make(map[AI.LLMProvider]AI.LLMClient)
 
-	// Check configuration for LLM provider settings
-	llmProvider := os.Getenv("LLM_PROVIDER") // openai, anthropic, ollama, azure, google, mock
-	if llmProvider == "" {
-		llmProvider = "mock" // Default to mock for testing/demo
+	// Mock LLM client is always available for testing/demo
+	mockClient := AI.NewIntelligentMockLLMClient()
+	llmClients[AI.ProviderMock] = mockClient
+
+	// Register all AI providers as plugins (they use placeholder clients until configured)
+	providers := []AI.LLMProvider{
+		AI.ProviderOpenAI,
+		AI.ProviderAnthropic,
+		AI.ProviderOllama,
+		AI.ProviderLocal,
+		AI.ProviderAzure,
+		AI.ProviderGoogle,
+		AI.ProviderOpenRouter,
+		AI.ProviderZAi,
 	}
 
-	switch llmProvider {
-	case "openai":
-		apiKey := os.Getenv("OPENAI_API_KEY")
-		if apiKey == "" {
-			log.Println("LLM_PROVIDER set to 'openai' but OPENAI_API_KEY not set")
-			log.Println("Falling back to intelligent mock LLM")
-			llmClient = AI.NewIntelligentMockLLMClient()
-		} else {
-			llmConfig := AI.LLMClientConfig{
-				Provider: AI.ProviderOpenAI,
-				APIKey:   apiKey,
-				Model:    getEnvOrDefault("LLM_MODEL", "gpt-4o-mini"),
-				BaseURL:  getEnvOrDefault("LLM_BASE_URL", "https://api.openai.com/v1"),
-			}
-			client, clientErr := AI.NewLLMClient(llmConfig)
-			if clientErr != nil {
-				log.Printf("Failed to initialize OpenAI client: %v", clientErr)
-				log.Println("Falling back to intelligent mock LLM")
-				llmClient = AI.NewIntelligentMockLLMClient()
-			} else {
-				llmClient = client
-				log.Printf("✅ LLM client initialized: OpenAI (%s)", llmConfig.Model)
-			}
-		}
-	case "ollama":
-		// Local LLM via Ollama - privacy-preserving, on-premise
-		baseURL := getEnvOrDefault("OLLAMA_BASE_URL", "http://localhost:11434")
-		model := getEnvOrDefault("LLM_MODEL", "llama3.2")
-		llmConfig := AI.LLMClientConfig{
-			Provider: AI.ProviderOllama,
-			BaseURL:  baseURL,
-			Model:    model,
-		}
-		client, clientErr := AI.NewLLMClient(llmConfig)
-		if clientErr != nil {
-			log.Printf("Failed to initialize Ollama client: %v", clientErr)
-			log.Println("Falling back to intelligent mock LLM")
-			llmClient = AI.NewIntelligentMockLLMClient()
-		} else {
-			llmClient = client
-			log.Printf("✅ LLM client initialized: Ollama (%s) - Local/Privacy-Preserving", model)
-		}
-	case "anthropic":
-		apiKey := os.Getenv("ANTHROPIC_API_KEY")
-		if apiKey == "" {
-			log.Println("LLM_PROVIDER set to 'anthropic' but ANTHROPIC_API_KEY not set")
-			log.Println("Falling back to intelligent mock LLM")
-			llmClient = AI.NewIntelligentMockLLMClient()
-		} else {
-			llmConfig := AI.LLMClientConfig{
-				Provider: AI.ProviderAnthropic,
-				APIKey:   apiKey,
-				Model:    getEnvOrDefault("LLM_MODEL", "claude-3-5-sonnet-20241022"),
-			}
-			client, clientErr := AI.NewLLMClient(llmConfig)
-			if clientErr != nil {
-				log.Printf("Failed to initialize Anthropic client: %v", clientErr)
-				log.Println("Falling back to intelligent mock LLM")
-				llmClient = AI.NewIntelligentMockLLMClient()
-			} else {
-				llmClient = client
-				log.Printf("✅ LLM client initialized: Anthropic (%s)", llmConfig.Model)
-			}
-		}
-	case "mock":
-		llmClient = AI.NewIntelligentMockLLMClient()
-		log.Println("✅ LLM client initialized: Intelligent Mock (Testing/Demo mode)")
-		log.Println("   💡 Set LLM_PROVIDER env var to use real providers: openai, anthropic, ollama")
-	default:
-		log.Printf("Unknown LLM_PROVIDER: %s, using intelligent mock", llmProvider)
-		llmClient = AI.NewIntelligentMockLLMClient()
+	for _, provider := range providers {
+		llmClients[provider] = AI.NewUnconfiguredClient(provider)
 	}
+
+	// Select primary client (default to mock for demo)
+	primaryProvider := AI.ProviderMock
+	if os.Getenv("LLM_PROVIDER") != "" {
+		if _, ok := llmClients[AI.LLMProvider(os.Getenv("LLM_PROVIDER"))]; ok {
+			primaryProvider = AI.LLMProvider(os.Getenv("LLM_PROVIDER"))
+		}
+	}
+	llmClient := llmClients[primaryProvider]
+	log.Printf("✅ LLM system initialized with %d providers", len(llmClients))
 
 	s := &Server{
 		router:      mux.NewRouter(),
@@ -184,6 +136,28 @@ func NewServer() *Server {
 		persistence: persistence,
 		tdb2Backend: tdb2Backend,
 		llmClient:   llmClient,
+		llmClients:  llmClients,
+	}
+
+	// Set the LLM plugin config getter so LLM clients can fetch their configuration
+	AI.LLMPluginConfigGetter = func(pluginName string) (map[string]interface{}, error) {
+		if s.persistence == nil {
+			return nil, fmt.Errorf("no persistence backend")
+		}
+		db := s.persistence.GetDB()
+		var configJSON []byte
+		err := db.QueryRow("SELECT config FROM plugin_config WHERE plugin_name = ?", pluginName).Scan(&configJSON)
+		if err != nil {
+			return nil, err
+		}
+		if configJSON == nil {
+			return nil, fmt.Errorf("no config found")
+		}
+		var config map[string]interface{}
+		if err := json.Unmarshal(configJSON, &config); err != nil {
+			return nil, err
+		}
+		return config, nil
 	}
 
 	s.registerDefaultPlugins()
@@ -296,6 +270,22 @@ func (s *Server) registerDefaultPlugins() {
 		log.Println("Registered JSON output plugin")
 	}
 
+	// Register Excel output plugin
+	excelOutputPlugin := Output.NewExcelPlugin()
+	if err := s.registry.RegisterPlugin(excelOutputPlugin); err != nil {
+		log.Printf("Failed to register Excel output plugin: %v", err)
+	} else {
+		log.Println("Registered Excel output plugin")
+	}
+
+	// Register PDF output plugin
+	pdfOutputPlugin := Output.NewPDFPlugin()
+	if err := s.registry.RegisterPlugin(pdfOutputPlugin); err != nil {
+		log.Printf("Failed to register PDF output plugin: %v", err)
+	} else {
+		log.Println("Registered PDF output plugin")
+	}
+
 	// Register ontology plugins if persistence is available
 	if s.persistence != nil && s.tdb2Backend != nil {
 		ontologyDir := os.Getenv("ONTOLOGY_DIR")
@@ -333,26 +323,26 @@ func (s *Server) registerDefaultPlugins() {
 		}
 	}
 
-	// Register AI LLM plugins
-	log.Println("Registering AI LLM plugins...")
-
-	// Register Mock LLM for cost-free testing
-	mockLLMClient := AI.NewIntelligentMockLLMClient()
-	mockLLMPlugin := AI.NewLLMPlugin(mockLLMClient, AI.ProviderMock)
-	if err := s.registry.RegisterPlugin(mockLLMPlugin); err != nil {
-		log.Printf("Failed to register Mock LLM plugin: %v", err)
-	} else {
-		log.Println("Registered Mock LLM plugin")
+	// Initialize plugin configuration table
+	if err := s.initializePluginConfig(); err != nil {
+		log.Printf("Failed to initialize plugin config: %v", err)
 	}
 
-	// Register OpenAI plugin if configured
-	if s.llmClient != nil && s.llmClient.GetProvider() == AI.ProviderOpenAI {
-		openAIPlugin := AI.NewLLMPlugin(s.llmClient, AI.ProviderOpenAI)
-		if err := s.registry.RegisterPlugin(openAIPlugin); err != nil {
-			log.Printf("Failed to register OpenAI LLM plugin: %v", err)
+	// Register AI LLM plugins - register all available providers
+	log.Println("Registering AI LLM plugins...")
+
+	for provider, client := range s.llmClients {
+		llmPlugin := AI.NewLLMPlugin(client, provider)
+		if err := s.registry.RegisterPlugin(llmPlugin); err != nil {
+			log.Printf("Failed to register %s LLM plugin: %v", provider, err)
 		} else {
-			log.Println("Registered OpenAI LLM plugin")
+			log.Printf("Registered %s LLM plugin", provider)
 		}
+	}
+
+	// Initialize plugin metadata table and seed from registry
+	if err := s.initializePluginMetadata(); err != nil {
+		log.Printf("Failed to initialize plugin metadata: %v", err)
 	}
 }
 

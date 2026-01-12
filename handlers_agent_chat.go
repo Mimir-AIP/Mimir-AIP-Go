@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -527,100 +528,83 @@ func (s *Server) getConversationHistory(ctx context.Context, conversationID stri
 
 // callLLMWithTools calls the LLM and executes any tool calls
 func (s *Server) callLLMWithTools(ctx context.Context, provider, model string, messages []map[string]string) (string, []ToolCallInfo, error) {
-	// If using mock provider, use intelligent mock client for E2E testing
+	// Get the appropriate LLM client for the provider
+	var llmClient AI.LLMClient
+
 	if provider == "mock" {
 		// Create mock client with specified model (supports mock-gpt-4, mock-claude-3, etc.)
+		llmClient = AI.NewIntelligentMockLLMClientWithModel(model)
+	} else if client, ok := s.llmClients[AI.LLMProvider(provider)]; ok {
+		llmClient = client
+	} else {
+		// Provider not available, fall back to mock
+		log.Printf("LLM provider '%s' not available, falling back to mock", provider)
+		llmClient = AI.NewIntelligentMockLLMClientWithModel(model)
+	}
+
+	// Convert messages to LLMMessage format
+	llmMessages := make([]AI.LLMMessage, len(messages))
+	for i, msg := range messages {
+		llmMessages[i] = AI.LLMMessage{
+			Role:    msg["role"],
+			Content: msg["content"],
+		}
+	}
+
+	// Build the LLM request
+	request := AI.LLMRequest{
+		Messages: llmMessages,
+		Model:    model,
+	}
+
+	// Call the LLM
+	response, err := llmClient.Complete(ctx, request)
+	if err != nil {
+		// If the provider's LLM fails, fall back to mock for demo purposes
+		log.Printf("LLM call failed for provider '%s': %v, falling back to mock", provider, err)
 		mockClient := AI.NewIntelligentMockLLMClientWithModel(model)
-
-		// Convert messages to LLMMessage format
-		llmMessages := make([]AI.LLMMessage, len(messages))
-		for i, msg := range messages {
-			llmMessages[i] = AI.LLMMessage{
-				Role:    msg["role"],
-				Content: msg["content"],
-			}
-		}
-
-		// Call mock LLM
-		response, err := mockClient.Complete(ctx, AI.LLMRequest{
-			Messages: llmMessages,
-		})
+		response, err = mockClient.Complete(ctx, request)
 		if err != nil {
-			return "", nil, err
+			return "", nil, fmt.Errorf("LLM call failed: %w", err)
 		}
-
-		// Execute tool calls via MCP server and collect results
-		toolCalls := []ToolCallInfo{}
-		for _, tc := range response.ToolCalls {
-			startTime := time.Now()
-			inputJSON, _ := json.Marshal(tc.Arguments)
-
-			// Execute tool via MCP server
-			output, err := s.executeToolViaMCP(ctx, tc.Name, tc.Arguments)
-			duration := time.Since(startTime).Milliseconds()
-
-			if err != nil {
-				// Tool execution failed, but don't fail the whole request
-				outputJSON, _ := json.Marshal(map[string]any{
-					"status": "error",
-					"error":  err.Error(),
-				})
-				toolCalls = append(toolCalls, ToolCallInfo{
-					ID:       tc.ID,
-					ToolName: tc.Name,
-					Input:    json.RawMessage(inputJSON),
-					Output:   json.RawMessage(outputJSON),
-					Duration: duration,
-				})
-			} else {
-				outputJSON, _ := json.Marshal(output)
-				toolCalls = append(toolCalls, ToolCallInfo{
-					ID:       tc.ID,
-					ToolName: tc.Name,
-					Input:    json.RawMessage(inputJSON),
-					Output:   json.RawMessage(outputJSON),
-					Duration: duration,
-				})
-			}
-		}
-
-		// Return mock response with actual tool results
-		return response.Content, toolCalls, nil
 	}
 
-	// TODO: Integrate with actual LLM provider (OpenAI, Anthropic, etc.)
-	// For now, return a mock response for non-mock providers
-
-	// Check if user is asking about digital twins
-	lastMessage := messages[len(messages)-1]["content"]
-
+	// Execute tool calls via MCP server and collect results
 	toolCalls := []ToolCallInfo{}
+	for _, tc := range response.ToolCalls {
+		startTime := time.Now()
+		inputJSON, _ := json.Marshal(tc.Arguments)
 
-	// Simple pattern matching for demo
-	if contains(lastMessage, "create scenario") || contains(lastMessage, "new scenario") {
-		toolCalls = append(toolCalls, ToolCallInfo{
-			ID:       uuid.New().String(),
-			ToolName: "twin.create_scenario",
-			Input:    json.RawMessage(`{"twin_id":"example","name":"AI Generated Scenario"}`),
-			Output:   json.RawMessage(`{"scenario_id":"scen-123","message":"Scenario created"}`),
-			Duration: 250,
-		})
-		return "I've created a new scenario for you. The scenario simulates a supply disruption event.", toolCalls, nil
+		// Execute tool via MCP server
+		output, err := s.executeToolViaMCP(ctx, tc.Name, tc.Arguments)
+		duration := time.Since(startTime).Milliseconds()
+
+		if err != nil {
+			// Tool execution failed, but don't fail the whole request
+			outputJSON, _ := json.Marshal(map[string]any{
+				"status": "error",
+				"error":  err.Error(),
+			})
+			toolCalls = append(toolCalls, ToolCallInfo{
+				ID:       tc.ID,
+				ToolName: tc.Name,
+				Input:    json.RawMessage(inputJSON),
+				Output:   json.RawMessage(outputJSON),
+				Duration: duration,
+			})
+		} else {
+			outputJSON, _ := json.Marshal(output)
+			toolCalls = append(toolCalls, ToolCallInfo{
+				ID:       tc.ID,
+				ToolName: tc.Name,
+				Input:    json.RawMessage(inputJSON),
+				Output:   json.RawMessage(outputJSON),
+				Duration: duration,
+			})
+		}
 	}
 
-	if contains(lastMessage, "run simulation") || contains(lastMessage, "execute") {
-		toolCalls = append(toolCalls, ToolCallInfo{
-			ID:       uuid.New().String(),
-			ToolName: "twin.run_simulation",
-			Input:    json.RawMessage(`{"twin_id":"example","scenario_id":"scen-123"}`),
-			Output:   json.RawMessage(`{"run_id":"run-456","status":"completed"}`),
-			Duration: 1200,
-		})
-		return "Simulation completed! The results show moderate impact with 3 bottleneck entities identified. Would you like me to analyze the detailed impact?", toolCalls, nil
-	}
-
-	// Default response
-	return "I'm your Digital Twin assistant. I can help you create scenarios, run simulations, and analyze results. What would you like to do?", toolCalls, nil
+	return response.Content, toolCalls, nil
 }
 
 // executeToolViaMCP executes a tool by calling the MCP server

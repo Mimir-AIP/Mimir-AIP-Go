@@ -12,17 +12,10 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// APIKey represents an API key in the system
-type APIKey struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Key         string    `json:"key,omitempty"` // Only returned on creation
-	KeyHash     string    `json:"-"`             // Never returned
-	Description string    `json:"description,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	LastUsed    time.Time `json:"last_used,omitempty"`
-	ExpiresAt   time.Time `json:"expires_at,omitempty"`
-	IsActive    bool      `json:"is_active"`
+type APIKeyResponse struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 // CreateAPIKeyRequest represents request to create an API key
@@ -291,16 +284,6 @@ func (s *Server) handleTestAPIKey(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// writeNotImplementedResponse writes a 501 Not Implemented response
-func writeNotImplementedResponse(w http.ResponseWriter, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"error":  message,
-		"status": "not_implemented",
-	})
-}
-
 // handleCreateAPIKeyFromSettings creates a new API key for LLM provider credentials
 func (s *Server) handleCreateAPIKeyFromSettings(w http.ResponseWriter, r *http.Request) {
 	if s.persistence == nil {
@@ -378,4 +361,15 @@ func (s *Server) handleCreateAPIKeyFromSettings(w http.ResponseWriter, r *http.R
 		"created_at":  now.Format(time.RFC3339),
 		"message":     "API key created successfully",
 	})
+}
+
+// ClearDataRequest represents the request to clear data
+type ClearDataRequest struct {
+	Target string `json:"target"`
+}
+
+// handleClearData handles data clearing requests (disabled for safety)
+func (s *Server) handleClearData(w http.ResponseWriter, r *http.Request) {
+	utils.GetLogger().Info("Data clear requested but disabled for safety", utils.Component("settings"))
+	writeErrorResponse(w, http.StatusNotImplemented, "Data management is disabled for safety")
 }

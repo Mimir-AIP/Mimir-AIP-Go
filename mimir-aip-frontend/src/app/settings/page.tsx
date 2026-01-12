@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import APIKeysTab from "@/components/settings/APIKeysTab";
 import PluginsTab from "@/components/settings/PluginsTab";
+import AIProvidersTab from "@/components/settings/AIProvidersTab";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("api-keys");
+  const [activeTab, setActiveTab] = useState("providers");
 
   return (
     <div className="space-y-6">
@@ -15,20 +14,20 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-3xl font-bold text-orange">Settings</h1>
         <p className="text-gray-400 mt-2">
-          Manage API keys, plugins, and system configuration
+          Manage AI providers, plugins, and system configuration
         </p>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-2 bg-blue">
-          <TabsTrigger 
-            value="api-keys"
+          <TabsTrigger
+            value="providers"
             className="data-[state=active]:bg-orange data-[state=active]:text-navy"
           >
-            API Keys
+            AI Providers
           </TabsTrigger>
-          <TabsTrigger 
+          <TabsTrigger
             value="plugins"
             className="data-[state=active]:bg-orange data-[state=active]:text-navy"
           >
@@ -36,8 +35,8 @@ export default function SettingsPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="api-keys" className="mt-6">
-          <APIKeysTab />
+        <TabsContent value="providers" className="mt-6">
+          <AIProvidersTab />
         </TabsContent>
 
         <TabsContent value="plugins" className="mt-6">

@@ -334,13 +334,19 @@ func (re *RuleEngine) SaveAlert(ctx context.Context, alert *Alert) error {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := re.Storage.GetDB().ExecContext(ctx, query,
+	result, err := re.Storage.GetDB().ExecContext(ctx, query,
 		alert.OntologyID, alert.EntityID, alert.MetricName, alert.AlertType,
 		alert.Severity, alert.Message, alert.Value, alert.Threshold,
 		alert.Status, alert.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save alert: %w", err)
+	}
+
+	// Get the ID of the newly created alert
+	alertID, err := result.LastInsertId()
+	if err == nil {
+		alert.ID = fmt.Sprintf("%d", alertID)
 	}
 
 	return nil

@@ -1,10 +1,13 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
@@ -329,14 +332,59 @@ func (e *AlertActionExecutor) callWebhook(config *AlertActionConfig, eventPayloa
 		payload[k] = v
 	}
 
-	// TODO: Implement actual HTTP webhook call
-	// For now, just log it
-	e.logger.Info("Webhook payload prepared", String("url", config.WebhookURL))
+	// Serialize payload to JSON
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal webhook payload: %w", err)
+	}
 
-	return map[string]any{
-		"webhook_url": config.WebhookURL,
-		"called_at":   time.Now().Format(time.RFC3339),
-	}, nil
+	// Create HTTP request
+	req, err := http.NewRequest("POST", config.WebhookURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create webhook request: %w", err)
+	}
+
+	// Set default headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Mimir-AIP-AlertAction/1.0")
+
+	// Add custom headers from config
+	for key, value := range config.Headers {
+		if strVal, ok := value.(string); ok {
+			req.Header.Set(key, strVal)
+		}
+	}
+
+	// Execute request with timeout
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		e.logger.Error("Webhook call failed", err, String("url", config.WebhookURL))
+		return nil, fmt.Errorf("webhook call failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body (limit to 1MB)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	e.logger.Info("Webhook called successfully",
+		String("url", config.WebhookURL),
+		Int("status_code", resp.StatusCode))
+
+	result := map[string]any{
+		"webhook_url":   config.WebhookURL,
+		"status_code":   resp.StatusCode,
+		"called_at":     time.Now().Format(time.RFC3339),
+		"response_size": len(respBody),
+	}
+
+	// Check for non-2xx status codes
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		result["response_body"] = string(respBody)
+		return result, fmt.Errorf("webhook returned non-success status: %d", resp.StatusCode)
+	}
+
+	return result, nil
 }
 
 // recordExecution records an alert action execution in the database

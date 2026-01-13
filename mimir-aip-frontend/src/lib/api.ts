@@ -4,21 +4,63 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
-// Generic fetch wrapper with error handling
+// Get stored auth token
+function getAuthToken(): string | null {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('auth_token') || 
+           document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1] || null;
+  }
+  return null;
+}
+
+// Set auth token
+function setAuthToken(token: string) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('auth_token', token);
+    document.cookie = `auth_token=${token}; path=/; max-age=${24 * 60 * 60}; SameSite=Strict`;
+  }
+}
+
+// Clear auth token
+function clearAuthToken() {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('auth_token');
+    document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  }
+}
+
+// Generic fetch wrapper with error handling and auth
 async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
+  
+  // Add auth header if token exists
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string> || {}),
+  };
+  
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   
   try {
     const response = await fetch(url, {
       ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
+      
+      // Handle 401 - clear token and redirect to login
+      if (response.status === 401 && typeof window !== 'undefined') {
+        clearAuthToken();
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }
+      
       throw new Error(`API error (${response.status}): ${errorText || response.statusText}`);
     }
 
@@ -35,6 +77,72 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
     }
     throw new Error("Unknown API error");
   }
+}
+
+// ==================== AUTHENTICATION ====================
+
+// User interface
+export interface AuthUser {
+  id: string;
+  username: string;
+  roles: string[];
+  active: boolean;
+}
+
+// Login response interface
+export interface LoginResponse {
+  token: string;
+  user: string;
+  roles: string[];
+  expires_in: number;
+}
+
+// Auth check response interface
+export interface AuthCheckResponse {
+  authenticated: boolean;
+  user?: {
+    username: string;
+    roles: string[];
+  };
+  error?: string;
+}
+
+// Login function
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+// Check authentication status
+export async function checkAuth(): Promise<AuthCheckResponse> {
+  return apiFetch<AuthCheckResponse>('/api/v1/auth/check');
+}
+
+// Get current user info
+export async function getCurrentUser(): Promise<AuthUser> {
+  return apiFetch<AuthUser>('/api/v1/auth/me');
+}
+
+// Logout function
+export async function logout(): Promise<{ success: boolean; message: string }> {
+  const response = await apiFetch<{ success: boolean; message: string }>('/api/v1/auth/logout', {
+    method: 'POST',
+  });
+  
+  // Clear local token
+  clearAuthToken();
+  
+  return response;
+}
+
+// Refresh token function
+export async function refreshToken(token: string): Promise<{ token: string; expires_in: number }> {
+  return apiFetch<{ token: string; expires_in: number }>('/api/v1/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
 }
 
 // ==================== PIPELINES ====================
@@ -588,27 +696,9 @@ export interface LoginResponse {
   expires_in: number;
 }
 
-/**
- * Login with username and password
- * POST /api/v1/auth/login
- */
-export async function login(username: string, password: string): Promise<LoginResponse> {
-  return apiFetch("/api/v1/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ username, password }),
-  });
-}
 
-/**
- * Refresh authentication token
- * POST /api/v1/auth/refresh
- */
-export async function refreshToken(token: string): Promise<{ token: string; expires_in: number }> {
-  return apiFetch("/api/v1/auth/refresh", {
-    method: "POST",
-    body: JSON.stringify({ token }),
-  });
-}
+
+
 
 /**
  * Get current user info

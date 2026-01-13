@@ -40,6 +40,7 @@ type Server struct {
 	tdb2Backend *knowledgegraph.TDB2Backend
 	llmClient   AI.LLMClient
 	llmClients  map[AI.LLMProvider]AI.LLMClient // Map of all available LLM clients by provider
+	jobQueue    *utils.JobQueue                 // Job queue for distributed worker architecture
 }
 
 // PipelineExecutionRequest represents a request to execute a pipeline
@@ -182,6 +183,21 @@ func NewServer() *Server {
 	// Initialize pipeline store
 	if err := utils.InitializeGlobalPipelineStore("./pipelines"); err != nil {
 		log.Printf("Failed to initialize pipeline store: %v", err)
+	}
+
+	// Initialize job queue for distributed architecture (optional)
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL != "" {
+		jobQueue, err := utils.NewJobQueue(redisURL)
+		if err != nil {
+			log.Printf("⚠️  Failed to initialize job queue: %v", err)
+			log.Printf("Distributed worker architecture will not be available")
+		} else {
+			s.jobQueue = jobQueue
+			log.Printf("✅ Job queue initialized - distributed worker architecture enabled")
+		}
+	} else {
+		log.Printf("ℹ️  REDIS_URL not set - using direct execution mode")
 	}
 
 	// Initialize pipeline auto-extraction (must be after plugin registration and pipeline store)

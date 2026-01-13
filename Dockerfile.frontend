@@ -1,0 +1,70 @@
+# =====================================================
+# Frontend Dockerfile for Mimir AIP
+# Next.js standalone application
+# =====================================================
+
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY mimir-aip-frontend/package*.json ./
+COPY mimir-aip-frontend/bun.lock* ./
+
+# Install Bun
+RUN npm install -g bun
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy source code
+COPY mimir-aip-frontend/ ./
+
+# Set production environment
+ENV NODE_ENV=production
+
+# Build Next.js application in standalone mode
+RUN bun run build
+
+# =====================================================
+# Runtime Image
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    curl \
+    ca-certificates \
+    tzdata
+
+# Create non-root user
+RUN addgroup -g 65532 -S nonroot && \
+    adduser -u 65532 -S nonroot -G nonroot
+
+# Copy built application from builder
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./package.json
+
+# Set ownership
+RUN chown -R nonroot:nonroot /app
+
+# Switch to non-root user
+USER nonroot:nonroot
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
+# Environment variables
+ENV PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    NODE_ENV=production
+
+# Start Next.js server
+CMD ["node", "server.js"]

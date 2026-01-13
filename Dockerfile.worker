@@ -1,0 +1,78 @@
+# =====================================================
+# Worker Dockerfile for Mimir AIP
+# Scalable worker for executing pipelines and digital twins
+# =====================================================
+
+FROM golang:1.23-alpine AS builder
+
+# Install build dependencies including gcc for CGO
+RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
+
+WORKDIR /app
+
+# Copy go mod files and download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the worker application with optimization flags and CGO enabled for SQLite
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -ldflags="-s -w -X main.mimirVersion=$(git describe --tags --always --dirty 2>/dev/null || echo 'dev')" \
+    -o mimir-aip-worker ./cmd/worker
+
+# =====================================================
+# Runtime Image
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    tini \
+    libgcc \
+    musl
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 65532 -S nonroot && \
+    adduser -u 65532 -S nonroot -G nonroot
+
+# Copy worker binary and configuration
+COPY --from=builder /app/mimir-aip-worker /app/mimir-aip-worker
+COPY --from=builder /app/config.yaml /app/config.yaml
+
+# Create necessary directories with proper permissions
+RUN mkdir -p \
+    /app/data \
+    /app/logs \
+    /app/plugins \
+    /app/pipelines && \
+    chown -R nonroot:nonroot /app && \
+    chmod -R 755 /app
+
+# Switch to non-root user
+USER nonroot:nonroot
+
+# Health check - check if worker process is running
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD pgrep -f mimir-aip-worker || exit 1
+
+# Environment variables
+ENV MIMIR_LOG_LEVEL=INFO \
+    MIMIR_DATA_DIR=/app/data \
+    MIMIR_LOG_DIR=/app/logs \
+    MIMIR_PLUGIN_DIR=/app/plugins \
+    REDIS_URL=redis:6379 \
+    WORKER_CONCURRENCY=5
+
+# Use tini as init system
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Start worker
+CMD ["/app/mimir-aip-worker"]

@@ -152,6 +152,14 @@ func (s *Server) handleListAIProviders(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Check if providers are configured and available
+	for i := range providers {
+		provider := AI.LLMProvider(providers[i].Provider)
+		if _, exists := s.llmClients[provider]; exists {
+			providers[i].Available = true
+		}
+	}
+
 	writeJSONResponse(w, http.StatusOK, providers)
 }
 

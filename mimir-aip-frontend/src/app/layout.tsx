@@ -26,11 +26,17 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = usePathname();
+  
+  useEffect(() => {
+    document.title = getPageTitle(pathname);
+  }, [pathname]);
+  
   return (
     <html lang="en">
-      <Head>
-        <title>{getPageTitle(usePathname())}</title>
-      </Head>
+      <head>
+        <title>{getPageTitle(pathname)}</title>
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-navy text-white flex`}
       >

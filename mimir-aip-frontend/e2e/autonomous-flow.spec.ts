@@ -22,7 +22,7 @@ import { test, expect } from '@playwright/test';
  * ZERO MANUAL STEPS after initial pipeline creation!
  */
 
-test.describe('Autonomous Pipeline Flow', () => {
+test.describe.serial('Autonomous Pipeline Flow', () => {
   test.setTimeout(300000); // 5 minutes for full flow
 
   const API_BASE = 'http://localhost:8080/api/v1';

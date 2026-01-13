@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,14 @@ import (
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/google/uuid"
 )
+
+// sanitizeFloat replaces NaN and Inf values with 0 for JSON compatibility
+func sanitizeFloat(v float64) float64 {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0
+	}
+	return v
+}
 
 // AgentToolRequest represents a request to execute an agent tool
 type AgentToolRequest struct {
@@ -274,14 +283,17 @@ func (s *Server) toolExtractOntology(ctx context.Context, input map[string]inter
 	}
 
 	ontologyID := fmt.Sprintf("ont_%s", uuid.New().String()[:8])
+	filePath := fmt.Sprintf("data/ontologies/%s.ttl", ontologyID)
+	tdb2Graph := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+	version := fmt.Sprintf("1.0.%d", time.Now().Unix()) // Unique version per creation
 
 	db := s.persistence.GetDB()
 	now := time.Now()
 
 	_, err := db.Exec(`
-		INSERT INTO ontologies (id, name, description, format, status, created_at, updated_at)
-		VALUES (?, ?, ?, 'turtle', 'extracting', ?, ?)
-	`, ontologyID, ontologyName, description, now, now)
+		INSERT INTO ontologies (id, name, description, format, status, version, file_path, tdb2_graph, created_at, updated_at)
+		VALUES (?, ?, ?, 'turtle', 'extracting', ?, ?, ?, ?, ?)
+	`, ontologyID, ontologyName, description, version, filePath, tdb2Graph, now, now)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ontology record: %w", err)
 	}
@@ -548,16 +560,16 @@ func (s *Server) toolSimulateScenario(ctx context.Context, input map[string]inte
 			"total_steps":         run.Metrics.TotalSteps,
 			"events_processed":    run.Metrics.EventsProcessed,
 			"entities_affected":   run.Metrics.EntitiesAffected,
-			"average_utilization": run.Metrics.AverageUtilization,
-			"peak_utilization":    run.Metrics.PeakUtilization,
-			"system_stability":    run.Metrics.SystemStability,
+			"average_utilization": sanitizeFloat(run.Metrics.AverageUtilization),
+			"peak_utilization":    sanitizeFloat(run.Metrics.PeakUtilization),
+			"system_stability":    sanitizeFloat(run.Metrics.SystemStability),
 		},
 		"message": fmt.Sprintf("Simulation completed: %d steps, %d events processed", run.Metrics.TotalSteps, run.Metrics.EventsProcessed),
 	}
 
 	if analysis != nil {
 		result["overall_impact"] = analysis.OverallImpact
-		result["risk_score"] = analysis.RiskScore
+		result["risk_score"] = sanitizeFloat(analysis.RiskScore)
 		result["insights"] = analysis.Insights
 	}
 

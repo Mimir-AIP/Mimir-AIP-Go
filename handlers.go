@@ -853,6 +853,26 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, response)
 }
 
+// handleAuthCheck returns authentication status (for frontend auth checks)
+func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
+	user, ok := utils.GetUserFromContext(r.Context())
+	if !ok {
+		writeJSONResponse(w, http.StatusUnauthorized, map[string]any{
+			"authenticated": false,
+			"error":         "No valid session",
+		})
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"authenticated": true,
+		"user": map[string]any{
+			"username": user.Username,
+			"roles":    user.Roles,
+		},
+	})
+}
+
 // handleAuthMe returns current user information
 func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 
@@ -870,6 +890,17 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSONResponse(w, http.StatusOK, response)
+}
+
+// handleLogout handles user logout
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// In a JWT-based system, logout is typically client-side (remove token)
+	// But we can add any server-side cleanup here if needed
+
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "Logged out successfully",
+	})
 }
 
 // handleListUsers lists all users (admin only)

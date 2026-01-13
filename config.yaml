@@ -42,7 +42,7 @@ logging:
   compress: true
 
 security:
-  enable_auth: false
+  enable_auth: true
   jwt_secret: "change-me-in-production"
   token_expiry: 24
   allowed_origins:

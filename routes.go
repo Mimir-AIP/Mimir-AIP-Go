@@ -248,7 +248,9 @@ func (s *Server) setupRoutes() {
 	auth := utils.GetAuthManager()
 	v1.HandleFunc("/auth/login", s.handleLogin).Methods("POST")
 	v1.HandleFunc("/auth/refresh", s.handleRefreshToken).Methods("POST")
+	v1.HandleFunc("/auth/check", s.handleAuthCheck).Methods("GET")
 	v1.HandleFunc("/auth/me", s.handleAuthMe).Methods("GET")
+	v1.HandleFunc("/auth/logout", s.handleLogout).Methods("POST")
 	v1.HandleFunc("/auth/users", s.handleListUsers).Methods("GET")
 	v1.HandleFunc("/auth/apikeys", s.handleCreateAPIKey).Methods("POST")
 

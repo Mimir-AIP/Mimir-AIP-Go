@@ -9,6 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import {
+  listWorkflows,
+  createWorkflow,
+  getWorkflow,
+  executeWorkflow,
+  type Workflow as WorkflowType,
+} from "@/lib/api";
+import {
   Workflow,
   Loader2,
   CheckCircle,

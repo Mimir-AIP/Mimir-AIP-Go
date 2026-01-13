@@ -2662,3 +2662,80 @@ export async function autoTrainWithData(request: AutoTrainWithDataRequest): Prom
     body: JSON.stringify(request),
   });
 }
+
+// ==================== WORKFLOWS ====================
+
+export interface Workflow {
+  id: number;
+  name: string;
+  import_id: number;
+  status: string;
+  current_step: string;
+  total_steps: number;
+  completed_steps: number;
+  error_message?: string;
+  created_at: string;
+  updated_at?: string;
+  completed_at?: string;
+  created_by: string;
+}
+
+export interface WorkflowStep {
+  id: number;
+  workflow_id: number;
+  step_name: string;
+  step_order: number;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+}
+
+export interface CreateWorkflowRequest {
+  name: string;
+  import_id: number;
+  created_by?: string;
+}
+
+export interface ExecuteWorkflowResponse {
+  message: string;
+  status: string;
+  workflow_id: number;
+}
+
+/**
+ * List all workflows
+ * GET /api/v1/workflows
+ */
+export async function listWorkflows(): Promise<Workflow[]> {
+  return apiFetch<Workflow[]>("/api/v1/workflows");
+}
+
+/**
+ * Create a new workflow
+ * POST /api/v1/workflows
+ */
+export async function createWorkflow(data: CreateWorkflowRequest): Promise<{ workflow_id: number; message: string }> {
+  return apiFetch("/api/v1/workflows", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Get a specific workflow with steps
+ * GET /api/v1/workflows/:id
+ */
+export async function getWorkflow(id: number): Promise<{ workflow: Workflow; steps: WorkflowStep[] }> {
+  return apiFetch(`/api/v1/workflows/${id}`);
+}
+
+/**
+ * Execute a workflow
+ * POST /api/v1/workflows/:id/execute
+ */
+export async function executeWorkflow(id: number): Promise<ExecuteWorkflowResponse> {
+  return apiFetch(`/api/v1/workflows/${id}/execute`, {
+    method: "POST",
+  });
+}

@@ -15,14 +15,8 @@ import (
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	AI "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/AI"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Data_Processing"
-	DigitalTwin "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/DigitalTwin"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Input"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/ML"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Output"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
+	input "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Input"
+	output "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Output"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/go-redis/redis/v8"
 )
@@ -115,81 +109,31 @@ func NewWorker(redisURL string) (*Worker, error) {
 // registerPlugins registers all available plugins
 func (w *Worker) registerPlugins() error {
 	// Input plugins
-	if err := w.registry.RegisterPlugin(input.NewHTTPPlugin()); err != nil {
-		return err
+	if err := w.registry.RegisterPlugin(input.NewCSVPlugin()); err != nil {
+		w.logger.Warn(fmt.Sprintf("Failed to register CSV plugin: %v", err))
 	}
-	if err := w.registry.RegisterPlugin(input.NewFilePlugin()); err != nil {
-		return err
+	if err := w.registry.RegisterPlugin(input.NewJSONPlugin()); err != nil {
+		w.logger.Warn(fmt.Sprintf("Failed to register JSON input plugin: %v", err))
 	}
-	if err := w.registry.RegisterPlugin(input.NewStaticPlugin()); err != nil {
-		return err
-	}
-
-	// Data processing plugins
-	if err := w.registry.RegisterPlugin(data_processing.NewTransformPlugin()); err != nil {
-		return err
-	}
-	if err := w.registry.RegisterPlugin(data_processing.NewFilterPlugin()); err != nil {
-		return err
+	if err := w.registry.RegisterPlugin(input.NewMarkdownPlugin()); err != nil {
+		w.logger.Warn(fmt.Sprintf("Failed to register Markdown plugin: %v", err))
 	}
 
-	// AI plugins (mock for now)
+	// AI plugins (mock for testing)
 	mockClient := AI.NewIntelligentMockLLMClient()
-	if err := w.registry.RegisterPlugin(AI.NewLLMPlugin(AI.ProviderMock, mockClient)); err != nil {
-		return err
-	}
-
-	// ML plugins
-	if err := w.registry.RegisterPlugin(ml.NewClassifierPlugin()); err != nil {
-		return err
+	if err := w.registry.RegisterPlugin(AI.NewLLMPlugin(mockClient, AI.ProviderMock)); err != nil {
+		w.logger.Warn(fmt.Sprintf("Failed to register Mock LLM plugin: %v", err))
 	}
 
 	// Output plugins
-	if err := w.registry.RegisterPlugin(output.NewConsolePlugin()); err != nil {
-		return err
+	if err := w.registry.RegisterPlugin(output.NewJSONPlugin()); err != nil {
+		w.logger.Warn(fmt.Sprintf("Failed to register JSON output plugin: %v", err))
 	}
-	if err := w.registry.RegisterPlugin(output.NewFileOutputPlugin()); err != nil {
-		return err
-	}
-
-	// Storage plugins
-	storagePlugin := storage.NewStoragePlugin()
-	if err := w.registry.RegisterPlugin(storagePlugin); err != nil {
-		return err
+	if err := w.registry.RegisterPlugin(output.NewPDFPlugin()); err != nil {
+		w.logger.Warn(fmt.Sprintf("Failed to register PDF plugin: %v", err))
 	}
 
-	// Knowledge graph plugins (if available)
-	fusekiURL := os.Getenv("FUSEKI_URL")
-	if fusekiURL != "" {
-		dataset := os.Getenv("FUSEKI_DATASET")
-		if dataset == "" {
-			dataset = "mimir"
-		}
-		tdb2Backend := knowledgegraph.NewTDB2Backend(fusekiURL, dataset)
-		kgPlugin := knowledgegraph.NewKnowledgeGraphPlugin(tdb2Backend)
-		if err := w.registry.RegisterPlugin(kgPlugin); err != nil {
-			return err
-		}
-	}
-
-	// Ontology plugins (if available)
-	if fusekiURL != "" {
-		ontologyDir := os.Getenv("ONTOLOGY_DIR")
-		if ontologyDir == "" {
-			ontologyDir = "/app/data/ontologies"
-		}
-		ontologyPlugin := ontology.NewOntologyPlugin(ontologyDir)
-		if err := w.registry.RegisterPlugin(ontologyPlugin); err != nil {
-			return err
-		}
-	}
-
-	// Digital twin plugins
-	digitalTwinPlugin := DigitalTwin.NewDigitalTwinPlugin()
-	if err := w.registry.RegisterPlugin(digitalTwinPlugin); err != nil {
-		return err
-	}
-
+	w.logger.Info("Plugin registration completed")
 	return nil
 }
 
@@ -233,7 +177,7 @@ func (w *Worker) Start() error {
 				if err == context.Canceled {
 					return nil
 				}
-				w.logger.Error(fmt.Sprintf("Error popping from queue: %v", err))
+				w.logger.Error("Error popping from queue", err)
 				time.Sleep(1 * time.Second)
 				continue
 			}
@@ -253,7 +197,7 @@ func (w *Worker) processJob(jobData string) {
 	// Parse job message
 	var job JobMessage
 	if err := json.Unmarshal([]byte(jobData), &job); err != nil {
-		w.logger.Error(fmt.Sprintf("Failed to parse job message: %v", err))
+		w.logger.Error("Failed to parse job message", err)
 		return
 	}
 
@@ -345,27 +289,27 @@ func (w *Worker) executeDigitalTwin(job *JobMessage) *JobResult {
 func (w *Worker) storeResult(result *JobResult) {
 	resultData, err := json.Marshal(result)
 	if err != nil {
-		w.logger.Error(fmt.Sprintf("Failed to marshal result: %v", err))
+		w.logger.Error("Failed to marshal result", err)
 		return
 	}
 
 	// Store result with expiration (1 hour)
 	key := fmt.Sprintf("%s:%s", w.resultName, result.ID)
 	if err := w.redis.Set(w.ctx, key, resultData, 1*time.Hour).Err(); err != nil {
-		w.logger.Error(fmt.Sprintf("Failed to store result: %v", err))
+		w.logger.Error("Failed to store result", err)
 		return
 	}
 
 	// Publish result notification
 	notificationKey := fmt.Sprintf("mimir:notifications:job:%s", result.ID)
 	if err := w.redis.Publish(w.ctx, notificationKey, resultData).Err(); err != nil {
-		w.logger.Error(fmt.Sprintf("Failed to publish notification: %v", err))
+		w.logger.Error("Failed to publish notification", err)
 	}
 
 	if result.Success {
 		w.logger.Info(fmt.Sprintf("Job %s completed successfully", result.ID))
 	} else {
-		w.logger.Error(fmt.Sprintf("Job %s failed: %s", result.ID, result.Error))
+		w.logger.Error(fmt.Sprintf("Job %s failed", result.ID), fmt.Errorf("%s", result.Error))
 	}
 }
 

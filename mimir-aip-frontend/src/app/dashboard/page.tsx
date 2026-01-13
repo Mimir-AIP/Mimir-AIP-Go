@@ -111,28 +111,28 @@ export default function DashboardPage() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Link href="/pipelines">
+        <Link href="/pipelines" data-test="dashboard-pipelines-link">
           <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
             <GitBranch className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
             <h3 className="font-semibold text-white">Pipelines</h3>
             <p className="text-xs text-white/60">Data ingestion</p>
           </Card>
         </Link>
-        <Link href="/ontologies">
+        <Link href="/ontologies" data-test="dashboard-ontologies-link">
           <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
             <Network className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
             <h3 className="font-semibold text-white">Ontologies</h3>
             <p className="text-xs text-white/60">Knowledge schemas</p>
           </Card>
         </Link>
-        <Link href="/models">
+        <Link href="/models" data-test="dashboard-models-link">
           <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
             <Brain className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
             <h3 className="font-semibold text-white">ML Models</h3>
             <p className="text-xs text-white/60">Predictions</p>
           </Card>
         </Link>
-        <Link href="/digital-twins">
+        <Link href="/digital-twins" data-test="dashboard-digital-twins-link">
           <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
             <Copy className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
             <h3 className="font-semibold text-white">Digital Twins</h3>

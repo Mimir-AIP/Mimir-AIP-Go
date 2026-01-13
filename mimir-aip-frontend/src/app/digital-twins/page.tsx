@@ -101,7 +101,7 @@ export default function DigitalTwinsPage() {
           <CardContent className="pt-6">
             <div className="text-center py-12">
               <Network className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No Digital Twins Yet</h3>
+              <h3 className="text-xl font-semibold mb-2">Create Your First Digital Twin</h3>
               <p className="text-muted-foreground mb-6">
                 Create your first digital twin from an ontology to start simulating scenarios
               </p>

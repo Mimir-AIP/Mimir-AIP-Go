@@ -149,8 +149,9 @@ export default function CreateTwinPage() {
                 </div>
               ) : (
                 <select
-                  id="ontology"
-                  name="ontology"
+                  id="ontology_id"
+                  name="ontology_id"
+                  data-testid="ontology-select"
                   className="w-full border rounded-md p-2"
                   value={formData.ontology_id}
                   onChange={(e) => setFormData({ ...formData, ontology_id: e.target.value })}

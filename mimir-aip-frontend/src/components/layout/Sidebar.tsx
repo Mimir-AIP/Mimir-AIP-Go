@@ -97,6 +97,7 @@ function NavItemComponent({ item, depth = 0 }: { item: NavItem; depth?: number }
     <li>
       <Link 
         href={item.href!} 
+        data-test={`sidebar-${item.href?.replace('/', '').replace('-', '')}-link`}
         className={`flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium transition-all ${
           isActive
             ? 'bg-orange text-navy'

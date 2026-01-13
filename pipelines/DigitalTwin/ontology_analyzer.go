@@ -18,8 +18,8 @@ type OntologyAnalyzer struct {
 // EntityPattern represents a recognized pattern in the ontology
 type EntityPattern struct {
 	EntityType   string   `json:"entity_type"`
-	PatternType  string   `json:"pattern_type"` // "resource", "actor", "process", "metric", "dependency"
-	KeyProperty  string   `json:"key_property"` // The main property to simulate (budget, count, status)
+	PatternType  string   `json:"pattern_type"`  // "resource", "actor", "process", "metric", "dependency"
+	KeyProperty  string   `json:"key_property"`  // The main property to simulate (budget, count, status)
 	PropertyType string   `json:"property_type"` // "numeric", "enum", "boolean", "date"
 	Importance   float64  `json:"importance"`    // 0-1, based on relationship count
 	DependsOn    []string `json:"depends_on"`    // Entity types this depends on
@@ -28,13 +28,13 @@ type EntityPattern struct {
 
 // OntologyAnalysis contains the full analysis of an ontology
 type OntologyAnalysis struct {
-	DomainType       string                    `json:"domain_type"`        // Inferred domain: "nonprofit", "supply_chain", "healthcare", etc.
-	DomainKeywords   []string                  `json:"domain_keywords"`    // Key terms found
-	EntityPatterns   []EntityPattern           `json:"entity_patterns"`    // Patterns found per entity type
-	CriticalEntities []string                  `json:"critical_entities"`  // Entities with high dependency
-	RiskFactors      []RiskFactor              `json:"risk_factors"`       // Identified risks
-	SuggestedMetrics []SuggestedMetric         `json:"suggested_metrics"`  // Metrics to track
-	RelationshipMap  map[string][]Relationship `json:"relationship_map"`   // How entities connect
+	DomainType       string                    `json:"domain_type"`       // Inferred domain: "nonprofit", "supply_chain", "healthcare", etc.
+	DomainKeywords   []string                  `json:"domain_keywords"`   // Key terms found
+	EntityPatterns   []EntityPattern           `json:"entity_patterns"`   // Patterns found per entity type
+	CriticalEntities []string                  `json:"critical_entities"` // Entities with high dependency
+	RiskFactors      []RiskFactor              `json:"risk_factors"`      // Identified risks
+	SuggestedMetrics []SuggestedMetric         `json:"suggested_metrics"` // Metrics to track
+	RelationshipMap  map[string][]Relationship `json:"relationship_map"`  // How entities connect
 }
 
 // RiskFactor represents an identified risk in the system
@@ -270,9 +270,9 @@ func (oa *OntologyAnalyzer) mergeLLMInsights(analysis *OntologyAnalysis, llmResp
 	jsonStr := llmResponse[jsonStart : jsonEnd+1]
 
 	var insights struct {
-		DomainType       string `json:"domain_type"`
-		DomainDesc       string `json:"domain_description"`
-		AdditionalRisks  []struct {
+		DomainType      string `json:"domain_type"`
+		DomainDesc      string `json:"domain_description"`
+		AdditionalRisks []struct {
 			Name        string `json:"name"`
 			Description string `json:"description"`
 			Severity    string `json:"severity"`
@@ -581,4 +581,3 @@ func appendUnique(slice []string, item string) []string {
 	}
 	return append(slice, item)
 }
-

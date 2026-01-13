@@ -19,12 +19,12 @@ type SmartScenarioGenerator struct {
 
 // SmartScenarioTemplate represents a pre-defined scenario pattern for auto-generation
 type SmartScenarioTemplate struct {
-	ID           string                  `json:"id"`
-	Name         string                  `json:"name"`
-	Description  string                  `json:"description"`
-	DomainTypes  []string                `json:"domain_types"` // Which domains this applies to
-	EventPattern []SmartEventTemplate    `json:"event_pattern"`
-	Parameters   map[string]string       `json:"parameters"` // Customizable parameters
+	ID           string               `json:"id"`
+	Name         string               `json:"name"`
+	Description  string               `json:"description"`
+	DomainTypes  []string             `json:"domain_types"` // Which domains this applies to
+	EventPattern []SmartEventTemplate `json:"event_pattern"`
+	Parameters   map[string]string    `json:"parameters"` // Customizable parameters
 }
 
 // SmartEventTemplate is a template for creating events in auto-generation
@@ -163,8 +163,8 @@ func (ssg *SmartScenarioGenerator) generateRiskScenarios(twin *DigitalTwin, anal
 				TargetURI: targetEntities[0].URI,
 				Timestamp: 5,
 				Parameters: map[string]interface{}{
-					"type":       "withdrawal",
-					"recovery":   10,
+					"type":     "withdrawal",
+					"recovery": 10,
 				},
 				Impact: EventImpact{
 					StateChanges: map[string]interface{}{
@@ -319,8 +319,8 @@ func (ssg *SmartScenarioGenerator) supplyChainScenarios(twin *DigitalTwin, analy
 				TargetURI: suppliers[0].URI,
 				Timestamp: 5,
 				Parameters: map[string]interface{}{
-					"duration":    15,
-					"reason":      "supplier_failure",
+					"duration": 15,
+					"reason":   "supplier_failure",
 				},
 				Impact: EventImpact{
 					StateChanges: map[string]interface{}{
@@ -774,4 +774,3 @@ func min(a, b int) int {
 	}
 	return b
 }
-

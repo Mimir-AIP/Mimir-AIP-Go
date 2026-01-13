@@ -251,9 +251,9 @@ func (e *AlertActionExecutor) executePipeline(config *AlertActionConfig, eventPa
 	}
 
 	return map[string]any{
-		"success":      result.Success,
-		"pipeline":     pipelineFile,
-		"executed_at":  result.ExecutedAt,
+		"success":     result.Success,
+		"pipeline":    pipelineFile,
+		"executed_at": result.ExecutedAt,
 	}, nil
 }
 

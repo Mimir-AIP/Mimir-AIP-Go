@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	DigitalTwin "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/DigitalTwin"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	DigitalTwin "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/DigitalTwin"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/google/uuid"
 )

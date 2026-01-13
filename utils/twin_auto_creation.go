@@ -188,13 +188,13 @@ func (t *TwinAutoCreator) buildBaseStateFromOntology(ontologyID string) (string,
 	}
 
 	state := map[string]any{
-		"entity_count":    entityCount,
-		"ontology_id":     ontologyID,
-		"initialized_at":  time.Now().Format(time.RFC3339),
-		"status":          "active",
-		"global_metrics":  map[string]float64{},
-		"entities":        []map[string]any{},
-		"relationships":   []map[string]any{},
+		"entity_count":   entityCount,
+		"ontology_id":    ontologyID,
+		"initialized_at": time.Now().Format(time.RFC3339),
+		"status":         "active",
+		"global_metrics": map[string]float64{},
+		"entities":       []map[string]any{},
+		"relationships":  []map[string]any{},
 	}
 
 	stateJSON, err := json.Marshal(state)

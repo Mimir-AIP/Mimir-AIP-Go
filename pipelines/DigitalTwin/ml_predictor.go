@@ -31,14 +31,14 @@ type LoadedModel struct {
 
 // PredictionResult contains the result of an ML prediction
 type PredictionResult struct {
-	EntityURI       string             `json:"entity_uri"`
-	PredictedValue  interface{}        `json:"predicted_value"`
-	Confidence      float64            `json:"confidence"`
-	Probabilities   map[string]float64 `json:"probabilities,omitempty"`
-	ModelUsed       string             `json:"model_used"`
-	InputFeatures   map[string]float64 `json:"input_features"`
-	UsedFallback    bool               `json:"used_fallback"`
-	FallbackReason  string             `json:"fallback_reason,omitempty"`
+	EntityURI      string             `json:"entity_uri"`
+	PredictedValue interface{}        `json:"predicted_value"`
+	Confidence     float64            `json:"confidence"`
+	Probabilities  map[string]float64 `json:"probabilities,omitempty"`
+	ModelUsed      string             `json:"model_used"`
+	InputFeatures  map[string]float64 `json:"input_features"`
+	UsedFallback   bool               `json:"used_fallback"`
+	FallbackReason string             `json:"fallback_reason,omitempty"`
 }
 
 // NewMLPredictor creates a new ML predictor for a specific ontology
@@ -128,7 +128,7 @@ func (mp *MLPredictor) PredictEntityState(entity *TwinEntity, event *SimulationE
 
 	// Determine which prediction is relevant for this event type
 	targetMetric := mp.eventToTargetMetric(event.Type)
-	
+
 	// Check if we have a model for this prediction
 	model, exists := mp.models[targetMetric]
 	if !exists {
@@ -227,11 +227,11 @@ func (mp *MLPredictor) PredictImpactPropagation(
 
 	// Build features for propagation prediction
 	features := map[string]float64{
-		"source_utilization":     sourceEntity.State.Utilization,
-		"source_capacity":        sourceEntity.State.Capacity,
-		"target_utilization":     targetEntity.State.Utilization,
-		"target_capacity":        targetEntity.State.Capacity,
-		"relationship_strength":  relationship.Strength,
+		"source_utilization":    sourceEntity.State.Utilization,
+		"source_capacity":       sourceEntity.State.Capacity,
+		"target_utilization":    targetEntity.State.Utilization,
+		"target_capacity":       targetEntity.State.Capacity,
+		"relationship_strength": relationship.Strength,
 	}
 
 	// Add change magnitude
@@ -269,7 +269,7 @@ func (mp *MLPredictor) PredictImpactPropagation(
 		return relationship.Strength * 0.7, nil
 	}
 	proba, _ := model.Classifier.PredictProba(featureSlice)
-	
+
 	// Use max probability as propagation factor
 	maxProba := 0.5
 	for _, p := range proba {
@@ -458,4 +458,3 @@ func boolToFloat(b bool) float64 {
 	}
 	return 0.0
 }
-

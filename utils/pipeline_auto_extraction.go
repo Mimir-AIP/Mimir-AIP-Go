@@ -9,8 +9,8 @@ import (
 
 // PipelineExtractionHandler handles automatic extraction when pipelines complete
 type PipelineExtractionHandler struct {
-	registry   *pipelines.PluginRegistry
-	logger     *Logger
+	registry      *pipelines.PluginRegistry
+	logger        *Logger
 	pipelineStore *PipelineStore
 }
 

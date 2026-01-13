@@ -15,10 +15,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Mimir AIP - AI Pipeline Orchestration",
-  description: "Modern AI pipeline orchestration and automation platform",
-};
+// Remove static metadata to allow dynamic titles
+// export const metadata: Metadata = {
+//   title: "Mimir AIP - AI Pipeline Orchestration", 
+//   description: "Modern AI pipeline orchestration and automation platform",
+// };
 
 export default function RootLayout({
   children,
@@ -27,10 +28,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <Head>
+        <title>{getPageTitle(usePathname())}</title>
+      </Head>
       <body
-         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-navy text-white flex`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-navy text-white flex`}
       >
-          <div className="flex w-full">
+        <div className="flex w-full">
            {/* Sidebar */}
            <div className="hidden md:block">
              <Sidebar />

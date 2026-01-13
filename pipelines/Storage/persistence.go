@@ -766,14 +766,17 @@ func (p *PersistenceBackend) GetOntology(ctx context.Context, id string) (*Ontol
 		WHERE id = ?
 	`
 	ont := &Ontology{}
+	var createdBy, metadata sql.NullString
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&ont.ID, &ont.Name, &ont.Description, &ont.Version, &ont.FilePath,
 		&ont.TDB2Graph, &ont.Format, &ont.Status, &ont.CreatedAt, &ont.UpdatedAt,
-		&ont.CreatedBy, &ont.Metadata,
+		&createdBy, &metadata,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("ontology not found: %s", id)
 	}
+	ont.CreatedBy = createdBy.String
+	ont.Metadata = metadata.String
 	return ont, err
 }
 
@@ -808,14 +811,17 @@ func (p *PersistenceBackend) ListOntologies(ctx context.Context, status string) 
 	var ontologies []*Ontology
 	for rows.Next() {
 		ont := &Ontology{}
+		var createdBy, metadata sql.NullString
 		err := rows.Scan(
 			&ont.ID, &ont.Name, &ont.Description, &ont.Version, &ont.FilePath,
 			&ont.TDB2Graph, &ont.Format, &ont.Status, &ont.CreatedAt, &ont.UpdatedAt,
-			&ont.CreatedBy, &ont.Metadata,
+			&createdBy, &metadata,
 		)
 		if err != nil {
 			return nil, err
 		}
+		ont.CreatedBy = createdBy.String
+		ont.Metadata = metadata.String
 		ontologies = append(ontologies, ont)
 	}
 	return ontologies, rows.Err()
@@ -1088,14 +1094,15 @@ func (p *PersistenceBackend) GetClassifierModel(ctx context.Context, id string) 
 		WHERE id = ?
 	`
 	model := &ClassifierModel{}
-	var ontologyID sql.NullString
+	var ontologyID, hyperparameters, featureColumns, classLabels sql.NullString
+	var confusionMatrix, modelArtifactPath, featureImportance sql.NullString
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&model.ID, &ontologyID, &model.Name, &model.TargetClass,
-		&model.Algorithm, &model.Hyperparameters, &model.FeatureColumns,
-		&model.ClassLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
+		&model.Algorithm, &hyperparameters, &featureColumns,
+		&classLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
 		&model.PrecisionScore, &model.RecallScore, &model.F1Score,
-		&model.ConfusionMatrix, &model.ModelArtifactPath, &model.ModelSizeBytes,
-		&model.TrainingRows, &model.ValidationRows, &model.FeatureImportance,
+		&confusionMatrix, &modelArtifactPath, &model.ModelSizeBytes,
+		&model.TrainingRows, &model.ValidationRows, &featureImportance,
 		&model.IsActive, &model.CreatedAt, &model.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -1104,7 +1111,13 @@ func (p *PersistenceBackend) GetClassifierModel(ctx context.Context, id string) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get classifier model: %w", err)
 	}
-	model.OntologyID = ontologyID.String // Use empty string if NULL
+	model.OntologyID = ontologyID.String
+	model.Hyperparameters = hyperparameters.String
+	model.FeatureColumns = featureColumns.String
+	model.ClassLabels = classLabels.String
+	model.ConfusionMatrix = confusionMatrix.String
+	model.ModelArtifactPath = modelArtifactPath.String
+	model.FeatureImportance = featureImportance.String
 	return model, nil
 }
 
@@ -1158,20 +1171,27 @@ func (p *PersistenceBackend) ListClassifierModels(ctx context.Context, ontologyI
 	var models []*ClassifierModel
 	for rows.Next() {
 		model := &ClassifierModel{}
-		var ontologyID sql.NullString
+		var ontologyID, hyperparameters, featureColumns, classLabels sql.NullString
+		var confusionMatrix, modelArtifactPath, featureImportance sql.NullString
 		err := rows.Scan(
 			&model.ID, &ontologyID, &model.Name, &model.TargetClass,
-			&model.Algorithm, &model.Hyperparameters, &model.FeatureColumns,
-			&model.ClassLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
+			&model.Algorithm, &hyperparameters, &featureColumns,
+			&classLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
 			&model.PrecisionScore, &model.RecallScore, &model.F1Score,
-			&model.ConfusionMatrix, &model.ModelArtifactPath, &model.ModelSizeBytes,
-			&model.TrainingRows, &model.ValidationRows, &model.FeatureImportance,
+			&confusionMatrix, &modelArtifactPath, &model.ModelSizeBytes,
+			&model.TrainingRows, &model.ValidationRows, &featureImportance,
 			&model.IsActive, &model.CreatedAt, &model.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan classifier model: %w", err)
 		}
-		model.OntologyID = ontologyID.String // Use empty string if NULL
+		model.OntologyID = ontologyID.String
+		model.Hyperparameters = hyperparameters.String
+		model.FeatureColumns = featureColumns.String
+		model.ClassLabels = classLabels.String
+		model.ConfusionMatrix = confusionMatrix.String
+		model.ModelArtifactPath = modelArtifactPath.String
+		model.FeatureImportance = featureImportance.String
 		models = append(models, model)
 	}
 

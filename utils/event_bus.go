@@ -174,11 +174,11 @@ const (
 	EventPipelineFailed    = "pipeline.failed"
 
 	// Ontology events
-	EventOntologyCreated      = "ontology.created"
-	EventOntologyUpdated      = "ontology.updated"
-	EventExtractionStarted    = "extraction.started"
-	EventExtractionCompleted  = "extraction.completed"
-	EventEntitiesExtracted    = "entities.extracted"
+	EventOntologyCreated     = "ontology.created"
+	EventOntologyUpdated     = "ontology.updated"
+	EventExtractionStarted   = "extraction.started"
+	EventExtractionCompleted = "extraction.completed"
+	EventEntitiesExtracted   = "entities.extracted"
 
 	// ML events
 	EventModelTrainingStarted   = "model.training.started"
@@ -193,10 +193,10 @@ const (
 	EventSimulationComplete = "simulation.completed"
 
 	// Monitoring events
-	EventAnomalyDetected    = "anomaly.detected"
-	EventAlertCreated       = "alert.created"
-	EventThresholdExceeded  = "threshold.exceeded"
-	EventMonitoringJobRun   = "monitoring.job.run"
+	EventAnomalyDetected   = "anomaly.detected"
+	EventAlertCreated      = "alert.created"
+	EventThresholdExceeded = "threshold.exceeded"
+	EventMonitoringJobRun  = "monitoring.job.run"
 
 	// Job events
 	EventJobScheduled = "job.scheduled"

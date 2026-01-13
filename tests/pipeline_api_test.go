@@ -383,4 +383,3 @@ config:
 	assert.Equal(t, len(pipelines2), len(pipelines3), "Pipeline counts should match")
 	assert.Equal(t, 1, len(pipelines1), "Should have 1 pipeline")
 }
-

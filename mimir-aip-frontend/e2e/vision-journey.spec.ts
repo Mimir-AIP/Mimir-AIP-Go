@@ -35,8 +35,8 @@ test.describe('Mimir AIP - Vision User Journey Tests', () => {
     await expect(saveBtn).toBeEnabled();
     await saveBtn.click();
     
-    // Verify pipeline appears
-    await expect(page.getByText('Warehouse Inventory API').first()).toBeVisible({ timeout: 15000 });
+    // Verify pipeline appears (template creates pipeline with template name)
+    await expect(page.getByText('JSON API Import').first()).toBeVisible({ timeout: 15000 });
     console.log('✅ Pipeline created successfully');
   });
 

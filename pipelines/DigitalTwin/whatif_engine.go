@@ -28,15 +28,15 @@ type WhatIfQuery struct {
 
 // WhatIfResponse contains the analysis results
 type WhatIfResponse struct {
-	Question       string                 `json:"question"`
-	Interpretation string                 `json:"interpretation"`
-	Scenario       *SimulationScenario    `json:"scenario"`
-	Results        *SimulationRun         `json:"results,omitempty"`
-	Summary        string                 `json:"summary"`
-	KeyFindings    []KeyFinding           `json:"key_findings"`
-	Recommendations []string              `json:"recommendations"`
-	Confidence     float64                `json:"confidence"`
-	ProcessingTime int64                  `json:"processing_time_ms"`
+	Question        string              `json:"question"`
+	Interpretation  string              `json:"interpretation"`
+	Scenario        *SimulationScenario `json:"scenario"`
+	Results         *SimulationRun      `json:"results,omitempty"`
+	Summary         string              `json:"summary"`
+	KeyFindings     []KeyFinding        `json:"key_findings"`
+	Recommendations []string            `json:"recommendations"`
+	Confidence      float64             `json:"confidence"`
+	ProcessingTime  int64               `json:"processing_time_ms"`
 }
 
 // KeyFinding represents an important insight from the analysis
@@ -654,4 +654,3 @@ func (wie *WhatIfEngine) inferSeverity(changePercent int) string {
 		return "low"
 	}
 }
-

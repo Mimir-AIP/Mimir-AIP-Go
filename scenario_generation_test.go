@@ -166,10 +166,10 @@ func TestGenerateDefaultScenarios(t *testing.T) {
 
 	fmt.Println("\nScenario Generation Test Summary:")
 	fmt.Printf("✓ Generated %d scenarios\n", len(scenarios))
-	fmt.Printf("✓ Baseline: %s (duration: %d, events: %d)\n", 
+	fmt.Printf("✓ Baseline: %s (duration: %d, events: %d)\n",
 		scenarios[0].Name, scenarios[0].Duration, len(scenarios[0].Events))
-	fmt.Printf("✓ Data Quality: %s (duration: %d, events: %d)\n", 
+	fmt.Printf("✓ Data Quality: %s (duration: %d, events: %d)\n",
 		scenarios[1].Name, scenarios[1].Duration, len(scenarios[1].Events))
-	fmt.Printf("✓ Capacity Test: %s (duration: %d, events: %d)\n", 
+	fmt.Printf("✓ Capacity Test: %s (duration: %d, events: %d)\n",
 		scenarios[2].Name, scenarios[2].Duration, len(scenarios[2].Events))
 }

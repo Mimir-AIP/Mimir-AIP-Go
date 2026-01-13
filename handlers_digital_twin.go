@@ -580,7 +580,7 @@ func (s *Server) handleRunSimulation(w http.ResponseWriter, r *http.Request) {
 	} else {
 		engine = DigitalTwin.NewSimulationEngine(&twin)
 	}
-	
+
 	if req.SnapshotInterval > 0 {
 		engine.SetSnapshotInterval(req.SnapshotInterval)
 	}

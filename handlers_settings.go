@@ -59,9 +59,9 @@ func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		}
 
 		key := map[string]interface{}{
-			"id":       id.String,
-			"provider": provider.String,
-			"name":     name.String,
+			"id":        id.String,
+			"provider":  provider.String,
+			"name":      name.String,
 			"is_active": isActive,
 		}
 
@@ -110,11 +110,11 @@ func (s *Server) handleUpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name       *string                `json:"name,omitempty"`
-		KeyValue   *string                `json:"key_value,omitempty"`
-		IsActive   *bool                  `json:"is_active,omitempty"`
-		EndpointURL *string               `json:"endpoint_url,omitempty"`
-		Metadata   map[string]interface{} `json:"metadata,omitempty"`
+		Name        *string                `json:"name,omitempty"`
+		KeyValue    *string                `json:"key_value,omitempty"`
+		IsActive    *bool                  `json:"is_active,omitempty"`
+		EndpointURL *string                `json:"endpoint_url,omitempty"`
+		Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeBadRequestResponse(w, fmt.Sprintf("Invalid request: %v", err))
@@ -292,9 +292,9 @@ func (s *Server) handleCreateAPIKeyFromSettings(w http.ResponseWriter, r *http.R
 	}
 
 	var req struct {
-		Provider    string                 `json:"provider"`     // openai, anthropic, ollama, etc.
-		Name        string                 `json:"name"`         // User-friendly name
-		KeyValue    string                 `json:"key_value"`    // The actual API key
+		Provider    string                 `json:"provider"`               // openai, anthropic, ollama, etc.
+		Name        string                 `json:"name"`                   // User-friendly name
+		KeyValue    string                 `json:"key_value"`              // The actual API key
 		EndpointURL string                 `json:"endpoint_url,omitempty"` // Custom endpoint (for Ollama, etc.)
 		Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	}
@@ -353,13 +353,13 @@ func (s *Server) handleCreateAPIKeyFromSettings(w http.ResponseWriter, r *http.R
 
 	// Return the created key info (without the actual key value for security)
 	writeJSONResponse(w, http.StatusCreated, map[string]interface{}{
-		"id":          keyID,
-		"provider":    req.Provider,
-		"name":        req.Name,
+		"id":           keyID,
+		"provider":     req.Provider,
+		"name":         req.Name,
 		"endpoint_url": req.EndpointURL,
-		"is_active":   true,
-		"created_at":  now.Format(time.RFC3339),
-		"message":     "API key created successfully",
+		"is_active":    true,
+		"created_at":   now.Format(time.RFC3339),
+		"message":      "API key created successfully",
 	})
 }
 

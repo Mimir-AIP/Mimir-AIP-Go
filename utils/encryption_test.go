@@ -10,7 +10,7 @@ import (
 
 func TestEncryptDecryptAPIKey(t *testing.T) {
 	testCases := []struct {
-		name     string
+		name      string
 		plaintext string
 	}{
 		{

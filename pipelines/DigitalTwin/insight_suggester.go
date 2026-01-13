@@ -20,7 +20,7 @@ type InsightSuggester struct {
 // Insight represents a proactive insight about the system
 type Insight struct {
 	ID          string    `json:"id"`
-	Type        string    `json:"type"`        // "risk", "opportunity", "warning", "trend", "question"
+	Type        string    `json:"type"` // "risk", "opportunity", "warning", "trend", "question"
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Severity    string    `json:"severity,omitempty"` // "low", "medium", "high", "critical"
@@ -32,19 +32,19 @@ type Insight struct {
 
 // Action represents a suggested action the user can take
 type Action struct {
-	Type        string `json:"type"`        // "simulate", "investigate", "configure"
-	Label       string `json:"label"`
-	Description string `json:"description"`
+	Type        string                 `json:"type"` // "simulate", "investigate", "configure"
+	Label       string                 `json:"label"`
+	Description string                 `json:"description"`
 	Parameters  map[string]interface{} `json:"parameters,omitempty"`
 }
 
 // SuggestedQuestion is a what-if question the system suggests
 type SuggestedQuestion struct {
-	Question    string   `json:"question"`
-	Reason      string   `json:"reason"`
-	Relevance   float64  `json:"relevance"` // 0-1
-	Category    string   `json:"category"`  // "risk", "capacity", "dependency", "optimization"
-	RelatedTo   []string `json:"related_to,omitempty"`
+	Question  string   `json:"question"`
+	Reason    string   `json:"reason"`
+	Relevance float64  `json:"relevance"` // 0-1
+	Category  string   `json:"category"`  // "risk", "capacity", "dependency", "optimization"
+	RelatedTo []string `json:"related_to,omitempty"`
 }
 
 // InsightReport contains all insights for a digital twin
@@ -53,8 +53,8 @@ type InsightReport struct {
 	GeneratedAt        time.Time           `json:"generated_at"`
 	Insights           []Insight           `json:"insights"`
 	SuggestedQuestions []SuggestedQuestion `json:"suggested_questions"`
-	RiskScore          float64             `json:"risk_score"`     // Overall risk 0-1
-	HealthScore        float64             `json:"health_score"`   // Overall health 0-1
+	RiskScore          float64             `json:"risk_score"`   // Overall risk 0-1
+	HealthScore        float64             `json:"health_score"` // Overall health 0-1
 	Summary            string              `json:"summary"`
 }
 
@@ -579,4 +579,3 @@ func minInt(a, b int) int {
 	}
 	return b
 }
-

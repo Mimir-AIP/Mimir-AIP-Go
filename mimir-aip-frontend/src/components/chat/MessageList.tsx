@@ -63,10 +63,11 @@ export function MessageList({ messages }: MessageListProps) {
         }
 
         return (
-          <div
-            key={message.id}
-            className={cn("flex gap-3", isUser ? "justify-end" : "justify-start")}
-          >
+            <div
+              key={message.id}
+              data-testid="chat-message"
+              className={cn("flex gap-3", isUser ? "justify-end" : "justify-start")}
+            >
             {!isUser && (
               <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
                 <Bot className="h-5 w-5 text-white" />

@@ -55,6 +55,11 @@ export function MessageInput({
     <div className="border-t bg-background p-4">
       <div className="flex gap-2">
         <div className="flex-1 relative">
+          {isSending && (
+            <div data-testid="typing-indicator" className="text-xs text-muted-foreground mb-2">
+              AI is thinking...
+            </div>
+          )}
           <Textarea
             ref={textareaRef}
             value={value}
@@ -70,6 +75,7 @@ export function MessageInput({
           </span>
         </div>
         <Button
+          data-testid="send-button"
           onClick={handleSend}
           disabled={disabled || !value.trim()}
           size="icon"

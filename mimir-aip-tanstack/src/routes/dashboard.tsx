@@ -122,31 +122,39 @@ function DashboardPage() {
       {/* Page Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-orange mb-2">Dashboard</h1>
-        <p className="text-white/60">TanStack Router Implementation</p>
+        <p className="text-white/60">Welcome to Mimir AIP - Your Autonomous Intelligence Platform</p>
       </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
-          <GitBranch className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
-          <h3 className="font-semibold text-white">Pipelines</h3>
-          <p className="text-xs text-white/60">Data ingestion</p>
-        </Card>
-        <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
-          <Network className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
-          <h3 className="font-semibold text-white">Ontologies</h3>
-          <p className="text-xs text-white/60">Knowledge schemas</p>
-        </Card>
-        <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
-          <Brain className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
-          <h3 className="font-semibold text-white">ML Models</h3>
-          <p className="text-xs text-white/60">Predictions</p>
-        </Card>
-        <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
-          <Copy className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
-          <h3 className="font-semibold text-white">Digital Twins</h3>
-          <p className="text-xs text-white/60">Simulations</p>
-        </Card>
+        <a href="/pipelines" data-test="dashboard-pipelines-link">
+          <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
+            <GitBranch className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
+            <h3 className="font-semibold text-white">Pipelines</h3>
+            <p className="text-xs text-white/60">Data ingestion</p>
+          </Card>
+        </a>
+        <a href="/ontologies" data-test="dashboard-ontologies-link">
+          <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
+            <Network className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
+            <h3 className="font-semibold text-white">Ontologies</h3>
+            <p className="text-xs text-white/60">Knowledge schemas</p>
+          </Card>
+        </a>
+        <a href="/models" data-test="dashboard-models-link">
+          <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
+            <Brain className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
+            <h3 className="font-semibold text-white">ML Models</h3>
+            <p className="text-xs text-white/60">Predictions</p>
+          </Card>
+        </a>
+        <a href="/digital-twins" data-test="dashboard-digital-twins-link">
+          <Card className="bg-gradient-to-br from-blue to-blue/80 border-blue hover:border-orange transition-all p-4 cursor-pointer group">
+            <Copy className="w-8 h-8 text-orange mb-2 group-hover:scale-110 transition-transform" />
+            <h3 className="font-semibold text-white">Digital Twins</h3>
+            <p className="text-xs text-white/60">Simulations</p>
+          </Card>
+        </a>
       </div>
 
       {/* Stats Grid */}
@@ -229,6 +237,24 @@ function DashboardPage() {
           )}
         </Card>
       </div>
+
+      {/* Autonomous Flow CTA */}
+      <Card className="bg-gradient-to-r from-blue via-navy to-blue border-orange/30 p-8">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-orange mb-2">🚀 Start Autonomous Workflow</h2>
+            <p className="text-white/60">Create a pipeline, then let Mimir automatically extract entities, train ML models, and create digital twins.</p>
+          </div>
+          <div className="flex gap-3">
+            <a href="/pipelines" className="inline-flex items-center justify-center px-4 py-2 border border-orange text-orange hover:bg-orange hover:text-navy rounded transition-colors">
+              Create Pipeline
+            </a>
+            <a href="/ontologies" className="inline-flex items-center justify-center px-4 py-2 bg-orange text-navy hover:bg-orange/90 rounded transition-colors">
+              Create Ontology
+            </a>
+          </div>
+        </div>
+      </Card>
     </div>
   )
 }

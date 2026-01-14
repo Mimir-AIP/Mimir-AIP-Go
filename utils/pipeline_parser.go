@@ -87,6 +87,11 @@ func ParsePipeline(pipelinePath string) (*PipelineConfig, error) {
 		return nil, fmt.Errorf("failed to read pipeline file: %w", err)
 	}
 
+	return ParsePipelineFromYAML(data)
+}
+
+// ParsePipelineFromYAML parses a pipeline configuration from YAML bytes
+func ParsePipelineFromYAML(data []byte) (*PipelineConfig, error) {
 	// Try to parse as a single pipeline first
 	var singlePipeline PipelineConfig
 	if err := yaml.Unmarshal(data, &singlePipeline); err == nil && singlePipeline.Name != "" {

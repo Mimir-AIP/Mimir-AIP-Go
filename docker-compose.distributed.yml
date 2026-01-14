@@ -1,0 +1,178 @@
+# =====================================================
+# Distributed Docker Compose for Mimir AIP
+# Separate containers: Frontend, Backend, Workers, Redis
+# =====================================================
+version: '3.8'
+
+services:
+  # Redis - Job queue and caching
+  redis:
+    image: redis:7-alpine
+    container_name: mimir-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - mimir-network
+
+  # Backend - Go API server with Jena Fuseki
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: mimir-aip:backend-latest
+    container_name: mimir-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "3030:3030"  # Jena Fuseki (optional, can be internal only)
+    environment:
+      - MIMIR_PORT=8080
+      - MIMIR_LOG_LEVEL=INFO
+      - MIMIR_DATA_DIR=/app/data
+      - MIMIR_LOG_DIR=/app/logs
+      - MIMIR_PLUGIN_DIR=/app/plugins
+      - REDIS_URL=redis:6379
+      # Ontology and Knowledge Graph settings
+      - MIMIR_DB_PATH=/app/data/mimir.db
+      - ONTOLOGY_DIR=/app/data/ontologies
+      - FUSEKI_URL=http://localhost:3030
+      - FUSEKI_DATASET=mimir
+      - FUSEKI_BASE=/app/data/tdb2
+      - FUSEKI_PORT=3030
+      - JENA_HOME=/opt/jena
+      - JVM_ARGS=-Xmx1g -Xms512m
+    volumes:
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+      - backend_plugins:/app/plugins
+      - backend_pipelines:/app/pipelines
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mimir-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+  # Frontend - Next.js application
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: mimir-aip:frontend-latest
+    container_name: mimir-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - mimir-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Worker - Scalable workers for pipeline execution
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: mimir-aip:worker-latest
+    restart: unless-stopped
+    environment:
+      - MIMIR_LOG_LEVEL=INFO
+      - MIMIR_DATA_DIR=/app/data
+      - MIMIR_LOG_DIR=/app/logs
+      - MIMIR_PLUGIN_DIR=/app/plugins
+      - REDIS_URL=redis:6379
+      - WORKER_CONCURRENCY=5
+      # Knowledge graph settings (if needed)
+      - FUSEKI_URL=http://backend:3030
+      - FUSEKI_DATASET=mimir
+      - ONTOLOGY_DIR=/app/data/ontologies
+    volumes:
+      - worker_data:/app/data
+      - worker_logs:/app/logs
+      - worker_pipelines:/app/pipelines
+      # Share plugins with backend (read-only)
+      - backend_plugins:/app/plugins:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - mimir-network
+    deploy:
+      # Scale workers using: docker-compose up --scale worker=3
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+# Named volumes
+volumes:
+  redis_data:
+    driver: local
+  backend_data:
+    driver: local
+  backend_logs:
+    driver: local
+  backend_plugins:
+    driver: local
+  backend_pipelines:
+    driver: local
+  worker_data:
+    driver: local
+  worker_logs:
+    driver: local
+  worker_pipelines:
+    driver: local
+
+# Networks
+networks:
+  mimir-network:
+    driver: bridge

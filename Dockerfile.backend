@@ -1,0 +1,121 @@
+# =====================================================
+# Backend Dockerfile for Mimir AIP
+# Go API server with Apache Jena Fuseki for ontology support
+# =====================================================
+
+# Stage 1: Build Backend
+FROM golang:1.23-alpine AS backend-builder
+
+# Install build dependencies including gcc for CGO
+RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
+
+WORKDIR /app
+
+# Copy go mod files and download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application with optimization flags and CGO enabled for SQLite
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -ldflags="-s -w -X main.mimirVersion=$(git describe --tags --always --dirty 2>/dev/null || echo 'dev')" \
+    -o mimir-aip-server .
+
+# =====================================================
+# Stage 2: Download and Setup Apache Jena
+FROM alpine:3.19 AS jena-downloader
+
+# Install wget and tar
+RUN apk add --no-cache wget tar
+
+WORKDIR /tmp
+
+# Download Apache Jena Fuseki (includes TDB2)
+# Version 4.10.0 - stable release
+ENV JENA_VERSION=4.10.0
+RUN wget -q https://dlcdn.apache.org/jena/binaries/apache-jena-fuseki-${JENA_VERSION}.tar.gz \
+    || wget -q https://archive.apache.org/dist/jena/binaries/apache-jena-fuseki-${JENA_VERSION}.tar.gz \
+    && tar -xzf apache-jena-fuseki-${JENA_VERSION}.tar.gz \
+    && mv apache-jena-fuseki-${JENA_VERSION} /jena
+
+# =====================================================
+# Stage 3: Final Runtime Image
+FROM eclipse-temurin:21-jre-alpine
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    bash \
+    curl \
+    ca-certificates \
+    tzdata \
+    tini \
+    libgcc \
+    musl
+
+# Set working directory
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 65532 -S nonroot && \
+    adduser -u 65532 -S nonroot -G nonroot
+
+# Copy Jena from downloader stage
+COPY --from=jena-downloader /jena /opt/jena
+RUN chown -R nonroot:nonroot /opt/jena
+
+# Copy backend binary and configuration
+COPY --from=backend-builder /app/mimir-aip-server /app/mimir-aip-server
+COPY --from=backend-builder /app/config.yaml /app/config.yaml
+
+# Create necessary directories with proper permissions
+RUN mkdir -p \
+    /app/data \
+    /app/data/tdb2 \
+    /app/data/ontologies \
+    /app/data/chromem \
+    /app/logs \
+    /app/plugins \
+    /app/pipelines && \
+    chown -R nonroot:nonroot /app && \
+    chmod -R 755 /app
+
+# Copy startup script
+COPY docker/scripts/start-backend.sh /app/start.sh
+RUN chmod +x /app/start.sh && chown nonroot:nonroot /app/start.sh
+
+# Switch to non-root user
+USER nonroot:nonroot
+
+# Expose ports
+# 8080 - Go API server
+# 3030 - Jena Fuseki (internal only)
+EXPOSE 8080 3030
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Environment variables
+ENV MIMIR_PORT=8080 \
+    MIMIR_LOG_LEVEL=INFO \
+    MIMIR_DATA_DIR=/app/data \
+    MIMIR_LOG_DIR=/app/logs \
+    MIMIR_PLUGIN_DIR=/app/plugins \
+    JENA_HOME=/opt/jena \
+    JAVA_HOME=/opt/java/openjdk \
+    FUSEKI_BASE=/app/data/tdb2 \
+    FUSEKI_PORT=3030 \
+    JVM_ARGS="-Xmx512m -Xms256m"
+
+# Add Jena to PATH
+ENV PATH="${PATH}:/opt/jena/bin"
+
+# Use tini as init system
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Start backend and Jena
+CMD ["/bin/bash", "/app/start.sh"]

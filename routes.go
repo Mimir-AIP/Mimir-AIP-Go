@@ -81,6 +81,13 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/scheduler/jobs/{id}/disable", s.handleDisableJob).Methods("POST")
 	v1.HandleFunc("/scheduler/jobs/{id}/logs", s.handleGetJobLogs).Methods("GET")
 
+	// Distributed task queue endpoints (worker architecture)
+	v1.HandleFunc("/queue/pipelines/enqueue", s.handleEnqueuePipeline).Methods("POST")
+	v1.HandleFunc("/queue/digital-twins/enqueue", s.handleEnqueueDigitalTwin).Methods("POST")
+	v1.HandleFunc("/queue/tasks/{id}", s.handleGetTaskStatus).Methods("GET")
+	v1.HandleFunc("/queue/tasks/{id}/wait", s.handleWaitForTask).Methods("GET")
+	v1.HandleFunc("/queue/status", s.handleGetQueueStatus).Methods("GET")
+
 	// Execution logs endpoints
 	v1.HandleFunc("/logs/executions", s.handleListExecutionLogs).Methods("GET")
 	v1.HandleFunc("/logs/executions/{id}", s.handleGetExecutionLog).Methods("GET")

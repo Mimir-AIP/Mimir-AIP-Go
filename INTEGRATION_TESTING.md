@@ -71,30 +71,30 @@ echo $JOB_RESPONSE
 Expected response:
 ```json
 {
-  "message": "Pipeline job enqueued successfully",
-  "job_id": "abc123-def456-...",
+  "message": "Pipeline task enqueued successfully",
+  "task_id": "abc123-def456-...",
   "status": "queued"
 }
 ```
 
-### Step 2: Extract Job ID
+### Step 2: Extract Task ID
 
 ```bash
-JOB_ID=$(echo $JOB_RESPONSE | jq -r '.job_id')
-echo "Job ID: $JOB_ID"
+JOB_ID=$(echo $JOB_RESPONSE | jq -r '.task_id')
+echo "Task ID: $TASK_ID"
 ```
 
 ### Step 3: Check Job Status
 
 ```bash
-curl http://localhost:8080/api/v1/queue/jobs/$JOB_ID
+curl http://localhost:8080/api/v1/queue/tasks/$TASK_ID
 ```
 
 Responses:
 - While processing:
   ```json
   {
-    "job_id": "abc123-def456-...",
+    "task_id": "abc123-def456-...",
     "status": "processing"
   }
   ```
@@ -113,7 +113,7 @@ Responses:
 ### Step 4: Wait for Completion
 
 ```bash
-curl "http://localhost:8080/api/v1/queue/jobs/$JOB_ID/wait?timeout=60s"
+curl "http://localhost:8080/api/v1/queue/tasks/$TASK_ID/wait?timeout=60s"
 ```
 
 This will block for up to 60 seconds waiting for the job to complete.
@@ -157,7 +157,7 @@ You should see 5 worker instances running.
 
 ## Test 7: Load Testing
 
-Create a script to enqueue multiple jobs:
+Create a script to enqueue multiple tasks:
 
 ```bash
 #!/bin/bash
@@ -171,7 +171,7 @@ for i in {1..10}; do
 done
 wait
 
-echo "All jobs enqueued"
+echo "All tasks enqueued"
 ```
 
 Monitor queue status:
@@ -225,12 +225,12 @@ curl -X POST http://localhost:8080/api/v1/queue/pipelines/enqueue \
   }'
 ```
 
-The job will be enqueued but should fail during execution.
+The task will be enqueued but should fail during execution.
 
 ### Check Result
 
 ```bash
-curl http://localhost:8080/api/v1/queue/jobs/$JOB_ID
+curl http://localhost:8080/api/v1/queue/tasks/$TASK_ID
 ```
 
 Expected response for failed job:
@@ -266,7 +266,7 @@ The async version should return much faster (just enqueue time).
 
 ## Test 12: Digital Twin Jobs
 
-Enqueue a digital twin job:
+Enqueue a digital twin task:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/queue/digital-twins/enqueue \

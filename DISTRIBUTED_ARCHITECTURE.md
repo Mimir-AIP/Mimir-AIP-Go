@@ -136,7 +136,7 @@ curl -X POST http://localhost:8080/api/v1/pipelines/execute \
 Enqueue a pipeline for async execution by workers:
 
 ```bash
-# Enqueue job
+# Enqueue task
 curl -X POST http://localhost:8080/api/v1/queue/pipelines/enqueue \
   -H "Content-Type: application/json" \
   -d '{
@@ -148,20 +148,20 @@ curl -X POST http://localhost:8080/api/v1/queue/pipelines/enqueue \
 Response:
 ```json
 {
-  "message": "Pipeline job enqueued successfully",
-  "job_id": "abc123...",
+  "message": "Pipeline task enqueued successfully",
+  "task_id": "abc123...",
   "status": "queued"
 }
 ```
 
 Check job status:
 ```bash
-curl http://localhost:8080/api/v1/queue/jobs/{job_id}
+curl http://localhost:8080/api/v1/queue/tasks/{task_id}
 ```
 
 Wait for job completion (with timeout):
 ```bash
-curl "http://localhost:8080/api/v1/queue/jobs/{job_id}/wait?timeout=60s"
+curl "http://localhost:8080/api/v1/queue/tasks/{task_id}/wait?timeout=60s"
 ```
 
 ### Queue Status
@@ -203,7 +203,7 @@ docker-compose -f docker-compose.distributed.yml up -d --scale worker=10
 
 ### When to Scale
 
-- **High Queue Length**: If queue status shows many pending jobs
+- **High Queue Length: If queue status shows many pending tasks
 - **High CPU Usage**: If workers are consistently at high CPU
 - **Long Job Duration**: If jobs are taking longer to complete
 
@@ -340,6 +340,6 @@ go run ./cmd/worker/main.go
 - [ ] Auto-scaling based on queue length
 - [ ] Worker-specific job types (e.g., CPU-intensive, GPU workers)
 - [ ] Job priority queue
-- [ ] Dead letter queue for failed jobs
+- [ ] Dead letter queue for failed tasks
 - [ ] Distributed tracing across services
 - [ ] Metrics collection (Prometheus/Grafana)

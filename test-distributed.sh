@@ -108,17 +108,17 @@ echo ""
 
 # Test 6: Verify new API endpoints compile
 echo -e "${YELLOW}Test 6: Checking new API handlers...${NC}"
-if [ -f "handlers_job_queue.go" ]; then
-    echo -e "${GREEN}✓ Job queue handlers exist${NC}"
+if [ -f "handlers_task_queue.go" ]; then
+    echo -e "${GREEN}✓ Task queue handlers exist${NC}"
 else
-    echo -e "${RED}✗ Job queue handlers missing${NC}"
+    echo -e "${RED}✗ Task queue handlers missing${NC}"
     exit 1
 fi
 
-if [ -f "utils/job_queue.go" ]; then
-    echo -e "${GREEN}✓ Job queue utils exist${NC}"
+if [ -f "utils/task_queue.go" ]; then
+    echo -e "${GREEN}✓ Task queue utils exist${NC}"
 else
-    echo -e "${RED}✗ Job queue utils missing${NC}"
+    echo -e "${RED}✗ Task queue utils missing${NC}"
     exit 1
 fi
 echo ""

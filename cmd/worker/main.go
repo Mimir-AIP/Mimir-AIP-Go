@@ -1,5 +1,5 @@
 // Worker process for Mimir AIP
-// Executes pipelines and digital twin jobs from Redis queue
+// Executes pipelines and digital twin tasks from Redis queue
 package main
 
 import (
@@ -23,8 +23,8 @@ import (
 
 const workerVersion = "v0.0.1"
 
-// JobMessage represents a job message from Redis queue
-type JobMessage struct {
+// TaskMessage represents a task message from Redis queue
+type TaskMessage struct {
 	ID           string         `json:"id"`
 	Type         string         `json:"type"` // "pipeline", "digital_twin"
 	PipelineFile string         `json:"pipeline_file,omitempty"`
@@ -33,8 +33,8 @@ type JobMessage struct {
 	CreatedAt    string         `json:"created_at"`
 }
 
-// JobResult represents the result of a job execution
-type JobResult struct {
+// TaskResult represents the result of a task execution
+type TaskResult struct {
 	ID         string                   `json:"id"`
 	Success    bool                     `json:"success"`
 	Error      string                   `json:"error,omitempty"`
@@ -43,7 +43,7 @@ type JobResult struct {
 	WorkerID   string                   `json:"worker_id"`
 }
 
-// Worker represents a job worker
+// Worker represents a task worker
 type Worker struct {
 	id         string
 	redisURL   string
@@ -94,8 +94,8 @@ func NewWorker(redisURL string) (*Worker, error) {
 		logger:     logger,
 		ctx:        ctx,
 		cancel:     cancel,
-		queueName:  "mimir:jobs",
-		resultName: "mimir:results",
+		queueName:  "mimir:tasks",
+		resultName: "mimir:task_results",
 	}
 
 	// Register plugins
@@ -166,7 +166,7 @@ func (w *Worker) Start() error {
 			// Wait for available slot
 			sem <- struct{}{}
 
-			// Pop job from queue (blocking)
+			// Pop task from queue (blocking)
 			result, err := w.redis.BLPop(w.ctx, 5*time.Second, w.queueName).Result()
 			if err != nil {
 				<-sem // Release slot
@@ -182,39 +182,39 @@ func (w *Worker) Start() error {
 				continue
 			}
 
-			// Process job in goroutine
-			jobData := result[1]
+			// Process task in goroutine
+			taskData := result[1]
 			go func() {
 				defer func() { <-sem }()
-				w.processJob(jobData)
+				w.processTask(taskData)
 			}()
 		}
 	}
 }
 
-// processJob processes a single job
-func (w *Worker) processJob(jobData string) {
-	// Parse job message
-	var job JobMessage
-	if err := json.Unmarshal([]byte(jobData), &job); err != nil {
-		w.logger.Error("Failed to parse job message", err)
+// processTask processes a single task
+func (w *Worker) processTask(taskData string) {
+	// Parse task message
+	var task TaskMessage
+	if err := json.Unmarshal([]byte(taskData), &task); err != nil {
+		w.logger.Error("Failed to parse task message", err)
 		return
 	}
 
-	w.logger.Info(fmt.Sprintf("Processing job %s (type: %s)", job.ID, job.Type))
+	w.logger.Info(fmt.Sprintf("Processing task %s (type: %s)", task.ID, task.Type))
 
-	// Execute based on job type
-	var result *JobResult
-	switch job.Type {
+	// Execute based on task type
+	var result *TaskResult
+	switch task.Type {
 	case "pipeline":
-		result = w.executePipeline(&job)
+		result = w.executePipeline(&task)
 	case "digital_twin":
-		result = w.executeDigitalTwin(&job)
+		result = w.executeDigitalTwin(&task)
 	default:
-		result = &JobResult{
-			ID:         job.ID,
+		result = &TaskResult{
+			ID:         task.ID,
 			Success:    false,
-			Error:      fmt.Sprintf("unknown job type: %s", job.Type),
+			Error:      fmt.Sprintf("unknown task type: %s", task.Type),
 			ExecutedAt: time.Now().Format(time.RFC3339),
 			WorkerID:   w.id,
 		}
@@ -224,10 +224,10 @@ func (w *Worker) processJob(jobData string) {
 	w.storeResult(result)
 }
 
-// executePipeline executes a pipeline job
-func (w *Worker) executePipeline(job *JobMessage) *JobResult {
-	result := &JobResult{
-		ID:         job.ID,
+// executePipeline executes a pipeline task
+func (w *Worker) executePipeline(task *TaskMessage) *TaskResult {
+	result := &TaskResult{
+		ID:         task.ID,
 		Success:    false,
 		ExecutedAt: time.Now().Format(time.RFC3339),
 		WorkerID:   w.id,
@@ -237,12 +237,12 @@ func (w *Worker) executePipeline(job *JobMessage) *JobResult {
 	var pipelineConfig *utils.PipelineConfig
 	var err error
 
-	if job.PipelineYAML != "" {
+	if task.PipelineYAML != "" {
 		// Parse from YAML string
-		pipelineConfig, err = utils.ParsePipelineFromYAML([]byte(job.PipelineYAML))
-	} else if job.PipelineFile != "" {
+		pipelineConfig, err = utils.ParsePipelineFromYAML([]byte(task.PipelineYAML))
+	} else if task.PipelineFile != "" {
 		// Parse from file
-		pipelineConfig, err = utils.ParsePipeline(job.PipelineFile)
+		pipelineConfig, err = utils.ParsePipeline(task.PipelineFile)
 	} else {
 		result.Error = "no pipeline file or YAML provided"
 		return result
@@ -267,26 +267,26 @@ func (w *Worker) executePipeline(job *JobMessage) *JobResult {
 	return result
 }
 
-// executeDigitalTwin executes a digital twin job
-func (w *Worker) executeDigitalTwin(job *JobMessage) *JobResult {
-	result := &JobResult{
-		ID:         job.ID,
+// executeDigitalTwin executes a digital twin task
+func (w *Worker) executeDigitalTwin(task *TaskMessage) *TaskResult {
+	result := &TaskResult{
+		ID:         task.ID,
 		Success:    false,
 		ExecutedAt: time.Now().Format(time.RFC3339),
 		WorkerID:   w.id,
 	}
 
-	// For now, treat digital twin jobs as specialized pipelines
+	// For now, treat digital twin tasks as specialized pipelines
 	// This can be expanded with specific digital twin logic
 	result.Success = true
 	result.Context = pipelines.NewPluginContext()
-	result.Context.Set("message", "Digital twin job executed successfully")
+	result.Context.Set("message", "Digital twin task executed successfully")
 
 	return result
 }
 
 // storeResult stores the job result in Redis
-func (w *Worker) storeResult(result *JobResult) {
+func (w *Worker) storeResult(result *TaskResult) {
 	resultData, err := json.Marshal(result)
 	if err != nil {
 		w.logger.Error("Failed to marshal result", err)
@@ -301,15 +301,15 @@ func (w *Worker) storeResult(result *JobResult) {
 	}
 
 	// Publish result notification
-	notificationKey := fmt.Sprintf("mimir:notifications:job:%s", result.ID)
+	notificationKey := fmt.Sprintf("mimir:notifications:task:%s", result.ID)
 	if err := w.redis.Publish(w.ctx, notificationKey, resultData).Err(); err != nil {
 		w.logger.Error("Failed to publish notification", err)
 	}
 
 	if result.Success {
-		w.logger.Info(fmt.Sprintf("Job %s completed successfully", result.ID))
+		w.logger.Info(fmt.Sprintf("Task %s completed successfully", result.ID))
 	} else {
-		w.logger.Error(fmt.Sprintf("Job %s failed", result.ID), fmt.Errorf("%s", result.Error))
+		w.logger.Error(fmt.Sprintf("Task %s failed", result.ID), fmt.Errorf("%s", result.Error))
 	}
 }
 

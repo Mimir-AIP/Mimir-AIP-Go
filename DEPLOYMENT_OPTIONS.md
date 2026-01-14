@@ -33,7 +33,7 @@ docker-compose -f docker-compose.unified.yml up -d
 **Characteristics:**
 - 4 separate containers: Frontend, Backend, Redis, Workers
 - Horizontally scalable workers
-- Async job processing via Redis queue
+- Async task processing via Redis queue
 - Better failure isolation
 - Resource optimization per component
 
@@ -65,7 +65,7 @@ docker-compose -f docker-compose.unified.yml up -d
 | **Setup Complexity** | Simple | Medium |
 | **Scalability** | Vertical only | Horizontal |
 | **Resource Usage** | ~2GB RAM | ~2.5GB+ base |
-| **Job Processing** | Synchronous | Async + Sync |
+| **Task Processing** | Synchronous | Async + Sync |
 | **Failure Isolation** | None | Per-service |
 | **Worker Scaling** | No | Yes (N instances) |
 | **Best For** | Dev/Test | Production |
@@ -131,8 +131,8 @@ POST /api/v1/pipelines/execute
 ### Asynchronous Execution (Distributed Only)
 ```bash
 POST /api/v1/queue/pipelines/enqueue
-GET  /api/v1/queue/jobs/{id}
-GET  /api/v1/queue/jobs/{id}/wait
+GET  /api/v1/queue/tasks/{id}
+GET  /api/v1/queue/tasks/{id}/wait
 GET  /api/v1/queue/status
 ```
 

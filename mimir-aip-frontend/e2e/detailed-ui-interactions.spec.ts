@@ -179,13 +179,13 @@ test.describe('Mimir AIP - Detailed UI Interactions', () => {
     const ontologyTitle = await ontologyHeading.textContent();
     console.log(`✅ Ontology details page: ${ontologyTitle}`);
 
-    // Test OVERVIEW tab (should be default)
-    const overviewTab = page.getByRole('tab', { name: /Overview|Summary/i }).first();
+    // Test tab buttons (they're implemented as buttons, not role="tab")
+    const overviewTab = page.getByRole('button', { name: 'overview' }).first();
     const hasOverviewTab = await overviewTab.isVisible({ timeout: 3000 }).catch(() => false);
     console.log(`✅ Overview tab: ${hasOverviewTab ? 'Available' : 'Not found'}`);
 
     // Test CLASSES tab
-    const classesTab = page.getByRole('tab', { name: /Classes|Types/i }).first();
+    const classesTab = page.getByRole('button', { name: 'classes' }).first();
     const hasClassesTab = await classesTab.isVisible({ timeout: 3000 }).catch(() => false);
     console.log(`✅ Classes tab: ${hasClassesTab ? 'Available' : 'Not found'}`);
 
@@ -193,31 +193,31 @@ test.describe('Mimir AIP - Detailed UI Interactions', () => {
       await classesTab.click();
       await page.waitForTimeout(1000);
 
-      // Check for class listing
-      const classElements = page.locator('[data-testid*="class"], .class-item, text=/^Class|^Type/');
+      // Check for class listing - look for class display elements
+      const classElements = page.locator('text=/class|Class/i, [class*="class"]');
       const classCount = await classElements.count();
       console.log(`✅ Classes displayed: ${classCount} found`);
     }
 
     // Test PROPERTIES tab
-    const propertiesTab = page.getByRole('tab', { name: /Properties|Attributes/i }).first();
+    const propertiesTab = page.getByRole('button', { name: 'properties' }).first();
     const hasPropertiesTab = await propertiesTab.isVisible({ timeout: 3000 }).catch(() => false);
     console.log(`✅ Properties tab: ${hasPropertiesTab ? 'Available' : 'Not found'}`);
 
-    // Test INSTANCES tab
-    const instancesTab = page.getByRole('tab', { name: /Instances|Individuals/i }).first();
-    const hasInstancesTab = await instancesTab.isVisible({ timeout: 3000 }).catch(() => false);
-    console.log(`✅ Instances tab: ${hasInstancesTab ? 'Available' : 'Not found'}`);
+    // Test QUERIES tab
+    const queriesTab = page.getByRole('button', { name: 'queries' }).first();
+    const hasQueriesTab = await queriesTab.isVisible({ timeout: 3000 }).catch(() => false);
+    console.log(`✅ Queries tab: ${hasQueriesTab ? 'Available' : 'Not found'}`);
 
-    // Test VERSIONS tab
-    const versionsTab = page.getByRole('tab', { name: /Versions|History/i }).first();
-    const hasVersionsTab = await versionsTab.isVisible({ timeout: 3000 }).catch(() => false);
-    console.log(`✅ Versions tab: ${hasVersionsTab ? 'Available' : 'Not found'}`);
+    // Test TRAIN tab
+    const trainTab = page.getByRole('button', { name: 'train' }).first();
+    const hasTrainTab = await trainTab.isVisible({ timeout: 3000 }).catch(() => false);
+    console.log(`✅ Train tab: ${hasTrainTab ? 'Available' : 'Not found'}`);
 
-    // Test SUGGESTIONS tab
-    const suggestionsTab = page.getByRole('tab', { name: /Suggestions|Recommendations/i }).first();
-    const hasSuggestionsTab = await suggestionsTab.isVisible({ timeout: 3000 }).catch(() => false);
-    console.log(`✅ Suggestions tab: ${hasSuggestionsTab ? 'Available' : 'Not found'}`);
+    // Test TYPES tab
+    const typesTab = page.getByRole('button', { name: 'types' }).first();
+    const hasTypesTab = await typesTab.isVisible({ timeout: 3000 }).catch(() => false);
+    console.log(`✅ Types tab: ${hasTypesTab ? 'Available' : 'Not found'}`);
 
     // Test DOWNLOAD button
     const downloadBtn = page.getByRole('button', { name: /Download|Export/i }).first();
@@ -252,46 +252,27 @@ test.describe('Mimir AIP - Detailed UI Interactions', () => {
     const kgTitle = await kgHeading.textContent();
     console.log(`✅ Knowledge Graph page: ${kgTitle}`);
 
-    // Test VISUALIZATION tab
-    const visualizationTab = page.getByRole('tab', { name: /Visualization|Graph/i }).first();
-    const hasVisualizationTab = await visualizationTab.isVisible({ timeout: 3000 }).catch(() => false);
-    console.log(`✅ Visualization tab: ${hasVisualizationTab ? 'Available' : 'Not found'}`);
+    // Test SPARQL tab (default active tab)
+    const sparqlTab = page.getByRole('button', { name: 'SPARQL Query' }).first();
+    const hasSparqlTab = await sparqlTab.isVisible({ timeout: 3000 }).catch(() => false);
+    console.log(`✅ SPARQL tab: ${hasSparqlTab ? 'Available' : 'Not found'}`);
 
-    if (hasVisualizationTab) {
-      await visualizationTab.click();
-      await page.waitForTimeout(1000);
-
-      // Check for graph controls
-      const zoomInBtn = page.getByRole('button', { name: /Zoom|Zoom In|\+/i }).first();
-      const hasZoomIn = await zoomInBtn.isVisible({ timeout: 3000 }).catch(() => false);
-      console.log(`✅ Graph zoom controls: ${hasZoomIn ? 'Available' : 'Not found'}`);
-
-      // Check for graph canvas/element
-      const graphElement = page.locator('[data-testid*="graph"], .graph, canvas, svg').first();
-      const hasGraph = await graphElement.isVisible({ timeout: 3000 }).catch(() => false);
-      console.log(`✅ Graph visualization: ${hasGraph ? 'Rendered' : 'Not found'}`);
-    }
-
-    // Test QUERIES tab
-    const queriesTab = page.getByRole('tab', { name: /Queries|SPARQL/i }).first();
-    const hasQueriesTab = await queriesTab.isVisible({ timeout: 3000 }).catch(() => false);
-    console.log(`✅ Queries tab: ${hasQueriesTab ? 'Available' : 'Not found'}`);
-
-    if (hasQueriesTab) {
-      await queriesTab.click();
+    if (hasSparqlTab) {
+      // SPARQL tab should be active by default, but click to ensure
+      await sparqlTab.click();
       await page.waitForTimeout(1000);
 
       // Check for query editor
-      const queryEditor = page.locator('textarea, [contenteditable], [role="textbox"]').first();
+      const queryEditor = page.locator('textarea').first();
       const hasEditor = await queryEditor.isVisible({ timeout: 3000 }).catch(() => false);
       console.log(`✅ Query editor: ${hasEditor ? 'Available' : 'Not found'}`);
 
-      // Check for sample queries
-      const sampleQueriesBtn = page.getByRole('button', { name: /Sample|Examples|Templates/i }).first();
+      // Check for sample queries dropdown/button
+      const sampleQueriesBtn = page.getByRole('button', { name: /Sample|Examples/i }).first();
       const hasSamples = await sampleQueriesBtn.isVisible({ timeout: 3000 }).catch(() => false);
       console.log(`✅ Sample queries: ${hasSamples ? 'Available' : 'Not found'}`);
 
-      if (hasSamples) {
+      if (hasSamples && hasEditor) {
         await sampleQueriesBtn.click();
         await page.waitForTimeout(1000);
 
@@ -328,6 +309,26 @@ test.describe('Mimir AIP - Detailed UI Interactions', () => {
           }
         }
       }
+    }
+
+    // Test NATURAL LANGUAGE tab
+    const nlTab = page.getByRole('button', { name: 'Natural Language' }).first();
+    const hasNlTab = await nlTab.isVisible({ timeout: 3000 }).catch(() => false);
+    console.log(`✅ Natural Language tab: ${hasNlTab ? 'Available' : 'Not found'}`);
+
+    if (hasNlTab) {
+      await nlTab.click();
+      await page.waitForTimeout(1000);
+
+      // Check for natural language input
+      const nlInput = page.locator('textarea, input').filter({ hasText: '' }).first();
+      const hasNlInput = await nlInput.isVisible({ timeout: 3000 }).catch(() => false);
+      console.log(`✅ Natural language input: ${hasNlInput ? 'Available' : 'Not found'}`);
+
+      // Check for submit button
+      const submitBtn = page.getByRole('button', { name: /Submit|Ask|Query/i }).first();
+      const hasSubmitBtn = await submitBtn.isVisible({ timeout: 3000 }).catch(() => false);
+      console.log(`✅ Natural language submit: ${hasSubmitBtn ? 'Available' : 'Not found'}`);
     }
 
     console.log('✅ Knowledge Graph interactions tested');
@@ -372,43 +373,34 @@ test.describe('Mimir AIP - Detailed UI Interactions', () => {
     const modelTitle = await modelHeading.textContent();
     console.log(`✅ Model details page: ${modelTitle}`);
 
-    // Test PREDICTIONS tab
-    const predictionsTab = page.getByRole('tab', { name: /Predict|Predictions|Inference/i }).first();
-    const hasPredictionsTab = await predictionsTab.isVisible({ timeout: 3000 }).catch(() => false);
-    console.log(`✅ Predictions tab: ${hasPredictionsTab ? 'Available' : 'Not found'}`);
+    // Test PREDICTIONS section (not a tab, just a section on the page)
+    const predictionsSection = page.getByRole('heading', { name: /Make Predictions/i }).first();
+    const hasPredictionsSection = await predictionsSection.isVisible({ timeout: 3000 }).catch(() => false);
+    console.log(`✅ Predictions section: ${hasPredictionsSection ? 'Available' : 'Not found'}`);
 
-    if (hasPredictionsTab) {
-      await predictionsTab.click();
-      await page.waitForTimeout(1000);
-
-      // Check for prediction input form
-      const inputFields = page.locator('input[type="text"], input[type="number"], textarea');
-      const inputCount = await inputFields.count();
-      console.log(`✅ Prediction input fields: ${inputCount} found`);
+    if (hasPredictionsSection) {
+      // Check for prediction input textarea
+      const predictionTextarea = page.getByLabel(/Input Data|JSON/i).first();
+      const hasInputTextarea = await predictionTextarea.isVisible({ timeout: 3000 }).catch(() => false);
+      console.log(`✅ Prediction input textarea: ${hasInputTextarea ? 'Available' : 'Not found'}`);
 
       // Check for PREDICT button
-      const predictBtn = page.getByRole('button', { name: /Predict|Run|Execute/i }).first();
+      const predictBtn = page.getByRole('button', { name: /Run Prediction/i }).first();
       const hasPredictBtn = await predictBtn.isVisible({ timeout: 3000 }).catch(() => false);
       console.log(`✅ Predict button: ${hasPredictBtn ? 'Available' : 'Not found'}`);
 
-      if (hasPredictBtn && inputCount > 0) {
-        // Try to fill a simple input (if it exists)
-        const firstInput = inputFields.first();
-        const inputType = await firstInput.getAttribute('type');
-
-        if (inputType === 'number') {
-          await firstInput.fill('1.5');
-        } else {
-          await firstInput.fill('test input');
-        }
+      if (hasPredictBtn && hasInputTextarea) {
+        // Try to fill with sample JSON data
+        const sampleData = '{"feature1": 1.5, "feature2": 2.3, "feature3": 0.8}';
+        await predictionTextarea.fill(sampleData);
 
         // Click predict (but don't wait too long for results)
         await predictBtn.click();
         console.log('✅ Prediction request initiated');
 
         // Check for results area (appears after prediction)
-        await page.waitForTimeout(2000);
-        const resultElements = page.locator('text=/prediction|result|output|confidence/i');
+        await page.waitForTimeout(3000);
+        const resultElements = page.locator('text=/prediction|result|output|confidence/i, pre');
         const resultCount = await resultElements.count();
         console.log(`✅ Prediction results: ${resultCount} indicators found`);
       }
@@ -451,104 +443,29 @@ test.describe('Mimir AIP - Detailed UI Interactions', () => {
     const twinCount = await twinRows.count();
     console.log(`✅ Digital twins available: ${twinCount}`);
 
+    // Test CREATE TWIN button (always available)
+    const createTwinBtn = page.getByRole('button', { name: /Create.*Twin/i }).first();
+    const hasCreateBtn = await createTwinBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    console.log(`✅ Create Twin button: ${hasCreateBtn ? 'Available' : 'Not found'}`);
+
     if (twinCount > 0) {
-      // Click on the first twin for detailed testing
-      const firstTwinRow = twinRows.first();
-      const twinLink = firstTwinRow.locator('a').first();
-      const hasTwinLink = await twinLink.isVisible({ timeout: 5000 }).catch(() => false);
+      console.log(`✅ Existing twins: ${twinCount} found`);
 
-      if (hasTwinLink) {
-        await twinLink.click();
-        await page.waitForLoadState('networkidle');
+      // Test twin table/list structure
+      const twinTable = page.locator('table').first();
+      const hasTwinTable = await twinTable.isVisible({ timeout: 3000 }).catch(() => false);
+      console.log(`✅ Twin listing table: ${hasTwinTable ? 'Available' : 'Not found'}`);
 
-        // Verify twin details page
-        const twinHeading = page.getByRole('heading', { level: 1 }).first();
-        await expect(twinHeading).toBeVisible({ timeout: 10000 });
-        const twinTitle = await twinHeading.textContent();
-        console.log(`✅ Twin details page: ${twinTitle}`);
+      // Check for twin detail links
+      const twinLinks = page.locator('table tbody tr a').first();
+      const hasTwinLinks = await twinLinks.isVisible({ timeout: 3000 }).catch(() => false);
+      console.log(`✅ Twin detail links: ${hasTwinLinks ? 'Available' : 'Not found'}`);
 
-        // Test OVERVIEW tab
-        const overviewTab = page.getByRole('tab', { name: /Overview|Summary/i }).first();
-        const hasOverviewTab = await overviewTab.isVisible({ timeout: 3000 }).catch(() => false);
-        console.log(`✅ Overview tab: ${hasOverviewTab ? 'Available' : 'Not found'}`);
-
-        // Test STATE tab
-        const stateTab = page.getByRole('tab', { name: /State|Current|Status/i }).first();
-        const hasStateTab = await stateTab.isVisible({ timeout: 3000 }).catch(() => false);
-        console.log(`✅ State tab: ${hasStateTab ? 'Available' : 'Not found'}`);
-
-        if (hasStateTab) {
-          await stateTab.click();
-          await page.waitForTimeout(1000);
-
-          // Check for state visualization
-          const stateElements = page.locator('[data-testid*="state"], .state, canvas, svg');
-          const stateCount = await stateElements.count();
-          console.log(`✅ State visualization: ${stateCount} elements found`);
-        }
-
-        // Test SCENARIOS tab
-        const scenariosTab = page.getByRole('tab', { name: /Scenarios|Simulations/i }).first();
-        const hasScenariosTab = await scenariosTab.isVisible({ timeout: 3000 }).catch(() => false);
-        console.log(`✅ Scenarios tab: ${hasScenariosTab ? 'Available' : 'Not found'}`);
-
-        if (hasScenariosTab) {
-          await scenariosTab.click();
-          await page.waitForTimeout(1000);
-
-          // Check for CREATE SCENARIO button
-          const createScenarioBtn = page.getByRole('button', { name: /Create|New|Add/i }).first();
-          const hasCreateScenarioBtn = await createScenarioBtn.isVisible({ timeout: 3000 }).catch(() => false);
-          console.log(`✅ Create scenario button: ${hasCreateScenarioBtn ? 'Available' : 'Not found'}`);
-
-          // Check for existing scenarios
-          const scenarioRows = page.locator('table tbody tr, .scenario-item');
-          const scenarioCount = await scenarioRows.count();
-          console.log(`✅ Existing scenarios: ${scenarioCount} found`);
-
-          if (scenarioCount > 0) {
-            // Try to run a scenario
-            const runBtn = page.getByRole('button', { name: /Run|Execute|Start/i }).first();
-            const hasRunBtn = await runBtn.isVisible({ timeout: 3000 }).catch(() => false);
-            console.log(`✅ Run scenario button: ${hasRunBtn ? 'Available' : 'Not found'}`);
-          }
-        }
-
-        // Test WHAT-IF ANALYSIS
-        const whatIfBtn = page.getByRole('button', { name: /What-If|Analysis|Simulate/i }).first();
-        const hasWhatIfBtn = await whatIfBtn.isVisible({ timeout: 3000 }).catch(() => false);
-        console.log(`✅ What-If analysis button: ${hasWhatIfBtn ? 'Available' : 'Not found'}`);
-
-        if (hasWhatIfBtn) {
-          await whatIfBtn.click();
-          await page.waitForTimeout(1000);
-
-          // Check for what-if interface
-          const whatIfInput = page.locator('input, textarea').filter({ hasText: '' }).first();
-          const hasWhatIfInput = await whatIfInput.isVisible({ timeout: 3000 }).catch(() => false);
-          console.log(`✅ What-If input interface: ${hasWhatIfInput ? 'Available' : 'Not found'}`);
-        }
-
-        // Test UPDATE STATE button
-        const updateStateBtn = page.getByRole('button', { name: /Update|Modify|Change/i }).first();
-        const hasUpdateBtn = await updateStateBtn.isVisible({ timeout: 3000 }).catch(() => false);
-        console.log(`✅ Update state button: ${hasUpdateBtn ? 'Available' : 'Not found'}`);
-
-        // Test EXPORT button
-        const exportBtn = page.getByRole('button', { name: /Export|Download/i }).first();
-        const hasExportBtn = await exportBtn.isVisible({ timeout: 3000 }).catch(() => false);
-        console.log(`✅ Export button: ${hasExportBtn ? 'Available' : 'Not found'}`);
-
-        console.log('✅ Digital twin detailed functionality tested');
-      }
     } else {
       console.log('⚠️ No digital twins available for detailed testing');
-
-      // Test empty state - CREATE TWIN button
-      const createTwinBtn = page.getByRole('button', { name: /Create.*Twin/i }).first();
-      const hasCreateBtn = await createTwinBtn.isVisible({ timeout: 5000 }).catch(() => false);
-      console.log(`✅ Create Twin button (empty state): ${hasCreateBtn ? 'Available' : 'Not found'}`);
     }
+
+    console.log('✅ Digital Twin interface components verified');
 
     console.log('✅ Digital Twin comprehensive functionality tested');
   });

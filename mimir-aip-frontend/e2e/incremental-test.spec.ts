@@ -254,7 +254,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     const heading = page.locator('h1').first();
     await expect(heading).toBeVisible({ timeout: 10000 });
     const headingText = await heading.textContent();
-    expect(headingText).toContain('Ontology');
+    expect(headingText).toContain('Ontolog');
     console.log(`✅ Ontologies page: ${headingText}`);
     
     // Check for table

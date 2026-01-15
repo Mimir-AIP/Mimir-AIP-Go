@@ -9,14 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { toast } from "sonner";
-import { ArrowLeft, Brain, TrendingUp, Calendar, Play, Pause, Trash2, Upload } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-
-export const metadata = {
-  title: "ML Model Details - Mimir AIP",
-  description: "View model details, performance metrics, and make predictions",
-};
+import { ArrowLeft, Brain, TrendingUp, Calendar, Play, Pause, Trash2 } from "lucide-react";
+import { DynamicPredictionForm } from "@/components/ml/DynamicPredictionForm";
+import { ModelPerformanceDashboard } from "@/components/ml/PerformanceDashboard";
 
 export default function ModelDetailPage() {
   const params = useParams();
@@ -27,8 +22,8 @@ export default function ModelDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [predicting, setPredicting] = useState(false);
-  const [predictionInput, setPredictionInput] = useState("");
   const [predictionResult, setPredictionResult] = useState<any | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "performance" | "predict">("overview");
 
   useEffect(() => {
     loadModel();
@@ -78,24 +73,11 @@ export default function ModelDetailPage() {
     }
   }
 
-  async function handlePredict() {
-    if (!model || !predictionInput.trim()) {
-      toast.error("Please enter data for prediction");
-      return;
-    }
+  async function handlePredict(inputData: Record<string, number | string>) {
+    if (!model) return;
 
     try {
       setPredicting(true);
-      
-      // Parse input as JSON
-      let inputData;
-      try {
-        inputData = JSON.parse(predictionInput);
-      } catch {
-        toast.error("Invalid JSON format. Please provide data as JSON object or array.");
-        return;
-      }
-
       const request: PredictionRequest = {
         data: inputData,
       };
@@ -105,6 +87,28 @@ export default function ModelDetailPage() {
       toast.success("Prediction completed");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Prediction failed";
+      toast.error(message);
+    } finally {
+      setPredicting(false);
+    }
+  }
+
+  async function handleBatchPredict(inputData: Array<Record<string, number | string>>) {
+    if (!model) return;
+
+    try {
+      setPredicting(true);
+      // For batch predictions, we'll make multiple predict calls
+      // In a production system, there should be a dedicated batch endpoint
+      const results = await Promise.all(
+        inputData.map((data) =>
+          predict(modelId, { data })
+        )
+      );
+      setPredictionResult(results);
+      toast.success(`Batch prediction completed: ${results.length} predictions`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Batch prediction failed";
       toast.error(message);
     } finally {
       setPredicting(false);
@@ -200,7 +204,45 @@ export default function ModelDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Tabs */}
+      <div className="mb-6 border-b border-blue">
+        <div className="flex gap-4">
+          <button
+            onClick={() => setActiveTab("overview")}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === "overview"
+                ? "border-blue-600 text-orange"
+                : "border-transparent text-gray-400 hover:text-white"
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab("performance")}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === "performance"
+                ? "border-blue-600 text-orange"
+                : "border-transparent text-gray-400 hover:text-white"
+            }`}
+          >
+            Performance Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab("predict")}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === "predict"
+                ? "border-blue-600 text-orange"
+                : "border-transparent text-gray-400 hover:text-white"
+            }`}
+          >
+            Make Predictions
+          </button>
+        </div>
+      </div>
+
+      {/* Overview Tab */}
+      {activeTab === "overview" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Performance Metrics */}
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -304,51 +346,24 @@ export default function ModelDetailPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Prediction Interface */}
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              Make Predictions
-            </CardTitle>
-            <CardDescription>
-              Enter data in JSON format to get predictions from this model
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="prediction-input">Input Data (JSON)</Label>
-                <Textarea
-                  id="prediction-input"
-                  name="prediction_input"
-                  placeholder='{"feature1": 10, "feature2": 20}'
-                  value={predictionInput}
-                  onChange={(e) => setPredictionInput(e.target.value)}
-                  rows={6}
-                  className="font-mono text-sm"
-                />
-              </div>
-              <Button
-                onClick={handlePredict}
-                disabled={predicting || !predictionInput.trim()}
-              >
-                {predicting ? "Predicting..." : "Run Prediction"}
-              </Button>
-
-              {predictionResult && (
-                <div className="mt-4 p-4 bg-muted rounded-md">
-                  <h4 className="font-medium mb-2">Prediction Result:</h4>
-                  <pre className="text-sm font-mono overflow-auto">
-                    {JSON.stringify(predictionResult, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
       </div>
+      )}
+
+      {/* Performance Dashboard Tab */}
+      {activeTab === "performance" && model && (
+        <ModelPerformanceDashboard model={model} />
+      )}
+
+      {/* Prediction Tab */}
+      {activeTab === "predict" && model && (
+        <DynamicPredictionForm
+          featureColumns={JSON.parse(model.feature_columns || "[]")}
+          onPredict={handlePredict}
+          onBatchPredict={handleBatchPredict}
+          predicting={predicting}
+          predictionResult={predictionResult}
+        />
+      )}
     </div>
   );
 }

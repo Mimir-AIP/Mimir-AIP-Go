@@ -17,7 +17,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     console.log('✅ Main page loaded');
     
     // Verify API is accessible
-    const apiResponse = await page.request.get('http://localhost:8080/api/v1/health');
+    const apiResponse = await page.request.get('http://localhost:8080/health');
     expect(apiResponse.ok()).toBeTruthy();
     console.log('✅ API is accessible');
     

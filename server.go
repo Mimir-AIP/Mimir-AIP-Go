@@ -40,6 +40,7 @@ type Server struct {
 	tdb2Backend *knowledgegraph.TDB2Backend
 	llmClient   AI.LLMClient
 	llmClients  map[AI.LLMProvider]AI.LLMClient // Map of all available LLM clients by provider
+	ontologyDir string                          // Directory for ontology files
 }
 
 // PipelineExecutionRequest represents a request to execute a pipeline
@@ -304,6 +305,9 @@ func (s *Server) registerDefaultPlugins() {
 		if err := os.MkdirAll(ontologyDir, 0755); err != nil {
 			log.Printf("Failed to create ontology directory: %v", err)
 		} else {
+			// Store ontology directory in server
+			s.ontologyDir = ontologyDir
+
 			// Register ontology management plugin
 			ontologyPlugin := ontology.NewManagementPlugin(s.persistence, s.tdb2Backend, ontologyDir)
 			if err := s.registry.RegisterPlugin(ontologyPlugin); err != nil {

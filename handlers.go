@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -1625,18 +1626,22 @@ func (s *Server) handleSelectData(w http.ResponseWriter, r *http.Request) {
 		ontologyDesc, _ := ontology["description"].(string)
 		ontologyVersion, _ := ontology["version"].(string)
 		ontologyContent, _ := ontology["content"].(string)
+		utils.GetLogger().Info(fmt.Sprintf("Ontology content type: %T, length: %d", ontology["content"], len(ontologyContent)))
+		if ontologyContent == "" {
+			utils.GetLogger().Warn("Ontology content is empty, skipping file write")
+			return
+		}
 
-		// Create Ontology struct for persistence
 		ont := &storage.Ontology{
 			ID:          ontologyID,
 			Name:        ontologyName,
 			Description: ontologyDesc,
 			Version:     ontologyVersion,
-			FilePath:    "/tmp/ontology_" + ontologyID + ".ttl",
-			TDB2Graph:   "http://mimir-aip.io/graph/" + ontologyID,
+			FilePath:    filepath.Join(s.ontologyDir, ontologyID+".ttl"),
+			TDB2Graph:   "http://mimir.ai/ontology/" + ontologyID,
 			Format:      "turtle",
 			Status:      "active",
-			CreatedBy:   "data_ingestion",
+			CreatedBy:   "autonomous_flow",
 			Metadata:    "{}",
 		}
 
@@ -1645,9 +1650,12 @@ func (s *Server) handleSelectData(w http.ResponseWriter, r *http.Request) {
 			utils.GetLogger().Warn(fmt.Sprintf("Failed to persist ontology: %v", err))
 		} else {
 			// Also save the content to a file
+			utils.GetLogger().Info(fmt.Sprintf("Writing ontology file to: %s (content length: %d)", ont.FilePath, len(ontologyContent)))
 			err = os.WriteFile(ont.FilePath, []byte(ontologyContent), 0644)
 			if err != nil {
 				utils.GetLogger().Warn(fmt.Sprintf("Failed to write ontology file: %v", err))
+			} else {
+				utils.GetLogger().Info(fmt.Sprintf("Successfully wrote ontology file: %s", ont.FilePath))
 			}
 
 			// Load ontology into TDB2 knowledge graph if available
@@ -1822,6 +1830,7 @@ func (s *Server) generateOntologyFromSelection(selection DataSelection) (map[str
 	}
 
 	// Convert to API response format
+	utils.GetLogger().Info(fmt.Sprintf("Generated ontology %s with content length: %d", ontology.ID, len(ontology.Content)))
 	result := map[string]any{
 		"id":          ontology.ID,
 		"name":        ontology.Name,
@@ -3494,7 +3503,10 @@ func (s *Server) handleGenerateOntologyFromSchema(w http.ResponseWriter, r *http
 	}
 
 	// Save ontology file to disk
-	ontologyDir := "/tmp/ontologies"
+	ontologyDir := s.ontologyDir
+	if ontologyDir == "" {
+		ontologyDir = "./data/ontologies"
+	}
 	if err := os.MkdirAll(ontologyDir, 0755); err != nil {
 		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to create ontology directory: %v", err))
 		return
@@ -4425,7 +4437,10 @@ func (s *Server) executeOntologyGeneration(ctx context.Context, workflow *Autono
 	}
 
 	// 4. Save ontology file
-	ontologyDir := "/tmp/ontologies"
+	ontologyDir := s.ontologyDir
+	if ontologyDir == "" {
+		ontologyDir = "./data/ontologies"
+	}
 	if err := os.MkdirAll(ontologyDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create ontology directory: %w", err)
 	}

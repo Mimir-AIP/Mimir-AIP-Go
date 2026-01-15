@@ -9,12 +9,12 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
   test('Step 1: Docker container is running and API accessible', async ({ page }) => {
     console.log('=== Step 1: Docker Container & API Verification ===');
     
-    // Check main page loads
+    // Check main page loads and redirects to dashboard
     await page.goto('http://localhost:8080');
-    await page.waitForLoadState('networkidle');
+    await page.waitForURL('**/dashboard');
     const title = await page.title();
     expect(title).toContain('Mimir');
-    console.log('✅ Main page loaded');
+    console.log('✅ Main page loaded and redirected to dashboard');
     
     // Verify API is accessible
     const apiResponse = await page.request.get('http://localhost:8080/health');

@@ -15,42 +15,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Helper to get page title based on pathname
-const getPageTitle = (path: string): string => {
-  if (path.startsWith('/chat')) return "AI Agent Chat - Mimir AIP";
-  if (path.startsWith('/dashboard')) return "Dashboard - Mimir AIP";
-  if (path.startsWith('/pipelines')) return "Pipelines - Mimir AIP";
-  if (path.startsWith('/ontologies')) return "Ontologies - Mimir AIP";
-  if (path.startsWith('/models')) return "ML Models - Mimir AIP";
-  if (path.startsWith('/digital-twins')) return "Digital Twins - Mimir AIP";
-  if (path.startsWith('/workflows')) return "Workflow Orchestration - Mimir AIP";
-  if (path.startsWith('/monitoring')) return "Monitoring - Mimir AIP";
-  if (path.startsWith('/settings')) return "Settings - Mimir AIP";
-  return "Mimir AIP - AI Pipeline Orchestration";
+export const metadata: Metadata = {
+  title: "Mimir AIP - AI Pipeline Orchestration",
+  description: "Modern AI pipeline orchestration and automation platform",
 };
-
-// Remove static metadata to allow dynamic titles
-// export const metadata: Metadata = {
-//   title: "Mimir AIP - AI Pipeline Orchestration", 
-//   description: "Modern AI pipeline orchestration and automation platform",
-// };
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const pathname = usePathname();
-  
-  useEffect(() => {
-    document.title = getPageTitle(pathname);
-  }, [pathname]);
-  
   return (
     <html lang="en">
-      <head>
-        <title>{getPageTitle(pathname)}</title>
-      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-navy text-white flex`}
       >

@@ -11,6 +11,7 @@ interface MessageInputProps {
   onSend: () => void;
   disabled?: boolean;
   placeholder?: string;
+  isSending?: boolean;
 }
 
 export function MessageInput({
@@ -19,6 +20,7 @@ export function MessageInput({
   onSend,
   disabled = false,
   placeholder = "Type your message...",
+  isSending = false,
 }: MessageInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [charCount, setCharCount] = useState(0);

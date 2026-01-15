@@ -11,6 +11,11 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { toast } from "sonner";
 import { Plus, Network, Calendar, Database } from "lucide-react";
 
+export const metadata = {
+  title: "Digital Twins - Mimir AIP",
+  description: "Simulate business scenarios and analyze impact on your organization",
+};
+
 export default function DigitalTwinsPage() {
   const router = useRouter();
   const [twins, setTwins] = useState<DigitalTwin[]>([]);

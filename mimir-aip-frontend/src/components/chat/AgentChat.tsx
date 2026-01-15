@@ -125,9 +125,9 @@ export function AgentChat({ twinId }: AgentChatProps) {
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Bot className="h-16 w-16 text-orange mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">
+            <p className="text-xl font-semibold text-white mb-2">
               Chat with Mimir AI
-            </h3>
+            </p>
             <p className="text-gray-400 max-w-md">
               Send a message to start a conversation. Ask about your data, create scenarios, run simulations, or analyze results.
               I can help with pipelines, ontologies, and digital twins.
@@ -164,6 +164,7 @@ export function AgentChat({ twinId }: AgentChatProps) {
         {messages.map((message, index) => (
           <div
             key={index}
+            data-testid="chat-message"
             className={`flex gap-3 ${
               message.role === "user" ? "justify-end" : "justify-start"
             }`}
@@ -226,7 +227,7 @@ export function AgentChat({ twinId }: AgentChatProps) {
         ))}
 
         {isSending && (
-          <div className="flex gap-3 justify-start">
+          <div className="flex gap-3 justify-start" data-testid="typing-indicator">
             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange flex items-center justify-center">
               <Bot className="h-5 w-5 text-navy" />
             </div>
@@ -250,12 +251,15 @@ export function AgentChat({ twinId }: AgentChatProps) {
             disabled={isSending || !conversationId}
             className="flex-1 min-h-[60px] max-h-[200px] resize-none bg-blue/20 border-blue text-white placeholder:text-gray-500 rounded-xl"
             rows={2}
+            data-testid="chat-input"
           />
           <Button
             onClick={handleSendMessage}
             disabled={!inputValue.trim() || isSending || !conversationId}
             size="lg"
             className="bg-orange hover:bg-orange/90 text-navy rounded-xl px-6"
+            data-testid="send-button"
+            aria-label="Send"
           >
             {isSending ? (
               <Loader2 className="h-5 w-5 animate-spin" />

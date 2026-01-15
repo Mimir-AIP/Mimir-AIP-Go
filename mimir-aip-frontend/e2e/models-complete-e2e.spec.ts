@@ -160,13 +160,15 @@ test.describe('Models - Training', () => {
   });
 
   test('should start model training', async ({ page }) => {
-    const trainButton = page.getByRole('button', { name: /Train|Start.*Training/i }).first();
+    await page.goto('/models');
+    const trainButton = page.getByRole('button', { name: /Train.*Model/i }).first();
 
     if (await trainButton.isVisible()) {
       await trainButton.click();
 
-      // Training dialog should appear
-      await expect(page.getByRole('dialog', { name: /Train.*Model/i })).toBeVisible();
+      // Should navigate to training page
+      await page.waitForURL('**/models/train');
+      await expect(page.getByRole('heading', { name: 'Train New ML Model' })).toBeVisible();
     }
   });
 

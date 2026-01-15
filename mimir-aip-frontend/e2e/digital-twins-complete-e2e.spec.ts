@@ -13,37 +13,45 @@ test.describe('Digital Twins - Complete Workflow', () => {
   test('should display digital twins list page', async ({ page }) => {
     await expect(page).toHaveTitle(/Digital Twins/i);
     await expect(page.getByRole('heading', { name: /Digital Twins/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Create.*Twin|New Twin/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Twin' })).toBeVisible();
   });
 
   test('should create a new digital twin', async ({ page }) => {
-    await page.getByRole('button', { name: /Create.*Twin|New Twin/i }).click();
+    // Click the main "Create Twin" button (not "Create Your First Twin")
+    await page.getByRole('button', { name: 'Create Twin' }).click();
 
     // Fill creation form
     await page.getByLabel(/Name/i).fill('Test Manufacturing Plant');
     await page.getByLabel(/Description/i).fill('E2E test digital twin');
 
-    // Select ontology
-    const ontologySelect = page.getByLabel(/Ontology/i);
-    if (await ontologySelect.isVisible()) {
-      await ontologySelect.selectOption({ index: 1 }); // Select first available ontology
+    // Wait for ontologies to load and select the first available active ontology
+    await page.waitForTimeout(2000); // Give time for ontologies to load
+
+    const ontologySelect = page.locator('select[name="ontology_id"]');
+    await expect(ontologySelect).toBeVisible({ timeout: 10000 });
+
+    // Select the first available option (excluding the placeholder)
+    const options = ontologySelect.locator('option');
+    const optionCount = await options.count();
+
+    if (optionCount > 1) { // More than just the placeholder
+      const firstOntologyOption = options.nth(1); // Skip the placeholder at index 0
+      const ontologyValue = await firstOntologyOption.getAttribute('value');
+      if (ontologyValue) {
+        await ontologySelect.selectOption(ontologyValue);
+        console.log(`Selected ontology: ${ontologyValue}`);
+      }
     }
 
-    // Initial state configuration
-    const stateInput = page.getByLabel(/Initial.*State|State/i);
-    if (await stateInput.isVisible()) {
-      await stateInput.fill('{"temperature": 25, "pressure": 101.3}');
-    }
-
-    // Create twin
+    // Submit form
     await page.getByRole('button', { name: /Create/i }).click();
 
-    // Verify creation
-    await expect(page.getByText(/Twin created successfully/i)).toBeVisible({ timeout: 10000 });
+    // Wait for redirect to twin detail page
+    await page.waitForURL('**/digital-twins/**', { timeout: 15000 });
   });
 
   test('should validate twin creation form', async ({ page }) => {
-    await page.getByRole('button', { name: /Create.*Twin/i }).click();
+    await page.getByRole('button', { name: 'Create Twin' }).click();
 
     // Try to submit without required fields
     await page.getByRole('button', { name: /Create/i }).click();

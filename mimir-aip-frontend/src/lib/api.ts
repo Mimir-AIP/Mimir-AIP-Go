@@ -912,10 +912,22 @@ export async function exportOntology(id: string, format = "turtle"): Promise<str
  * Execute a SPARQL query
  * POST /api/v1/kg/query
  */
-export async function executeSPARQLQuery(query: string): Promise<{ success: boolean; data: SPARQLQueryResult }> {
+export async function executeSPARQLQuery(
+  query: string,
+  limit?: number,
+  offset?: number
+): Promise<{ success: boolean; data: SPARQLQueryResult; pagination?: { limit: number; offset: number; count: number } }> {
+  const body: { query: string; limit?: number; offset?: number } = { query };
+  if (limit !== undefined) {
+    body.limit = limit;
+  }
+  if (offset !== undefined) {
+    body.offset = offset;
+  }
+  
   return apiFetch("/api/v1/kg/query", {
     method: "POST",
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(body),
   });
 }
 

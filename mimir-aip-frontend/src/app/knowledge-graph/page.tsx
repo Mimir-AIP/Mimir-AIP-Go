@@ -12,11 +12,9 @@ import {
   type Ontology,
 } from "@/lib/api";
 import { useEffect } from "react";
-
-export const metadata = {
-  title: "Knowledge Graph - Mimir AIP",
-  description: "Query and explore the knowledge graph with SPARQL and natural language",
-};
+import { GraphVisualization } from "@/components/knowledge-graph/GraphVisualization";
+import { PathFinding } from "@/components/knowledge-graph/PathFinding";
+import { Reasoning } from "@/components/knowledge-graph/Reasoning";
 
 const SAMPLE_QUERIES = [
   {
@@ -84,13 +82,18 @@ WHERE {
 ];
 
 export default function KnowledgeGraphPage() {
-  const [activeTab, setActiveTab] = useState<"sparql" | "natural-language">("sparql");
+  const [activeTab, setActiveTab] = useState<"sparql" | "natural-language" | "visualization" | "path-finding" | "reasoning">("sparql");
   const [query, setQuery] = useState(SAMPLE_QUERIES[0].query);
   const [queryResult, setQueryResult] = useState<SPARQLQueryResult | null>(null);
   const [stats, setStats] = useState<KnowledgeGraphStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queryHistory, setQueryHistory] = useState<string[]>([]);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
+  const [totalResults, setTotalResults] = useState(0);
 
   // Natural Language Query state
   const [nlQuestion, setNlQuestion] = useState("");
@@ -135,7 +138,7 @@ export default function KnowledgeGraphPage() {
     }
   };
 
-  const handleRunQuery = async () => {
+  const handleRunQuery = async (page: number = 1) => {
     if (!query.trim()) {
       setError("Query cannot be empty");
       return;
@@ -146,9 +149,12 @@ export default function KnowledgeGraphPage() {
       setError(null);
       setQueryResult(null);
 
-      const response = await executeSPARQLQuery(query);
+      const offset = (page - 1) * pageSize;
+      const response = await executeSPARQLQuery(query, pageSize, offset);
       if (response.success) {
         setQueryResult(response.data);
+        setCurrentPage(page);
+        setTotalResults(response.data.bindings?.length || 0);
         
         // Add to history (avoid duplicates)
         const newHistory = [query, ...queryHistory.filter(q => q !== query)].slice(0, 10);
@@ -262,6 +268,36 @@ export default function KnowledgeGraphPage() {
           >
             Natural Language
           </button>
+          <button
+            onClick={() => setActiveTab("visualization")}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === "visualization"
+                ? "border-blue-600 text-orange"
+                : "border-transparent text-gray-400 hover:text-white"
+            }`}
+          >
+            Visualization
+          </button>
+          <button
+            onClick={() => setActiveTab("path-finding")}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === "path-finding"
+                ? "border-blue-600 text-orange"
+                : "border-transparent text-gray-400 hover:text-white"
+            }`}
+          >
+            Path Finding
+          </button>
+          <button
+            onClick={() => setActiveTab("reasoning")}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === "reasoning"
+                ? "border-blue-600 text-orange"
+                : "border-transparent text-gray-400 hover:text-white"
+            }`}
+          >
+            Reasoning
+          </button>
         </div>
       </div>
 
@@ -304,7 +340,7 @@ export default function KnowledgeGraphPage() {
                   Clear
                 </button>
                 <button
-                  onClick={handleRunQuery}
+                  onClick={() => handleRunQuery(1)}
                   disabled={loading}
                   className="bg-orange hover:bg-orange/80 disabled:bg-gray-400 text-white px-4 py-1 rounded"
                 >
@@ -380,51 +416,93 @@ export default function KnowledgeGraphPage() {
 
               {/* SELECT Results */}
               {queryResult.query_type === "SELECT" && queryResult.bindings && queryResult.bindings.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-navy border-b">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">#</th>
-                        {queryResult.variables?.map((variable: string) => (
-                          <th key={variable} className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">
-                            {variable}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="bg-blue divide-y divide-gray-700">
-                      {queryResult.bindings.map((binding: Record<string, unknown>, idx: number) => {
-                        const typedBinding = binding as Record<string, { value?: string; type?: string; datatype?: string; "xml:lang"?: string }>;
-                        return (
-                        <tr key={idx} className="hover:bg-navy">
-                          <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
-                          {queryResult.variables?.map((variable: string) => {
-                            const value = typedBinding[variable];
-                            return (
-                              <td key={variable} className="px-3 py-2">
-                                {value ? (
-                                   <div className="font-mono text-xs">
-                                    <div className="break-all text-white">{value.value}</div>
-                                    {value.type && (
-                                      <div className="text-gray-400 text-xs mt-1">
-                                        {value.type}
-                                        {value.datatype && ` (${value.datatype})`}
-                                        {value["xml:lang"] && ` @${value["xml:lang"]}`}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400">-</span>
-                                )}
-                              </td>
-                            );
-                          })}
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-navy border-b">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">#</th>
+                          {queryResult.variables?.map((variable: string) => (
+                            <th key={variable} className="px-3 py-2 text-left text-xs font-medium text-gray-400 uppercase">
+                              {variable}
+                            </th>
+                          ))}
                         </tr>
+                      </thead>
+                      <tbody className="bg-blue divide-y divide-gray-700">
+                        {queryResult.bindings.map((binding: Record<string, unknown>, idx: number) => {
+                          const typedBinding = binding as Record<string, { value?: string; type?: string; datatype?: string; "xml:lang"?: string }>;
+                          return (
+                          <tr key={idx} className="hover:bg-navy">
+                            <td className="px-3 py-2 text-gray-400 text-xs">{idx + 1}</td>
+                            {queryResult.variables?.map((variable: string) => {
+                              const value = typedBinding[variable];
+                              return (
+                                <td key={variable} className="px-3 py-2">
+                                  {value ? (
+                                     <div className="font-mono text-xs">
+                                      <div className="break-all text-white">{value.value}</div>
+                                      {value.type && (
+                                        <div className="text-gray-400 text-xs mt-1">
+                                          {value.type}
+                                          {value.datatype && ` (${value.datatype})`}
+                                          {value["xml:lang"] && ` @${value["xml:lang"]}`}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
                         );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {/* Pagination Controls */}
+                  <div className="mt-4 flex items-center justify-between border-t border-gray-700 pt-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-400">
+                        Showing {totalResults} result(s)
+                      </span>
+                      <select
+                        value={pageSize}
+                        onChange={(e) => {
+                          setPageSize(Number(e.target.value));
+                          setCurrentPage(1);
+                        }}
+                        className="border rounded px-2 py-1 text-sm bg-navy text-white border-gray-600"
+                      >
+                        <option value={50}>50 per page</option>
+                        <option value={100}>100 per page</option>
+                        <option value={250}>250 per page</option>
+                        <option value={500}>500 per page</option>
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleRunQuery(currentPage - 1)}
+                        disabled={currentPage === 1 || loading}
+                        className="px-3 py-1 rounded border border-gray-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-sm text-gray-400">Page {currentPage}</span>
+                      <button
+                        onClick={() => handleRunQuery(currentPage + 1)}
+                        disabled={totalResults < pageSize || loading}
+                        className="px-3 py-1 rounded border border-gray-600 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
 
               {/* Empty Results */}
@@ -754,6 +832,83 @@ export default function KnowledgeGraphPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Visualization Tab Content */}
+      {activeTab === "visualization" && (
+        <div className="space-y-4">
+          <div className="bg-blue rounded-lg shadow p-4">
+            <h3 className="font-semibold text-white mb-4">Knowledge Graph Visualization</h3>
+            <p className="text-gray-400 mb-4 text-sm">
+              Execute a query with subject-predicate-object relationships to visualize the graph structure.
+              The visualization will show classes, properties, and their connections.
+            </p>
+            
+            {/* Convert query results to graph data */}
+            {queryResult && queryResult.bindings && queryResult.bindings.length > 0 ? (
+              <GraphVisualization
+                data={{
+                  nodes: queryResult.bindings.flatMap((row, idx) => {
+                    const nodes: any[] = [];
+                    queryResult.variables.forEach((varName) => {
+                      const value = (row as any)[varName];
+                      if (value && value.value) {
+                        nodes.push({
+                          id: value.value,
+                          label: value.value.split(/[/#]/).pop() || value.value,
+                          type: value.type === "uri" ? "subject" : "object",
+                          uri: value.value
+                        });
+                      }
+                    });
+                    return nodes;
+                  }).filter((node, index, self) => 
+                    index === self.findIndex((n) => n.id === node.id)
+                  ),
+                  links: queryResult.bindings
+                    .map((row: any) => {
+                      const vars = queryResult.variables;
+                      if (vars.includes("subject") && vars.includes("predicate") && vars.includes("object")) {
+                        return {
+                          source: row.subject?.value || "",
+                          target: row.object?.value || "",
+                          label: row.predicate?.value?.split(/[/#]/).pop() || "related",
+                          uri: row.predicate?.value || ""
+                        };
+                      }
+                      return null;
+                    })
+                    .filter((link): link is { source: string; target: string; label: string; uri: string } => link !== null)
+                }}
+              />
+            ) : (
+              <div className="text-center py-12 bg-navy/50 rounded-lg border-2 border-dashed border-gray-600">
+                <p className="text-gray-400">
+                  Run a SPARQL query first to visualize results
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Tip: Use SELECT with ?subject ?predicate ?object for best visualization
+                </p>
+                <button
+                  onClick={() => setActiveTab("sparql")}
+                  className="mt-4 px-4 py-2 bg-orange hover:bg-orange/80 text-white rounded"
+                >
+                  Go to SPARQL Tab
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Path Finding Tab Content */}
+      {activeTab === "path-finding" && (
+        <PathFinding ontologyId={selectedOntology || undefined} />
+      )}
+
+      {/* Reasoning Tab Content */}
+      {activeTab === "reasoning" && (
+        <Reasoning />
       )}
     </div>
   );

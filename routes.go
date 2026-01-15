@@ -131,6 +131,8 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/kg/nl-query", s.handleNLQuery).Methods("POST")
 	v1.HandleFunc("/kg/stats", s.handleKnowledgeGraphStats).Methods("GET")
 	v1.HandleFunc("/kg/subgraph", s.handleGetSubgraph).Methods("GET")
+	v1.HandleFunc("/knowledge-graph/path-finding", s.handlePathFinding).Methods("POST")
+	v1.HandleFunc("/knowledge-graph/reasoning", s.handleReasoning).Methods("POST")
 
 	// Entity extraction endpoints
 	v1.HandleFunc("/extraction/jobs", s.handleListExtractionJobs).Methods("GET")

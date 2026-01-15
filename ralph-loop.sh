@@ -24,6 +24,10 @@ ITERATION=0
 MAX_RATE_LIMIT_PAUSES=5
 RATE_LIMIT_PAUSE_COUNT=0
 RATE_LIMIT_PAUSE_DURATION=1800  # 30 minutes in seconds
+OPENCODE_PORT=4096
+OPENCODE_SERVER_PID=""
+SKIP_TESTS=false
+MAX_ITERATIONS=-1  # -1 means unlimited
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,6 +36,25 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-tests)
+            SKIP_TESTS=true
+            shift
+            ;;
+        --max-iterations)
+            MAX_ITERATIONS="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--skip-tests] [--max-iterations N]"
+            exit 1
+            ;;
+    esac
+done
 
 # Create log directory
 mkdir -p "$LOG_DIR"
@@ -63,10 +86,113 @@ log_section() {
 }
 
 ################################################################################
+# OpenCode Server Management
+################################################################################
+
+start_opencode_server() {
+    log_section "Starting OpenCode Server"
+    
+    # Check if server is already running
+    if curl -s "http://localhost:$OPENCODE_PORT/health" > /dev/null 2>&1; then
+        log_warning "OpenCode server already running on port $OPENCODE_PORT"
+        return 0
+    fi
+    
+    log "Starting OpenCode server on port $OPENCODE_PORT..."
+    opencode serve --port "$OPENCODE_PORT" > "$LOG_DIR/opencode-server.log" 2>&1 &
+    OPENCODE_SERVER_PID=$!
+    
+    log "OpenCode server PID: $OPENCODE_SERVER_PID"
+    
+    # Wait for server to be ready
+    local max_attempts=30
+    local attempt=0
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -s "http://localhost:$OPENCODE_PORT/health" > /dev/null 2>&1; then
+            log_success "OpenCode server is ready"
+            return 0
+        fi
+        
+        attempt=$((attempt + 1))
+        log "Waiting for OpenCode server... (attempt $attempt/$max_attempts)"
+        sleep 2
+    done
+    
+    log_error "OpenCode server did not start after $max_attempts attempts"
+    cat "$LOG_DIR/opencode-server.log"
+    return 1
+}
+
+stop_opencode_server() {
+    log_section "Stopping OpenCode Server"
+    
+    if [ -n "$OPENCODE_SERVER_PID" ]; then
+        log "Stopping OpenCode server (PID: $OPENCODE_SERVER_PID)..."
+        kill "$OPENCODE_SERVER_PID" 2>/dev/null || true
+        wait "$OPENCODE_SERVER_PID" 2>/dev/null || true
+        log_success "OpenCode server stopped"
+    fi
+}
+
+call_opencode() {
+    local prompt="$1"
+    local log_file="$2"
+    local max_retries=3
+    local retry=0
+    
+    while [ $retry -lt $max_retries ]; do
+        log "Calling OpenCode (attempt $((retry + 1))/$max_retries)..."
+        
+        local output
+        local exit_code
+        
+        if [ -n "$log_file" ]; then
+            output=$(opencode run --attach "http://localhost:$OPENCODE_PORT" "$prompt" 2>&1 | tee "$log_file")
+            exit_code=${PIPESTATUS[0]}
+        else
+            output=$(opencode run --attach "http://localhost:$OPENCODE_PORT" "$prompt" 2>&1)
+            exit_code=$?
+        fi
+        
+        # Check exit code
+        if [ $exit_code -eq 0 ]; then
+            log_success "OpenCode call succeeded"
+            return 0
+        elif [ $exit_code -eq 2 ]; then
+            # Rate limiting detected (based on OpenCode docs return code)
+            log_warning "Rate limiting detected (exit code 2)"
+            handle_rate_limiting
+            retry=$((retry + 1))
+            continue
+        else
+            # Check output for rate limiting messages
+            if check_for_rate_limiting "$output"; then
+                log_warning "Rate limiting detected in output"
+                handle_rate_limiting
+                retry=$((retry + 1))
+                continue
+            fi
+            
+            log_error "OpenCode call failed (exit code $exit_code)"
+            return 1
+        fi
+    done
+    
+    log_error "OpenCode call failed after $max_retries retries"
+    return 1
+}
+
+################################################################################
 # Validation Functions
 ################################################################################
 
 run_backend_tests() {
+    if [ "$SKIP_TESTS" = true ]; then
+        log_warning "SKIP_TESTS mode: Skipping backend tests"
+        return 0
+    fi
+    
     log_section "VALIDATION: Running Backend Tests"
     
     cd "$SCRIPT_DIR"
@@ -82,6 +208,11 @@ run_backend_tests() {
 }
 
 build_and_deploy_docker() {
+    if [ "$SKIP_TESTS" = true ]; then
+        log_warning "SKIP_TESTS mode: Skipping Docker build/deploy"
+        return 0
+    fi
+    
     log_section "VALIDATION: Building and Deploying Docker Container"
     
     cd "$SCRIPT_DIR"
@@ -123,6 +254,11 @@ build_and_deploy_docker() {
 }
 
 check_health_endpoint() {
+    if [ "$SKIP_TESTS" = true ]; then
+        log_warning "SKIP_TESTS mode: Skipping health check"
+        return 0
+    fi
+    
     log_section "VALIDATION: Checking Health Endpoint"
     
     local max_attempts=30
@@ -144,6 +280,38 @@ check_health_endpoint() {
 }
 
 run_e2e_tests() {
+    if [ "$SKIP_TESTS" = true ]; then
+        log_warning "SKIP_TESTS mode: Creating fake test results"
+        # Create fake test results for testing the loop
+        local fake_passed=$((400 + ITERATION * 5))
+        local fake_failed=$((20 - ITERATION * 2))
+        if [ $fake_failed -lt 0 ]; then
+            fake_failed=0
+        fi
+        
+        echo "$fake_passed" > "$LOG_DIR/e2e-passed-iter-$ITERATION.txt"
+        echo "$fake_failed" > "$LOG_DIR/e2e-failed-iter-$ITERATION.txt"
+        
+        # Create fake log with some failed tests
+        cat > "$LOG_DIR/e2e-tests-iter-$ITERATION.log" << EOF
+Running $((fake_passed + fake_failed)) tests
+✓ Test 1 passed
+✓ Test 2 passed
+EOF
+        
+        for i in $(seq 1 $fake_failed); do
+            echo "✘ Fake test $i failed" >> "$LOG_DIR/e2e-tests-iter-$ITERATION.log"
+        done
+        
+        log_success "Fake E2E tests: $fake_passed passed, $fake_failed failed"
+        
+        if [ "$fake_failed" -eq 0 ]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+    
     log_section "VALIDATION: Running E2E Tests"
     
     cd "$FRONTEND_DIR"
@@ -212,6 +380,7 @@ handle_rate_limiting() {
     
     if [ $RATE_LIMIT_PAUSE_COUNT -ge $MAX_RATE_LIMIT_PAUSES ]; then
         log_error "Hit rate limit $MAX_RATE_LIMIT_PAUSES times. Exiting."
+        stop_opencode_server
         exit 1
     fi
     
@@ -284,12 +453,8 @@ DO NOT:
 
 Respond with a clear, numbered plan of fixes to attempt."
 
-    log "Invoking OpenCode for planning..."
-    local output
-    output=$(opencode run "$prompt" 2>&1 | tee "$LOG_DIR/plan-iter-$ITERATION.log")
-    
-    if check_for_rate_limiting "$output"; then
-        handle_rate_limiting
+    if ! call_opencode "$prompt" "$LOG_DIR/plan-iter-$ITERATION.log"; then
+        log_error "Planning phase failed"
         return 1
     fi
     
@@ -332,12 +497,8 @@ Start with the highest priority fixes from the plan. Implement 2-3 fixes this it
 
 When done, summarize what was changed and what tests should now pass."
 
-    log "Invoking OpenCode for execution..."
-    local output
-    output=$(opencode run "$prompt" 2>&1 | tee "$LOG_DIR/execute-iter-$ITERATION.log")
-    
-    if check_for_rate_limiting "$output"; then
-        handle_rate_limiting
+    if ! call_opencode "$prompt" "$LOG_DIR/execute-iter-$ITERATION.log"; then
+        log_error "Execution phase failed"
         return 1
     fi
     
@@ -385,12 +546,8 @@ Provide:
 
 Keep response concise and actionable."
 
-    log "Invoking OpenCode for reflection..."
-    local output
-    output=$(opencode run "$prompt" 2>&1 | tee "$LOG_DIR/reflect-iter-$ITERATION.log")
-    
-    if check_for_rate_limiting "$output"; then
-        handle_rate_limiting
+    if ! call_opencode "$prompt" "$LOG_DIR/reflect-iter-$ITERATION.log"; then
+        log_error "Reflection phase failed"
         return 1
     fi
     
@@ -432,12 +589,8 @@ Add tests for the top 2-3 most important missing areas.
 
 When done, summarize what tests were added."
 
-    log "Invoking OpenCode to check for missing tests..."
-    local output
-    output=$(opencode run "$prompt" 2>&1 | tee "$LOG_DIR/add-tests-iter-$ITERATION.log")
-    
-    if check_for_rate_limiting "$output"; then
-        handle_rate_limiting
+    if ! call_opencode "$prompt" "$LOG_DIR/add-tests-iter-$ITERATION.log"; then
+        log_error "Test coverage review failed"
         return 1
     fi
     
@@ -451,6 +604,12 @@ When done, summarize what tests were added."
 
 ralph_loop_iteration() {
     ITERATION=$((ITERATION + 1))
+    
+    # Check max iterations
+    if [ $MAX_ITERATIONS -gt 0 ] && [ $ITERATION -gt $MAX_ITERATIONS ]; then
+        log_warning "Reached max iterations ($MAX_ITERATIONS)"
+        return 0
+    fi
     
     log_section "RALPH LOOP - ITERATION $ITERATION"
     
@@ -547,16 +706,32 @@ main() {
     log "Frontend directory: $FRONTEND_DIR"
     log "Log directory: $LOG_DIR"
     
+    if [ "$SKIP_TESTS" = true ]; then
+        log_warning "SKIP_TESTS mode enabled - using fake test results"
+    fi
+    
+    if [ $MAX_ITERATIONS -gt 0 ]; then
+        log_warning "Max iterations set to: $MAX_ITERATIONS"
+    fi
+    
+    # Start OpenCode server
+    if ! start_opencode_server; then
+        log_error "Failed to start OpenCode server"
+        exit 1
+    fi
+    
     # Initial validation to make sure system is working
     log_section "INITIAL SYSTEM CHECK"
     
     if ! build_and_deploy_docker; then
         log_error "Initial deployment failed"
+        stop_opencode_server
         exit 1
     fi
     
     if ! check_health_endpoint; then
         log_error "Initial health check failed"
+        stop_opencode_server
         exit 1
     fi
     
@@ -575,6 +750,12 @@ main() {
     # Main loop
     while true; do
         if ralph_loop_iteration; then
+            # Check if we stopped due to max iterations
+            if [ $MAX_ITERATIONS -gt 0 ] && [ $ITERATION -ge $MAX_ITERATIONS ]; then
+                log_warning "Stopped at max iterations ($MAX_ITERATIONS)"
+                break
+            fi
+            
             log_success "Ralph loop completed successfully!"
             break
         fi
@@ -593,8 +774,22 @@ main() {
         sleep 5
     done
     
+    # Stop OpenCode server
+    stop_opencode_server
+    
     log_section "RALPH LOOP COMPLETE"
-    log_success "All E2E tests are now passing!"
+    
+    local final_failed=0
+    if [ -f "$LOG_DIR/e2e-failed-iter-$ITERATION.txt" ]; then
+        final_failed=$(cat "$LOG_DIR/e2e-failed-iter-$ITERATION.txt")
+    fi
+    
+    if [ "$final_failed" -eq 0 ]; then
+        log_success "All E2E tests are now passing!"
+    else
+        log_warning "Completed with $final_failed tests still failing"
+    fi
+    
     log "Total iterations: $ITERATION"
     log "Rate limit pauses: $RATE_LIMIT_PAUSE_COUNT"
     
@@ -605,9 +800,13 @@ main() {
 ## Results
 - **Total Iterations**: $ITERATION
 - **Initial Failed Tests**: $baseline_failed
-- **Final Failed Tests**: 0
-- **Tests Fixed**: $baseline_failed
+- **Final Failed Tests**: $final_failed
+- **Tests Fixed**: $((baseline_failed - final_failed))
 - **Rate Limit Pauses**: $RATE_LIMIT_PAUSE_COUNT
+
+## Configuration
+- **Skip Tests Mode**: $SKIP_TESTS
+- **Max Iterations**: $MAX_ITERATIONS
 
 ## Timeline
 - **Started**: $(head -1 "$LOG_DIR/ralph.log" | cut -d']' -f1 | tr -d '[')
@@ -626,7 +825,7 @@ EOF
 }
 
 # Handle interrupts gracefully
-trap 'log_error "Ralph loop interrupted"; exit 130' INT TERM
+trap 'log_error "Ralph loop interrupted"; stop_opencode_server; exit 130' INT TERM
 
 # Run main function
 main "$@"

@@ -388,13 +388,13 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     
     data = await response.json();
     expect(data.success).toBeTruthy();
-    expect(data.result).toHaveProperty('result');
-    expect(data.result).toHaveProperty('prediction');
-    
+    expect(data.result).toHaveProperty('status');
+    expect(data.result).toHaveProperty('metrics');
+
     console.log(`✅ Scenario simulation completed`);
-    console.log(`   Result: ${data.result?.result}`);
-    console.log(`   Prediction: ${data.result?.prediction}`);
-    console.log(`   Confidence: ${data.result?.confidence}`);
+    console.log(`   Status: ${data.result?.status}`);
+    console.log(`   Total steps: ${data.result?.metrics?.total_steps}`);
+    console.log(`   Events processed: ${data.result?.metrics?.events_processed}`);
   });
 
   // ============================================
@@ -410,10 +410,12 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
       data: {
         tool_name: 'create_alert',
         input: {
-          name: alertName,
+          title: alertName,
           type: 'anomaly',
-          condition: 'anomaly_score > 0.8',
-          action: 'send_email'
+          entity_id: 'test_entity',
+          metric_name: 'anomaly_score',
+          severity: 'high',
+          message: 'Anomaly score exceeded threshold'
         }
       }
     });

@@ -13,11 +13,6 @@ import {
 } from "@/lib/api";
 import { TypeInference } from "@/components/ontologies/TypeInference";
 
-export const metadata = {
-  title: "Ontology Details - Mimir AIP",
-  description: "View and manage ontology details, classes, properties, and queries",
-};
-
 interface OntologyStats {
   total_classes: number;
   total_properties: number;
@@ -48,7 +43,7 @@ export default function OntologyDetailsPage() {
   const [stats, setStats] = useState<OntologyStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "classes" | "properties" | "queries" | "train" | "types">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "classes" | "properties" | "instances" | "queries" | "train" | "types">("overview");
   const [queryResult, setQueryResult] = useState<SPARQLQueryResult | null>(null);
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
@@ -411,7 +406,7 @@ LIMIT 50`,
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-4">
         <nav className="-mb-px flex space-x-8">
-          {(["overview", "classes", "properties", "queries", "train", "types"] as const).map((tab) => (
+          {(["overview", "classes", "properties", "instances", "queries", "train", "types"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -757,6 +752,65 @@ LIMIT 50`,
 
         {activeTab === "types" && (
           <TypeInference ontologyId={ontologyId} />
+        )}
+
+        {activeTab === "instances" && (
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Instances</h3>
+            <p className="text-gray-600 mb-4">
+              Individual instances (individuals) in the ontology. These are specific entities that belong to the defined classes.
+            </p>
+            <button
+              onClick={() => runSampleQuery(`PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+SELECT ?instance ?type ?label
+WHERE {
+  GRAPH <${ontology.tdb2_graph}> {
+    ?instance a ?type .
+    FILTER(?type != owl:NamedIndividual)
+    OPTIONAL { ?instance rdfs:label ?label }
+  }
+}
+LIMIT 100`)}
+              disabled={queryLoading}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded mb-4"
+            >
+              {queryLoading ? "Loading..." : "Load Instances"}
+            </button>
+
+            {queryError && (
+              <div className="bg-red-900/20 border border-red-400 text-red-400 px-4 py-3 rounded">
+                {queryError}
+              </div>
+            )}
+
+            {queryResult && queryResult.bindings && queryResult.bindings.length > 0 && (
+              <div className="space-y-3">
+                <div className="text-sm text-gray-600 mb-2">
+                  Found {queryResult.bindings.length} instances
+                </div>
+                {queryResult.bindings.map((binding: Record<string, unknown>, idx: number) => {
+                  const typedBinding = binding as Record<string, { value?: string }>;
+                  return (
+                    <div key={idx} className="border rounded-lg p-4 hover:bg-gray-50">
+                      <div className="font-medium text-green-600 font-mono text-sm break-all">
+                        {typedBinding.instance?.value || "-"}
+                      </div>
+                      {typedBinding.label?.value && (
+                        <div className="text-sm text-gray-900 mt-1">{typedBinding.label.value}</div>
+                      )}
+                      <div className="text-xs text-gray-500 mt-2">
+                        <span className="font-medium">Type:</span>{" "}
+                        {extractLocalName(typedBinding.type?.value || "")}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
        </div>
      </div>

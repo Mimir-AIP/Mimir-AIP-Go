@@ -38,7 +38,9 @@ type OntologyUploadResponse struct {
 
 // SPARQLQueryRequest represents a SPARQL query request
 type SPARQLQueryRequest struct {
-	Query string `json:"query"`
+	Query  string `json:"query"`
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitempty"`
 }
 
 // ExtractionJobRequest represents a request to create an extraction job
@@ -346,7 +348,7 @@ func (s *Server) handleValidateOntology(w http.ResponseWriter, r *http.Request) 
 	writeSuccessResponse(w, response)
 }
 
-// handleSPARQLQuery handles SPARQL query requests
+// handleSPARQLQuery handles SPARQL query requests with optional pagination
 func (s *Server) handleSPARQLQuery(w http.ResponseWriter, r *http.Request) {
 	if s.tdb2Backend == nil {
 		writeInternalServerErrorResponse(w, "Knowledge graph features are not available")
@@ -364,14 +366,61 @@ func (s *Server) handleSPARQLQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Apply pagination if requested
+	query := req.Query
+	if req.Limit > 0 {
+		// Check if query already has LIMIT/OFFSET
+		queryUpper := ""
+		for _, ch := range query {
+			if ch >= 'a' && ch <= 'z' {
+				queryUpper += string(ch - 32)
+			} else {
+				queryUpper += string(ch)
+			}
+		}
+
+		hasLimit := false
+		hasOffset := false
+		for i := 0; i < len(queryUpper)-5; i++ {
+			if queryUpper[i:i+5] == "LIMIT" {
+				hasLimit = true
+			}
+			if i < len(queryUpper)-6 && queryUpper[i:i+6] == "OFFSET" {
+				hasOffset = true
+			}
+		}
+
+		if !hasLimit {
+			query = fmt.Sprintf("%s\nLIMIT %d", query, req.Limit)
+		}
+		if req.Offset > 0 && !hasOffset {
+			query = fmt.Sprintf("%s\nOFFSET %d", query, req.Offset)
+		}
+	}
+
 	ctx := context.Background()
-	result, err := s.tdb2Backend.QuerySPARQL(ctx, req.Query)
+	result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 	if err != nil {
 		writeInternalServerErrorResponse(w, fmt.Sprintf("Query failed: %v", err))
 		return
 	}
 
-	writeSuccessResponse(w, result)
+	// Add pagination metadata to response
+	response := map[string]interface{}{
+		"data":    result,
+		"success": true,
+	}
+
+	if req.Limit > 0 {
+		response["pagination"] = map[string]int{
+			"limit":  req.Limit,
+			"offset": req.Offset,
+			"count":  len(result.Bindings),
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // handleKnowledgeGraphStats handles requests for knowledge graph statistics

@@ -1096,13 +1096,16 @@ func (p *PersistenceBackend) GetClassifierModel(ctx context.Context, id string) 
 	model := &ClassifierModel{}
 	var ontologyID, hyperparameters, featureColumns, classLabels sql.NullString
 	var confusionMatrix, modelArtifactPath, featureImportance sql.NullString
+	var trainAccuracy, validateAccuracy, precisionScore, recallScore, f1Score sql.NullFloat64
+	var modelSizeBytes sql.NullInt64
+	var trainingRows, validationRows sql.NullInt32
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&model.ID, &ontologyID, &model.Name, &model.TargetClass,
 		&model.Algorithm, &hyperparameters, &featureColumns,
-		&classLabels, &model.TrainAccuracy, &model.ValidateAccuracy,
-		&model.PrecisionScore, &model.RecallScore, &model.F1Score,
-		&confusionMatrix, &modelArtifactPath, &model.ModelSizeBytes,
-		&model.TrainingRows, &model.ValidationRows, &featureImportance,
+		&classLabels, &trainAccuracy, &validateAccuracy,
+		&precisionScore, &recallScore, &f1Score,
+		&confusionMatrix, &modelArtifactPath, &modelSizeBytes,
+		&trainingRows, &validationRows, &featureImportance,
 		&model.IsActive, &model.CreatedAt, &model.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -1118,6 +1121,32 @@ func (p *PersistenceBackend) GetClassifierModel(ctx context.Context, id string) 
 	model.ConfusionMatrix = confusionMatrix.String
 	model.ModelArtifactPath = modelArtifactPath.String
 	model.FeatureImportance = featureImportance.String
+	// Handle NULL float values
+	if trainAccuracy.Valid {
+		model.TrainAccuracy = trainAccuracy.Float64
+	}
+	if validateAccuracy.Valid {
+		model.ValidateAccuracy = validateAccuracy.Float64
+	}
+	if precisionScore.Valid {
+		model.PrecisionScore = precisionScore.Float64
+	}
+	if recallScore.Valid {
+		model.RecallScore = recallScore.Float64
+	}
+	if f1Score.Valid {
+		model.F1Score = f1Score.Float64
+	}
+	// Handle NULL int values
+	if modelSizeBytes.Valid {
+		model.ModelSizeBytes = modelSizeBytes.Int64
+	}
+	if trainingRows.Valid {
+		model.TrainingRows = int(trainingRows.Int32)
+	}
+	if validationRows.Valid {
+		model.ValidationRows = int(validationRows.Int32)
+	}
 	return model, nil
 }
 

@@ -13,6 +13,11 @@ import {
 } from "@/lib/api";
 import { TypeInference } from "@/components/ontologies/TypeInference";
 
+export const metadata = {
+  title: "Ontology Details - Mimir AIP",
+  description: "View and manage ontology details, classes, properties, and queries",
+};
+
 interface OntologyStats {
   total_classes: number;
   total_properties: number;

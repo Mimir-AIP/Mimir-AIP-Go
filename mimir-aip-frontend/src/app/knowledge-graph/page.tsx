@@ -13,6 +13,11 @@ import {
 } from "@/lib/api";
 import { useEffect } from "react";
 
+export const metadata = {
+  title: "Knowledge Graph - Mimir AIP",
+  description: "Query and explore the knowledge graph with SPARQL and natural language",
+};
+
 const SAMPLE_QUERIES = [
   {
     name: "Count all triples",

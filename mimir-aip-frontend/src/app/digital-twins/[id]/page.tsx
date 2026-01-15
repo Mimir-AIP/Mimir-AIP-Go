@@ -33,6 +33,11 @@ import {
   Sparkles,
 } from "lucide-react";
 
+export const metadata = {
+  title: "Digital Twin Details - Mimir AIP",
+  description: "View and manage digital twin state, scenarios, and simulations",
+};
+
 export default function TwinDetailPage() {
   const params = useParams();
   const router = useRouter();

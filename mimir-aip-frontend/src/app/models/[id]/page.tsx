@@ -13,6 +13,11 @@ import { ArrowLeft, Brain, TrendingUp, Calendar, Play, Pause, Trash2, Upload } f
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 
+export const metadata = {
+  title: "ML Model Details - Mimir AIP",
+  description: "View model details, performance metrics, and make predictions",
+};
+
 export default function ModelDetailPage() {
   const params = useParams();
   const router = useRouter();

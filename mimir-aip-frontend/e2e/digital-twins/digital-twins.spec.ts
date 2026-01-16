@@ -1,3 +1,16 @@
+/**
+ * ⚠️ TODO: REMOVE API MOCKING FROM THIS FILE
+ * 
+ * This test file heavily mocks API endpoints, which defeats the purpose
+ * of end-to-end testing. These tests should be rewritten to:
+ * 1. Use the real backend API
+ * 2. Test actual integration between frontend and backend
+ * 3. Verify real data flows and state management
+ * 
+ * Current status: Tests are functional but not true E2E tests
+ * Priority: HIGH - Should be refactored to remove all mocking
+ */
+
 import { test, expect } from '../helpers';
 import { testDigitalTwin, testScenario } from '../fixtures/test-data';
 import { APIMocker, expectVisible, expectTextVisible, waitForToast } from '../helpers';

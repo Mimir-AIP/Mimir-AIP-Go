@@ -153,6 +153,8 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/twin", s.handleListTwins).Methods("GET")
 	v1.HandleFunc("/twin/create", s.handleCreateTwin).Methods("POST")
 	v1.HandleFunc("/twin/{id}", s.handleGetTwin).Methods("GET")
+	v1.HandleFunc("/twin/{id}", s.handleUpdateTwin).Methods("PUT")
+	v1.HandleFunc("/twin/{id}", s.handleDeleteTwin).Methods("DELETE")
 	v1.HandleFunc("/twin/{id}/state", s.handleGetTwinState).Methods("GET")
 	v1.HandleFunc("/twin/{id}/scenarios", s.handleListScenarios).Methods("GET")
 	v1.HandleFunc("/twin/{id}/scenarios", s.handleCreateScenario).Methods("POST")

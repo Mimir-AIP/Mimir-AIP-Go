@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/DigitalTwin"
@@ -273,6 +274,159 @@ func (s *Server) handleListTwins(w http.ResponseWriter, r *http.Request) {
 	writeSuccessResponse(w, map[string]interface{}{
 		"twins": twins,
 		"count": len(twins),
+	})
+}
+
+// handleUpdateTwin updates a digital twin by ID
+func (s *Server) handleUpdateTwin(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "Digital twin service not available")
+		return
+	}
+
+	vars := mux.Vars(r)
+	twinID := vars["id"]
+
+	var req struct {
+		Name        string                 `json:"name,omitempty"`
+		Description string                 `json:"description,omitempty"`
+		ModelType   string                 `json:"model_type,omitempty"`
+		BaseState   map[string]interface{} `json:"base_state,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	// Check if twin exists
+	db := s.persistence.GetDB()
+	var exists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM digital_twins WHERE id = ?)", twinID).Scan(&exists)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to check twin existence")
+		return
+	}
+	if !exists {
+		writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
+		return
+	}
+
+	// Build UPDATE query dynamically based on provided fields
+	updates := []string{}
+	args := []interface{}{}
+
+	if req.Name != "" {
+		updates = append(updates, "name = ?")
+		args = append(args, req.Name)
+	}
+	if req.Description != "" {
+		updates = append(updates, "description = ?")
+		args = append(args, req.Description)
+	}
+	if req.ModelType != "" {
+		updates = append(updates, "model_type = ?")
+		args = append(args, req.ModelType)
+	}
+	if req.BaseState != nil {
+		stateJSON, err := json.Marshal(req.BaseState)
+		if err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Invalid base_state: %v", err))
+			return
+		}
+		updates = append(updates, "base_state = ?")
+		args = append(args, string(stateJSON))
+	}
+
+	if len(updates) == 0 {
+		writeErrorResponse(w, http.StatusBadRequest, "No fields to update")
+		return
+	}
+
+	// Always update updated_at timestamp
+	updates = append(updates, "updated_at = ?")
+	args = append(args, time.Now())
+
+	// Add twin ID as final argument
+	args = append(args, twinID)
+
+	// Execute UPDATE
+	query := fmt.Sprintf("UPDATE digital_twins SET %s WHERE id = ?", strings.Join(updates, ", "))
+	_, err = db.Exec(query, args...)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to update twin: %v", err))
+		return
+	}
+
+	// Fetch updated twin
+	var twin DigitalTwin.DigitalTwin
+	var baseStateJSON string
+	err = db.QueryRow(`
+		SELECT id, ontology_id, name, description, model_type, base_state, created_at, updated_at
+		FROM digital_twins WHERE id = ?
+	`, twinID).Scan(&twin.ID, &twin.OntologyID, &twin.Name, &twin.Description, &twin.ModelType, &baseStateJSON, &twin.CreatedAt, &twin.UpdatedAt)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to fetch updated twin: %v", err))
+		return
+	}
+
+	if err := json.Unmarshal([]byte(baseStateJSON), &twin.BaseState); err != nil {
+		twin.BaseState = make(map[string]interface{})
+	}
+
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"message": "Digital twin updated successfully",
+		"data":    twin,
+	})
+}
+
+// handleDeleteTwin deletes a digital twin by ID
+func (s *Server) handleDeleteTwin(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "Digital twin service not available")
+		return
+	}
+
+	vars := mux.Vars(r)
+	twinID := vars["id"]
+
+	db := s.persistence.GetDB()
+
+	// Check if twin exists
+	var exists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM digital_twins WHERE id = ?)", twinID).Scan(&exists)
+	if err != nil || !exists {
+		writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
+		return
+	}
+
+	// Delete associated scenarios first (foreign key constraint)
+	_, err = db.Exec("DELETE FROM simulation_scenarios WHERE twin_id = ?", twinID)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to delete twin scenarios: %v", err))
+		return
+	}
+
+	// Delete simulation runs for this twin's scenarios
+	_, err = db.Exec(`
+		DELETE FROM simulation_runs 
+		WHERE scenario_id IN (SELECT id FROM simulation_scenarios WHERE twin_id = ?)
+	`, twinID)
+	if err != nil {
+		// Log but don't fail - runs may have already been deleted
+		utils.GetLogger().Warn(fmt.Sprintf("Failed to delete simulation runs for twin %s: %v", twinID, err))
+	}
+
+	// Delete the twin
+	_, err = db.Exec("DELETE FROM digital_twins WHERE id = ?", twinID)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to delete twin: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, map[string]interface{}{
+		"message": "Digital twin deleted successfully",
+		"id":      twinID,
 	})
 }
 

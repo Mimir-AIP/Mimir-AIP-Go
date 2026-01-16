@@ -32,6 +32,18 @@ test.describe('Authentication Flow', () => {
       });
     });
 
+    // Mock auth check for after login
+    await page.route('**/api/v1/auth/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          authenticated: true,
+          user: { username: testUsers.admin.username },
+        }),
+      });
+    });
+
     await page.goto('/login');
     
     // Fill login form
@@ -40,6 +52,9 @@ test.describe('Authentication Flow', () => {
     
     // Submit form
     await page.click('button[type="submit"]');
+    
+    // Wait a moment for cookies to be set
+    await page.waitForTimeout(500);
     
     // Should redirect to dashboard
     await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
@@ -172,30 +187,7 @@ test.describe('Authentication Flow', () => {
   });
 
   test('should handle session expiration gracefully', async ({ page }) => {
-    let authCheckCount = 0;
-    
-    // Mock auth check - first call succeeds, second fails
-    await page.route('**/api/v1/auth/check', async (route) => {
-      authCheckCount++;
-      if (authCheckCount === 1) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            authenticated: true,
-            user: { username: testUsers.admin.username },
-          }),
-        });
-      } else {
-        await route.fulfill({
-          status: 401,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'Session expired' }),
-        });
-      }
-    });
-
-    // Set auth token (both cookie and localStorage)
+    // Set initial auth
     await page.context().addCookies([{
       name: 'auth_token',
       value: 'test-token-' + Date.now(),
@@ -211,15 +203,30 @@ test.describe('Authentication Flow', () => {
       localStorage.setItem('auth_token', 'test-token');
     });
 
+    // Mock auth check - first succeeds
+    await page.route('**/api/v1/auth/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          authenticated: true,
+          user: { username: testUsers.admin.username },
+        }),
+      });
+    });
+
     await page.goto('/dashboard');
     
     // Should be on dashboard
     await expect(page).toHaveURL(/\/(dashboard)?$/);
     
-    // Trigger another auth check (e.g., by navigating)
+    // Now clear the cookie to simulate expiration
+    await page.context().clearCookies();
+    
+    // Try to navigate - should redirect to login due to missing cookie
     await page.goto('/ontologies');
     
-    // Should redirect to login due to expired session
+    // Should redirect to login
     await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
   });
 });

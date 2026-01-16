@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
+
 
 /**
  * Comprehensive E2E tests for navigation, menus, sidebar, and routing
@@ -6,6 +8,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Navigation - Sidebar and Menus', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
   });
@@ -247,6 +250,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
 test.describe('Navigation - Monitoring Submenu', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/dashboard');
     await page.waitForLoadState('networkidle');
   });

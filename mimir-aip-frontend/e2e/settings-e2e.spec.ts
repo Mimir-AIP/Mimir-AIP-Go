@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
 
 /**
  * Comprehensive E2E tests for Settings page including API Keys management
@@ -9,6 +10,7 @@ test.describe('Settings - API Keys Management', () => {
 
   test.beforeEach(async ({ browser }) => {
     page = await browser.newPage();
+    await setupAuthenticatedPage(page);
     await page.goto('/settings');
     await page.waitForLoadState('networkidle');
   });

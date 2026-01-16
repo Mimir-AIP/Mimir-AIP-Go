@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
+
 
 /**
  * Comprehensive E2E tests for Ontologies management including upload, versioning, and drift detection
@@ -6,6 +8,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Ontologies - Complete Workflow', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/ontologies');
     await page.waitForLoadState('networkidle');
   });
@@ -281,6 +284,7 @@ test.describe('Ontologies - Complete Workflow', () => {
 
 test.describe('Ontologies - AI-Powered Features', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/ontologies');
     await page.waitForLoadState('networkidle');
   });
@@ -352,6 +356,7 @@ test.describe('Ontologies - AI-Powered Features', () => {
 
 test.describe('Ontologies - Mapping and Alignment', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/ontologies');
     await page.waitForLoadState('networkidle');
   });

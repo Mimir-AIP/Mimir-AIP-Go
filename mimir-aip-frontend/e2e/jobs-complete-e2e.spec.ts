@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
+
 
 /**
  * Comprehensive E2E tests for Jobs execution, monitoring, and management
@@ -6,6 +8,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Jobs - List and Management', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/jobs');
     await page.waitForLoadState('networkidle');
   });
@@ -149,6 +152,7 @@ test.describe('Jobs - List and Management', () => {
 
 test.describe('Jobs - Execution Details', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/jobs');
     await page.waitForLoadState('networkidle');
   });
@@ -316,6 +320,7 @@ test.describe('Jobs - Execution Details', () => {
 
 test.describe('Jobs - Control and Management', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/jobs');
     await page.waitForLoadState('networkidle');
   });
@@ -410,6 +415,7 @@ test.describe('Jobs - Control and Management', () => {
 
 test.describe('Jobs - Timeline and History', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/jobs');
     await page.waitForLoadState('networkidle');
   });
@@ -477,6 +483,7 @@ test.describe('Jobs - Timeline and History', () => {
 
 test.describe('Jobs - Statistics and Analytics', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/jobs/analytics');
     await page.waitForLoadState('networkidle');
   });
@@ -546,6 +553,7 @@ test.describe('Jobs - Statistics and Analytics', () => {
 
 test.describe('Jobs - Notifications', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/jobs');
     await page.waitForLoadState('networkidle');
   });
@@ -593,6 +601,7 @@ test.describe('Jobs - Notifications', () => {
 
 test.describe('Jobs - Auto-refresh and Real-time Updates', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/jobs');
     await page.waitForLoadState('networkidle');
   });

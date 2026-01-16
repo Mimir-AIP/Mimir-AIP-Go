@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
+
 
 /**
  * Comprehensive E2E tests for Knowledge Graph including SPARQL queries, visualization, and NL queries
@@ -6,6 +8,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Knowledge Graph - Visualization and Exploration', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
     await page.waitForLoadState('networkidle');
   });
@@ -216,6 +219,7 @@ test.describe('Knowledge Graph - Visualization and Exploration', () => {
 
 test.describe('Knowledge Graph - SPARQL Queries', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
     await page.waitForLoadState('networkidle');
   });
@@ -348,6 +352,7 @@ test.describe('Knowledge Graph - SPARQL Queries', () => {
 
 test.describe('Knowledge Graph - Natural Language Queries', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
     await page.waitForLoadState('networkidle');
   });
@@ -426,6 +431,7 @@ test.describe('Knowledge Graph - Natural Language Queries', () => {
 
 test.describe('Knowledge Graph - Path Finding', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
     await page.waitForLoadState('networkidle');
   });
@@ -483,6 +489,7 @@ test.describe('Knowledge Graph - Path Finding', () => {
 
 test.describe('Knowledge Graph - Reasoning and Inference', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
     await page.waitForLoadState('networkidle');
   });

@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
+
 
 /**
  * Comprehensive E2E tests for Workflows including creation, execution, and autonomous workflows
@@ -6,6 +8,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Workflows - Management', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/workflows');
     await page.waitForLoadState('networkidle');
   });
@@ -146,6 +149,7 @@ test.describe('Workflows - Management', () => {
 
 test.describe('Workflows - Visual Builder', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/workflows');
     await page.waitForLoadState('networkidle');
   });
@@ -271,6 +275,7 @@ test.describe('Workflows - Visual Builder', () => {
 
 test.describe('Workflows - Execution', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/workflows');
     await page.waitForLoadState('networkidle');
   });
@@ -379,6 +384,7 @@ test.describe('Workflows - Execution', () => {
 
 test.describe('Workflows - Triggers and Scheduling', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/workflows');
     await page.waitForLoadState('networkidle');
   });
@@ -491,6 +497,7 @@ test.describe('Workflows - Triggers and Scheduling', () => {
 
 test.describe('Workflows - Autonomous Workflows', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/workflows/autonomous');
     await page.waitForLoadState('networkidle');
   });
@@ -574,6 +581,7 @@ test.describe('Workflows - Autonomous Workflows', () => {
 
 test.describe('Workflows - Variables and Context', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/workflows');
     await page.waitForLoadState('networkidle');
   });

@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
+
 
 /**
  * Comprehensive E2E tests for ML Models including training, prediction, and auto-ML features
@@ -6,6 +8,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Models - Management', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/models');
     await page.waitForLoadState('networkidle');
   });
@@ -155,6 +158,7 @@ test.describe('Models - Management', () => {
 
 test.describe('Models - Training', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/models');
     await page.waitForLoadState('networkidle');
   });
@@ -265,6 +269,7 @@ test.describe('Models - Training', () => {
 
 test.describe('Models - Prediction', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/models');
     await page.waitForLoadState('networkidle');
   });
@@ -353,6 +358,7 @@ test.describe('Models - Prediction', () => {
 
 test.describe('Models - Auto-ML', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/models/automl');
     await page.waitForLoadState('networkidle');
   });
@@ -426,6 +432,7 @@ test.describe('Models - Auto-ML', () => {
 
 test.describe('Models - Evaluation', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/models');
     await page.waitForLoadState('networkidle');
   });
@@ -502,6 +509,7 @@ test.describe('Models - Evaluation', () => {
 
 test.describe('Models - Deployment', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/models');
     await page.waitForLoadState('networkidle');
   });

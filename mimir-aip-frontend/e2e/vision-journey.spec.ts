@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
 
 test.describe('Mimir AIP - Vision User Journey Tests', () => {
   test.setTimeout(120000);
+  
+  test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
+  });
 
   // ============================================
   // STEP 1: Create JSON API Ingestion Pipeline

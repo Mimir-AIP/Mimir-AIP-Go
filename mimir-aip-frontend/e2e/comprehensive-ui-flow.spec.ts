@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
 
 test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
   test.setTimeout(300000); // 5 minutes for full autonomous flow
@@ -10,6 +11,9 @@ test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
     const testPrefix = `UI-Flow-${Date.now()}`;
 
     console.log('🚀 === COMPLETE UI-BASED AUTONOMOUS FLOW TEST ===');
+    
+    // Setup authentication
+    await setupAuthenticatedPage(page);
 
     // ============================================
     // STEP 1: Create Data Ingestion Pipeline via UI

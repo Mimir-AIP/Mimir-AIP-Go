@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
 
 test.describe('Mimir AIP - Detailed UI Interactions', () => {
   test.setTimeout(300000); // 5 minutes for comprehensive testing
+  
+  test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
+  });
 
   // ============================================
   // PIPELINE DETAILS INTERACTIONS

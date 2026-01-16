@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
+
 
 /**
  * Comprehensive E2E tests for Monitoring including jobs, rules, alerts, and system metrics
@@ -6,6 +8,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Monitoring - Jobs Dashboard', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/monitoring/jobs');
     await page.waitForLoadState('networkidle');
   });
@@ -162,6 +165,7 @@ test.describe('Monitoring - Jobs Dashboard', () => {
 
 test.describe('Monitoring - Alerts Management', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/monitoring/alerts');
     await page.waitForLoadState('networkidle');
   });
@@ -320,6 +324,7 @@ test.describe('Monitoring - Alerts Management', () => {
 
 test.describe('Monitoring - Rules Engine', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/monitoring/rules');
     await page.waitForLoadState('networkidle');
   });
@@ -433,6 +438,7 @@ test.describe('Monitoring - Rules Engine', () => {
 
 test.describe('Monitoring - System Metrics', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/monitoring');
     await page.waitForLoadState('networkidle');
   });
@@ -557,6 +563,7 @@ test.describe('Monitoring - System Metrics', () => {
 
 test.describe('Monitoring - Performance Dashboard', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/monitoring/performance');
     await page.waitForLoadState('networkidle');
   });

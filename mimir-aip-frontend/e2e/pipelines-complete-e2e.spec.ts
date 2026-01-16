@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
+
 
 /**
  * Comprehensive E2E tests for Pipelines CRUD and execution workflows
@@ -6,6 +8,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Pipelines - Complete Workflow', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/pipelines');
     await page.waitForLoadState('networkidle');
   });
@@ -411,6 +414,7 @@ test.describe('Pipelines - Complete Workflow', () => {
 
 test.describe('Pipelines - Step Configuration', () => {
   test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
     await page.goto('/pipelines');
     await page.waitForLoadState('networkidle');
   });

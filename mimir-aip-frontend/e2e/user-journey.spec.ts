@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
 
 test.describe('Mimir AIP - TDD User Journey Tests', () => {
   test.setTimeout(180000);
+  
+  test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
+  });
 
   /**
    * TDD APPROACH:

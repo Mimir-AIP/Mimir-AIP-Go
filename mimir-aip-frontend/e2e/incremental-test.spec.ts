@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from './helpers';
 
 test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
   test.setTimeout(120000);
+  
+  test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
+  });
 
   // ============================================
   // STEP 1: Verify Docker Container and API

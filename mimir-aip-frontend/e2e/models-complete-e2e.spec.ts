@@ -14,9 +14,9 @@ test.describe('Models - Management', () => {
   });
 
   test('should display models page', async ({ page }) => {
-    await expect(page).toHaveTitle(/Models|Machine Learning/i);
-    await expect(page.getByRole('heading', { name: /Models|Machine Learning/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Create.*Model|New Model/i })).toBeVisible();
+    // Note: All pages use generic "Mimir AIP - AI Pipeline Orchestration" title
+    await expect(page.getByRole('heading', { name: /ML Models/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Train Model/i })).toBeVisible();
   });
 
   test('should display models list', async ({ page }) => {
@@ -28,7 +28,7 @@ test.describe('Models - Management', () => {
   });
 
   test('should create new model', async ({ page }) => {
-    await page.getByRole('button', { name: /Create.*Model/i }).click();
+    await page.getByRole('button', { name: /Train Model/i }).click();
 
     // Fill model form
     await page.getByLabel(/Name/i).fill('Test Classification Model');
@@ -198,7 +198,7 @@ test.describe('Models - Training', () => {
       }
 
       // Start training
-      await page.getByRole('button', { name: /Start.*Training|Train/i }).click();
+      await page.getByRole('button', { name: /Start.*Training|Train/i }).first().click();
 
       // Should show training started message
       await expect(page.getByText(/Training.*started/i)).toBeVisible({ timeout: 5000 });

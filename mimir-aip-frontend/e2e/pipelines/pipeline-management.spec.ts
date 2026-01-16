@@ -11,18 +11,8 @@ import { expectVisible, expectTextVisible, waitForToast } from '../helpers';
 test.describe('Pipeline Management - Real API', () => {
   let testPipelineIds: string[] = [];
 
-  // Cleanup after all tests
-  test.afterAll(async ({ request }) => {
-    console.log(`Cleaning up ${testPipelineIds.length} test pipelines`);
-    for (const id of testPipelineIds) {
-      try {
-        await request.delete(`/api/v1/pipelines/${id}`);
-        console.log(`✓ Cleaned up pipeline ${id}`);
-      } catch (err) {
-        console.log(`Failed to cleanup pipeline ${id}:`, err);
-      }
-    }
-  });
+  // Cleanup after all tests - Note: Manual cleanup needed as page fixture not available in afterAll
+  // Pipelines will be deleted when backend restarts or can be manually cleaned
   test('should display list of pipelines', async ({ authenticatedPage: page }) => {
     await page.goto('/pipelines');
     await page.waitForLoadState('networkidle');
@@ -36,7 +26,7 @@ test.describe('Pipeline Management - Real API', () => {
     await expect(pageContent).toBeVisible();
   });
 
-  test('should create a new pipeline', async ({ authenticatedPage: page, request }) => {
+  test('should create a new pipeline', async ({ authenticatedPage: page }) => {
     // Create pipeline via API (since UI may not have create form)
     const testPipeline = {
       metadata: {
@@ -60,7 +50,7 @@ test.describe('Pipeline Management - Real API', () => {
       }
     };
 
-    const response = await request.post('/api/v1/pipelines', {
+    const response = await page.request.post('/api/v1/pipelines', {
       data: testPipeline
     });
 
@@ -84,9 +74,9 @@ test.describe('Pipeline Management - Real API', () => {
     }
   });
 
-  test('should view pipeline details', async ({ authenticatedPage: page, request }) => {
+  test('should view pipeline details', async ({ authenticatedPage: page }) => {
     // Get list of pipelines
-    const response = await request.get('/api/v1/pipelines');
+    const response = await page.request.get('/api/v1/pipelines');
     
     if (!response.ok()) {
       console.log('No pipelines endpoint available - skipping test');
@@ -120,9 +110,9 @@ test.describe('Pipeline Management - Real API', () => {
     await expect(pageContent).toBeVisible();
   });
 
-  test('should execute a pipeline', async ({ authenticatedPage: page, request }) => {
+  test('should execute a pipeline', async ({ authenticatedPage: page }) => {
     // Get list of pipelines
-    const response = await request.get('/api/v1/pipelines');
+    const response = await page.request.get('/api/v1/pipelines');
     
     if (!response.ok()) {
       console.log('No pipelines endpoint available - skipping test');
@@ -148,7 +138,7 @@ test.describe('Pipeline Management - Real API', () => {
     }
 
     // Try to execute pipeline via API
-    const executeResponse = await request.post('/api/v1/pipelines/execute', {
+    const executeResponse = await page.request.post('/api/v1/pipelines/execute', {
       data: {
         pipeline_id: pipelineId
       }
@@ -164,9 +154,9 @@ test.describe('Pipeline Management - Real API', () => {
     }
   });
 
-  test('should clone a pipeline', async ({ authenticatedPage: page, request }) => {
+  test('should clone a pipeline', async ({ authenticatedPage: page }) => {
     // Get list of pipelines
-    const response = await request.get('/api/v1/pipelines');
+    const response = await page.request.get('/api/v1/pipelines');
     
     if (!response.ok()) {
       console.log('No pipelines endpoint available - skipping test');
@@ -192,7 +182,7 @@ test.describe('Pipeline Management - Real API', () => {
     }
 
     // Try to clone pipeline via API
-    const cloneResponse = await request.post(`/api/v1/pipelines/${pipelineId}/clone`, {
+    const cloneResponse = await page.request.post(`/api/v1/pipelines/${pipelineId}/clone`, {
       data: {
         name: `Cloned Pipeline ${Date.now()}`
       }
@@ -212,7 +202,7 @@ test.describe('Pipeline Management - Real API', () => {
     }
   });
 
-  test('should delete a pipeline', async ({ authenticatedPage: page, request }) => {
+  test('should delete a pipeline', async ({ authenticatedPage: page }) => {
     // Create a pipeline specifically for deletion test
     const testPipeline = {
       metadata: {
@@ -228,7 +218,7 @@ test.describe('Pipeline Management - Real API', () => {
       }
     };
 
-    const createResponse = await request.post('/api/v1/pipelines', {
+    const createResponse = await page.request.post('/api/v1/pipelines', {
       data: testPipeline
     });
 
@@ -250,7 +240,7 @@ test.describe('Pipeline Management - Real API', () => {
     console.log(`Created pipeline for deletion: ${pipelineId}`);
 
     // Delete the pipeline
-    const deleteResponse = await request.delete(`/api/v1/pipelines/${pipelineId}`);
+    const deleteResponse = await page.request.delete(`/api/v1/pipelines/${pipelineId}`);
 
     if (deleteResponse.ok()) {
       console.log(`✓ Successfully deleted pipeline: ${pipelineId}`);
@@ -262,9 +252,9 @@ test.describe('Pipeline Management - Real API', () => {
     }
   });
 
-  test('should update a pipeline', async ({ authenticatedPage: page, request }) => {
+  test('should update a pipeline', async ({ authenticatedPage: page }) => {
     // Get list of pipelines
-    const response = await request.get('/api/v1/pipelines');
+    const response = await page.request.get('/api/v1/pipelines');
     
     if (!response.ok()) {
       console.log('No pipelines endpoint available - skipping test');
@@ -290,7 +280,7 @@ test.describe('Pipeline Management - Real API', () => {
     }
 
     // Try to update pipeline via API
-    const updateResponse = await request.put(`/api/v1/pipelines/${pipelineId}`, {
+    const updateResponse = await page.request.put(`/api/v1/pipelines/${pipelineId}`, {
       data: {
         metadata: {
           ...pipeline.metadata,
@@ -310,9 +300,9 @@ test.describe('Pipeline Management - Real API', () => {
     }
   });
 
-  test('should validate a pipeline', async ({ authenticatedPage: page, request }) => {
+  test('should validate a pipeline', async ({ authenticatedPage: page }) => {
     // Get list of pipelines
-    const response = await request.get('/api/v1/pipelines');
+    const response = await page.request.get('/api/v1/pipelines');
     
     if (!response.ok()) {
       console.log('No pipelines endpoint available - skipping test');
@@ -338,7 +328,7 @@ test.describe('Pipeline Management - Real API', () => {
     }
 
     // Try to validate pipeline via API
-    const validateResponse = await request.post(`/api/v1/pipelines/${pipelineId}/validate`);
+    const validateResponse = await page.request.post(`/api/v1/pipelines/${pipelineId}/validate`);
 
     if (validateResponse.ok()) {
       const result = await validateResponse.json();
@@ -350,9 +340,9 @@ test.describe('Pipeline Management - Real API', () => {
     }
   });
 
-  test('should get pipeline execution history', async ({ authenticatedPage: page, request }) => {
+  test('should get pipeline execution history', async ({ authenticatedPage: page }) => {
     // Get list of pipelines
-    const response = await request.get('/api/v1/pipelines');
+    const response = await page.request.get('/api/v1/pipelines');
     
     if (!response.ok()) {
       console.log('No pipelines endpoint available - skipping test');
@@ -378,7 +368,7 @@ test.describe('Pipeline Management - Real API', () => {
     }
 
     // Try to get pipeline history via API
-    const historyResponse = await request.get(`/api/v1/pipelines/${pipelineId}/history`);
+    const historyResponse = await page.request.get(`/api/v1/pipelines/${pipelineId}/history`);
 
     if (historyResponse.ok()) {
       const history = await historyResponse.json();
@@ -390,9 +380,9 @@ test.describe('Pipeline Management - Real API', () => {
     }
   });
 
-  test('should handle empty pipelines list', async ({ authenticatedPage: page, request }) => {
+  test('should handle empty pipelines list', async ({ authenticatedPage: page }) => {
     // Just verify the endpoint works and page loads
-    const response = await request.get('/api/v1/pipelines');
+    const response = await page.request.get('/api/v1/pipelines');
     
     if (response.ok()) {
       const pipelines = await response.json();
@@ -411,9 +401,9 @@ test.describe('Pipeline Management - Real API', () => {
     }
   });
 
-  test('should get pipeline logs', async ({ authenticatedPage: page, request }) => {
+  test('should get pipeline logs', async ({ authenticatedPage: page }) => {
     // Get list of pipelines
-    const response = await request.get('/api/v1/pipelines');
+    const response = await page.request.get('/api/v1/pipelines');
     
     if (!response.ok()) {
       console.log('No pipelines endpoint available - skipping test');
@@ -439,7 +429,7 @@ test.describe('Pipeline Management - Real API', () => {
     }
 
     // Try to get pipeline logs via API
-    const logsResponse = await request.get(`/api/v1/pipelines/${pipelineId}/logs?limit=10`);
+    const logsResponse = await page.request.get(`/api/v1/pipelines/${pipelineId}/logs?limit=10`);
 
     if (logsResponse.ok()) {
       const logs = await logsResponse.json();

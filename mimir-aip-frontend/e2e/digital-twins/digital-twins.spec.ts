@@ -318,7 +318,7 @@ test.describe('Digital Twins - Real API', () => {
     }
     
     const createData = await createResponse.json();
-    const twinId = createData.twin_id;
+    const twinId = createData.data?.twin_id || createData.twin_id;
     
     // Navigate to twins list
     await page.goto('/digital-twins');

@@ -14,7 +14,8 @@ test.describe('Jobs - List and Management', () => {
   });
 
   test('should display jobs page', async ({ page }) => {
-    await expect(page).toHaveTitle(/Jobs/i);
+    // Page title is generic "Mimir AIP - AI Pipeline Orchestration"
+    // So we check for heading instead
     await expect(page.getByRole('heading', { name: /Jobs/i })).toBeVisible();
   });
 

@@ -25,11 +25,17 @@ export default function LoginPage() {
       // Store token
       if (typeof window !== 'undefined') {
         localStorage.setItem('auth_token', response.token);
-        document.cookie = `auth_token=${response.token}; path=/; max-age=${response.expires_in}; SameSite=Strict`;
+        const maxAge = response.expires_in || 86400; // Default to 24 hours
+        document.cookie = `auth_token=${response.token}; path=/; max-age=${maxAge}; SameSite=Strict`;
+        
+        // Wait a moment for cookie to be set
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
-      // Redirect to dashboard
-      router.push('/dashboard');
+      // Redirect to dashboard or redirect parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirect = urlParams.get('redirect') || '/dashboard';
+      router.push(redirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

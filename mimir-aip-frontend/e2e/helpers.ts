@@ -18,37 +18,34 @@ export async function login(page: Page, username: string, password: string) {
 }
 
 /**
- * Setup authenticated page with API mocking
+ * Setup authenticated page by performing REAL login
+ * Uses actual backend authentication - NO MOCKING
+ * 
+ * Backend default credentials:
+ * - Username: admin
+ * - Password: admin123
  */
 export async function setupAuthenticatedPage(page: Page) {
-  // Set auth cookie (required by middleware)
-  await page.context().addCookies([{
-    name: 'auth_token',
-    value: 'test-token-' + Date.now(),
-    domain: 'localhost',
-    path: '/',
-    expires: Date.now() / 1000 + 3600, // 1 hour from now
-    httpOnly: false,
-    secure: false,
-    sameSite: 'Lax'
-  }]);
+  // Go to login page
+  await page.goto('/login');
   
-  // Mock authentication check
-  await page.route('**/api/v1/auth/check', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        authenticated: true,
-        user: { username: 'testuser', role: 'admin' },
-      }),
-    });
-  });
+  // Fill in credentials
+  await page.fill('input[name="username"], input[type="text"]', 'admin');
+  await page.fill('input[name="password"], input[type="password"]', 'admin123');
   
-  // Set local storage auth token
-  await page.addInitScript(() => {
-    localStorage.setItem('auth_token', 'test-token');
-  });
+  // Submit login form
+  await page.click('button[type="submit"]');
+  
+  // Wait for login to complete and redirect
+  await page.waitForTimeout(1500);
+  
+  // Verify we're authenticated (should be on dashboard or have auth cookie)
+  const cookies = await page.context().cookies();
+  const authCookie = cookies.find(c => c.name === 'auth_token');
+  
+  if (!authCookie) {
+    throw new Error('setupAuthenticatedPage: Login failed - no auth cookie found');
+  }
 }
 
 /**

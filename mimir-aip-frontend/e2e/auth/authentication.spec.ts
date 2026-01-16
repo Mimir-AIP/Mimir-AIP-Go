@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { testUsers } from '../fixtures/test-data';
-import { login, expectVisible, expectTextVisible } from '../helpers';
+
+/**
+ * Authentication E2E Tests - NO API MOCKING
+ * Tests the real authentication flow against the actual backend
+ * 
+ * Backend creates default admin user:
+ * - Username: admin
+ * - Password: admin123
+ */
 
 test.describe('Authentication Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -14,63 +21,39 @@ test.describe('Authentication Flow', () => {
     
     // Should redirect to login
     await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
-    await expectVisible(page, 'input[name="username"], input[type="text"]');
-    await expectVisible(page, 'input[name="password"], input[type="password"]');
+    
+    // Should show login form
+    await expect(page.locator('input[name="username"], input[type="text"]')).toBeVisible();
+    await expect(page.locator('input[name="password"], input[type="password"]')).toBeVisible();
   });
 
   test('should allow user to login with valid credentials', async ({ page }) => {
-    let loginAttempted = false;
-    
-    // Mock successful login
-    await page.route('**/api/v1/auth/login', async (route) => {
-      loginAttempted = true;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          token: 'test-token-123',
-          user: { username: testUsers.admin.username, role: 'admin' },
-          expires_in: 86400,
-        }),
-      });
-    });
-
     await page.goto('/login');
     
-    // Fill login form
-    await page.fill('input[name="username"], input[type="text"]', testUsers.admin.username);
-    await page.fill('input[name="password"], input[type="password"]', testUsers.admin.password);
+    // Fill login form with real backend credentials
+    await page.fill('input[name="username"], input[type="text"]', 'admin');
+    await page.fill('input[name="password"], input[type="password"]', 'admin123');
     
     // Submit form
     await page.click('button[type="submit"]');
     
-    // Wait for login to be attempted
-    await page.waitForTimeout(1000);
+    // Wait for redirect after successful login
+    await page.waitForTimeout(1500);
     
-    // Verify login was attempted
-    expect(loginAttempted).toBe(true);
+    // Should redirect to dashboard (or at least away from login page)
+    await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
     
-    // Verify token is stored in localStorage
+    // Verify token is stored
     const tokenInStorage = await page.evaluate(() => localStorage.getItem('auth_token'));
-    expect(tokenInStorage).toBe('test-token-123');
+    expect(tokenInStorage).toBeTruthy();
     
-    // Note: Full redirect test would require real backend or more complex cookie mocking
-    // The middleware checks cookies which are set by JS, causing timing issues in tests
+    // Verify cookie is set
+    const cookies = await page.context().cookies();
+    const authCookie = cookies.find(c => c.name === 'auth_token');
+    expect(authCookie).toBeTruthy();
   });
 
   test('should show error message with invalid credentials', async ({ page }) => {
-    // Mock failed login
-    await page.route('**/api/v1/auth/login', async (route) => {
-      await route.fulfill({
-        status: 401,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          error: 'Invalid credentials',
-        }),
-      });
-    });
-
     await page.goto('/login');
     
     // Fill login form with wrong credentials
@@ -80,54 +63,28 @@ test.describe('Authentication Flow', () => {
     // Submit form
     await page.click('button[type="submit"]');
     
+    // Wait for error to appear
+    await page.waitForTimeout(1000);
+    
     // Should show error message
-    await expectTextVisible(page, /invalid|error|wrong|fail/i);
+    await expect(page.locator('text=/invalid|error|wrong|incorrect|fail/i')).toBeVisible({ timeout: 5000 });
     
     // Should still be on login page
     await expect(page).toHaveURL(/\/login/);
   });
 
   test('should allow user to logout', async ({ page }) => {
-    // Mock auth check
-    await page.route('**/api/v1/auth/check', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          authenticated: true,
-          user: { username: testUsers.admin.username },
-        }),
-      });
-    });
-
-    // Mock logout
-    await page.route('**/api/v1/auth/logout', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true }),
-      });
-    });
-
-    // Set auth token (both cookie and localStorage)
-    await page.context().addCookies([{
-      name: 'auth_token',
-      value: 'test-token-' + Date.now(),
-      domain: 'localhost',
-      path: '/',
-      expires: Date.now() / 1000 + 3600,
-      httpOnly: false,
-      secure: false,
-      sameSite: 'Lax'
-    }]);
+    // First login with real credentials
+    await page.goto('/login');
+    await page.fill('input[name="username"], input[type="text"]', 'admin');
+    await page.fill('input[name="password"], input[type="password"]', 'admin123');
+    await page.click('button[type="submit"]');
     
-    await page.addInitScript(() => {
-      localStorage.setItem('auth_token', 'test-token');
-    });
-
-    await page.goto('/dashboard');
+    // Wait for login to complete
+    await page.waitForTimeout(1500);
+    await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
     
-    // Click logout button (could be in nav or dropdown)
+    // Click logout button
     const logoutButton = page.getByRole('button', { name: /logout|sign out/i });
     if (await logoutButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       await logoutButton.click();
@@ -136,91 +93,53 @@ test.describe('Authentication Flow', () => {
       const userMenu = page.locator('[data-testid="user-menu"], button:has-text("admin"), button:has-text("user")').first();
       if (await userMenu.isVisible({ timeout: 2000 }).catch(() => false)) {
         await userMenu.click();
+        await page.waitForTimeout(500);
         await page.getByRole('button', { name: /logout|sign out/i }).click();
       }
     }
     
     // Should redirect to login
     await expect(page).toHaveURL(/\/login/, { timeout: 10000 });
+    
+    // Cookie should be cleared
+    const cookies = await page.context().cookies();
+    const authCookie = cookies.find(c => c.name === 'auth_token');
+    expect(authCookie).toBeFalsy();
   });
 
   test('should persist authentication across page reloads', async ({ page }) => {
-    // Mock auth check
-    await page.route('**/api/v1/auth/check', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          authenticated: true,
-          user: { username: testUsers.admin.username },
-        }),
-      });
-    });
-
-    // Set auth token (both cookie and localStorage)
-    await page.context().addCookies([{
-      name: 'auth_token',
-      value: 'test-token-' + Date.now(),
-      domain: 'localhost',
-      path: '/',
-      expires: Date.now() / 1000 + 3600,
-      httpOnly: false,
-      secure: false,
-      sameSite: 'Lax'
-    }]);
+    // First login with real credentials
+    await page.goto('/login');
+    await page.fill('input[name="username"], input[type="text"]', 'admin');
+    await page.fill('input[name="password"], input[type="password"]', 'admin123');
+    await page.click('button[type="submit"]');
     
-    await page.addInitScript(() => {
-      localStorage.setItem('auth_token', 'test-token');
-    });
-
-    await page.goto('/dashboard');
-    
-    // Should be on dashboard
-    await expect(page).toHaveURL(/\/(dashboard)?$/);
+    // Wait for login to complete
+    await page.waitForTimeout(1500);
+    await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
     
     // Reload page
     await page.reload();
+    await page.waitForLoadState('networkidle');
     
     // Should still be on dashboard (not redirected to login)
     await expect(page).toHaveURL(/\/(dashboard)?$/);
   });
 
   test('should handle session expiration gracefully', async ({ page }) => {
-    // Set initial auth
-    await page.context().addCookies([{
-      name: 'auth_token',
-      value: 'test-token-' + Date.now(),
-      domain: 'localhost',
-      path: '/',
-      expires: Date.now() / 1000 + 3600,
-      httpOnly: false,
-      secure: false,
-      sameSite: 'Lax'
-    }]);
+    // First login with real credentials
+    await page.goto('/login');
+    await page.fill('input[name="username"], input[type="text"]', 'admin');
+    await page.fill('input[name="password"], input[type="password"]', 'admin123');
+    await page.click('button[type="submit"]');
     
-    await page.addInitScript(() => {
-      localStorage.setItem('auth_token', 'test-token');
-    });
-
-    // Mock auth check - first succeeds
-    await page.route('**/api/v1/auth/check', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          authenticated: true,
-          user: { username: testUsers.admin.username },
-        }),
-      });
-    });
-
-    await page.goto('/dashboard');
+    // Wait for login to complete
+    await page.waitForTimeout(1500);
+    await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
     
-    // Should be on dashboard
-    await expect(page).toHaveURL(/\/(dashboard)?$/);
-    
-    // Now clear the cookie to simulate expiration
+    // Clear the cookie to simulate expiration
     await page.context().clearCookies();
+    await page.evaluate(() => localStorage.removeItem('auth_token'));
     
     // Try to navigate - should redirect to login due to missing cookie
     await page.goto('/ontologies');

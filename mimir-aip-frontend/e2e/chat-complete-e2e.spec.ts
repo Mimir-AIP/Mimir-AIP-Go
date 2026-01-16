@@ -338,7 +338,8 @@ test.describe('Chat - Tool Calling', () => {
   });
 
   test.skip('should handle tool errors gracefully', async ({ page }) => {
-    // Mock API to return error
+    // NOTE: This is an acceptable use of mocking - testing error handling
+    // We're specifically testing how the UI responds to API failures
     await page.route('**/api/v1/chat/message', (route) => {
       route.fulfill({
         status: 200,

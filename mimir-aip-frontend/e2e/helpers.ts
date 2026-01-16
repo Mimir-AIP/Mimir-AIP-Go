@@ -154,8 +154,17 @@ export const test = base.extend<{
 });
 
 /**
- * Mock API endpoints for testing
+ * ⚠️ DEPRECATED: APIMocker class - DO NOT USE
+ * 
+ * API mocking in E2E tests defeats the purpose of end-to-end testing.
+ * E2E tests should test the REAL backend + frontend integration.
+ * 
+ * This class is kept here temporarily for reference but should NOT be used.
+ * All tests should be updated to work with the real backend API.
+ * 
+ * Use real authentication (setupAuthenticatedPage) and real API calls instead.
  */
+/*
 export class APIMocker {
   constructor(private page: Page) {}
 
@@ -219,5 +228,6 @@ export class APIMocker {
     });
   }
 }
+*/
 
 export { expect };

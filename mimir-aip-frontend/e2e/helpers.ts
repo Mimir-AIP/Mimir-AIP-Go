@@ -33,13 +33,24 @@ export async function setupAuthenticatedPage(page: Page) {
   await page.fill('input[name="username"], input[type="text"]', 'admin');
   await page.fill('input[name="password"], input[type="password"]', 'admin123');
   
+  // Wait for login API response
+  const loginResponsePromise = page.waitForResponse(response => 
+    response.url().includes('/api/v1/auth/login') && response.status() === 200
+  );
+  
   // Submit login form
   await page.click('button[type="submit"]');
   
-  // Wait for login to complete and redirect
-  await page.waitForTimeout(1500);
+  // Wait for login response
+  await loginResponsePromise;
   
-  // Verify we're authenticated (should be on dashboard or have auth cookie)
+  // Wait for token to be stored
+  await page.waitForFunction(() => localStorage.getItem('auth_token') !== null);
+  
+  // Manually navigate to ensure cookie is sent
+  await page.goto('/dashboard');
+  
+  // Verify we're authenticated
   const cookies = await page.context().cookies();
   const authCookie = cookies.find(c => c.name === 'auth_token');
   

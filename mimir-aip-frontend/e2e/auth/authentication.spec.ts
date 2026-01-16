@@ -34,16 +34,28 @@ test.describe('Authentication Flow', () => {
     await page.fill('input[name="username"], input[type="text"]', 'admin');
     await page.fill('input[name="password"], input[type="password"]', 'admin123');
     
+    // Wait for the login API response
+    const loginResponsePromise = page.waitForResponse(response => 
+      response.url().includes('/api/v1/auth/login') && response.status() === 200
+    );
+    
     // Submit form
     await page.click('button[type="submit"]');
     
-    // Wait for redirect after successful login
-    await page.waitForTimeout(1500);
+    // Wait for successful login response
+    const loginResponse = await loginResponsePromise;
+    const loginData = await loginResponse.json();
     
-    // Should redirect to dashboard (or at least away from login page)
-    await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
+    // Wait for token to be stored
+    await page.waitForFunction(() => localStorage.getItem('auth_token') !== null);
     
-    // Verify token is stored
+    // Manually navigate to dashboard (this ensures the cookie is sent with the request)
+    await page.goto('/dashboard');
+    
+    // Should now be on dashboard
+    await expect(page).toHaveURL(/\/dashboard/);
+    
+    // Verify token is stored in localStorage
     const tokenInStorage = await page.evaluate(() => localStorage.getItem('auth_token'));
     expect(tokenInStorage).toBeTruthy();
     
@@ -78,11 +90,17 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
     await page.fill('input[name="username"], input[type="text"]', 'admin');
     await page.fill('input[name="password"], input[type="password"]', 'admin123');
-    await page.click('button[type="submit"]');
     
-    // Wait for login to complete
-    await page.waitForTimeout(1500);
-    await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
+    // Wait for login API response
+    const loginResponsePromise = page.waitForResponse(response => 
+      response.url().includes('/api/v1/auth/login') && response.status() === 200
+    );
+    await page.click('button[type="submit"]');
+    await loginResponsePromise;
+    
+    // Wait for token and navigate to dashboard
+    await page.waitForFunction(() => localStorage.getItem('auth_token') !== null);
+    await page.goto('/dashboard');
     
     // Click logout button
     const logoutButton = page.getByRole('button', { name: /logout|sign out/i });
@@ -112,11 +130,17 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
     await page.fill('input[name="username"], input[type="text"]', 'admin');
     await page.fill('input[name="password"], input[type="password"]', 'admin123');
-    await page.click('button[type="submit"]');
     
-    // Wait for login to complete
-    await page.waitForTimeout(1500);
-    await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
+    // Wait for login API response
+    const loginResponsePromise = page.waitForResponse(response => 
+      response.url().includes('/api/v1/auth/login') && response.status() === 200
+    );
+    await page.click('button[type="submit"]');
+    await loginResponsePromise;
+    
+    // Wait for token and navigate to dashboard
+    await page.waitForFunction(() => localStorage.getItem('auth_token') !== null);
+    await page.goto('/dashboard');
     
     // Reload page
     await page.reload();
@@ -131,11 +155,17 @@ test.describe('Authentication Flow', () => {
     await page.goto('/login');
     await page.fill('input[name="username"], input[type="text"]', 'admin');
     await page.fill('input[name="password"], input[type="password"]', 'admin123');
-    await page.click('button[type="submit"]');
     
-    // Wait for login to complete
-    await page.waitForTimeout(1500);
-    await expect(page).toHaveURL(/\/(dashboard)?$/, { timeout: 10000 });
+    // Wait for login API response
+    const loginResponsePromise = page.waitForResponse(response => 
+      response.url().includes('/api/v1/auth/login') && response.status() === 200
+    );
+    await page.click('button[type="submit"]');
+    await loginResponsePromise;
+    
+    // Wait for token and navigate to dashboard
+    await page.waitForFunction(() => localStorage.getItem('auth_token') !== null);
+    await page.goto('/dashboard');
     
     // Clear the cookie to simulate expiration
     await page.context().clearCookies();

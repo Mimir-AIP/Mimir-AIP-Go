@@ -42,6 +42,8 @@ export default function TwinDetailPage() {
   const [scenarios, setScenarios] = useState<SimulationScenario[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "insights" | "whatif" | "scenarios" | "smart" | "chat">("overview");
+  const [showStateEditor, setShowStateEditor] = useState(false);
+  const [editingState, setEditingState] = useState("");
 
   useEffect(() => {
     loadData();
@@ -128,9 +130,22 @@ export default function TwinDetailPage() {
             </h1>
             <p className="text-muted-foreground mt-2">{twin.description || "No description"}</p>
           </div>
-          <Badge variant="secondary" className="text-lg px-4 py-2">
-            {twin.model_type}
-          </Badge>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditingState(JSON.stringify(twin.base_state || {}, null, 2));
+                setShowStateEditor(true);
+              }}
+              data-testid="update-state-button"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Update State
+            </Button>
+            <Badge variant="secondary" className="text-lg px-4 py-2">
+              {twin.model_type}
+            </Badge>
+          </div>
         </div>
 
         {/* Stats */}
@@ -391,6 +406,78 @@ export default function TwinDetailPage() {
 
       {activeTab === "chat" && (
         <AgentChat twinId={twinId} />
+      )}
+
+      {/* State Editor Modal */}
+      {showStateEditor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" role="dialog" data-testid="state-editor-modal">
+          <div className="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-semibold">Edit Twin State</h3>
+                <button
+                  onClick={() => setShowStateEditor(false)}
+                  className="text-muted-foreground hover:text-foreground text-xl"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="state-editor" className="block text-sm font-medium mb-2">
+                    State JSON
+                  </label>
+                  <textarea
+                    id="state-editor"
+                    name="state"
+                    data-testid="state-editor"
+                    value={editingState}
+                    onChange={(e) => setEditingState(e.target.value)}
+                    className="w-full h-96 font-mono text-sm border rounded p-3 bg-background"
+                    placeholder="Enter state as JSON..."
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowStateEditor(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        // Parse and validate JSON
+                        const newState = JSON.parse(editingState);
+                        
+                        // Update twin state via API
+                        const response = await fetch(`/api/v1/digital-twins/${twinId}/state`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ state: newState }),
+                        });
+
+                        if (!response.ok) throw new Error('Failed to update state');
+
+                        toast.success('State updated successfully');
+                        setShowStateEditor(false);
+                        loadData(); // Reload twin data
+                      } catch (err) {
+                        const message = err instanceof Error ? err.message : 'Invalid JSON or update failed';
+                        toast.error(message);
+                      }
+                    }}
+                  >
+                    Save State
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

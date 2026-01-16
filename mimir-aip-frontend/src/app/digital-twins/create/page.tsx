@@ -136,12 +136,12 @@ export default function CreateTwinPage() {
                 Source Ontology <span className="text-red-500">*</span>
               </Label>
               {loadingOntologies ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="loading-ontologies">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading ontologies...
                 </div>
               ) : ontologies.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
+                <div className="text-sm text-muted-foreground" data-testid="no-ontologies-message">
                   No active ontologies found.{" "}
                   <Link href="/ontologies/upload" className="underline">
                     Upload an ontology first

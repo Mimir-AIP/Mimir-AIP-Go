@@ -154,80 +154,17 @@ export const test = base.extend<{
 });
 
 /**
- * ⚠️ DEPRECATED: APIMocker class - DO NOT USE
+ * ⚠️ DEPRECATED: APIMocker class - REMOVED
  * 
  * API mocking in E2E tests defeats the purpose of end-to-end testing.
  * E2E tests should test the REAL backend + frontend integration.
  * 
- * This class is kept here temporarily for reference but should NOT be used.
- * All tests should be updated to work with the real backend API.
+ * The APIMocker class has been removed. Tests that were using it need to be
+ * refactored to work with the real backend API instead.
  * 
  * Use real authentication (setupAuthenticatedPage) and real API calls instead.
+ * 
+ * Tests that still reference APIMocker will need to be updated.
  */
-/*
-export class APIMocker {
-  constructor(private page: Page) {}
-
-  async mockOntologyList(ontologies: any[]) {
-    await this.page.route('**/api/v1/ontology', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: ontologies }),
-      });
-    });
-  }
-
-  async mockOntologyGet(id: string, ontology: any) {
-    await this.page.route(`**/api/v1/ontology/${id}`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: { ontology } }),
-      });
-    });
-  }
-
-  async mockSPARQLQuery(results: any) {
-    await this.page.route('**/api/v1/kg/query', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: results }),
-      });
-    });
-  }
-
-  async mockExtractionJobs(jobs: any[]) {
-    await this.page.route('**/api/v1/extraction/jobs*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: { jobs } }),
-      });
-    });
-  }
-
-  async mockPipelines(pipelines: any[]) {
-    await this.page.route('**/api/v1/pipelines*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ pipelines }),
-      });
-    });
-  }
-
-  async mockDigitalTwins(twins: any[]) {
-    await this.page.route('**/api/v1/digital-twins*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: { digital_twins: twins } }),
-      });
-    });
-  }
-}
-*/
 
 export { expect };

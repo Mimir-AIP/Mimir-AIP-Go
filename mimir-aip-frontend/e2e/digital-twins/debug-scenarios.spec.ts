@@ -1,6 +1,8 @@
 import { test } from '@playwright/test';
+import { setupAuthenticatedPage } from '../helpers';
 
 test('Debug scenario loading', async ({ page }) => {
+  await setupAuthenticatedPage(page);
   const twinId = '8f65f121-e1d9-4d92-8f5e-ad8f3aacdd94';
   
   // Capture console logs

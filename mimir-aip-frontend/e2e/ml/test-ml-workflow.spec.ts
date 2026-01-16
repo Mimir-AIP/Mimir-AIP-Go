@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from '../helpers';
 
 test('ML Model Training Workflow', async ({ page }) => {
   test.setTimeout(120000);
+  await setupAuthenticatedPage(page);
   
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
   console.log('║           ML MODEL TRAINING WORKFLOW TEST                    ║');

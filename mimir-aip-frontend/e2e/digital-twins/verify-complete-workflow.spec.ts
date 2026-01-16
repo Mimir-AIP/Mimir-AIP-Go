@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from '../helpers';
 
 test('Verify complete twin workflow in UI', async ({ page }) => {
   test.setTimeout(60000);
+  await setupAuthenticatedPage(page);
   
   console.log('\n=== Step 1: Navigate to Digital Twins ===');
   await page.goto('http://localhost:8080/digital-twins');

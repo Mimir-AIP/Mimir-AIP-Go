@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from '../helpers';
 
 test('Check if scenarios are visible for existing twin', async ({ page }) => {
+  await setupAuthenticatedPage(page);
   const twinId = '8f65f121-e1d9-4d92-8f5e-ad8f3aacdd94';
   
   console.log(`\nNavigating to twin detail page: ${twinId}`);

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { setupAuthenticatedPage } from '../helpers';
 
 /**
  * Complete Digital Twin Workflow E2E Test
@@ -20,6 +21,10 @@ const TEST_CSV_CONTENT = `id,name,category,price,stock
 4,Widget D,Office,24.99,200`;
 
 test.describe('Digital Twin Complete Workflow', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupAuthenticatedPage(page);
+  });
+
   test('should complete full ontology to simulation workflow', async ({ page }) => {
     // Skip upload since we already have ontologies in the system
     // Go directly to creating a digital twin from existing ontology

@@ -277,7 +277,7 @@ export default function ExtractionJobDetailsPage() {
 
       {/* Entity Details Modal */}
       {selectedEntity && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" role="dialog" data-testid="entity-modal">
           <div className="bg-blue rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-start mb-4">
@@ -287,6 +287,7 @@ export default function ExtractionJobDetailsPage() {
                 <button
                   onClick={() => setSelectedEntity(null)}
                   className="text-gray-400 hover:text-white text-xl"
+                  aria-label="Close"
                 >
                   ✕
                 </button>

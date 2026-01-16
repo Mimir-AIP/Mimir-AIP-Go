@@ -95,7 +95,18 @@ test.describe('Authentication Flow', () => {
       });
     });
 
-    // Set auth token
+    // Set auth token (both cookie and localStorage)
+    await page.context().addCookies([{
+      name: 'auth_token',
+      value: 'test-token-' + Date.now(),
+      domain: 'localhost',
+      path: '/',
+      expires: Date.now() / 1000 + 3600,
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax'
+    }]);
+    
     await page.addInitScript(() => {
       localStorage.setItem('auth_token', 'test-token');
     });
@@ -132,7 +143,18 @@ test.describe('Authentication Flow', () => {
       });
     });
 
-    // Set auth token
+    // Set auth token (both cookie and localStorage)
+    await page.context().addCookies([{
+      name: 'auth_token',
+      value: 'test-token-' + Date.now(),
+      domain: 'localhost',
+      path: '/',
+      expires: Date.now() / 1000 + 3600,
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax'
+    }]);
+    
     await page.addInitScript(() => {
       localStorage.setItem('auth_token', 'test-token');
     });
@@ -173,7 +195,18 @@ test.describe('Authentication Flow', () => {
       }
     });
 
-    // Set auth token
+    // Set auth token (both cookie and localStorage)
+    await page.context().addCookies([{
+      name: 'auth_token',
+      value: 'test-token-' + Date.now(),
+      domain: 'localhost',
+      path: '/',
+      expires: Date.now() / 1000 + 3600,
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax'
+    }]);
+    
     await page.addInitScript(() => {
       localStorage.setItem('auth_token', 'test-token');
     });

@@ -215,3 +215,6 @@ mimir-aip-frontend/playwright-report/
 mimir-aip-frontend/test-results/
 models/*.gguf
 test-results/
+
+# Agent/LLM logs and scratch files
+ralph-logs/

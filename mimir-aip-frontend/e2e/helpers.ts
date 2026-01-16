@@ -21,6 +21,18 @@ export async function login(page: Page, username: string, password: string) {
  * Setup authenticated page with API mocking
  */
 export async function setupAuthenticatedPage(page: Page) {
+  // Set auth cookie (required by middleware)
+  await page.context().addCookies([{
+    name: 'auth_token',
+    value: 'test-token-' + Date.now(),
+    domain: 'localhost',
+    path: '/',
+    expires: Date.now() / 1000 + 3600, // 1 hour from now
+    httpOnly: false,
+    secure: false,
+    sameSite: 'Lax'
+  }]);
+  
   // Mock authentication check
   await page.route('**/api/v1/auth/check', async (route) => {
     await route.fulfill({

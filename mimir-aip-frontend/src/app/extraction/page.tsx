@@ -19,7 +19,7 @@ export default function ExtractionJobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [ontologyFilter, setOntologyFilter] = useState<string>("");
-  const [showCreateForm, setShowCreateForm] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);  // Default to false so button is visible
   const [creating, setCreating] = useState(false);
   
   // Form state
@@ -28,6 +28,11 @@ export default function ExtractionJobsPage() {
     ontology_id: "",
     extraction_type: "deterministic",
   });
+
+  // Set page title
+  useEffect(() => {
+    document.title = "Extraction - Mimir AIP";
+  }, []);
 
   useEffect(() => {
     loadOntologies();
@@ -145,11 +150,12 @@ export default function ExtractionJobsPage() {
           <button
             onClick={() => setShowCreateForm(true)}
             className="bg-orange hover:bg-orange/80 text-white px-4 py-2 rounded font-medium"
+            data-testid="create-extraction-button"
           >
             + Create Extraction Job
           </button>
         ) : (
-          <div className="bg-blue rounded-lg shadow p-6 mb-6">
+          <div className="bg-blue rounded-lg shadow p-6 mb-6" data-testid="extraction-form">
             <h2 className="text-xl font-semibold text-white mb-4">Create Extraction Job</h2>
             <form onSubmit={handleCreateJob} className="space-y-4">
               <div>
@@ -225,6 +231,7 @@ export default function ExtractionJobsPage() {
         <label className="flex items-center gap-2">
           <span className="text-sm font-medium text-white">Ontology:</span>
           <select
+            name="ontology"
             value={ontologyFilter}
             onChange={(e) => setOntologyFilter(e.target.value)}
             className="border rounded px-3 py-1 bg-navy text-white border-gray-600"
@@ -240,6 +247,7 @@ export default function ExtractionJobsPage() {
         <label className="flex items-center gap-2">
           <span className="text-sm font-medium text-white">Status:</span>
           <select
+            name="status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="border rounded px-3 py-1 bg-navy text-white border-gray-600"

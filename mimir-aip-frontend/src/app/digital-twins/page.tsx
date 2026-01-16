@@ -18,6 +18,11 @@ export default function DigitalTwinsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Set page title
+  useEffect(() => {
+    document.title = "Digital Twins - Mimir AIP";
+  }, []);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -83,7 +88,7 @@ export default function DigitalTwinsPage() {
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold">Digital Twins</h1>
+          <h1 className="text-3xl font-bold" data-testid="digital-twins-heading">Digital Twins</h1>
           <p className="text-muted-foreground mt-2">
             Simulate business scenarios and analyze impact on your organization
           </p>

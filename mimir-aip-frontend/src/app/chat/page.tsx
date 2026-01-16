@@ -1,11 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
 import { AgentChat } from "@/components/chat/AgentChat";
 import { Metadata } from "next";
 
 // Note: metadata export doesn't work in client components, 
 // so we set the title in the component itself
 export default function ChatPage() {
+  // Set page title
+  useEffect(() => {
+    document.title = "Chat - Mimir AIP";
+  }, []);
+
   return (
     <div className="container mx-auto py-6">
       <div className="mb-6">

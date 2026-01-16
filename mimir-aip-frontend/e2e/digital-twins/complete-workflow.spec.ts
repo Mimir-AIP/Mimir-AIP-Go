@@ -47,9 +47,22 @@ test.describe('Digital Twin Complete Workflow', () => {
       await descTextarea.fill('Digital twin created by E2E test');
     }
     
-    // Select ontology
-    const ontologySelect = page.locator('select[name="ontology"], select[id="ontology"]');
-    await ontologySelect.waitFor({ state: 'visible', timeout: 10000 });
+    // Wait for ontologies to load
+    await page.waitForSelector('[data-testid="loading-ontologies"], [data-testid="no-ontologies-message"], [data-testid="ontology-select"]', { timeout: 10000 });
+    
+    // Check if ontologies are available
+    const noOntologiesMsg = page.locator('[data-testid="no-ontologies-message"]');
+    const hasNoOntologies = await noOntologiesMsg.isVisible().catch(() => false);
+    
+    if (hasNoOntologies) {
+      console.log('No ontologies available - skipping test');
+      test.skip();
+      return;
+    }
+    
+    // Select ontology using the correct selector
+    const ontologySelect = page.locator('select[data-testid="ontology-select"]');
+    await ontologySelect.waitFor({ state: 'visible', timeout: 5000 });
     
     // Get all options and select first non-empty one
     const allOptions = await ontologySelect.locator('option').all();

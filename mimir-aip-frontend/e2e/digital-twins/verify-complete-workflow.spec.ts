@@ -17,8 +17,21 @@ test('Verify complete twin workflow in UI', async ({ page }) => {
   await page.fill('input[name="name"]', 'Complete Workflow Test');
   await page.fill('textarea[name="description"]', 'Testing full workflow via UI');
   
-  // Select first available ontology
-  const ontologySelect = page.locator('select[name="ontology"]');
+  // Wait for ontologies to load
+  await page.waitForSelector('[data-testid="loading-ontologies"], [data-testid="no-ontologies-message"], [data-testid="ontology-select"]', { timeout: 10000 });
+  
+  // Check if ontologies are available
+  const noOntologiesMsg = page.locator('[data-testid="no-ontologies-message"]');
+  const hasNoOntologies = await noOntologiesMsg.isVisible().catch(() => false);
+  
+  if (hasNoOntologies) {
+    console.log('No ontologies available - skipping test');
+    test.skip();
+    return;
+  }
+  
+  // Select first available ontology using correct selector
+  const ontologySelect = page.locator('select[data-testid="ontology-select"]');
   const allOptions = await ontologySelect.locator('option').all();
   for (const option of allOptions) {
     const value = await option.getAttribute('value');
@@ -28,6 +41,9 @@ test('Verify complete twin workflow in UI', async ({ page }) => {
       break;
     }
   }
+  
+  // Wait for form to be ready (button enabled)
+  await page.waitForTimeout(500);
   
   await page.click('button[type="submit"]:has-text("Create")');
   

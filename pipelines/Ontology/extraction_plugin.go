@@ -55,7 +55,7 @@ func (p *ExtractionPlugin) GetPluginType() string {
 
 // GetPluginName implements BasePlugin.GetPluginName
 func (p *ExtractionPlugin) GetPluginName() string {
-	return "extract"
+	return "extraction"
 }
 
 // ValidateConfig implements BasePlugin.ValidateConfig

@@ -117,24 +117,46 @@ test.describe('Mimir AIP - Vision User Journey Tests', () => {
         const pipelineCount = await pipelineOptions.count();
         console.log(`✅ Pipeline options available: ${pipelineCount}`);
 
-        // Fill ontology name
-        const nameInput = dialog.locator('input[name*="name"], input[placeholder*="name"]').first();
-        if (await nameInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        // Fill ontology name (use the specific id)
+        const nameInput = dialog.locator('#ontology-name');
+        const nameInputVisible = await nameInput.isVisible({ timeout: 2000 }).catch(() => false);
+        console.log(`✅ Name input visible: ${nameInputVisible}`);
+        
+        if (nameInputVisible) {
           await nameInput.fill('Vision-Ontology-From-Pipeline');
           console.log('✅ Ontology name filled');
+          // Wait for React to process the input
+          await page.waitForTimeout(500);
         }
 
-        // Select a pipeline if available (click the parent div, not just checkbox)
+        // Select a pipeline if available
         if (pipelineCount > 0) {
-          // Find the parent div of the first checkbox and click it
-          const firstPipelineDiv = dialog.locator('div.flex.items-center.gap-3').first();
-          await firstPipelineDiv.click();
-          console.log('✅ Pipeline selected');
+          // Click the entire pipeline row div (has onClick handler)
+          // The div with "flex items-center gap-3 p-2 rounded cursor-pointer"
+          const pipelineRow = dialog.locator('div.cursor-pointer').first();
+          await pipelineRow.click();
+          console.log('✅ Pipeline row clicked');
+          
+          // Wait longer for React state to update
+          await page.waitForTimeout(2000);
+          
+          // Verify the selection count updated
+          const selectedCount = dialog.locator('text=/Selected: \\d+ pipeline/').first();
+          if (await selectedCount.isVisible().catch(() => false)) {
+            const countText = await selectedCount.textContent();
+            console.log(`✅ ${countText}`);
+          }
         }
 
-        // Click create/start button
+        // Click create/start button - wait for it to be enabled
         const createBtn = dialog.getByRole('button', { name: /Start|Create|Begin/i }).first();
         if (await createBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          // Debug: check button state before waiting
+          const isDisabled = await createBtn.isDisabled();
+          console.log(`✅ Button disabled state: ${isDisabled}`);
+          
+          // Wait for button to be enabled (not disabled)
+          await expect(createBtn).toBeEnabled({ timeout: 10000 });
           await createBtn.click();
           console.log('✅ Ontology creation started');
         }
@@ -155,15 +177,15 @@ test.describe('Mimir AIP - Vision User Journey Tests', () => {
     // Wait for page content
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15000 });
     
-    // Check that extraction type options exist in the HTML
-    const extractionTypeSelect = page.locator('select').filter({ has: page.locator('option[value="deterministic"]') });
+    // Click "New Extraction" or "Create" button to show the form
+    const createButton = page.getByRole('button', { name: /New Extraction|Create|Extract/i }).first();
+    if (await createButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await createButton.click();
+      console.log('✅ Clicked create extraction button');
+      await page.waitForTimeout(1000);
+    }
     
-    // Count all selects on page
-    const selects = page.locator('select');
-    const selectCount = await selects.count();
-    console.log(`✅ Found ${selectCount} select elements on page`);
-    
-    // Check for the extraction type options - they might be in a select that needs to be revealed
+    // Now check that extraction type options exist in the HTML
     const hasDeterministic = await page.locator('option[value="deterministic"]').count() > 0;
     const hasLLM = await page.locator('option[value="llm"]').count() > 0;
     const hasHybrid = await page.locator('option[value="hybrid"]').count() > 0;

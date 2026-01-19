@@ -96,20 +96,33 @@ test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
         const hasModal = await modal.isVisible({ timeout: 3000 }).catch(() => false);
 
         if (hasModal) {
-          // Fill ontology name
-          const ontologyNameInput = modal.locator('input[type="text"], input[name*="name"]').first();
+          // Fill ontology name using the specific ID
+          const ontologyNameInput = modal.locator('#ontology-name');
           const hasNameInput = await ontologyNameInput.isVisible({ timeout: 2000 }).catch(() => false);
 
           if (hasNameInput) {
             await ontologyNameInput.fill(`${testPrefix}-Ontology`);
             console.log('✅ Ontology name filled');
+            await page.waitForTimeout(500);
           }
 
-          // Click start creation button
+          // Select a pipeline (required for button to be enabled)
+          const pipelineRow = modal.locator('div.cursor-pointer').first();
+          const hasPipeline = await pipelineRow.isVisible({ timeout: 2000 }).catch(() => false);
+          
+          if (hasPipeline) {
+            await pipelineRow.click();
+            console.log('✅ Pipeline selected');
+            await page.waitForTimeout(2000);
+          }
+
+          // Click start creation button - wait for it to be enabled
           const startBtn = modal.getByRole('button', { name: /Start|Create|Begin/i }).first();
           const hasStartBtn = await startBtn.isVisible({ timeout: 2000 }).catch(() => false);
 
           if (hasStartBtn) {
+            // Wait for button to be enabled
+            await expect(startBtn).toBeEnabled({ timeout: 10000 });
             await startBtn.click();
             console.log('✅ Ontology creation initiated');
           }

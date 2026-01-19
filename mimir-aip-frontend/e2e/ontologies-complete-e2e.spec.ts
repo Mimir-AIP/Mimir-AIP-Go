@@ -25,7 +25,7 @@ test.describe('Ontologies - Complete Workflow', () => {
 
     if (await emptyState.isVisible()) {
       await expect(emptyState).toBeVisible();
-      await expect(page.getByRole('link', { name: /Upload.*Ontology/i })).toBeVisible();
+      await expect(page.getByRole('link', { name: /Upload.*Ontology/i }).first()).toBeVisible();
     }
   });
 

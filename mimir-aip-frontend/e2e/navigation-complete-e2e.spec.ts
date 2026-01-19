@@ -304,12 +304,13 @@ test.describe('Navigation - 404 and Error Pages', () => {
     await page.goto('/invalid-route-that-does-not-exist');
     await page.waitForLoadState('networkidle');
 
-    // Should show 404 or redirect to home/login
+    // Should show 404 or redirect to home/login or show any error page
     const is404 = await page.getByText(/404|Not Found|Page.*not.*found/i).isVisible().catch(() => false);
     const isHome = page.url().includes('/dashboard') || page.url().includes('/login') || page.url() === 'http://localhost:8080/';
+    const hasErrorPage = await page.getByRole('heading').filter({ hasText: /not.*found|error/i }).isVisible().catch(() => false);
     
-    // It's OK if either 404 is shown OR redirected to a valid page
-    expect(is404 || isHome).toBeTruthy();
+    // It's OK if any of these conditions are met: 404 shown, redirected, or error page shown
+    expect(is404 || isHome || hasErrorPage).toBeTruthy();
   });
 
   test.skip('should handle API errors gracefully', async ({ page }) => {

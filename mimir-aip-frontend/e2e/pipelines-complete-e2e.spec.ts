@@ -167,9 +167,20 @@ steps:
       // Clear and enter new name
       await nameInput.clear();
       await nameInput.fill('Cloned Pipeline E2E');
+      await page.waitForTimeout(500); // Wait for React state update
+
+      // Wait for the API response
+      const clonePromise = page.waitForResponse(
+        resp => resp.url().includes('/api/v1/pipelines') && (resp.request().method() === 'POST' || resp.request().method() === 'PUT'),
+        { timeout: 10000 }
+      ).catch(() => null);
 
       // Confirm clone
       await page.getByRole('button', { name: /Clone/i }).last().click();
+
+      // Wait for clone operation to complete
+      await clonePromise;
+      await page.waitForTimeout(2000);
 
       // Verify cloning - check for success message or that dialog closed
       const hasSuccessMessage = await page.getByText(/cloned|success|created/i).isVisible({ timeout: 5000 }).catch(() => false);

@@ -10,20 +10,66 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Authentication Flow', () => {
-  let authEnabled = true; // Default to true, will be checked in beforeAll
+  let authEnabled = false;
+  let authWasEnabledBefore = false;
 
   test.beforeAll(async () => {
-    // Check if auth is enabled by trying to access a protected route without auth
+    // Check current auth state and enable it for these tests
     const { request } = await import('@playwright/test');
     const context = await request.newContext();
-    const response = await context.get('http://localhost:8080/api/v1/pipelines').catch(() => null);
     
-    // If we can access pipelines without auth (response OK), auth is disabled
-    // If response fails (401/403), auth is enabled
-    authEnabled = !(response && response.ok());
+    // Check if auth is currently enabled
+    const pipelinesResponse = await context.get('http://localhost:8080/api/v1/pipelines').catch(() => null);
+    authWasEnabledBefore = !(pipelinesResponse && pipelinesResponse.ok());
     
-    if (!authEnabled) {
-      console.log('⚠️ Auth is DISABLED - auth tests will skip gracefully');
+    if (!authWasEnabledBefore) {
+      console.log('⚙️ Auth is disabled - enabling it for auth tests...');
+      
+      // Enable auth via API
+      const configResponse = await context.put('http://localhost:8080/api/v1/config', {
+        data: {
+          security: {
+            enable_auth: true,
+            jwt_secret: 'test-secret-for-e2e-testing',
+            token_expiry: 24
+          }
+        }
+      }).catch(err => {
+        console.error('❌ Failed to enable auth via API:', err);
+        return null;
+      });
+      
+      if (configResponse && configResponse.ok()) {
+        console.log('✅ Auth enabled successfully for tests');
+        authEnabled = true;
+        // Wait a bit for config to take effect
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        console.log('⚠️ Could not enable auth - tests will skip');
+        authEnabled = false;
+      }
+    } else {
+      console.log('✅ Auth already enabled');
+      authEnabled = true;
+    }
+  });
+
+  test.afterAll(async () => {
+    // Restore original auth state
+    if (!authWasEnabledBefore && authEnabled) {
+      const { request } = await import('@playwright/test');
+      const context = await request.newContext();
+      
+      console.log('⚙️ Restoring auth to disabled state...');
+      await context.put('http://localhost:8080/api/v1/config', {
+        data: {
+          security: {
+            enable_auth: false
+          }
+        }
+      }).catch(err => console.error('Failed to disable auth:', err));
+      
+      console.log('✅ Auth restored to original state');
     }
   });
 
@@ -35,20 +81,8 @@ test.describe('Authentication Flow', () => {
 
   test('should redirect unauthenticated user to login page', async ({ page }) => {
     if (!authEnabled) {
-      // When backend auth is disabled, frontend might still have auth guards
-      // Check if frontend redirects to login
-      await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle');
-      
-      const url = page.url();
-      if (url.includes('/login')) {
-        console.log('⚠️ Frontend has auth enabled but backend does not - skipping test');
-        test.skip();
-        return;
-      }
-      
-      // Should stay on dashboard (not redirect to login)
-      expect(url).toContain('/dashboard');
+      console.log('⚠️ Could not enable auth - skipping test');
+      test.skip();
       return;
     }
 
@@ -64,18 +98,8 @@ test.describe('Authentication Flow', () => {
 
   test('should allow user to login with valid credentials', async ({ page }) => {
     if (!authEnabled) {
-      // When backend auth is disabled, check if frontend still requires login
-      await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle');
-      
-      const url = page.url();
-      if (url.includes('/login')) {
-        console.log('⚠️ Frontend has auth enabled but backend does not - skipping test');
-        test.skip();
-        return;
-      }
-      
-      expect(url).toContain('/dashboard');
+      console.log('⚠️ Could not enable auth - skipping test');
+      test.skip();
       return;
     }
 
@@ -118,18 +142,8 @@ test.describe('Authentication Flow', () => {
 
   test('should show error message with invalid credentials', async ({ page }) => {
     if (!authEnabled) {
-      // Auth disabled - check if frontend requires login anyway
-      await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle');
-      
-      const url = page.url();
-      if (url.includes('/login')) {
-        console.log('⚠️ Frontend has auth enabled but backend does not - skipping test');
-        test.skip();
-        return;
-      }
-      
-      expect(url).toContain('/dashboard');
+      console.log('⚠️ Could not enable auth - skipping test');
+      test.skip();
       return;
     }
 
@@ -154,18 +168,8 @@ test.describe('Authentication Flow', () => {
 
   test('should allow user to logout', async ({ page }) => {
     if (!authEnabled) {
-      // Auth disabled - check if frontend requires login anyway
-      await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle');
-      
-      const url = page.url();
-      if (url.includes('/login')) {
-        console.log('⚠️ Frontend has auth enabled but backend does not - skipping test');
-        test.skip();
-        return;
-      }
-      
-      expect(url).toContain('/dashboard');
+      console.log('⚠️ Could not enable auth - skipping test');
+      test.skip();
       return;
     }
 
@@ -210,21 +214,8 @@ test.describe('Authentication Flow', () => {
 
   test('should persist authentication across page reloads', async ({ page }) => {
     if (!authEnabled) {
-      // Auth disabled - check if frontend requires login anyway
-      await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle');
-      
-      const url = page.url();
-      if (url.includes('/login')) {
-        console.log('⚠️ Frontend has auth enabled but backend does not - skipping test');
-        test.skip();
-        return;
-      }
-      
-      // Verify page reload works
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      expect(page.url()).toContain('/dashboard');
+      console.log('⚠️ Could not enable auth - skipping test');
+      test.skip();
       return;
     }
 
@@ -254,22 +245,8 @@ test.describe('Authentication Flow', () => {
 
   test('should handle session expiration gracefully', async ({ page }) => {
     if (!authEnabled) {
-      // Auth disabled - check if frontend requires login anyway
-      await page.goto('/dashboard');
-      await page.waitForLoadState('networkidle');
-      
-      const url = page.url();
-      if (url.includes('/login')) {
-        console.log('⚠️ Frontend has auth enabled but backend does not - skipping test');
-        test.skip();
-        return;
-      }
-      
-      // Should stay accessible even after clearing cookies
-      await page.context().clearCookies();
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-      expect(page.url()).toContain('/dashboard');
+      console.log('⚠️ Could not enable auth - skipping test');
+      test.skip();
       return;
     }
 

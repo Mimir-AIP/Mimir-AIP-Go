@@ -19,6 +19,13 @@ test.describe('Extraction Jobs - Real API', () => {
       needsPipeline: false,
       needsExtractionJob: true,
     });
+    
+    // Verify setup succeeded
+    if (!testData.ontologyId || !testData.extractionJobId) {
+      throw new Error('❌ SETUP FAILED: setupTestData did not create required data! This is a bug in test infrastructure.');
+    }
+    
+    console.log(`✅ Test setup complete - Ontology: ${testData.ontologyId}, Extraction Job: ${testData.extractionJobId}`);
   });
 
   // Cleanup after all tests
@@ -67,11 +74,6 @@ test.describe('Extraction Jobs - Real API', () => {
 
   test('should filter extraction jobs by ontology', async ({ authenticatedPage: page }) => {
     // Skip if no test ontology was created
-    if (!testData.ontologyId) {
-      console.log('Test ontology not available');
-      test.skip();
-      return;
-    }
     
     await page.goto('/extraction');
     await page.waitForLoadState('networkidle');
@@ -90,11 +92,6 @@ test.describe('Extraction Jobs - Real API', () => {
 
   test('should view extraction job details', async ({ authenticatedPage: page }) => {
     // Use our test extraction job
-    if (!testData.extractionJobId) {
-      console.log('No test extraction job available');
-      test.skip();
-      return;
-    }
     
     // Navigate to job details page
     await page.goto(`/extraction/${testData.extractionJobId}`);
@@ -115,11 +112,6 @@ test.describe('Extraction Jobs - Real API', () => {
 
   test('should display entity details in modal', async ({ authenticatedPage: page }) => {
     // Use our test extraction job
-    if (!testData.extractionJobId) {
-      console.log('No test extraction job available');
-      test.skip();
-      return;
-    }
     
     await page.goto(`/extraction/${testData.extractionJobId}`);
     await page.waitForLoadState('networkidle');
@@ -245,11 +237,6 @@ test.describe('Extraction Jobs - Real API', () => {
 
   test('should create extraction job via API', async ({ request }) => {
     // Use our test ontology
-    if (!testData.ontologyId) {
-      console.log('No test ontology available');
-      test.skip();
-      return;
-    }
     
     // Create extraction job via API
     const jobResponse = await request.post('/api/v1/extraction/jobs', {

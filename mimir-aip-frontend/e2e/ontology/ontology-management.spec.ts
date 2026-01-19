@@ -41,6 +41,13 @@ test.describe('Ontology Management - Real API', () => {
       needsPipeline: false,
       needsExtractionJob: false,
     });
+    
+    // Verify setup succeeded
+    if (!testData.ontologyId) {
+      throw new Error('❌ SETUP FAILED: setupTestData did not create an ontology! This is a bug in test infrastructure.');
+    }
+    
+    console.log(`✅ Test setup complete - Ontology: ${testData.ontologyId}`);
   });
 
   // Cleanup after all tests
@@ -163,11 +170,6 @@ test.describe('Ontology Management - Real API', () => {
   });
 
   test('should view ontology details', async ({ authenticatedPage: page, request }) => {
-    if (!testData.ontologyId) {
-      console.log('Test ontology not available');
-      test.skip();
-      return;
-    }
     
     // Get ontology details
     const ontologyResponse = await request.get(`/api/v1/ontology/${testData.ontologyId}`);
@@ -278,11 +280,6 @@ test.describe('Ontology Management - Real API', () => {
   });
 
   test('should export an ontology', async ({ authenticatedPage: page, request }) => {
-    if (!testData.ontologyId) {
-      console.log('Test ontology not available');
-      test.skip();
-      return;
-    }
     
     // Try to export via UI
     await page.goto(`/ontologies/${testData.ontologyId}`);
@@ -346,11 +343,6 @@ test.describe('Ontology Management - Real API', () => {
   });
 
   test('should navigate to ontology versions', async ({ authenticatedPage: page, request }) => {
-    if (!testData.ontologyId) {
-      console.log('Test ontology not available');
-      test.skip();
-      return;
-    }
     
     await page.goto(`/ontologies/${testData.ontologyId}`);
     await page.waitForLoadState('networkidle');
@@ -369,11 +361,6 @@ test.describe('Ontology Management - Real API', () => {
   });
 
   test('should navigate to ontology suggestions', async ({ authenticatedPage: page, request }) => {
-    if (!testData.ontologyId) {
-      console.log('Test ontology not available');
-      test.skip();
-      return;
-    }
     
     await page.goto(`/ontologies/${testData.ontologyId}`);
     await page.waitForLoadState('networkidle');

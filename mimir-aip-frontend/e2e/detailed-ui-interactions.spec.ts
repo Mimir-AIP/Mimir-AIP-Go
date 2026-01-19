@@ -41,55 +41,98 @@ test.describe('Mimir AIP - Detailed UI Interactions', () => {
     console.log(`Modal visible: ${hasModal}`);
 
     if (hasModal) {
-      // Fill pipeline name
-      const nameInput = modal.locator('input[type="text"]').first();
+      // Fill pipeline name - use specific ID selector
+      const nameInput = modal.locator('#create-name');
       const hasNameInput = await nameInput.isVisible({ timeout: 3000 }).catch(() => false);
       console.log(`Name input visible: ${hasNameInput}`);
 
       if (hasNameInput) {
         await nameInput.fill('Test-Pipeline-For-Details');
         console.log('✅ Name filled');
+        await page.waitForTimeout(500); // Wait for React state update
       }
 
-      // Save the pipeline
+      // Switch to YAML mode to add steps
+      const yamlModeBtn = modal.getByRole('button', { name: /YAML/i });
+      const hasYamlBtn = await yamlModeBtn.isVisible({ timeout: 3000 }).catch(() => false);
+      if (hasYamlBtn) {
+        await yamlModeBtn.click();
+        console.log('✅ Switched to YAML mode');
+        await page.waitForTimeout(500);
+
+        // Fill YAML config with a simple step
+        const yamlInput = modal.locator('#create-yaml');
+        await yamlInput.fill(`version: '1.0'
+name: Test-Pipeline-For-Details
+steps:
+  - name: test-step
+    plugin: Input.csv
+    config:
+      file_path: /data/test.csv`);
+        console.log('✅ YAML config filled');
+        await page.waitForTimeout(500);
+      }
+
+      // Save the pipeline - wait for button to be enabled
       const saveBtn = modal.getByRole('button', { name: /Save|Create|Submit/i }).first();
       const hasSaveBtn = await saveBtn.isVisible({ timeout: 3000 }).catch(() => false);
       console.log(`Save button visible: ${hasSaveBtn}`);
 
       if (hasSaveBtn) {
+        // Wait for button to be enabled
+        await expect(saveBtn).toBeEnabled({ timeout: 10000 });
+        
+        // Wait for BOTH the create AND the subsequent list fetch
+        const createPromise = page.waitForResponse(
+          resp => resp.url().includes('/api/v1/pipelines') && resp.request().method() === 'POST',
+          { timeout: 10000 }
+        );
+        
         await saveBtn.click();
         console.log('✅ Save clicked');
-        await page.waitForTimeout(3000);
+        
+        // Wait for creation to complete
+        await createPromise;
+        console.log('✅ Pipeline created (API call completed)');
+        
+        // Wait for modal to close
+        await page.waitForTimeout(1000);
       }
     }
 
-    // Check if we're back on pipelines page
-    const currentUrl = page.url();
-    const isOnPipelines = currentUrl.includes('/pipelines');
-    console.log(`On pipelines page: ${isOnPipelines}`);
-
-    // Now test the pipeline details
-    const pipelineRows = page.locator('table tbody tr');
-    const pipelineCount = await pipelineRows.count();
-    console.log(`✅ Found ${pipelineCount} pipelines after creation`);
-
-    if (pipelineCount === 0) {
-      console.log('❌ Pipeline was not created successfully');
-      return;
-    }
-
-    // Click "View Details" on the first pipeline (our newly created one)
-    const firstPipelineRow = pipelineRows.first();
-    const viewDetailsBtn = firstPipelineRow.locator('a:has-text("View"), button:has-text("View")').first();
-    const hasViewBtn = await viewDetailsBtn.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (!hasViewBtn) {
-      console.log('⚠️ View Details button not found');
-      return;
-    }
-
-    await viewDetailsBtn.click();
+    // Reload the pipelines page to ensure fresh data
+    console.log('📄 Reloading pipelines page...');
+    await page.goto('http://localhost:8080/pipelines');
     await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
+
+    // Check if we're on pipeline details page (after successful creation)
+    const currentUrl = page.url();
+    const isOnPipelineDetails = currentUrl.match(/\/pipelines\/pipeline_\d+$/);
+    console.log(`Current URL: ${currentUrl}`);
+    console.log(`On pipeline details page: ${!!isOnPipelineDetails}`);
+
+    // If we're not already on details page, navigate to first pipeline
+    if (!isOnPipelineDetails) {
+      // Go to pipelines list page
+      await page.goto('http://localhost:8080/pipelines');
+      await page.waitForLoadState('networkidle');
+
+      // Pipelines are displayed as cards, not table rows
+      const pipelineCards = page.locator('[class*="grid"] > div[class*="Card"], .grid > div > div').filter({ hasText: 'Test-Pipeline' });
+      const pipelineCount = await pipelineCards.count();
+      console.log(`✅ Found ${pipelineCount} pipeline cards`);
+
+      if (pipelineCount === 0) {
+        console.log('❌ No pipeline cards found');
+        return;
+      }
+
+      // Click on the first pipeline card (should have a link or be clickable)
+      const firstCard = pipelineCards.first();
+      await firstCard.click();
+      await page.waitForLoadState('networkidle');
+    }
 
     // Verify we're on pipeline details page
     const pipelineNameHeading = page.getByRole('heading', { level: 1 }).first();

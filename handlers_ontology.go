@@ -679,8 +679,25 @@ func (s *Server) handleListExtractionJobs(w http.ResponseWriter, r *http.Request
 
 	jobs, _ := result.Get("jobs")
 
+	// Handle wrapped response (jobs might be {"value": [...]})
+	var jobsList any = []map[string]any{}
+	if jobsMap, ok := jobs.(map[string]any); ok {
+		if val, exists := jobsMap["value"]; exists {
+			jobsList = val
+		} else {
+			jobsList = jobs
+		}
+	} else {
+		jobsList = jobs
+	}
+
+	// Ensure we return an array, not null
+	if jobsList == nil {
+		jobsList = []map[string]any{}
+	}
+
 	response := map[string]any{
-		"jobs": jobs,
+		"jobs": jobsList,
 	}
 
 	writeSuccessResponse(w, response)

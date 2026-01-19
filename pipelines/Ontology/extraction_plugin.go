@@ -303,6 +303,11 @@ func (p *ExtractionPlugin) handleListJobs(ctx context.Context, stepConfig pipeli
 		return nil, fmt.Errorf("failed to list extraction jobs: %w", err)
 	}
 
+	// Ensure we return empty array instead of nil
+	if jobs == nil {
+		jobs = []*ExtractionJob{}
+	}
+
 	resultContext := pipelines.NewPluginContext()
 	resultContext.Set("jobs", jobs)
 

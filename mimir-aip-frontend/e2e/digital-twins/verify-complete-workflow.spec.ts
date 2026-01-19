@@ -1,9 +1,23 @@
 import { test, expect } from '@playwright/test';
 import { setupAuthenticatedPage } from '../helpers';
+import { setupTestData, TestDataContext } from '../test-data-setup';
 
 test('Verify complete twin workflow in UI', async ({ page }) => {
   test.setTimeout(60000);
   await setupAuthenticatedPage(page);
+  
+  // Ensure test ontology exists before starting workflow
+  const testData = await setupTestData(page.request, {
+    needsOntology: true,
+    needsPipeline: false,
+    needsExtractionJob: false,
+  });
+  
+  if (!testData.ontologyId) {
+    console.log('Test ontology not available - skipping test');
+    test.skip();
+    return;
+  }
   
   console.log('\n=== Step 1: Navigate to Digital Twins ===');
   await page.goto('http://localhost:8080/digital-twins');
@@ -17,18 +31,8 @@ test('Verify complete twin workflow in UI', async ({ page }) => {
   await page.fill('input[name="name"]', 'Complete Workflow Test');
   await page.fill('textarea[name="description"]', 'Testing full workflow via UI');
   
-  // Wait for ontologies to load
-  await page.waitForSelector('[data-testid="loading-ontologies"], [data-testid="no-ontologies-message"], [data-testid="ontology-select"]', { timeout: 10000 });
-  
-  // Check if ontologies are available
-  const noOntologiesMsg = page.locator('[data-testid="no-ontologies-message"]');
-  const hasNoOntologies = await noOntologiesMsg.isVisible().catch(() => false);
-  
-  if (hasNoOntologies) {
-    console.log('No ontologies available - skipping test');
-    test.skip();
-    return;
-  }
+  // Wait for ontologies to load - we know at least one exists from setupTestData
+  await page.waitForSelector('[data-testid="loading-ontologies"], [data-testid="ontology-select"]', { timeout: 10000 });
   
   // Select first available ontology using correct selector
   const ontologySelect = page.locator('select[data-testid="ontology-select"]');

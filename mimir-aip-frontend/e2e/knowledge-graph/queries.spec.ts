@@ -6,8 +6,19 @@
  */
 
 import { test, expect } from '../helpers';
+import { setupTestData, TestDataContext } from '../test-data-setup';
 
 test.describe('Knowledge Graph Queries - Real API', () => {
+  let testData: TestDataContext;
+
+  // Setup test data before all tests
+  test.beforeAll(async ({ request }) => {
+    testData = await setupTestData(request, {
+      needsOntology: true,
+      needsPipeline: false,
+      needsExtractionJob: false,
+    });
+  });
   test('should display knowledge graph stats', async ({ authenticatedPage: page, request }) => {
     await page.goto('/knowledge-graph');
     await page.waitForLoadState('networkidle');
@@ -205,15 +216,8 @@ test.describe('Knowledge Graph Queries - Real API', () => {
   });
 
   test('should execute a natural language query', async ({ authenticatedPage: page, request }) => {
-    // Check if ontologies exist
-    const ontResponse = await request.get('/api/v1/ontology?status=active');
-    if (!ontResponse.ok()) {
-      test.skip();
-      return;
-    }
-    
-    const ontologies = await ontResponse.json();
-    if (!ontologies || ontologies.length === 0) {
+    if (!testData.ontologyId) {
+      console.log('Test ontology not available');
       test.skip();
       return;
     }

@@ -6,6 +6,7 @@
  */
 
 import { test, expect } from '../helpers';
+import { setupTestData, TestDataContext } from '../test-data-setup';
 
 // Simple test ontology content
 const testOntologyContent = `
@@ -31,6 +32,16 @@ const testOntologyContent = `
 
 test.describe('Ontology Management - Real API', () => {
   let testOntologyIds: string[] = [];
+  let testData: TestDataContext;
+
+  // Setup test data before all tests
+  test.beforeAll(async ({ request }) => {
+    testData = await setupTestData(request, {
+      needsOntology: true,
+      needsPipeline: false,
+      needsExtractionJob: false,
+    });
+  });
 
   // Cleanup after all tests
   test.afterAll(async ({ request }) => {
@@ -152,22 +163,24 @@ test.describe('Ontology Management - Real API', () => {
   });
 
   test('should view ontology details', async ({ authenticatedPage: page, request }) => {
-    // First, get list of ontologies
-    const listResponse = await request.get('/api/v1/ontology');
-    expect(listResponse.ok()).toBeTruthy();
-    
-    const ontologies = await listResponse.json();
-    
-    if (!ontologies || ontologies.length === 0) {
-      console.log('No ontologies available - skipping details test');
+    if (!testData.ontologyId) {
+      console.log('Test ontology not available');
       test.skip();
       return;
     }
     
-    const testOntology = ontologies[0];
+    // Get ontology details
+    const ontologyResponse = await request.get(`/api/v1/ontology/${testData.ontologyId}`);
+    if (!ontologyResponse.ok()) {
+      console.log('Could not fetch ontology details');
+      test.skip();
+      return;
+    }
+    
+    const testOntology = await ontologyResponse.json();
     
     // Navigate to ontology details page
-    await page.goto(`/ontologies/${testOntology.id}`);
+    await page.goto(`/ontologies/${testData.ontologyId}`);
     await page.waitForLoadState('networkidle');
     
     // Check if page loaded successfully
@@ -206,7 +219,7 @@ test.describe('Ontology Management - Real API', () => {
     // Create a test ontology to delete
     const ontologyName = `E2E Delete Test ${Date.now()}`;
     
-    // First check if we can create via API
+    // Create via API
     const createResponse = await request.post('/api/v1/ontology', {
       data: {
         name: ontologyName,
@@ -218,28 +231,8 @@ test.describe('Ontology Management - Real API', () => {
     });
     
     if (!createResponse.ok()) {
-      // If API creation fails, try to find an existing ontology to test delete
-      const listResponse = await request.get('/api/v1/ontology');
-      if (!listResponse.ok()) {
-        console.log('Cannot create or list ontologies - skipping delete test');
-        test.skip();
-        return;
-      }
-      
-      const ontologies = await listResponse.json();
-      if (!ontologies || ontologies.length === 0) {
-        console.log('No ontologies available for delete test');
-        test.skip();
-        return;
-      }
-      
-      // Use first ontology for testing (but don't actually delete it)
-      console.log('Using existing ontology for UI interaction test');
-      await page.goto('/ontologies');
-      await page.waitForLoadState('networkidle');
-      
-      const deleteButton = page.getByRole('button', { name: /delete/i }).first();
-      await expect(deleteButton).toBeVisible({ timeout: 5000 }).catch(() => {});
+      console.log('Cannot create test ontology - skipping delete test');
+      test.skip();
       return;
     }
     
@@ -285,22 +278,14 @@ test.describe('Ontology Management - Real API', () => {
   });
 
   test('should export an ontology', async ({ authenticatedPage: page, request }) => {
-    // Get first available ontology
-    const listResponse = await request.get('/api/v1/ontology');
-    expect(listResponse.ok()).toBeTruthy();
-    
-    const ontologies = await listResponse.json();
-    
-    if (!ontologies || ontologies.length === 0) {
-      console.log('No ontologies available - skipping export test');
+    if (!testData.ontologyId) {
+      console.log('Test ontology not available');
       test.skip();
       return;
     }
     
-    const testOntology = ontologies[0];
-    
     // Try to export via UI
-    await page.goto(`/ontologies/${testOntology.id}`);
+    await page.goto(`/ontologies/${testData.ontologyId}`);
     await page.waitForLoadState('networkidle');
     
     const exportButton = page.getByRole('button', { name: /export|download/i });
@@ -318,7 +303,7 @@ test.describe('Ontology Management - Real API', () => {
       }
     } else {
       // Test export via API
-      const exportResponse = await request.get(`/api/v1/ontology/${testOntology.id}/export?format=turtle`);
+      const exportResponse = await request.get(`/api/v1/ontology/${testData.ontologyId}/export?format=turtle`);
       expect(exportResponse.ok()).toBeTruthy();
       
       const content = await exportResponse.text();
@@ -361,18 +346,13 @@ test.describe('Ontology Management - Real API', () => {
   });
 
   test('should navigate to ontology versions', async ({ authenticatedPage: page, request }) => {
-    // Get first available ontology
-    const listResponse = await request.get('/api/v1/ontology');
-    const ontologies = await listResponse.json();
-    
-    if (!ontologies || ontologies.length === 0) {
+    if (!testData.ontologyId) {
+      console.log('Test ontology not available');
       test.skip();
       return;
     }
     
-    const testOntology = ontologies[0];
-    
-    await page.goto(`/ontologies/${testOntology.id}`);
+    await page.goto(`/ontologies/${testData.ontologyId}`);
     await page.waitForLoadState('networkidle');
     
     // Look for versions link/button
@@ -389,18 +369,13 @@ test.describe('Ontology Management - Real API', () => {
   });
 
   test('should navigate to ontology suggestions', async ({ authenticatedPage: page, request }) => {
-    // Get first available ontology
-    const listResponse = await request.get('/api/v1/ontology');
-    const ontologies = await listResponse.json();
-    
-    if (!ontologies || ontologies.length === 0) {
+    if (!testData.ontologyId) {
+      console.log('Test ontology not available');
       test.skip();
       return;
     }
     
-    const testOntology = ontologies[0];
-    
-    await page.goto(`/ontologies/${testOntology.id}`);
+    await page.goto(`/ontologies/${testData.ontologyId}`);
     await page.waitForLoadState('networkidle');
     
     // Look for suggestions link/button

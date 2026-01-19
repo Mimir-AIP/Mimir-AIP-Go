@@ -48,7 +48,7 @@ export interface TestDataContext {
  * Ensure at least one test ontology exists
  * Returns the ID of an existing or newly created ontology
  */
-export async function ensureTestOntology(request: APIRequestContext): Promise<string | null> {
+export async function ensureTestOntology(request: APIRequestContext): Promise<string | undefined> {
   try {
     // Check for existing ontologies
     const listResp = await request.get('/api/v1/ontology');
@@ -73,13 +73,13 @@ export async function ensureTestOntology(request: APIRequestContext): Promise<st
     if (createResp.ok()) {
       const result = await createResp.json();
       // Handle both direct ID and nested data structure
-      return result.ontology_id || result.data?.ontology_id || result.id || null;
+      return result.ontology_id || result.data?.ontology_id || result.id || undefined;
     }
 
-    return null;
+    return undefined;
   } catch (error) {
     console.error('Failed to ensure test ontology:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -87,7 +87,7 @@ export async function ensureTestOntology(request: APIRequestContext): Promise<st
  * Ensure at least one test pipeline exists
  * Returns the ID of an existing or newly created pipeline
  */
-export async function ensureTestPipeline(request: APIRequestContext): Promise<string | null> {
+export async function ensureTestPipeline(request: APIRequestContext): Promise<string | undefined> {
   try {
     // Check for existing pipelines
     const listResp = await request.get('/api/v1/pipelines');
@@ -117,13 +117,13 @@ export async function ensureTestPipeline(request: APIRequestContext): Promise<st
 
     if (createResp.ok()) {
       const result = await createResp.json();
-      return result.pipeline_id || result.data?.pipeline_id || result.id || null;
+      return result.pipeline_id || result.data?.pipeline_id || result.id || undefined;
     }
 
-    return null;
+    return undefined;
   } catch (error) {
     console.error('Failed to ensure test pipeline:', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -134,7 +134,7 @@ export async function ensureTestPipeline(request: APIRequestContext): Promise<st
 export async function createTestExtractionJob(
   request: APIRequestContext,
   ontologyId: string
-): Promise<string | null> {
+): Promise<string | undefined> {
   try {
     const createResp = await request.post('/api/v1/extraction/jobs', {
       data: {
@@ -150,13 +150,13 @@ export async function createTestExtractionJob(
 
     if (createResp.ok()) {
       const result = await createResp.json();
-      return result.data?.job_id || result.job_id || null;
+      return result.data?.job_id || result.job_id || undefined;
     }
 
-    return null;
+    return undefined;
   } catch (error) {
     console.error('Failed to create test extraction job:', error);
-    return null;
+    return undefined;
   }
 }
 

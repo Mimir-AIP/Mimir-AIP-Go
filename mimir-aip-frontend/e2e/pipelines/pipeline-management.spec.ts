@@ -7,9 +7,20 @@
 
 import { test, expect } from '../helpers';
 import { expectVisible, expectTextVisible, waitForToast } from '../helpers';
+import { setupTestData, TestDataContext } from '../test-data-setup';
 
 test.describe('Pipeline Management - Real API', () => {
   let testPipelineIds: string[] = [];
+  let testData: TestDataContext;
+
+  // Setup test data before all tests
+  test.beforeAll(async ({ request }) => {
+    testData = await setupTestData(request, {
+      needsOntology: false,
+      needsPipeline: true,
+      needsExtractionJob: false,
+    });
+  });
 
   // Cleanup after all tests - Note: Manual cleanup needed as page fixture not available in afterAll
   // Pipelines will be deleted when backend restarts or can be manually cleaned
@@ -75,34 +86,14 @@ test.describe('Pipeline Management - Real API', () => {
   });
 
   test('should view pipeline details', async ({ authenticatedPage: page }) => {
-    // Get list of pipelines
-    const response = await page.request.get('/api/v1/pipelines');
-    
-    if (!response.ok()) {
-      console.log('No pipelines endpoint available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipelines = await response.json();
-    
-    if (!pipelines || pipelines.length === 0) {
-      console.log('No pipelines available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipeline = pipelines[0];
-    const pipelineId = pipeline.metadata?.id || pipeline.id;
-
-    if (!pipelineId) {
-      console.log('Pipeline has no ID - skipping test');
+    if (!testData.pipelineId) {
+      console.log('Test pipeline not available');
       test.skip();
       return;
     }
 
     // Navigate to pipeline details
-    await page.goto(`/pipelines/${pipelineId}`);
+    await page.goto(`/pipelines/${testData.pipelineId}`);
     await page.waitForLoadState('networkidle');
     
     // Should show pipeline details page (accept any valid page load)
@@ -111,28 +102,8 @@ test.describe('Pipeline Management - Real API', () => {
   });
 
   test('should execute a pipeline', async ({ authenticatedPage: page }) => {
-    // Get list of pipelines
-    const response = await page.request.get('/api/v1/pipelines');
-    
-    if (!response.ok()) {
-      console.log('No pipelines endpoint available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipelines = await response.json();
-    
-    if (!pipelines || pipelines.length === 0) {
-      console.log('No pipelines available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipeline = pipelines[0];
-    const pipelineId = pipeline.metadata?.id || pipeline.id;
-
-    if (!pipelineId) {
-      console.log('Pipeline has no ID - skipping test');
+    if (!testData.pipelineId) {
+      console.log('Test pipeline not available');
       test.skip();
       return;
     }
@@ -140,13 +111,13 @@ test.describe('Pipeline Management - Real API', () => {
     // Try to execute pipeline via API
     const executeResponse = await page.request.post('/api/v1/pipelines/execute', {
       data: {
-        pipeline_id: pipelineId
+        pipeline_id: testData.pipelineId
       }
     });
 
     if (executeResponse.ok()) {
       const result = await executeResponse.json();
-      console.log(`✓ Pipeline executed successfully: ${pipelineId}`);
+      console.log(`✓ Pipeline executed successfully: ${testData.pipelineId}`);
       expect(result).toBeTruthy();
     } else {
       console.log('Pipeline execution not available (may need specific config)');
@@ -155,34 +126,14 @@ test.describe('Pipeline Management - Real API', () => {
   });
 
   test('should clone a pipeline', async ({ authenticatedPage: page }) => {
-    // Get list of pipelines
-    const response = await page.request.get('/api/v1/pipelines');
-    
-    if (!response.ok()) {
-      console.log('No pipelines endpoint available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipelines = await response.json();
-    
-    if (!pipelines || pipelines.length === 0) {
-      console.log('No pipelines available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipeline = pipelines[0];
-    const pipelineId = pipeline.metadata?.id || pipeline.id;
-
-    if (!pipelineId) {
-      console.log('Pipeline has no ID - skipping test');
+    if (!testData.pipelineId) {
+      console.log('Test pipeline not available');
       test.skip();
       return;
     }
 
     // Try to clone pipeline via API
-    const cloneResponse = await page.request.post(`/api/v1/pipelines/${pipelineId}/clone`, {
+    const cloneResponse = await page.request.post(`/api/v1/pipelines/${testData.pipelineId}/clone`, {
       data: {
         name: `Cloned Pipeline ${Date.now()}`
       }
@@ -193,7 +144,7 @@ test.describe('Pipeline Management - Real API', () => {
       const clonedId = clonedPipeline.metadata?.id || clonedPipeline.id;
       if (clonedId) {
         testPipelineIds.push(clonedId);
-        console.log(`✓ Cloned pipeline: ${pipelineId} -> ${clonedId}`);
+        console.log(`✓ Cloned pipeline: ${testData.pipelineId} -> ${clonedId}`);
       }
       expect(clonedPipeline).toBeTruthy();
     } else {
@@ -253,34 +204,25 @@ test.describe('Pipeline Management - Real API', () => {
   });
 
   test('should update a pipeline', async ({ authenticatedPage: page }) => {
-    // Get list of pipelines
-    const response = await page.request.get('/api/v1/pipelines');
+    if (!testData.pipelineId) {
+      console.log('Test pipeline not available');
+      test.skip();
+      return;
+    }
+
+    // Get the pipeline details first
+    const getResponse = await page.request.get(`/api/v1/pipelines/${testData.pipelineId}`);
     
-    if (!response.ok()) {
-      console.log('No pipelines endpoint available - skipping test');
+    if (!getResponse.ok()) {
+      console.log('Could not fetch pipeline details - skipping test');
       test.skip();
       return;
     }
 
-    const pipelines = await response.json();
-    
-    if (!pipelines || pipelines.length === 0) {
-      console.log('No pipelines available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipeline = pipelines[0];
-    const pipelineId = pipeline.metadata?.id || pipeline.id;
-
-    if (!pipelineId) {
-      console.log('Pipeline has no ID - skipping test');
-      test.skip();
-      return;
-    }
+    const pipeline = await getResponse.json();
 
     // Try to update pipeline via API
-    const updateResponse = await page.request.put(`/api/v1/pipelines/${pipelineId}`, {
+    const updateResponse = await page.request.put(`/api/v1/pipelines/${testData.pipelineId}`, {
       data: {
         metadata: {
           ...pipeline.metadata,
@@ -292,7 +234,7 @@ test.describe('Pipeline Management - Real API', () => {
 
     if (updateResponse.ok()) {
       const updatedPipeline = await updateResponse.json();
-      console.log(`✓ Updated pipeline: ${pipelineId}`);
+      console.log(`✓ Updated pipeline: ${testData.pipelineId}`);
       expect(updatedPipeline).toBeTruthy();
     } else {
       console.log('Pipeline update not available');
@@ -301,38 +243,18 @@ test.describe('Pipeline Management - Real API', () => {
   });
 
   test('should validate a pipeline', async ({ authenticatedPage: page }) => {
-    // Get list of pipelines
-    const response = await page.request.get('/api/v1/pipelines');
-    
-    if (!response.ok()) {
-      console.log('No pipelines endpoint available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipelines = await response.json();
-    
-    if (!pipelines || pipelines.length === 0) {
-      console.log('No pipelines available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipeline = pipelines[0];
-    const pipelineId = pipeline.metadata?.id || pipeline.id;
-
-    if (!pipelineId) {
-      console.log('Pipeline has no ID - skipping test');
+    if (!testData.pipelineId) {
+      console.log('Test pipeline not available');
       test.skip();
       return;
     }
 
     // Try to validate pipeline via API
-    const validateResponse = await page.request.post(`/api/v1/pipelines/${pipelineId}/validate`);
+    const validateResponse = await page.request.post(`/api/v1/pipelines/${testData.pipelineId}/validate`);
 
     if (validateResponse.ok()) {
       const result = await validateResponse.json();
-      console.log(`✓ Validated pipeline: ${pipelineId}`);
+      console.log(`✓ Validated pipeline: ${testData.pipelineId}`);
       expect(result).toBeTruthy();
     } else {
       console.log('Pipeline validation not available');
@@ -341,38 +263,18 @@ test.describe('Pipeline Management - Real API', () => {
   });
 
   test('should get pipeline execution history', async ({ authenticatedPage: page }) => {
-    // Get list of pipelines
-    const response = await page.request.get('/api/v1/pipelines');
-    
-    if (!response.ok()) {
-      console.log('No pipelines endpoint available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipelines = await response.json();
-    
-    if (!pipelines || pipelines.length === 0) {
-      console.log('No pipelines available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipeline = pipelines[0];
-    const pipelineId = pipeline.metadata?.id || pipeline.id;
-
-    if (!pipelineId) {
-      console.log('Pipeline has no ID - skipping test');
+    if (!testData.pipelineId) {
+      console.log('Test pipeline not available');
       test.skip();
       return;
     }
 
     // Try to get pipeline history via API
-    const historyResponse = await page.request.get(`/api/v1/pipelines/${pipelineId}/history`);
+    const historyResponse = await page.request.get(`/api/v1/pipelines/${testData.pipelineId}/history`);
 
     if (historyResponse.ok()) {
       const history = await historyResponse.json();
-      console.log(`✓ Retrieved pipeline history: ${pipelineId}`);
+      console.log(`✓ Retrieved pipeline history: ${testData.pipelineId}`);
       expect(history).toBeTruthy();
     } else {
       console.log('Pipeline history endpoint not available');
@@ -402,38 +304,18 @@ test.describe('Pipeline Management - Real API', () => {
   });
 
   test('should get pipeline logs', async ({ authenticatedPage: page }) => {
-    // Get list of pipelines
-    const response = await page.request.get('/api/v1/pipelines');
-    
-    if (!response.ok()) {
-      console.log('No pipelines endpoint available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipelines = await response.json();
-    
-    if (!pipelines || pipelines.length === 0) {
-      console.log('No pipelines available - skipping test');
-      test.skip();
-      return;
-    }
-
-    const pipeline = pipelines[0];
-    const pipelineId = pipeline.metadata?.id || pipeline.id;
-
-    if (!pipelineId) {
-      console.log('Pipeline has no ID - skipping test');
+    if (!testData.pipelineId) {
+      console.log('Test pipeline not available');
       test.skip();
       return;
     }
 
     // Try to get pipeline logs via API
-    const logsResponse = await page.request.get(`/api/v1/pipelines/${pipelineId}/logs?limit=10`);
+    const logsResponse = await page.request.get(`/api/v1/pipelines/${testData.pipelineId}/logs?limit=10`);
 
     if (logsResponse.ok()) {
       const logs = await logsResponse.json();
-      console.log(`✓ Retrieved pipeline logs: ${pipelineId}`);
+      console.log(`✓ Retrieved pipeline logs: ${testData.pipelineId}`);
       expect(logs).toBeTruthy();
     } else {
       console.log('Pipeline logs endpoint not available');

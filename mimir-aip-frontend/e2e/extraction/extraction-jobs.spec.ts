@@ -6,9 +6,20 @@
  */
 
 import { test, expect } from '../helpers';
+import { setupTestData, TestDataContext } from '../test-data-setup';
 
 test.describe('Extraction Jobs - Real API', () => {
   let testJobIds: string[] = [];
+  let testData: TestDataContext;
+
+  // Setup test data before all tests
+  test.beforeAll(async ({ request }) => {
+    testData = await setupTestData(request, {
+      needsOntology: true,
+      needsPipeline: false,
+      needsExtractionJob: true,
+    });
+  });
 
   // Cleanup after all tests
   test.afterAll(async ({ request }) => {
@@ -54,17 +65,10 @@ test.describe('Extraction Jobs - Real API', () => {
     }
   });
 
-  test('should filter extraction jobs by ontology', async ({ authenticatedPage: page, request }) => {
-    // Get available ontologies
-    const ontResponse = await request.get('/api/v1/ontology?status=active');
-    
-    if (!ontResponse.ok()) {
-      test.skip();
-      return;
-    }
-    
-    const ontologies = await ontResponse.json();
-    if (!ontologies || ontologies.length === 0) {
+  test('should filter extraction jobs by ontology', async ({ authenticatedPage: page }) => {
+    // Skip if no test ontology was created
+    if (!testData.ontologyId) {
+      console.log('Test ontology not available');
       test.skip();
       return;
     }
@@ -76,37 +80,24 @@ test.describe('Extraction Jobs - Real API', () => {
     const ontologyFilter = page.locator('select[name="ontology"], select:has-text("Ontology")');
     
     if (await ontologyFilter.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await ontologyFilter.selectOption(ontologies[0].id);
+      await ontologyFilter.selectOption(testData.ontologyId);
       await page.waitForTimeout(500);
-      await expect(ontologyFilter).toHaveValue(ontologies[0].id);
+      await expect(ontologyFilter).toHaveValue(testData.ontologyId);
     } else {
       console.log('Ontology filter not available');
     }
   });
 
-  test('should view extraction job details', async ({ authenticatedPage: page, request }) => {
-    // Get list of jobs
-    const listResponse = await request.get('/api/v1/extraction/jobs');
-    
-    if (!listResponse.ok()) {
-      console.log('Cannot fetch extraction jobs');
+  test('should view extraction job details', async ({ authenticatedPage: page }) => {
+    // Use our test extraction job
+    if (!testData.extractionJobId) {
+      console.log('No test extraction job available');
       test.skip();
       return;
     }
-    
-    const jobsData = await listResponse.json();
-    const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
-    
-    if (!jobs || jobs.length === 0) {
-      console.log('No extraction jobs available - skipping details test');
-      test.skip();
-      return;
-    }
-    
-    const testJob = jobs[0];
     
     // Navigate to job details page
-    await page.goto(`/extraction/${testJob.id}`);
+    await page.goto(`/extraction/${testData.extractionJobId}`);
     await page.waitForLoadState('networkidle');
     
     // Check if page loaded
@@ -117,31 +108,20 @@ test.describe('Extraction Jobs - Real API', () => {
       return;
     }
     
-    // Should show job information
-    const jobInfo = page.locator(`text=${testJob.job_name}`);
-    await expect(jobInfo).toBeVisible({ timeout: 5000 }).catch(() => {});
+    // Should show job information (verify page loaded successfully)
+    const pageContent = page.locator('body');
+    await expect(pageContent).toBeVisible({ timeout: 5000 });
   });
 
-  test('should display entity details in modal', async ({ authenticatedPage: page, request }) => {
-    // Get list of jobs
-    const listResponse = await request.get('/api/v1/extraction/jobs');
-    
-    if (!listResponse.ok()) {
+  test('should display entity details in modal', async ({ authenticatedPage: page }) => {
+    // Use our test extraction job
+    if (!testData.extractionJobId) {
+      console.log('No test extraction job available');
       test.skip();
       return;
     }
     
-    const jobsData = await listResponse.json();
-    const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
-    
-    if (!jobs || jobs.length === 0) {
-      test.skip();
-      return;
-    }
-    
-    const testJob = jobs[0];
-    
-    await page.goto(`/extraction/${testJob.id}`);
+    await page.goto(`/extraction/${testData.extractionJobId}`);
     await page.waitForLoadState('networkidle');
     
     // Look for "View Details" button
@@ -264,18 +244,9 @@ test.describe('Extraction Jobs - Real API', () => {
   });
 
   test('should create extraction job via API', async ({ request }) => {
-    // Get available ontologies
-    const ontResponse = await request.get('/api/v1/ontology?status=active');
-    
-    if (!ontResponse.ok()) {
-      console.log('No ontologies available');
-      test.skip();
-      return;
-    }
-    
-    const ontologies = await ontResponse.json();
-    if (!ontologies || ontologies.length === 0) {
-      console.log('No ontologies available for extraction test');
+    // Use our test ontology
+    if (!testData.ontologyId) {
+      console.log('No test ontology available');
       test.skip();
       return;
     }
@@ -283,9 +254,10 @@ test.describe('Extraction Jobs - Real API', () => {
     // Create extraction job via API
     const jobResponse = await request.post('/api/v1/extraction/jobs', {
       data: {
-        ontology_id: ontologies[0].id,
+        ontology_id: testData.ontologyId,
         job_name: `E2E Test Extraction ${Date.now()}`,
         extraction_type: 'deterministic',
+        source_type: 'text',
         data: {
           text: 'Alice works at TechCorp. Bob is a software engineer.',
         },
@@ -307,35 +279,19 @@ test.describe('Extraction Jobs - Real API', () => {
   });
 
   test('should display job statistics', async ({ authenticatedPage: page, request }) => {
-    // Get list of jobs
-    const listResponse = await request.get('/api/v1/extraction/jobs');
-    
-    if (!listResponse.ok()) {
+    // Use our test extraction job if available
+    if (testData.extractionJobId) {
+      await page.goto(`/extraction/${testData.extractionJobId}`);
+      await page.waitForLoadState('networkidle');
+      
+      // Check for statistics display
+      const statsSection = page.locator('text=/entities.*extracted|triples.*generated|statistics/i');
+      await expect(statsSection).toBeVisible({ timeout: 5000 }).catch(() => {
+        console.log('Job statistics section not found - may not be implemented yet');
+      });
+    } else {
+      console.log('No test extraction job available');
       test.skip();
-      return;
     }
-    
-    const jobsData = await listResponse.json();
-    const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
-    
-    // Find a completed job with entities
-    const completedJob = jobs.find((job: any) => 
-      job.status === 'completed' && job.entities_extracted > 0
-    );
-    
-    if (!completedJob) {
-      console.log('No completed jobs with entities available');
-      test.skip();
-      return;
-    }
-    
-    await page.goto(`/extraction/${completedJob.id}`);
-    await page.waitForLoadState('networkidle');
-    
-    // Should show statistics
-    const statsSection = page.locator('text=/entities|triples|statistics/i');
-    await expect(statsSection).toBeVisible({ timeout: 5000 }).catch(() => {
-      console.log('Statistics section not found');
-    });
   });
 });

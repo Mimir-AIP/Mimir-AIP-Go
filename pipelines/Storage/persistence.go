@@ -23,12 +23,39 @@ func NewPersistenceBackend(dbPath string) (*PersistenceBackend, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// Configure connection pool for SQLite
+	// WAL mode allows multiple readers, so we can have more connections
+	// But we limit to prevent excessive lock contention
+	db.SetMaxOpenConns(10)                 // Allow up to 10 concurrent connections
+	db.SetMaxIdleConns(2)                  // Keep 2 idle connections
+	db.SetConnMaxLifetime(0)               // Connections never expire
+	db.SetConnMaxIdleTime(5 * time.Minute) // Idle connections expire after 5min
+
 	// Enable foreign keys and WAL mode for better concurrency
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
+	// Set busy timeout to 30 seconds to handle concurrent access
+	if _, err := db.Exec("PRAGMA busy_timeout = 30000"); err != nil {
+		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
+	}
+
+	// Optimize WAL mode performance
+	if _, err := db.Exec("PRAGMA synchronous = NORMAL"); err != nil {
+		return nil, fmt.Errorf("failed to set synchronous mode: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA cache_size = -64000"); err != nil {
+		return nil, fmt.Errorf("failed to set cache size: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA temp_store = MEMORY"); err != nil {
+		return nil, fmt.Errorf("failed to set temp store: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA mmap_size = 30000000000"); err != nil {
+		return nil, fmt.Errorf("failed to set mmap size: %w", err)
 	}
 
 	backend := &PersistenceBackend{db: db}

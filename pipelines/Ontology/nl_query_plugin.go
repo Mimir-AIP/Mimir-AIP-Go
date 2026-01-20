@@ -340,6 +340,7 @@ func (p *NLQueryPlugin) getOntologyMetadata(ctx context.Context, ontologyID stri
 		WHERE id = ?
 	`
 
+	var createdBy sql.NullString
 	err := p.db.QueryRowContext(ctx, query, ontologyID).Scan(
 		&metadata.ID,
 		&metadata.Name,
@@ -351,17 +352,24 @@ func (p *NLQueryPlugin) getOntologyMetadata(ctx context.Context, ontologyID stri
 		&metadata.Status,
 		&metadata.CreatedAt,
 		&metadata.UpdatedAt,
-		&metadata.CreatedBy,
+		&createdBy,
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	return metadata, err
+	if createdBy.Valid {
+		metadata.CreatedBy = createdBy.String
+	}
+
+	return metadata, nil
 }
 
 func (p *NLQueryPlugin) getOntologyClasses(ctx context.Context, ontologyID string) ([]OntologyClass, error) {
 	query := `
-		SELECT class_uri, label, description, deprecated
+		SELECT uri, label, description
 		FROM ontology_classes 
-		WHERE ontology_id = ? AND deprecated = 0
+		WHERE ontology_id = ?
 		LIMIT 100
 	`
 
@@ -376,7 +384,7 @@ func (p *NLQueryPlugin) getOntologyClasses(ctx context.Context, ontologyID strin
 		class := OntologyClass{}
 		var label, description sql.NullString
 
-		err := rows.Scan(&class.URI, &label, &description, &class.Deprecated)
+		err := rows.Scan(&class.URI, &label, &description)
 		if err != nil {
 			return nil, err
 		}
@@ -396,9 +404,9 @@ func (p *NLQueryPlugin) getOntologyClasses(ctx context.Context, ontologyID strin
 
 func (p *NLQueryPlugin) getOntologyProperties(ctx context.Context, ontologyID string) ([]OntologyProperty, error) {
 	query := `
-		SELECT property_uri, label, description, property_type, deprecated
+		SELECT uri, label, description, property_type
 		FROM ontology_properties 
-		WHERE ontology_id = ? AND deprecated = 0
+		WHERE ontology_id = ?
 		LIMIT 100
 	`
 
@@ -413,7 +421,7 @@ func (p *NLQueryPlugin) getOntologyProperties(ctx context.Context, ontologyID st
 		prop := OntologyProperty{}
 		var label, description sql.NullString
 
-		err := rows.Scan(&prop.URI, &label, &description, &prop.PropertyType, &prop.Deprecated)
+		err := rows.Scan(&prop.URI, &label, &description, &prop.PropertyType)
 		if err != nil {
 			return nil, err
 		}

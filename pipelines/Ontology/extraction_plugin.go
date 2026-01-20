@@ -585,6 +585,7 @@ func (p *ExtractionPlugin) getOntologyMetadata(ctx context.Context, ontologyID s
 		WHERE id = ?
 	`
 
+	var createdBy sql.NullString
 	err := p.db.QueryRowContext(ctx, query, ontologyID).Scan(
 		&metadata.ID,
 		&metadata.Name,
@@ -596,15 +597,22 @@ func (p *ExtractionPlugin) getOntologyMetadata(ctx context.Context, ontologyID s
 		&metadata.Status,
 		&metadata.CreatedAt,
 		&metadata.UpdatedAt,
-		&metadata.CreatedBy,
+		&createdBy,
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	return metadata, err
+	if createdBy.Valid {
+		metadata.CreatedBy = createdBy.String
+	}
+
+	return metadata, nil
 }
 
 func (p *ExtractionPlugin) getOntologyClasses(ctx context.Context, ontologyID string) ([]OntologyClass, error) {
 	query := `
-		SELECT class_uri, label, description, deprecated
+		SELECT uri, label, description
 		FROM ontology_classes 
 		WHERE ontology_id = ?
 	`
@@ -620,7 +628,7 @@ func (p *ExtractionPlugin) getOntologyClasses(ctx context.Context, ontologyID st
 		class := OntologyClass{}
 		var label, description sql.NullString
 
-		err := rows.Scan(&class.URI, &label, &description, &class.Deprecated)
+		err := rows.Scan(&class.URI, &label, &description)
 		if err != nil {
 			return nil, err
 		}
@@ -640,7 +648,7 @@ func (p *ExtractionPlugin) getOntologyClasses(ctx context.Context, ontologyID st
 
 func (p *ExtractionPlugin) getOntologyProperties(ctx context.Context, ontologyID string) ([]OntologyProperty, error) {
 	query := `
-		SELECT property_uri, label, description, property_type, deprecated
+		SELECT uri, label, description, property_type
 		FROM ontology_properties 
 		WHERE ontology_id = ?
 	`
@@ -656,7 +664,7 @@ func (p *ExtractionPlugin) getOntologyProperties(ctx context.Context, ontologyID
 		prop := OntologyProperty{}
 		var label, description sql.NullString
 
-		err := rows.Scan(&prop.URI, &label, &description, &prop.PropertyType, &prop.Deprecated)
+		err := rows.Scan(&prop.URI, &label, &description, &prop.PropertyType)
 		if err != nil {
 			return nil, err
 		}

@@ -136,15 +136,19 @@ export async function createTestExtractionJob(
   ontologyId: string
 ): Promise<string | undefined> {
   try {
+    // Use CSV data with deterministic extraction for reliable test data
+    const csvData = `name,company,role
+Alice,TechCorp,Engineer
+Bob,DataCo,Manager
+Charlie,StartupX,Developer`;
+
     const createResp = await request.post('/api/v1/extraction/jobs', {
       data: {
         ontology_id: ontologyId,
         job_name: `E2E Test Extraction ${Date.now()}`,
         extraction_type: 'deterministic',
-        source_type: 'text',
-        data: {
-          text: 'Alice works at TechCorp. Bob is a software engineer at DataCo. Charlie manages the team.',
-        },
+        source_type: 'csv',
+        data: csvData,
       },
     });
 
@@ -153,6 +157,9 @@ export async function createTestExtractionJob(
       return result.data?.job_id || result.job_id || undefined;
     }
 
+    // Log error details for debugging
+    const errorBody = await createResp.text();
+    console.error(`Failed to create extraction job: ${createResp.status()} - ${errorBody}`);
     return undefined;
   } catch (error) {
     console.error('Failed to create test extraction job:', error);

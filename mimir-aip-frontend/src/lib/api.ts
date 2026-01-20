@@ -1473,12 +1473,12 @@ export async function createDigitalTwin(request: CreateTwinRequest): Promise<{
 
 /**
  * List all digital twins
- * GET /api/v1/twin
+ * GET /api/v1/twins
  */
 export async function listDigitalTwins(): Promise<DigitalTwin[]> {
-  const response = await apiFetch<{ twins: DigitalTwin[] }>("/api/v1/twin");
-  // Backend returns {twins: [...]} so extract the array
-  return Array.isArray(response.twins) ? response.twins : [];
+  const response = await apiFetch<{ success: boolean; data: { twins: DigitalTwin[]; count: number } }>("/api/v1/twins");
+  // Backend returns {success: true, data: {twins: [...], count: N}} so extract the array
+  return Array.isArray(response.data?.twins) ? response.data.twins : [];
 }
 
 /**

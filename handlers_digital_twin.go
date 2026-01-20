@@ -674,25 +674,44 @@ func (s *Server) handleListScenarios(w http.ResponseWriter, r *http.Request) {
 		// Generate default scenarios
 		defaultScenarios := s.generateDefaultScenariosForTwin(&twin)
 
-		// Save them to database
-		for _, scenario := range defaultScenarios {
-			eventsJSON, _ := json.Marshal(scenario.Events)
-			insertQuery := `
-				INSERT INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			`
-			_, err := db.Exec(insertQuery, scenario.ID, scenario.TwinID, scenario.Name, scenario.Description, scenario.Type, string(eventsJSON), scenario.Duration, scenario.CreatedAt)
-			if err == nil {
-				// Add to response
-				scenarios = append(scenarios, map[string]interface{}{
-					"id":            scenario.ID,
-					"name":          scenario.Name,
-					"description":   scenario.Description,
-					"scenario_type": scenario.Type,
-					"events":        scenario.Events,
-					"duration":      scenario.Duration,
-					"created_at":    scenario.CreatedAt,
-				})
+		// Save them to database with transaction to prevent locks
+		tx, err := db.Begin()
+		if err != nil {
+			// Log warning but continue without saving scenarios
+			utils.GetLogger().Warn(fmt.Sprintf("Failed to start transaction for scenario generation: %v", err))
+		} else {
+			// Check again within transaction to prevent race condition (double-check pattern)
+			var count int
+			err = tx.QueryRow("SELECT COUNT(*) FROM simulation_scenarios WHERE twin_id = ?", twinID).Scan(&count)
+			if err == nil && count == 0 {
+				// Save scenarios with conflict handling
+				for _, scenario := range defaultScenarios {
+					eventsJSON, _ := json.Marshal(scenario.Events)
+					insertQuery := `
+						INSERT OR IGNORE INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+					`
+					_, err := tx.Exec(insertQuery, scenario.ID, scenario.TwinID, scenario.Name, scenario.Description, scenario.Type, string(eventsJSON), scenario.Duration, scenario.CreatedAt)
+					if err == nil {
+						// Add to response
+						scenarios = append(scenarios, map[string]interface{}{
+							"id":            scenario.ID,
+							"name":          scenario.Name,
+							"description":   scenario.Description,
+							"scenario_type": scenario.Type,
+							"events":        scenario.Events,
+							"duration":      scenario.Duration,
+							"created_at":    scenario.CreatedAt,
+						})
+					} else {
+						utils.GetLogger().Warn(fmt.Sprintf("Failed to insert scenario %s: %v", scenario.Name, err))
+					}
+				}
+			}
+			// Commit transaction
+			if err := tx.Commit(); err != nil {
+				utils.GetLogger().Warn(fmt.Sprintf("Failed to commit scenario transaction: %v", err))
+				tx.Rollback()
 			}
 		}
 	}

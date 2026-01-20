@@ -60,7 +60,7 @@ test('Verify complete twin workflow in UI', async ({ page }) => {
   await page.waitForLoadState('networkidle');
   
   console.log('\n=== Step 5: Click Scenarios tab ===');
-  await page.click('button:has-text("Scenarios")');
+  await page.getByRole('button', { name: /^Scenarios \(\d+\)$/ }).click();
   await page.waitForTimeout(2000); // Increased wait for scenarios to load
   
   console.log('\n=== Step 6: Verify scenarios are visible ===');

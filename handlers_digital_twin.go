@@ -648,39 +648,51 @@ func (s *Server) handleListScenarios(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-generate default scenarios if none exist for this twin
 	if len(scenarios) == 0 {
-		// Load twin to generate scenarios
+		// Load twin to check if it exists and generate scenarios
 		var twinJSON string
 		twinQuery := `SELECT base_state FROM digital_twins WHERE id = ?`
 		err := db.QueryRow(twinQuery, twinID).Scan(&twinJSON)
-		if err == nil {
-			var twin DigitalTwin.DigitalTwin
-			if err := twin.FromJSON(twinJSON); err == nil {
-				twin.ID = twinID
+		if err != nil {
+			// Twin doesn't exist - return 404
+			if err == sql.ErrNoRows {
+				writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
+				return
+			}
+			// Other database error
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load twin: %v", err))
+			return
+		}
 
-				// Generate default scenarios
-				defaultScenarios := s.generateDefaultScenariosForTwin(&twin)
+		// Twin exists - generate scenarios
+		var twin DigitalTwin.DigitalTwin
+		if err := twin.FromJSON(twinJSON); err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse twin: %v", err))
+			return
+		}
+		twin.ID = twinID
 
-				// Save them to database
-				for _, scenario := range defaultScenarios {
-					eventsJSON, _ := json.Marshal(scenario.Events)
-					insertQuery := `
-						INSERT INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-					`
-					_, err := db.Exec(insertQuery, scenario.ID, scenario.TwinID, scenario.Name, scenario.Description, scenario.Type, string(eventsJSON), scenario.Duration, scenario.CreatedAt)
-					if err == nil {
-						// Add to response
-						scenarios = append(scenarios, map[string]interface{}{
-							"id":            scenario.ID,
-							"name":          scenario.Name,
-							"description":   scenario.Description,
-							"scenario_type": scenario.Type,
-							"events":        scenario.Events,
-							"duration":      scenario.Duration,
-							"created_at":    scenario.CreatedAt,
-						})
-					}
-				}
+		// Generate default scenarios
+		defaultScenarios := s.generateDefaultScenariosForTwin(&twin)
+
+		// Save them to database
+		for _, scenario := range defaultScenarios {
+			eventsJSON, _ := json.Marshal(scenario.Events)
+			insertQuery := `
+				INSERT INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`
+			_, err := db.Exec(insertQuery, scenario.ID, scenario.TwinID, scenario.Name, scenario.Description, scenario.Type, string(eventsJSON), scenario.Duration, scenario.CreatedAt)
+			if err == nil {
+				// Add to response
+				scenarios = append(scenarios, map[string]interface{}{
+					"id":            scenario.ID,
+					"name":          scenario.Name,
+					"description":   scenario.Description,
+					"scenario_type": scenario.Type,
+					"events":        scenario.Events,
+					"duration":      scenario.Duration,
+					"created_at":    scenario.CreatedAt,
+				})
 			}
 		}
 	}

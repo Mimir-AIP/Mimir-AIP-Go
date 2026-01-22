@@ -856,4 +856,313 @@ describe('API Client', () => {
       })
     })
   })
+
+  describe('Ontology API', () => {
+    describe('listOntologies', () => {
+      it('should fetch all ontologies successfully', async () => {
+        const mockOntologies = [
+          { ontology_id: 'ont-1', name: 'Ontology 1', status: 'active' },
+          { ontology_id: 'ont-2', name: 'Ontology 2', status: 'active' },
+        ]
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockOntologies,
+        })
+
+        const result = await api.listOntologies()
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/ontology',
+          expect.any(Object)
+        )
+        expect(result).toEqual(mockOntologies)
+      })
+
+      it('should filter ontologies by status', async () => {
+        const mockOntologies = [
+          { ontology_id: 'ont-1', name: 'Ontology 1', status: 'active' },
+        ]
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockOntologies,
+        })
+
+        await api.listOntologies('active')
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/ontology?status=active',
+          expect.any(Object)
+        )
+      })
+
+      it('should handle API errors', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error',
+          text: async () => 'Server error',
+        })
+
+        await expect(api.listOntologies()).rejects.toThrow('API error (500): Server error')
+      })
+    })
+
+    describe('getOntology', () => {
+      it('should fetch a single ontology by ID', async () => {
+        const mockResponse = {
+          success: true,
+          data: {
+            ontology: { ontology_id: 'ont-1', name: 'Test Ontology' },
+          },
+        }
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockResponse,
+        })
+
+        const result = await api.getOntology('ont-1')
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/ontology/ont-1?include_content=false',
+          expect.any(Object)
+        )
+        expect(result).toEqual(mockResponse)
+      })
+
+      it('should include content when requested', async () => {
+        const mockResponse = {
+          success: true,
+          data: {
+            ontology: { ontology_id: 'ont-1', name: 'Test Ontology' },
+            content: '@prefix : <http://example.org/> .',
+          },
+        }
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockResponse,
+        })
+
+        const result = await api.getOntology('ont-1', true)
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/ontology/ont-1?include_content=true',
+          expect.any(Object)
+        )
+        expect(result.data.content).toBeDefined()
+      })
+    })
+
+    describe('uploadOntology', () => {
+      it('should upload a new ontology', async () => {
+        const uploadRequest = {
+          name: 'New Ontology',
+          description: 'Test ontology',
+          format: 'turtle',
+          ontology_data: '@prefix : <http://example.org/> .',
+        }
+
+        const mockResponse = {
+          success: true,
+          data: { ontology_id: 'new-ont-1', message: 'Ontology uploaded' },
+        }
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockResponse,
+        })
+
+        const result = await api.uploadOntology(uploadRequest)
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/ontology',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify(uploadRequest),
+          })
+        )
+        expect(result.success).toBe(true)
+        expect(result.data.ontology_id).toBe('new-ont-1')
+      })
+    })
+
+    describe('deleteOntology', () => {
+      it('should delete an ontology', async () => {
+        const mockResponse = {
+          success: true,
+          data: { ontology_id: 'ont-1', status: 'deleted', message: 'Success' },
+        }
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockResponse,
+        })
+
+        const result = await api.deleteOntology('ont-1')
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/ontology/ont-1',
+          expect.objectContaining({
+            method: 'DELETE',
+          })
+        )
+        expect(result.success).toBe(true)
+      })
+    })
+
+    describe('exportOntology', () => {
+      it('should export ontology in turtle format', async () => {
+        const mockContent = '@prefix : <http://example.org/> .'
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'text/plain' }),
+          text: async () => mockContent,
+        })
+
+        const result = await api.exportOntology('ont-1', 'turtle')
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/ontology/ont-1/export?format=turtle',
+          expect.any(Object)
+        )
+        expect(result).toBe(mockContent)
+      })
+    })
+  })
+
+  describe('Extraction API', () => {
+    describe('listExtractionJobs', () => {
+      it('should fetch all extraction jobs successfully', async () => {
+        const mockJobs = {
+          success: true,
+          data: {
+            jobs: [
+              { job_id: 'job-1', job_name: 'Job 1', status: 'completed' },
+              { job_id: 'job-2', job_name: 'Job 2', status: 'running' },
+            ],
+          },
+        }
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockJobs,
+        })
+
+        const result = await api.listExtractionJobs()
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/extraction/jobs',
+          expect.any(Object)
+        )
+        expect(result).toEqual(mockJobs)
+      })
+
+      it('should filter jobs by ontology ID', async () => {
+        const mockJobs = {
+          success: true,
+          data: { jobs: [] },
+        }
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockJobs,
+        })
+
+        await api.listExtractionJobs({ ontology_id: 'ont-1' })
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/extraction/jobs?ontology_id=ont-1',
+          expect.any(Object)
+        )
+      })
+
+      it('should handle API errors', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error',
+          text: async () => 'Server error',
+        })
+
+        await expect(api.listExtractionJobs()).rejects.toThrow('API error (500): Server error')
+      })
+    })
+
+    describe('getExtractionJob', () => {
+      it('should fetch a single extraction job by ID', async () => {
+        const mockResponse = {
+          success: true,
+          data: {
+            job: { job_id: 'job-1', job_name: 'Test Job', status: 'completed' },
+            entities: [
+              { entity_id: 'ent-1', type: 'Person', text: 'John' },
+            ],
+          },
+        }
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockResponse,
+        })
+
+        const result = await api.getExtractionJob('job-1')
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/extraction/jobs/job-1',
+          expect.any(Object)
+        )
+        expect(result).toEqual(mockResponse)
+        expect(result.data.job.job_id).toBe('job-1')
+        expect(result.data.entities).toHaveLength(1)
+      })
+    })
+
+    describe('createExtractionJob', () => {
+      it('should create a new extraction job', async () => {
+        const jobData = {
+          ontology_id: 'ont-1',
+          job_name: 'New Job',
+          extraction_type: 'deterministic' as const,
+          source_type: 'text' as const,
+          data: { text: 'Test data' },
+        }
+
+        const mockResponse = {
+          success: true,
+          data: { job_id: 'new-job-1', message: 'Job created' },
+        }
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => mockResponse,
+        })
+
+        const result = await api.createExtractionJob(jobData)
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://localhost:8080/api/v1/extraction/jobs',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify(jobData),
+          })
+        )
+        expect(result.success).toBe(true)
+        expect(result.data.job_id).toBe('new-job-1')
+      })
+    })
+  })
 })

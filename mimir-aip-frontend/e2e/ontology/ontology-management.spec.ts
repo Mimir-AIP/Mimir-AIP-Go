@@ -1,8 +1,13 @@
 /**
- * E2E tests for Ontology Management - using REAL backend API
+ * E2E tests for Ontology Management - HYBRID APPROACH
  * 
- * These tests interact with the real backend to verify complete
- * end-to-end functionality of ontology upload, management, and export.
+ * Strategy: Use API to verify backend state, then test UI displays it correctly.
+ * This catches both backend bugs AND UI rendering bugs.
+ * 
+ * Pattern:
+ * 1. Use API to get/create data (fast, reliable)
+ * 2. Navigate to UI page
+ * 3. Verify UI correctly displays the API data
  */
 
 import { test, expect } from '../helpers';
@@ -62,20 +67,53 @@ test.describe('Ontology Management - Real API', () => {
     }
   });
 
-  test('should display list of ontologies', async ({ authenticatedPage: page }) => {
+  test('should display list of ontologies from backend', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get ontologies from API (verify backend has data)
+    const response = await request.get('/api/v1/ontology');
+    expect(response.ok()).toBeTruthy();
+    
+    const ontologies = await response.json();
+    const ontologyCount = Array.isArray(ontologies) ? ontologies.length : 0;
+    console.log(`✓ Backend has ${ontologyCount} ontologies`);
+    
+    // Step 2: Navigate to UI
     await page.goto('/ontologies');
     await page.waitForLoadState('networkidle');
     
-    // Should show ontologies page heading
+    // Step 3: Verify UI loads
     const heading = page.getByRole('heading', { name: /ontolog/i });
     await expect(heading).toBeVisible({ timeout: 10000 });
     
-    // Page should load without errors
+    // Step 4: Wait for loading to complete
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {
+      console.log('No loading skeleton found - page may load instantly');
+    });
+    
+    // Step 5: Verify UI displays data from API
+    if (ontologyCount === 0) {
+      // Should show empty state
+      const emptyState = page.getByText(/no.*ontolog|create.*first|upload/i);
+      await expect(emptyState).toBeVisible().catch(() => {
+        console.log('Empty state not found - checking for empty list');
+      });
+    } else {
+      // Should show ontology cards/rows
+      const ontologyCards = page.getByTestId('ontology-card');
+      const uiCount = await ontologyCards.count().catch(() => 0);
+      
+      console.log(`UI shows ${uiCount} ontologies (API: ${ontologyCount})`);
+      
+      // UI should show at least some ontologies
+      expect(uiCount).toBeGreaterThan(0);
+    }
+    
+    // Step 6: Verify no errors
     const errorMessage = page.getByText(/error.*loading|failed.*load/i);
-    await expect(errorMessage).not.toBeVisible().catch(() => {});
+    await expect(errorMessage).not.toBeVisible();
   });
 
-  test('should upload a new ontology', async ({ authenticatedPage: page, request }) => {
+  test('should upload a new ontology and display it in UI', async ({ authenticatedPage: page, request }) => {
     const ontologyName = `E2E Test Ontology ${Date.now()}`;
     
     // Check if upload page exists
@@ -95,7 +133,8 @@ test.describe('Ontology Management - Real API', () => {
       if (await uploadButton.isVisible().catch(() => false)) {
         await uploadButton.click();
       } else {
-        // If no UI available, test via API only
+        // If no UI available, use API but THEN verify in UI
+        console.log('No upload UI found - creating via API');
         const response = await request.post('/api/v1/ontology', {
           data: {
             name: ontologyName,
@@ -109,7 +148,23 @@ test.describe('Ontology Management - Real API', () => {
         expect(response.ok()).toBeTruthy();
         const data = await response.json();
         expect(data.success).toBe(true);
-        testOntologyIds.push(data.data.ontology_id);
+        const ontologyId = data.data.ontology_id;
+        testOntologyIds.push(ontologyId);
+        console.log(`✓ Created ontology via API: ${ontologyId}`);
+        
+        // NOW verify it appears in the UI
+        await page.goto('/ontologies');
+        await page.waitForLoadState('networkidle');
+        
+        // Wait for loading to complete
+        const loadingSkeleton = page.getByTestId('loading-skeleton');
+        await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
+        
+        // Verify new ontology appears in UI
+        const newOntology = page.getByText(ontologyName);
+        await expect(newOntology).toBeVisible({ timeout: 10000 });
+        console.log('✓ New ontology visible in UI');
+        
         return;
       }
     }
@@ -166,12 +221,20 @@ test.describe('Ontology Management - Real API', () => {
       // Should show success message or redirect
       const successToast = page.locator('text=/success|uploaded|created/i');
       await expect(successToast).toBeVisible({ timeout: 5000 }).catch(() => {});
+      
+      // Verify it appears in the list
+      await page.goto('/ontologies');
+      await page.waitForLoadState('networkidle');
+      
+      const newOntology = page.getByText(ontologyName);
+      await expect(newOntology).toBeVisible({ timeout: 10000 });
+      console.log('✓ New ontology visible in UI');
     }
   });
 
-  test('should view ontology details', async ({ authenticatedPage: page, request }) => {
+  test('should view ontology details matching API data', async ({ authenticatedPage: page, request }) => {
     
-    // Get ontology details
+    // Step 1: Get ontology details from API
     const ontologyResponse = await request.get(`/api/v1/ontology/${testData.ontologyId}`);
     if (!ontologyResponse.ok()) {
       console.log('Could not fetch ontology details');
@@ -180,12 +243,14 @@ test.describe('Ontology Management - Real API', () => {
     }
     
     const testOntology = await ontologyResponse.json();
+    const expectedName = testOntology.name;
+    console.log(`✓ API shows ontology: "${expectedName}"`);
     
-    // Navigate to ontology details page
+    // Step 2: Navigate to ontology details page
     await page.goto(`/ontologies/${testData.ontologyId}`);
     await page.waitForLoadState('networkidle');
     
-    // Check if page loaded successfully
+    // Step 3: Check if page loaded successfully
     const notFound = page.locator('text=/404|not found/i');
     if (await notFound.isVisible().catch(() => false)) {
       console.log('Ontology details page not found - feature may not be implemented');
@@ -193,9 +258,14 @@ test.describe('Ontology Management - Real API', () => {
       return;
     }
     
-    // Should show ontology information
-    const ontologyInfo = page.locator(`text=${testOntology.name}`);
-    await expect(ontologyInfo).toBeVisible({ timeout: 5000 }).catch(() => {});
+    // Step 4: Verify UI displays the same data as API
+    const ontologyInfo = page.locator(`text=${expectedName}`);
+    await expect(ontologyInfo).toBeVisible({ timeout: 10000 });
+    console.log('✓ UI displays correct ontology name');
+    
+    // Verify no errors
+    const errorMessage = page.getByText(/error|failed/i);
+    await expect(errorMessage).not.toBeVisible();
   });
 
   test('should filter ontologies by status', async ({ authenticatedPage: page, request }) => {
@@ -217,11 +287,10 @@ test.describe('Ontology Management - Real API', () => {
     }
   });
 
-  test('should delete an ontology', async ({ authenticatedPage: page, request }) => {
-    // Create a test ontology to delete
+  test('should delete an ontology via UI', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Create a test ontology to delete via API
     const ontologyName = `E2E Delete Test ${Date.now()}`;
     
-    // Create via API
     const createResponse = await request.post('/api/v1/ontology', {
       data: {
         name: ontologyName,
@@ -241,12 +310,22 @@ test.describe('Ontology Management - Real API', () => {
     const createData = await createResponse.json();
     const ontologyId = createData.data.ontology_id;
     testOntologyIds.push(ontologyId);
+    console.log(`✓ Created ontology for deletion: ${ontologyId}`);
     
-    // Navigate to ontologies list
+    // Step 2: Navigate to ontologies list
     await page.goto('/ontologies');
     await page.waitForLoadState('networkidle');
     
-    // Look for delete button
+    // Wait for loading
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
+    
+    // Step 3: Verify ontology appears in UI
+    const ontologyElement = page.getByText(ontologyName);
+    await expect(ontologyElement).toBeVisible({ timeout: 10000 });
+    console.log('✓ Ontology visible in UI before deletion');
+    
+    // Step 4: Look for delete button
     const deleteButton = page.getByRole('button', { name: /delete/i }).first();
     
     if (await deleteButton.isVisible().catch(() => false)) {
@@ -268,18 +347,33 @@ test.describe('Ontology Management - Real API', () => {
         const successToast = page.locator('text=/success|deleted/i');
         await expect(successToast).toBeVisible({ timeout: 5000 }).catch(() => {});
         
+        // Verify it's gone from UI
+        await expect(ontologyElement).not.toBeVisible();
+        console.log('✓ Ontology deleted and removed from UI');
+        
         // Remove from cleanup list since it's already deleted
         testOntologyIds = testOntologyIds.filter(id => id !== ontologyId);
       }
     } else {
-      // No UI available, delete via API
+      // No delete button in UI - delete via API but verify UI updates
+      console.log('No delete button in UI - deleting via API');
       const deleteResponse = await request.delete(`/api/v1/ontology/${ontologyId}`);
       expect(deleteResponse.ok()).toBeTruthy();
+      console.log('✓ Deleted via API');
+      
+      // Reload and verify it's gone from UI
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      
+      const stillVisible = await ontologyElement.isVisible({ timeout: 2000 }).catch(() => false);
+      expect(stillVisible).toBe(false);
+      console.log('✓ Ontology no longer visible in UI');
+      
       testOntologyIds = testOntologyIds.filter(id => id !== ontologyId);
     }
   });
 
-  test('should export an ontology', async ({ authenticatedPage: page, request }) => {
+  test('should export an ontology via UI', async ({ authenticatedPage: page, request }) => {
     
     // Try to export via UI
     await page.goto(`/ontologies/${testData.ontologyId}`);
@@ -297,14 +391,21 @@ test.describe('Ontology Management - Real API', () => {
       if (download) {
         // Backend may use .turtle extension instead of .ttl
         expect(download.suggestedFilename()).toMatch(/\.(ttl|turtle|rdf|owl)$/);
+        console.log('✓ Ontology exported via UI download');
       }
     } else {
-      // Test export via API
+      // No export button in UI - test API but verify data
+      console.log('No export button in UI - testing API');
       const exportResponse = await request.get(`/api/v1/ontology/${testData.ontologyId}/export?format=turtle`);
       expect(exportResponse.ok()).toBeTruthy();
       
       const content = await exportResponse.text();
       expect(content.length).toBeGreaterThan(0);
+      console.log(`✓ Export API works (${content.length} bytes)`);
+      
+      // Verify content looks like valid RDF
+      expect(content).toMatch(/@prefix|<rdf:|<owl:/);
+      console.log('✓ Export content appears to be valid RDF');
     }
   });
 

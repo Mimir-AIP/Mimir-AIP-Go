@@ -1,8 +1,13 @@
 /**
- * E2E tests for Extraction Jobs - using REAL backend API
+ * E2E tests for Extraction Jobs - HYBRID APPROACH
  * 
- * These tests interact with the real backend to verify complete
- * end-to-end functionality of entity extraction jobs.
+ * Strategy: Use API to verify backend state, then test UI displays it correctly.
+ * This catches both backend bugs AND UI rendering bugs.
+ * 
+ * Pattern:
+ * 1. Use API to get/create data (fast, reliable)
+ * 2. Navigate to UI page
+ * 3. Verify UI correctly displays the API data
  */
 
 import { test, expect } from '../helpers';
@@ -40,17 +45,51 @@ test.describe('Extraction Jobs - Real API', () => {
     }
   });
 
-  test('should display list of extraction jobs', async ({ authenticatedPage: page }) => {
+  test('should display list of extraction jobs from backend', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get jobs from API (verify backend has data)
+    const response = await request.get('/api/v1/extraction/jobs');
+    expect(response.ok()).toBeTruthy();
+    
+    const jobsData = await response.json();
+    const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
+    const jobCount = Array.isArray(jobs) ? jobs.length : 0;
+    console.log(`✓ Backend has ${jobCount} extraction jobs`);
+    
+    // Step 2: Navigate to UI
     await page.goto('/extraction');
     await page.waitForLoadState('networkidle');
     
-    // Should show extraction jobs page heading
+    // Step 3: Verify UI loads
     const heading = page.getByRole('heading', { name: /extraction/i }).first();
     await expect(heading).toBeVisible({ timeout: 10000 });
     
-    // Page should load without errors
+    // Step 4: Wait for loading to complete
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {
+      console.log('No loading skeleton found - page may load instantly');
+    });
+    
+    // Step 5: Verify UI displays data from API
+    if (jobCount === 0) {
+      // Should show empty state
+      const emptyState = page.getByText(/no.*extraction.*jobs|no.*jobs.*found|empty/i);
+      await expect(emptyState).toBeVisible().catch(() => {
+        console.log('Empty state not found - checking for empty list');
+      });
+    } else {
+      // Should show job cards/rows
+      const jobCards = page.getByTestId('job-card');
+      const uiCount = await jobCards.count().catch(() => 0);
+      
+      console.log(`UI shows ${uiCount} jobs (API: ${jobCount})`);
+      
+      // UI should show at least some jobs
+      expect(uiCount).toBeGreaterThan(0);
+    }
+    
+    // Step 6: Verify no errors
     const errorMessage = page.getByText(/error.*loading|failed.*load/i);
-    await expect(errorMessage).not.toBeVisible().catch(() => {});
+    await expect(errorMessage).not.toBeVisible();
   });
 
   test('should filter extraction jobs by status', async ({ authenticatedPage: page }) => {
@@ -90,14 +129,24 @@ test.describe('Extraction Jobs - Real API', () => {
     }
   });
 
-  test('should view extraction job details', async ({ authenticatedPage: page }) => {
-    // Use our test extraction job
+  test('should view extraction job details matching API data', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get job details from API
+    const jobResponse = await request.get(`/api/v1/extraction/jobs/${testData.extractionJobId}`);
+    if (!jobResponse.ok()) {
+      console.log('Could not fetch job details from API');
+      test.skip();
+      return;
+    }
     
-    // Navigate to job details page
+    const jobData = await jobResponse.json();
+    const job = jobData?.data || jobData;
+    console.log(`✓ API shows job: ${testData.extractionJobId}`);
+    
+    // Step 2: Navigate to job details page
     await page.goto(`/extraction/${testData.extractionJobId}`);
     await page.waitForLoadState('networkidle');
     
-    // Check if page loaded
+    // Step 3: Check if page loaded
     const notFound = page.locator('text=/404|not found/i');
     if (await notFound.isVisible().catch(() => false)) {
       console.log('Job details page not found - feature may not be implemented');
@@ -105,9 +154,19 @@ test.describe('Extraction Jobs - Real API', () => {
       return;
     }
     
-    // Should show job information (verify page loaded successfully)
+    // Step 4: Verify UI displays correct data
     const pageContent = page.locator('body');
-    await expect(pageContent).toBeVisible({ timeout: 5000 });
+    await expect(pageContent).toBeVisible({ timeout: 10000 });
+    
+    // If job has a name, verify it appears
+    if (job.job_name || job.name) {
+      const jobName = page.getByText(job.job_name || job.name);
+      await expect(jobName).toBeVisible({ timeout: 5000 }).catch(() => {
+        console.log('Job name not visible in expected format');
+      });
+    }
+    
+    console.log('✓ Job details page loaded successfully');
   });
 
   test('should display entity details in modal', async ({ authenticatedPage: page }) => {
@@ -132,24 +191,40 @@ test.describe('Extraction Jobs - Real API', () => {
     }
   });
 
-  test('should show different status badges', async ({ authenticatedPage: page, request }) => {
+  test('should show different status badges matching backend data', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get jobs from API to know what statuses exist
+    const listResponse = await request.get('/api/v1/extraction/jobs');
+    
+    if (!listResponse.ok()) {
+      test.skip();
+      return;
+    }
+    
+    const jobsData = await listResponse.json();
+    const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
+    
+    if (!jobs || jobs.length === 0) {
+      console.log('No jobs to test status badges');
+      test.skip();
+      return;
+    }
+    
+    const statuses = [...new Set(jobs.map((j: any) => j.status).filter(Boolean))];
+    console.log(`✓ API shows jobs with statuses: ${statuses.join(', ')}`);
+    
+    // Step 2: Navigate to UI
     await page.goto('/extraction');
     await page.waitForLoadState('networkidle');
     
-    // Get actual jobs from API
-    const listResponse = await request.get('/api/v1/extraction/jobs');
+    // Wait for loading
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
     
-    if (listResponse.ok()) {
-      const jobsData = await listResponse.json();
-      const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
-      
-      if (jobs && jobs.length > 0) {
-        // Check if any status badges are visible
-        const statusBadge = page.locator('text=/pending|running|completed|failed/i').first();
-        await expect(statusBadge).toBeVisible({ timeout: 5000 }).catch(() => {
-          console.log('No status badges found');
-        });
-      }
+    // Step 3: Verify UI shows status badges
+    if (statuses.length > 0) {
+      const statusBadge = page.locator('text=/pending|running|completed|failed/i').first();
+      await expect(statusBadge).toBeVisible({ timeout: 10000 });
+      console.log('✓ Status badges visible in UI');
     }
   });
 
@@ -191,58 +266,86 @@ test.describe('Extraction Jobs - Real API', () => {
     });
   });
 
-  test('should display extraction type badges', async ({ authenticatedPage: page, request }) => {
+  test('should display extraction type badges matching backend data', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get jobs from API to know what types exist
+    const listResponse = await request.get('/api/v1/extraction/jobs');
+    
+    if (!listResponse.ok()) {
+      test.skip();
+      return;
+    }
+    
+    const jobsData = await listResponse.json();
+    const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
+    
+    if (!jobs || jobs.length === 0) {
+      console.log('No jobs to test type badges');
+      test.skip();
+      return;
+    }
+    
+    const types = [...new Set(jobs.map((j: any) => j.extraction_type).filter(Boolean))];
+    console.log(`✓ API shows jobs with types: ${types.join(', ')}`);
+    
+    // Step 2: Navigate to UI
     await page.goto('/extraction');
     await page.waitForLoadState('networkidle');
     
-    // Get actual jobs from API
-    const listResponse = await request.get('/api/v1/extraction/jobs');
+    // Wait for loading
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
     
-    if (listResponse.ok()) {
-      const jobsData = await listResponse.json();
-      const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
-      
-      if (jobs && jobs.length > 0) {
-        // Check if extraction type badges are visible
-        const typeBadge = page.locator('text=/llm|deterministic|hybrid/i').first();
-        await expect(typeBadge).toBeVisible({ timeout: 5000 }).catch(() => {
-          console.log('No extraction type badges found');
-        });
-      }
+    // Step 3: Verify UI shows type badges
+    if (types.length > 0) {
+      const typeBadge = page.locator('text=/llm|deterministic|hybrid/i').first();
+      await expect(typeBadge).toBeVisible({ timeout: 10000 });
+      console.log('✓ Extraction type badges visible in UI');
     }
   });
 
-  test('should handle empty extraction jobs list', async ({ authenticatedPage: page, request }) => {
+  test('should handle empty extraction jobs list correctly', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get actual jobs count from API
+    const listResponse = await request.get('/api/v1/extraction/jobs');
+    
+    if (!listResponse.ok()) {
+      test.skip();
+      return;
+    }
+    
+    const jobsData = await listResponse.json();
+    const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
+    const jobCount = Array.isArray(jobs) ? jobs.length : 0;
+    console.log(`✓ API shows ${jobCount} jobs`);
+    
+    // Step 2: Navigate to UI
     await page.goto('/extraction');
     await page.waitForLoadState('networkidle');
     
-    // Get actual jobs count
-    const listResponse = await request.get('/api/v1/extraction/jobs');
+    // Wait for loading
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
     
-    if (listResponse.ok()) {
-      const jobsData = await listResponse.json();
-      const jobs = jobsData?.data?.jobs || jobsData?.jobs || [];
-      
-      if (!jobs || jobs.length === 0) {
-        // Should show empty state
-        const emptyMessage = page.locator('text=/no.*extraction.*jobs|no.*jobs.*found|empty/i');
-        await expect(emptyMessage).toBeVisible({ timeout: 5000 });
-      } else {
-        // Should show jobs list
-        const heading = page.getByRole('heading', { name: /extraction/i }).first();
-        await expect(heading).toBeVisible({ timeout: 5000 });
-      }
+    // Step 3: Verify UI matches API state
+    if (jobCount === 0) {
+      // Should show empty state
+      const emptyMessage = page.locator('text=/no.*extraction.*jobs|no.*jobs.*found|empty/i');
+      await expect(emptyMessage).toBeVisible({ timeout: 10000 });
+      console.log('✓ UI correctly shows empty state');
+    } else {
+      // Should show jobs list
+      const heading = page.getByRole('heading', { name: /extraction/i }).first();
+      await expect(heading).toBeVisible({ timeout: 10000 });
+      console.log(`✓ UI correctly shows jobs list`);
     }
   });
 
-  test('should create extraction job via API', async ({ request }) => {
-    // Use our test ontology
-    
-    // Create extraction job via API
+  test('should create extraction job and display it in UI', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Create extraction job via API
+    const jobName = `E2E Test Extraction ${Date.now()}`;
     const jobResponse = await request.post('/api/v1/extraction/jobs', {
       data: {
         ontology_id: testData.ontologyId,
-        job_name: `E2E Test Extraction ${Date.now()}`,
+        job_name: jobName,
         extraction_type: 'deterministic',
         source_type: 'text',
         data: {
@@ -251,18 +354,39 @@ test.describe('Extraction Jobs - Real API', () => {
       },
     });
     
-    if (jobResponse.ok()) {
-      const jobData = await jobResponse.json();
-      if (jobData?.data?.job_id) {
-        testJobIds.push(jobData.data.job_id);
-        
-        // Verify job was created
-        expect(jobData.success).toBe(true);
-        expect(jobData.data.job_id).toBeTruthy();
-      }
-    } else {
+    if (!jobResponse.ok()) {
       console.log('Extraction job creation not fully implemented or requires specific data format');
+      test.skip();
+      return;
     }
+    
+    const jobData = await jobResponse.json();
+    if (!jobData?.data?.job_id) {
+      console.log('Job creation response missing job_id');
+      test.skip();
+      return;
+    }
+    
+    const jobId = jobData.data.job_id;
+    testJobIds.push(jobId);
+    
+    // Verify job was created
+    expect(jobData.success).toBe(true);
+    expect(jobId).toBeTruthy();
+    console.log(`✓ Created job via API: ${jobId}`);
+    
+    // Step 2: Navigate to jobs list in UI
+    await page.goto('/extraction');
+    await page.waitForLoadState('networkidle');
+    
+    // Wait for loading
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
+    
+    // Step 3: Verify new job appears in UI
+    const newJob = page.getByText(jobName);
+    await expect(newJob).toBeVisible({ timeout: 10000 });
+    console.log('✓ New job visible in UI');
   });
 
   test('should display job statistics', async ({ authenticatedPage: page, request }) => {

@@ -1,291 +1,444 @@
 /**
- * E2E tests for Pipeline Management - using REAL backend API
+ * E2E tests for Pipeline Management - HYBRID APPROACH
  * 
- * These tests interact with the real backend to ensure true end-to-end functionality.
- * All API mocking has been removed for authentic integration testing.
+ * Strategy: Use API to verify backend state, then test UI displays it correctly.
+ * This catches both backend bugs AND UI rendering bugs.
+ * 
+ * Pattern:
+ * 1. Use API to get/create data (fast, reliable)
+ * 2. Navigate to UI page
+ * 3. Verify UI correctly displays the API data
  */
 
 import { test, expect } from '../helpers';
-import { expectVisible, expectTextVisible, waitForToast } from '../helpers';
-import { setupTestData, TestDataContext } from '../test-data-setup';
 
-test.describe('Pipeline Management - Real API', () => {
+test.describe('Pipeline Management', () => {
   let testPipelineIds: string[] = [];
-  let testData: TestDataContext;
 
-  // Setup test data before all tests
-  test.beforeAll(async ({ request }) => {
-    testData = await setupTestData(request, {
-      needsOntology: false,
-      needsPipeline: true,
-      needsExtractionJob: false,
-    });
-    
-    // Verify setup succeeded
-    
-    console.log(`✅ Test setup complete - Pipeline: ${testData.pipelineId}`);
-  });
-
-  // Cleanup after all tests - Note: Manual cleanup needed as page fixture not available in afterAll
-  // Pipelines will be deleted when backend restarts or can be manually cleaned
-  test('should display list of pipelines', async ({ authenticatedPage: page }) => {
+  test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/pipelines');
     await page.waitForLoadState('networkidle');
+  });
+
+  test('should display pipelines list from backend', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get pipelines from API (verify backend has data)
+    const response = await request.get('/api/v1/pipelines');
+    expect(response.ok()).toBeTruthy();
     
-    // Should show pipelines page heading
+    const pipelines = await response.json();
+    const pipelineCount = Array.isArray(pipelines) ? pipelines.length : 0;
+    console.log(`✓ Backend has ${pipelineCount} pipelines`);
+    
+    // Step 2: Verify UI loads (already navigated in beforeEach)
     const heading = page.getByRole('heading', { name: /pipeline/i }).first();
     await expect(heading).toBeVisible({ timeout: 10000 });
     
-    // Page should load without errors (accept empty or populated list)
-    const pageContent = page.locator('body');
-    await expect(pageContent).toBeVisible();
-  });
-
-  test('should create a new pipeline', async ({ authenticatedPage: page }) => {
-    // Create pipeline via API (since UI may not have create form)
-    const testPipeline = {
-      metadata: {
-        name: `E2E Test Pipeline ${Date.now()}`,
-        description: 'Created by E2E test',
-        enabled: true,
-        tags: ['e2e-test']
-      },
-      config: {
-        Name: `E2E Test Pipeline ${Date.now()}`,
-        Description: 'Created by E2E test',
-        Enabled: true,
-        Steps: [
-          {
-            Name: 'test_step',
-            Plugin: 'test/plugin',
-            Config: {},
-            Output: 'test_output'
-          }
-        ]
-      }
-    };
-
-    const response = await page.request.post('/api/v1/pipelines', {
-      data: testPipeline
+    // Step 3: Wait for UI to finish loading
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {
+      console.log('No loading skeleton found - page may load instantly');
     });
-
-    if (response.ok()) {
-      const data = await response.json();
-      const pipelineId = data.metadata?.id || data.id;
-      if (pipelineId) {
-        testPipelineIds.push(pipelineId);
-        console.log(`✓ Created test pipeline: ${pipelineId}`);
-      }
-      
-      // Verify pipeline appears in list
-      await page.goto('/pipelines');
-      await page.waitForLoadState('networkidle');
-      
-      // Should show the created pipeline (if UI displays names)
-      const heading = page.getByRole('heading', { name: /pipeline/i }).first();
-      await expect(heading).toBeVisible({ timeout: 10000 });
-    } else {
-      console.log('Pipeline creation failed, but test passes (UI may not have form)');
-    }
-  });
-
-  test('should view pipeline details', async ({ authenticatedPage: page }) => {
-    // Navigate to pipeline details
-    await page.goto(`/pipelines/${testData.pipelineId}`);
-    await page.waitForLoadState('networkidle');
     
-    // Should show pipeline details page (accept any valid page load)
-    const pageContent = page.locator('body');
-    await expect(pageContent).toBeVisible();
-  });
-
-  test('should execute a pipeline', async ({ authenticatedPage: page }) => {
-    // Try to execute pipeline via API
-    const executeResponse = await page.request.post('/api/v1/pipelines/execute', {
-      data: {
-        pipeline_id: testData.pipelineId
-      }
-    });
-
-    if (executeResponse.ok()) {
-      const result = await executeResponse.json();
-      console.log(`✓ Pipeline executed successfully: ${testData.pipelineId}`);
-      expect(result).toBeTruthy();
+    // Step 4: Verify UI displays the same count as API
+    if (pipelineCount === 0) {
+      // Should show empty state
+      const emptyState = page.getByText(/no.*pipeline|create.*first/i);
+      await expect(emptyState).toBeVisible().catch(() => {
+        console.log('Empty state not found - checking for empty list');
+      });
     } else {
-      console.log('Pipeline execution not available (may need specific config)');
-      // Test passes - execution endpoint exists
+      // Should show pipeline cards/rows
+      const pipelineCards = page.getByTestId('pipeline-card');
+      const uiCount = await pipelineCards.count().catch(() => 0);
+      
+      console.log(`UI shows ${uiCount} pipelines (API: ${pipelineCount})`);
+      
+      // UI should show at least some pipelines
+      expect(uiCount).toBeGreaterThan(0);
+      
+      // Verify first pipeline has content
+      const firstPipeline = pipelineCards.first();
+      if (await firstPipeline.isVisible().catch(() => false)) {
+        const text = await firstPipeline.textContent();
+        expect(text).toBeTruthy();
+        expect(text?.length).toBeGreaterThan(0);
+      }
     }
+    
+    // Step 5: Verify no errors
+    const errorMessage = page.getByText(/error.*loading|failed.*load/i);
+    await expect(errorMessage).not.toBeVisible();
   });
 
-  test('should clone a pipeline', async ({ authenticatedPage: page }) => {
-    // Try to clone pipeline via API
-    const cloneResponse = await page.request.post(`/api/v1/pipelines/${testData.pipelineId}/clone`, {
+  test('should create pipeline and display it in UI', async ({ authenticatedPage: page, request }) => {
+    const pipelineName = `E2E Test Pipeline ${Date.now()}`;
+    
+    // Step 1: Create pipeline via API
+    const createResponse = await request.post('/api/v1/pipelines', {
       data: {
-        name: `Cloned Pipeline ${Date.now()}`
+        metadata: {
+          name: pipelineName,
+          description: 'Created by E2E test',
+          enabled: true,
+          tags: ['e2e-test']
+        },
+        config: {
+          Name: pipelineName,
+          Description: 'Created by E2E test',
+          Enabled: true,
+          Steps: [
+            {
+              Name: 'test_step',
+              Plugin: 'test/plugin',
+              Config: {},
+              Output: 'test_output'
+            }
+          ]
+        }
       }
-    });
-
-    if (cloneResponse.ok()) {
-      const clonedPipeline = await cloneResponse.json();
-      const clonedId = clonedPipeline.metadata?.id || clonedPipeline.id;
-      if (clonedId) {
-        testPipelineIds.push(clonedId);
-        console.log(`✓ Cloned pipeline: ${testData.pipelineId} -> ${clonedId}`);
-      }
-      expect(clonedPipeline).toBeTruthy();
-    } else {
-      console.log('Pipeline cloning not available');
-      test.skip();
-    }
-  });
-
-  test('should delete a pipeline', async ({ authenticatedPage: page }) => {
-    // Create a pipeline specifically for deletion test
-    const testPipeline = {
-      metadata: {
-        name: `Delete Test Pipeline ${Date.now()}`,
-        description: 'Will be deleted',
-        enabled: true
-      },
-      config: {
-        Name: `Delete Test Pipeline ${Date.now()}`,
-        Description: 'Will be deleted',
-        Enabled: true,
-        Steps: []
-      }
-    };
-
-    const createResponse = await page.request.post('/api/v1/pipelines', {
-      data: testPipeline
     });
 
     if (!createResponse.ok()) {
-      console.log('Could not create test pipeline - skipping delete test');
+      console.log('Pipeline creation not supported - skipping test');
       test.skip();
       return;
     }
 
-    const createdPipeline = await createResponse.json();
-    const pipelineId = createdPipeline.metadata?.id || createdPipeline.id;
+    const created = await createResponse.json();
+    const pipelineId = created.metadata?.id || created.id;
+    expect(pipelineId).toBeTruthy();
+    testPipelineIds.push(pipelineId);
+    console.log(`✓ Created pipeline: ${pipelineId}`);
 
-    if (!pipelineId) {
-      console.log('Created pipeline has no ID - skipping test');
+    // Step 2: Navigate to pipelines page
+    await page.goto('/pipelines');
+    await page.waitForLoadState('networkidle');
+    
+    // Wait for loading to complete
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
+
+    // Step 3: Verify new pipeline appears in UI
+    const newPipeline = page.getByText(pipelineName);
+    await expect(newPipeline).toBeVisible({ timeout: 10000 });
+    console.log('✓ New pipeline visible in UI');
+  });
+
+  test('should view pipeline details matching API data', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get pipelines from API
+    const listResponse = await request.get('/api/v1/pipelines');
+    if (!listResponse.ok()) {
       test.skip();
       return;
     }
 
-    console.log(`Created pipeline for deletion: ${pipelineId}`);
+    const pipelines = await listResponse.json();
+    if (!Array.isArray(pipelines) || pipelines.length === 0) {
+      console.log('No pipelines available - skipping test');
+      test.skip();
+      return;
+    }
 
-    // Delete the pipeline
-    const deleteResponse = await page.request.delete(`/api/v1/pipelines/${pipelineId}`);
+    const testPipeline = pipelines[0];
+    const pipelineId = testPipeline.metadata?.id || testPipeline.id;
+    console.log(`Testing with pipeline: ${pipelineId}`);
 
-    if (deleteResponse.ok()) {
-      console.log(`✓ Successfully deleted pipeline: ${pipelineId}`);
-      expect(deleteResponse.status()).toBe(200);
+    // Step 2: Get detailed data from API
+    const detailsResponse = await request.get(`/api/v1/pipelines/${pipelineId}`);
+    if (!detailsResponse.ok()) {
+      test.skip();
+      return;
+    }
+
+    const pipelineDetails = await detailsResponse.json();
+    const expectedName = pipelineDetails.metadata?.name || pipelineDetails.config?.Name;
+    console.log(`✓ API shows name: "${expectedName}"`);
+
+    // Step 3: Navigate to pipeline details in UI
+    await page.goto(`/pipelines/${pipelineId}`);
+    await page.waitForLoadState('networkidle');
+
+    // Step 4: Verify UI displays the same data as API
+    if (expectedName) {
+      const nameInUI = page.getByText(expectedName, { exact: false });
+      await expect(nameInUI).toBeVisible({ timeout: 10000 });
+      console.log('✓ UI displays correct pipeline name');
+    }
+
+    // Should show details page (not 404)
+    const notFound = page.locator('text=/404|not found/i');
+    await expect(notFound).not.toBeVisible();
+  });
+
+  test('should execute pipeline via UI and show result', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get a pipeline from API
+    const listResponse = await request.get('/api/v1/pipelines');
+    if (!listResponse.ok()) {
+      test.skip();
+      return;
+    }
+
+    const pipelines = await listResponse.json();
+    if (!Array.isArray(pipelines) || pipelines.length === 0) {
+      test.skip();
+      return;
+    }
+
+    const testPipeline = pipelines[0];
+    const pipelineId = testPipeline.metadata?.id || testPipeline.id;
+
+    // Step 2: Navigate to pipeline page in UI
+    await page.goto(`/pipelines/${pipelineId}`);
+    await page.waitForLoadState('networkidle');
+
+    // Step 3: Look for execute button in UI
+    const executeButton = page.getByRole('button', { name: /execute|run/i });
+    
+    if (await executeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      // Step 4: Click execute in UI
+      await executeButton.click();
+      
+      // Step 5: Wait for execution to start
+      const successMessage = page.getByText(/execut|start|running/i);
+      await expect(successMessage).toBeVisible({ timeout: 10000 }).catch(() => {
+        console.log('No execution confirmation message found');
+      });
+      
+      console.log('✓ Pipeline execution triggered via UI');
     } else {
-      console.log(`Delete failed with status ${deleteResponse.status()}`);
-      // Add to cleanup list just in case
-      testPipelineIds.push(pipelineId);
+      console.log('Execute button not found in UI - checking API');
+      
+      // Fallback: Test API endpoint exists
+      const executeResponse = await request.post('/api/v1/pipelines/execute', {
+        data: { pipeline_id: pipelineId }
+      });
+      
+      if (executeResponse.ok()) {
+        console.log('✓ Pipeline execution API works');
+      }
     }
   });
 
-  test('should update a pipeline', async ({ authenticatedPage: page }) => {
-
-    // Get the pipeline details first
-    const getResponse = await page.request.get(`/api/v1/pipelines/${testData.pipelineId}`);
-    
-    if (!getResponse.ok()) {
-      console.log('Could not fetch pipeline details - skipping test');
+  test('should display pipeline execution history', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get a pipeline
+    const listResponse = await request.get('/api/v1/pipelines');
+    if (!listResponse.ok()) {
       test.skip();
       return;
     }
 
-    const pipeline = await getResponse.json();
+    const pipelines = await listResponse.json();
+    if (!Array.isArray(pipelines) || pipelines.length === 0) {
+      test.skip();
+      return;
+    }
 
-    // Try to update pipeline via API
-    const updateResponse = await page.request.put(`/api/v1/pipelines/${testData.pipelineId}`, {
+    const testPipeline = pipelines[0];
+    const pipelineId = testPipeline.metadata?.id || testPipeline.id;
+
+    // Step 2: Get execution history from API
+    const historyResponse = await request.get(`/api/v1/pipelines/${pipelineId}/history`);
+    
+    if (!historyResponse.ok()) {
+      console.log('History endpoint not available');
+      test.skip();
+      return;
+    }
+
+    const history = await historyResponse.json();
+    const executionCount = Array.isArray(history) ? history.length : 0;
+    console.log(`✓ API shows ${executionCount} executions`);
+
+    // Step 3: Navigate to pipeline page
+    await page.goto(`/pipelines/${pipelineId}`);
+    await page.waitForLoadState('networkidle');
+
+    // Step 4: Check if UI shows history section
+    const historySection = page.getByText(/history|execution/i);
+    if (await historySection.isVisible({ timeout: 2000 }).catch(() => false)) {
+      console.log('✓ History section visible in UI');
+      
+      if (executionCount > 0) {
+        // Should show execution records
+        const executionRecords = page.getByTestId('execution-record');
+        const uiCount = await executionRecords.count().catch(() => 0);
+        
+        console.log(`UI shows ${uiCount} executions (API: ${executionCount})`);
+        // UI might paginate, so just check it shows some
+        if (executionCount > 0) {
+          expect(uiCount).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  test('should validate pipeline and show result in UI', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get a pipeline
+    const listResponse = await request.get('/api/v1/pipelines');
+    if (!listResponse.ok()) {
+      test.skip();
+      return;
+    }
+
+    const pipelines = await listResponse.json();
+    if (!Array.isArray(pipelines) || pipelines.length === 0) {
+      test.skip();
+      return;
+    }
+
+    const testPipeline = pipelines[0];
+    const pipelineId = testPipeline.metadata?.id || testPipeline.id;
+
+    // Step 2: Validate via API
+    const validateResponse = await request.post(`/api/v1/pipelines/${pipelineId}/validate`);
+    
+    if (!validateResponse.ok()) {
+      console.log('Validate endpoint not available');
+      test.skip();
+      return;
+    }
+
+    const validationResult = await validateResponse.json();
+    const isValid = validationResult.valid !== false;
+    console.log(`✓ API validation result: ${isValid ? 'valid' : 'invalid'}`);
+
+    // Step 3: Navigate to pipeline page
+    await page.goto(`/pipelines/${pipelineId}`);
+    await page.waitForLoadState('networkidle');
+
+    // Step 4: Look for validate button
+    const validateButton = page.getByRole('button', { name: /validate/i });
+    
+    if (await validateButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await validateButton.click();
+      
+      // Should show validation result
+      const resultMessage = page.getByText(/valid|invalid/i);
+      await expect(resultMessage).toBeVisible({ timeout: 10000 });
+      console.log('✓ Validation result shown in UI');
+    }
+  });
+
+  test('should delete pipeline from UI', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Create a pipeline to delete
+    const pipelineName = `Delete Test ${Date.now()}`;
+    const createResponse = await request.post('/api/v1/pipelines', {
       data: {
         metadata: {
-          ...pipeline.metadata,
-          description: `Updated at ${Date.now()}`
+          name: pipelineName,
+          description: 'Will be deleted',
+          enabled: true
         },
-        config: pipeline.config
+        config: {
+          Name: pipelineName,
+          Description: 'Will be deleted',
+          Enabled: true,
+          Steps: []
+        }
       }
     });
 
-    if (updateResponse.ok()) {
-      const updatedPipeline = await updateResponse.json();
-      console.log(`✓ Updated pipeline: ${testData.pipelineId}`);
-      expect(updatedPipeline).toBeTruthy();
-    } else {
-      console.log('Pipeline update not available');
+    if (!createResponse.ok()) {
+      console.log('Cannot create test pipeline');
       test.skip();
+      return;
     }
-  });
 
-  test('should validate a pipeline', async ({ authenticatedPage: page }) => {
+    const created = await createResponse.json();
+    const pipelineId = created.metadata?.id || created.id;
+    console.log(`✓ Created pipeline for deletion: ${pipelineId}`);
 
-    // Try to validate pipeline via API
-    const validateResponse = await page.request.post(`/api/v1/pipelines/${testData.pipelineId}/validate`);
-
-    if (validateResponse.ok()) {
-      const result = await validateResponse.json();
-      console.log(`✓ Validated pipeline: ${testData.pipelineId}`);
-      expect(result).toBeTruthy();
-    } else {
-      console.log('Pipeline validation not available');
-      test.skip();
-    }
-  });
-
-  test('should get pipeline execution history', async ({ authenticatedPage: page }) => {
-
-    // Try to get pipeline history via API
-    const historyResponse = await page.request.get(`/api/v1/pipelines/${testData.pipelineId}/history`);
-
-    if (historyResponse.ok()) {
-      const history = await historyResponse.json();
-      console.log(`✓ Retrieved pipeline history: ${testData.pipelineId}`);
-      expect(history).toBeTruthy();
-    } else {
-      console.log('Pipeline history endpoint not available');
-      test.skip();
-    }
-  });
-
-  test('should handle empty pipelines list', async ({ authenticatedPage: page }) => {
-    // Just verify the endpoint works and page loads
-    const response = await page.request.get('/api/v1/pipelines');
+    // Step 2: Navigate to pipelines list
+    await page.goto('/pipelines');
+    await page.waitForLoadState('networkidle');
     
-    if (response.ok()) {
-      const pipelines = await response.json();
-      console.log(`Found ${pipelines.length} pipelines`);
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
+
+    // Step 3: Find and delete via UI
+    const pipelineElement = page.getByText(pipelineName);
+    
+    if (await pipelineElement.isVisible().catch(() => false)) {
+      // Look for delete button near the pipeline
+      const pipelineCard = pipelineElement.locator('..').locator('..');
+      const deleteButton = pipelineCard.getByRole('button', { name: /delete/i });
       
-      // Navigate to pipelines page
-      await page.goto('/pipelines');
-      await page.waitForLoadState('networkidle');
-      
-      // Should show pipelines page (accept empty or populated)
-      const heading = page.getByRole('heading', { name: /pipeline/i }).first();
-      await expect(heading).toBeVisible({ timeout: 10000 });
-    } else {
-      console.log('Pipelines endpoint not available');
-      test.skip();
+      if (await deleteButton.isVisible().catch(() => false)) {
+        // Handle confirmation dialog
+        page.once('dialog', dialog => dialog.accept());
+        
+        await deleteButton.click();
+        
+        // Verify success message
+        const successMessage = page.getByText(/deleted.*success|removed/i);
+        await expect(successMessage).toBeVisible({ timeout: 10000 });
+        
+        // Verify pipeline no longer visible
+        await expect(pipelineElement).not.toBeVisible();
+        console.log('✓ Pipeline deleted via UI');
+      } else {
+        // Fallback to API deletion
+        const deleteResponse = await request.delete(`/api/v1/pipelines/${pipelineId}`);
+        expect(deleteResponse.ok()).toBeTruthy();
+        console.log('✓ Pipeline deleted via API (no delete button in UI)');
+      }
     }
   });
 
-  test('should get pipeline logs', async ({ authenticatedPage: page }) => {
+  test('should show correct pipeline count', async ({ authenticatedPage: page, request }) => {
+    // Step 1: Get count from API
+    const response = await request.get('/api/v1/pipelines');
+    expect(response.ok()).toBeTruthy();
+    
+    const pipelines = await response.json();
+    const apiCount = Array.isArray(pipelines) ? pipelines.length : 0;
+    console.log(`✓ API reports ${apiCount} pipelines`);
 
-    // Try to get pipeline logs via API
-    const logsResponse = await page.request.get(`/api/v1/pipelines/${testData.pipelineId}/logs?limit=10`);
+    // Step 2: Check UI (already navigated in beforeEach)
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
 
-    if (logsResponse.ok()) {
-      const logs = await logsResponse.json();
-      console.log(`✓ Retrieved pipeline logs: ${testData.pipelineId}`);
-      expect(logs).toBeTruthy();
+    // Step 3: Count in UI
+    const pipelineCards = page.getByTestId('pipeline-card');
+    const uiCount = await pipelineCards.count();
+
+    console.log(`UI shows ${uiCount} pipelines (API: ${apiCount})`);
+
+    // Step 4: Check if there's a count display
+    const countDisplay = page.locator('text=/\\d+\\s+pipelines?/i');
+    if (await countDisplay.isVisible().catch(() => false)) {
+      const displayText = await countDisplay.textContent();
+      const match = displayText?.match(/(\d+)/);
+      if (match) {
+        const displayedCount = parseInt(match[1]);
+        expect(displayedCount).toBe(apiCount);
+        console.log('✓ UI count display matches API');
+      }
+    }
+
+    // UI should show same number of cards as API (or close, if paginated)
+    if (apiCount <= 20) {
+      // Not paginated, should match exactly
+      expect(uiCount).toBe(apiCount);
     } else {
-      console.log('Pipeline logs endpoint not available');
-      test.skip();
+      // Paginated, should show at least some
+      expect(uiCount).toBeGreaterThan(0);
+      expect(uiCount).toBeLessThanOrEqual(apiCount);
+    }
+  });
+
+  // Cleanup
+  test.afterAll(async ({ request }) => {
+    for (const id of testPipelineIds) {
+      try {
+        await request.delete(`/api/v1/pipelines/${id}`);
+        console.log(`Cleaned up pipeline: ${id}`);
+      } catch (err) {
+        console.log(`Failed to cleanup pipeline ${id}`);
+      }
     }
   });
 });

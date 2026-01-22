@@ -31,7 +31,7 @@
     "d3": "^7.9.0",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.542.0",
-    "next": "15.5.2",
+    "next": "^15.5.9",
     "next-themes": "^0.4.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -49,8 +49,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.0.0",
-    "@vitest/coverage-v8": "^1.0.0",
-    "@vitest/ui": "^1.0.0",
+    "@vitest/coverage-v8": "^4.0.17",
+    "@vitest/ui": "^4.0.17",
     "agentlint": "^0.3.0",
     "eslint": "^9",
     "eslint-config-next": "15.5.2",
@@ -58,6 +58,6 @@
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.7",
     "typescript": "^5",
-    "vitest": "^1.0.0"
+    "vitest": "^4.0.17"
   }
 }

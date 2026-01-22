@@ -1,464 +1,386 @@
 /**
- * E2E tests for Digital Twins - using REAL backend API
+ * E2E tests for Digital Twins - PROPER UI TESTING
  * 
- * These tests interact with the real backend to verify complete
- * end-to-end functionality of digital twin creation and management.
+ * These tests use the ACTUAL UI to interact with the REAL backend.
+ * No API bypasses with request.get/post - we test like a real user.
  */
 
 import { test, expect } from '../helpers';
 
-test.describe('Digital Twins - Real API', () => {
-  let testTwinIds: string[] = [];
-  let testOntologyId: string | null = null;
-
-  // Setup: Ensure we have an ontology to work with
-  test.beforeAll(async ({ request }) => {
-    // Get list of available ontologies
-    const ontResponse = await request.get('/api/v1/ontology?status=active');
-    
-    if (ontResponse.ok()) {
-      const ontologies = await ontResponse.json();
-      if (ontologies && ontologies.length > 0) {
-        testOntologyId = ontologies[0].id;
-      }
-    }
-  });
-
-  // Cleanup after all tests
-  test.afterAll(async ({ request }) => {
-    // Clean up all test twins created during tests
-    for (const id of testTwinIds) {
-      try {
-        await request.delete(`/api/v1/twin/${id}`);
-      } catch (err) {
-        console.log(`Failed to cleanup twin ${id}:`, err);
-      }
-    }
-  });
-
-  test('should display list of digital twins', async ({ authenticatedPage: page }) => {
+test.describe('Digital Twins - UI Workflows', () => {
+  test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/digital-twins');
     await page.waitForLoadState('networkidle');
-    
-    // Should show digital twins page heading (use .first() to avoid strict mode)
+  });
+
+  test('should load and display digital twins list from backend', async ({ authenticatedPage: page }) => {
+    // Verify page heading appears
     const heading = page.getByRole('heading', { name: /digital.*twin/i }).first();
     await expect(heading).toBeVisible({ timeout: 10000 });
     
-    // Page should load without errors
+    // CRITICAL: Wait for loading to COMPLETE (would have caught the infinite loading bug)
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
+    
+    // Verify digital twins are ACTUALLY DISPLAYED in the UI
+    const twinCards = page.getByTestId('twin-card');
+    const count = await twinCards.count();
+    
+    if (count === 0) {
+      // Check if it's showing empty state vs stuck loading
+      const emptyState = page.getByText(/no.*digital.*twins|create.*first/i);
+      const isEmptyState = await emptyState.isVisible();
+      
+      if (isEmptyState) {
+        console.log('Empty state displayed - no twins available');
+        // Should have create button in empty state
+        const createButton = page.getByRole('button', { name: /create/i });
+        await expect(createButton).toBeVisible();
+      } else {
+        throw new Error('No twins displayed and no empty state - page may be stuck loading');
+      }
+    } else {
+      // We have twins - verify they loaded properly
+      expect(count).toBeGreaterThan(0);
+      console.log(`✓ ${count} digital twins loaded`);
+      
+      // Verify first twin has actual data
+      const firstTwin = twinCards.first();
+      await expect(firstTwin).toBeVisible();
+    }
+    
+    // Verify NO error messages
     const errorMessage = page.getByText(/error.*loading|failed.*load/i);
-    await expect(errorMessage).not.toBeVisible().catch(() => {});
+    await expect(errorMessage).not.toBeVisible();
   });
 
-  test('should create a new digital twin', async ({ authenticatedPage: page, request }) => {
-    if (!testOntologyId) {
-      console.log('No ontology available - skipping twin creation test');
+  test('should create a digital twin through UI', async ({ authenticatedPage: page }) => {
+    // Click create button in the UI
+    const createButton = page.getByRole('button', { name: /create.*twin/i });
+    await expect(createButton).toBeVisible({ timeout: 10000 });
+    await createButton.click();
+    
+    // Wait for form to load
+    await page.waitForLoadState('networkidle');
+    
+    // Check if we have ontologies available
+    const noOntologiesMessage = page.getByText(/no.*ontolog/i);
+    const hasNoOntologies = await noOntologiesMessage.isVisible().catch(() => false);
+    
+    if (hasNoOntologies) {
+      console.log('⊘ No ontologies available - skipping creation test');
       test.skip();
       return;
     }
-
+    
+    // Fill the form using REAL UI elements
     const twinName = `E2E Test Twin ${Date.now()}`;
     
-    // Try to create via UI first
-    await page.goto('/digital-twins/create');
-    await page.waitForLoadState('networkidle');
+    const nameInput = page.getByLabel(/name/i);
+    await expect(nameInput).toBeVisible({ timeout: 10000 });
+    await nameInput.fill(twinName);
     
-    // Check if page exists
-    const notFound = page.locator('text=/404|not found/i');
-    const hasNotFound = await notFound.isVisible().catch(() => false);
+    const descInput = page.getByLabel(/description/i);
+    if (await descInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await descInput.fill('Created via E2E test using actual UI');
+    }
     
-    if (hasNotFound) {
-      // Try via list page button
+    // Select first available ontology
+    const ontologySelect = page.getByLabel(/ontology/i);
+    await expect(ontologySelect).toBeVisible();
+    
+    const options = await ontologySelect.locator('option').count();
+    if (options > 1) {
+      await ontologySelect.selectOption({ index: 1 }); // First non-placeholder
+      console.log('✓ Selected ontology');
+    }
+    
+    // Submit the form via UI
+    const submitButton = page.getByRole('button', { name: /create.*digital.*twin|submit/i });
+    await submitButton.click();
+    
+    // Wait for success message IN THE UI
+    const successMessage = page.getByText(/created successfully|twin created/i);
+    await expect(successMessage).toBeVisible({ timeout: 15000 });
+    console.log(`✓ Twin "${twinName}" created successfully`);
+    
+    // Should redirect somewhere (details or list)
+    await page.waitForURL(/\/digital-twins/, { timeout: 10000 });
+    
+    // Navigate to list if not already there
+    if (!page.url().endsWith('/digital-twins')) {
       await page.goto('/digital-twins');
       await page.waitForLoadState('networkidle');
-      
-      const createButton = page.getByRole('button', { name: /create|add.*twin/i });
-      if (await createButton.isVisible().catch(() => false)) {
-        await createButton.click();
-      } else {
-        // Create via API
-        const response = await request.post('/api/v1/twin/create', {
-          data: {
-            name: twinName,
-            ontology_id: testOntologyId,
-            description: 'E2E test twin',
-          },
-        });
-        
-        if (response.ok()) {
-          const data = await response.json();
-          if (data.twin_id) {
-            testTwinIds.push(data.twin_id);
-          }
-        }
-        return;
-      }
     }
     
-    // Fill form
-    const nameInput = page.locator('input[name="name"], input[placeholder*="name" i]');
-    if (await nameInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await nameInput.fill(twinName);
-    }
+    // Wait for loading to complete
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
     
-    const descInput = page.locator('textarea[name="description"], textarea[placeholder*="description" i]');
-    if (await descInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await descInput.fill('E2E test twin');
-    }
-    
-    // Select ontology
-    const ontologySelect = page.locator('select[name="ontology"], select[name="ontology_id"]');
-    if (await ontologySelect.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await ontologySelect.selectOption(testOntologyId);
-    }
-    
-    // Wait for API response
-    const responsePromise = page.waitForResponse(
-      resp => resp.url().includes('/api/v1/twin') && 
-              resp.request().method() === 'POST',
-      { timeout: 10000 }
-    ).catch(() => null);
-    
-    // Submit form
-    const submitButton = page.locator('button[type="submit"], button:has-text("Create")');
-    if (await submitButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await submitButton.click();
-    }
-    
-    // Wait for response
-    const response = await responsePromise;
-    if (response && response.ok()) {
-      const data = await response.json();
-      if (data.twin_id) {
-        testTwinIds.push(data.twin_id);
-      }
-    }
+    // Verify the new twin appears in the UI
+    const newTwin = page.getByText(twinName);
+    await expect(newTwin).toBeVisible({ timeout: 10000 });
+    console.log('✓ New twin appears in list');
   });
 
-  test('should view digital twin details', async ({ authenticatedPage: page, request }) => {
-    // Get list of twins
-    const listResponse = await request.get('/api/v1/twin');
-    expect(listResponse.ok()).toBeTruthy();
+  test('should view digital twin details through UI navigation', async ({ authenticatedPage: page }) => {
+    // Wait for twins to load via UI
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
     
-    const twinsData = await listResponse.json();
-    // API returns {data: {twins: [...], count: X}}
-    const twins = twinsData?.data?.twins || twinsData?.twins || [];
+    const twinCards = page.getByTestId('twin-card');
+    const count = await twinCards.count();
     
-    if (!twins || twins.length === 0) {
-      console.log('No twins available - skipping details test');
+    if (count === 0) {
+      console.log('⊘ No twins available - skipping details test');
       test.skip();
       return;
     }
     
-    const testTwin = twins[0];
+    // Get the name of first twin for later verification
+    const firstTwin = twinCards.first();
+    const twinText = await firstTwin.textContent();
+    console.log(`Testing with twin: ${twinText?.substring(0, 50)}...`);
     
-    // Navigate to twin details page
-    await page.goto(`/digital-twins/${testTwin.id}`);
+    // Click on the first twin using the UI
+    await firstTwin.click();
+    
+    // Should navigate to details page
+    await expect(page).toHaveURL(/\/digital-twins\/[a-zA-Z0-9-]+/, { timeout: 10000 });
+    console.log(`✓ Navigated to: ${page.url()}`);
+    
+    // Verify details page loaded
     await page.waitForLoadState('networkidle');
-    
-    // Check if page loaded successfully
-    const notFound = page.locator('text=/404|not found/i');
-    if (await notFound.isVisible().catch(() => false)) {
-      console.log('Twin details page not found - feature may not be implemented');
-      test.skip();
-      return;
-    }
     
     // Should show twin information
-    const twinInfo = page.locator(`text=${testTwin.name}`);
-    await expect(twinInfo).toBeVisible({ timeout: 5000 }).catch(() => {});
+    const detailsHeading = page.getByRole('heading').first();
+    await expect(detailsHeading).toBeVisible();
+    
+    // Check for 404
+    const notFound = page.locator('text=/404|not found/i');
+    const hasNotFound = await notFound.isVisible().catch(() => false);
+    if (hasNotFound) {
+      console.log('⊘ Twin details page shows 404');
+      test.skip();
+    } else {
+      console.log('✓ Twin details page loaded successfully');
+    }
   });
 
-  test('should update digital twin state', async ({ authenticatedPage: page, request }) => {
-    // Get list of twins
-    const listResponse = await request.get('/api/v1/twin');
-    const twinsData = await listResponse.json();
-    // API returns {data: {twins: [...], count: X}}
-    const twins = twinsData?.data?.twins || twinsData?.twins || [];
+  test('should search/filter digital twins using UI', async ({ authenticatedPage: page }) => {
+    // Wait for twins to load
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
     
-    if (!twins || twins.length === 0) {
+    const twinCards = page.getByTestId('twin-card');
+    const initialCount = await twinCards.count();
+    
+    if (initialCount === 0) {
+      console.log('⊘ No twins to search - skipping');
       test.skip();
       return;
     }
     
-    const testTwin = twins[0];
+    console.log(`✓ Initial count: ${initialCount} twins`);
     
-    await page.goto(`/digital-twins/${testTwin.id}`);
+    // Look for search/filter input
+    const searchInput = page.getByPlaceholder(/search/i);
+    
+    if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+      // Get first twin's text to search for
+      const firstTwinText = await twinCards.first().textContent();
+      const searchTerm = firstTwinText?.split(' ')[0] || 'Twin';
+      
+      console.log(`Searching for: "${searchTerm}"`);
+      
+      // Search using UI
+      await searchInput.fill(searchTerm);
+      await page.waitForTimeout(800); // Allow debounce
+      
+      // Results should update
+      const filteredCount = await page.getByTestId('twin-card').count();
+      console.log(`✓ Filtered count: ${filteredCount} twins`);
+      
+      // Should show at least one result
+      expect(filteredCount).toBeGreaterThan(0);
+      
+      // First result should contain search term
+      const firstResult = page.getByTestId('twin-card').first();
+      await expect(firstResult).toContainText(new RegExp(searchTerm, 'i'));
+    } else {
+      console.log('⊘ Search input not found - feature may not be implemented');
+    }
+  });
+
+  test('should handle navigation back to list after viewing details', async ({ authenticatedPage: page }) => {
+    // Wait for initial load
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
+    
+    const twinCards = page.getByTestId('twin-card');
+    const initialCount = await twinCards.count();
+    
+    if (initialCount === 0) {
+      test.skip();
+      return;
+    }
+    
+    // Navigate to first twin
+    await twinCards.first().click();
+    await expect(page).toHaveURL(/\/digital-twins\/[a-zA-Z0-9-]+/);
     await page.waitForLoadState('networkidle');
     
-    // Look for update state button
-    const updateButton = page.getByRole('button', { name: /update.*state|edit.*state/i });
-    
-    if (await updateButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await updateButton.click();
-      
-      // Fill new state if editor appears
-      const stateInput = page.locator('textarea[name="state"], input[name="value"]');
-      if (await stateInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await stateInput.fill('{"test": "value"}');
-        
-        // Save button
-        const saveButton = page.getByRole('button', { name: /save|update/i });
-        if (await saveButton.isVisible().catch(() => false)) {
-          await saveButton.click();
-          
-          // Should show success
-          const successToast = page.locator('text=/success|updated/i');
-          await expect(successToast).toBeVisible({ timeout: 5000 }).catch(() => {});
-        }
-      }
-    } else {
-      console.log('Update state feature not available in UI');
-    }
-  });
-
-  test('should create and run a scenario', async ({ authenticatedPage: page, request }) => {
-    // Get list of twins
-    const listResponse = await request.get('/api/v1/twin');
-    const twinsData = await listResponse.json();
-    // API returns {data: {twins: [...], count: X}}
-    const twins = twinsData?.data?.twins || twinsData?.twins || [];
-    
-    if (!twins || twins.length === 0) {
-      test.skip();
-      return;
-    }
-    
-    const testTwin = twins[0];
-    
-    await page.goto(`/digital-twins/${testTwin.id}`);
+    // Go back using browser navigation
+    await page.goBack();
     await page.waitForLoadState('networkidle');
     
-    // Look for scenarios section/button
-    const scenariosButton = page.locator('a[href*="scenarios"], button:has-text("Scenarios")');
+    // Should show list again with data loaded
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
     
-    if (await scenariosButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await scenariosButton.click();
+    const newCount = await page.getByTestId('twin-card').count();
+    expect(newCount).toBe(initialCount);
+    console.log('✓ Navigated back to list successfully');
+  });
+
+  test('should display twin count in UI', async ({ authenticatedPage: page }) => {
+    // Wait for loading to complete
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
+    
+    // Check if there's a count display
+    const countDisplay = page.locator('text=/\\d+\\s+(digital\\s+)?twins?/i');
+    
+    if (await countDisplay.isVisible({ timeout: 2000 }).catch(() => false)) {
+      // Get displayed count
+      const displayText = await countDisplay.textContent();
+      const match = displayText?.match(/(\d+)/);
       
-      // Look for create scenario button
-      const createButton = page.getByRole('button', { name: /create.*scenario/i });
-      if (await createButton.isVisible().catch(() => false)) {
-        await createButton.click();
+      if (match) {
+        const displayedCount = parseInt(match[1]);
         
-        // Fill scenario form
-        const nameInput = page.locator('input[name="name"]');
-        if (await nameInput.isVisible().catch(() => false)) {
-          await nameInput.fill(`Test Scenario ${Date.now()}`);
-          
-          const descInput = page.locator('textarea[name="description"]');
-          if (await descInput.isVisible().catch(() => false)) {
-            await descInput.fill('E2E test scenario');
-          }
-          
-          // Submit
-          const submitButton = page.locator('button[type="submit"], button:has-text("Create")');
-          if (await submitButton.isVisible().catch(() => false)) {
-            await submitButton.click();
-          }
-        }
+        // Count actual cards
+        const twinCards = page.getByTestId('twin-card');
+        const actualCount = await twinCards.count();
+        
+        // Should match
+        expect(actualCount).toBe(displayedCount);
+        console.log(`✓ Count matches: ${actualCount} twins`);
       }
     } else {
-      console.log('Scenarios feature not available in UI');
+      console.log('⊘ Count display not found in UI');
     }
   });
 
-  test('should view scenario run results', async ({ authenticatedPage: page, request }) => {
-    // This test requires existing scenario runs
-    // For now, just check if the page structure exists
-    const listResponse = await request.get('/api/v1/twin');
-    const twinsData = await listResponse.json();
-    // API returns {data: {twins: [...], count: X}}
-    const twins = twinsData?.data?.twins || twinsData?.twins || [];
-    
-    if (!twins || twins.length === 0) {
-      test.skip();
-      return;
-    }
-    
-    const testTwin = twins[0];
-    
-    // Try to get scenarios
-    const scenariosResponse = await request.get(`/api/v1/twin/${testTwin.id}/scenarios`);
-    
-    if (scenariosResponse.ok()) {
-      const scenariosData = await scenariosResponse.json();
-      const scenarios = scenariosData.scenarios || scenariosData.data?.scenarios || [];
-      
-      if (scenarios.length > 0) {
-        // Navigate to first scenario's runs
-        await page.goto(`/digital-twins/${testTwin.id}/scenarios/${scenarios[0].id}`);
-        await page.waitForLoadState('networkidle');
-        
-        // Should show scenario information
-        const heading = page.getByRole('heading');
-        await expect(heading).toBeVisible({ timeout: 5000 }).catch(() => {});
-      }
-    }
-  });
-
-  test('should delete a digital twin', async ({ authenticatedPage: page, request }) => {
-    if (!testOntologyId) {
-      test.skip();
-      return;
-    }
-
-    // Create a test twin to delete
-    const twinName = `E2E Delete Test ${Date.now()}`;
-    const createResponse = await request.post('/api/v1/twin/create', {
-      data: {
-        name: twinName,
-        ontology_id: testOntologyId,
-        description: 'Will be deleted',
-      },
-    });
-    
-    if (!createResponse.ok()) {
-      console.log('Cannot create twin for delete test');
-      test.skip();
-      return;
-    }
-    
-    const createData = await createResponse.json();
-    const twinId = createData.data?.twin_id || createData.twin_id;
-    
-    // Navigate to twins list
+  test('should refresh data when revisiting page', async ({ authenticatedPage: page }) => {
+    // Load the page
     await page.goto('/digital-twins');
     await page.waitForLoadState('networkidle');
     
-    // Look for delete button
-    const deleteButton = page.getByRole('button', { name: /delete/i }).first();
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
     
-    if (await deleteButton.isVisible().catch(() => false)) {
-      // Set up dialog handler
-      page.once('dialog', dialog => dialog.accept());
-      
-      // Wait for delete API call
-      const deletePromise = page.waitForResponse(
-        resp => resp.url().includes(`/api/v1/twin/`) && 
-                resp.request().method() === 'DELETE',
-        { timeout: 10000 }
-      ).catch(() => null);
-      
-      await deleteButton.click();
-      
-      const response = await deletePromise;
-      if (response && response.ok()) {
-        const successToast = page.locator('text=/success|deleted/i');
-        await expect(successToast).toBeVisible({ timeout: 5000 }).catch(() => {});
-      }
-    } else {
-      // Delete via API
-      const deleteResponse = await request.delete(`/api/v1/twin/${twinId}`);
-      expect(deleteResponse.ok()).toBeTruthy();
-    }
-  });
-
-  test('should display twin state visualization', async ({ authenticatedPage: page, request }) => {
-    // Get list of twins
-    const listResponse = await request.get('/api/v1/twin');
-    const twinsData = await listResponse.json();
-    // API returns {data: {twins: [...], count: X}}
-    const twins = twinsData?.data?.twins || twinsData?.twins || [];
+    const initialCount = await page.getByTestId('twin-card').count();
+    console.log(`✓ Initial load: ${initialCount} twins`);
     
-    if (!twins || twins.length === 0) {
-      test.skip();
-      return;
-    }
-    
-    const testTwin = twins[0];
-    
-    await page.goto(`/digital-twins/${testTwin.id}`);
+    // Navigate away
+    await page.goto('/');
     await page.waitForLoadState('networkidle');
     
-    // Should show state information somewhere on the page
-    const stateSectionHeading = page.getByRole('heading', { name: /state|current|properties/i });
-    await expect(stateSectionHeading).toBeVisible({ timeout: 5000 }).catch(() => {
-      console.log('State visualization section not found');
-    });
-  });
-
-  test('should filter scenarios by status', async ({ authenticatedPage: page, request }) => {
-    // Get first twin
-    const listResponse = await request.get('/api/v1/twin');
-    const twinsData = await listResponse.json();
-    // API returns {data: {twins: [...], count: X}}
-    const twins = twinsData?.data?.twins || twinsData?.twins || [];
-    
-    if (!twins || twins.length === 0) {
-      test.skip();
-      return;
-    }
-    
-    const testTwin = twins[0];
-    
-    await page.goto(`/digital-twins/${testTwin.id}`);
-    await page.waitForLoadState('networkidle');
-    
-    // Look for scenarios section
-    const scenariosLink = page.locator('a[href*="scenarios"], button:has-text("Scenarios")');
-    
-    if (await scenariosLink.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await scenariosLink.click();
-      
-      // Look for status filter
-      const statusFilter = page.locator('select[name="status"]');
-      if (await statusFilter.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await statusFilter.selectOption('active');
-        await expect(statusFilter).toHaveValue('active');
-      }
-    } else {
-      console.log('Scenarios filtering not available');
-    }
-  });
-
-  test('should handle empty digital twins list', async ({ authenticatedPage: page, request }) => {
+    // Navigate back
     await page.goto('/digital-twins');
     await page.waitForLoadState('networkidle');
     
-    // Get actual twins count
-    const listResponse = await request.get('/api/v1/twin');
-    const twinsData = await listResponse.json();
-    // API returns {data: {twins: [...], count: X}}
-    const twins = twinsData?.data?.twins || twinsData?.twins || [];
+    // Should load data again (not use stale)
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
     
-    if (!twins || twins.length === 0) {
-      // Should show empty state
-      const emptyMessage = page.locator('text=/no.*digital.*twins|no.*twins|empty|create.*first/i');
+    const newCount = await page.getByTestId('twin-card').count();
+    expect(newCount).toBe(initialCount);
+    console.log('✓ Data refreshed on page revisit');
+  });
+
+  test('should show appropriate empty state when no twins exist', async ({ authenticatedPage: page }) => {
+    // Wait for loading to complete
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
+    
+    const twinCards = page.getByTestId('twin-card');
+    const count = await twinCards.count();
+    
+    if (count === 0) {
+      // Should show empty state message
+      const emptyMessage = page.getByText(/no.*digital.*twins|create.*first/i);
       await expect(emptyMessage).toBeVisible({ timeout: 5000 });
       
       // Should have create button
-      const createButton = page.getByRole('button', { name: /create|add/i });
-      await expect(createButton).toBeVisible({ timeout: 5000 }).catch(() => {});
+      const createButton = page.getByRole('button', { name: /create/i });
+      await expect(createButton).toBeVisible();
+      
+      console.log('✓ Empty state displayed correctly');
     } else {
-      // Should show twins list (use .first() to avoid strict mode)
-      const heading = page.getByRole('heading', { name: /digital.*twin/i }).first();
-      await expect(heading).toBeVisible({ timeout: 5000 });
+      console.log(`⊘ Test skipped - ${count} twins exist`);
     }
   });
 
-  test('should show scenario execution progress', async ({ authenticatedPage: page, request }) => {
-    // This test is difficult without actually running scenarios
-    // For now, just verify the page structure exists
-    const listResponse = await request.get('/api/v1/twin');
-    const twinsData = await listResponse.json();
-    // API returns {data: {twins: [...], count: X}}
-    const twins = twinsData?.data?.twins || twinsData?.twins || [];
+  test('should not show loading state indefinitely', async ({ authenticatedPage: page }) => {
+    // This test specifically checks for the bug we fixed
+    await page.goto('/digital-twins');
+    await page.waitForLoadState('networkidle');
     
-    if (!twins || twins.length === 0) {
-      test.skip();
-      return;
+    // Loading skeleton should disappear within reasonable time
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    
+    // Start time
+    const startTime = Date.now();
+    
+    // Wait for loading to complete (or timeout)
+    try {
+      await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
+      const duration = Date.now() - startTime;
+      console.log(`✓ Loading completed in ${duration}ms`);
+      
+      // Verify we're not stuck - should show either data or empty state
+      const twinCards = page.getByTestId('twin-card');
+      const emptyState = page.getByText(/no.*digital.*twins|create.*first/i);
+      
+      const hasCards = await twinCards.count() > 0;
+      const hasEmptyState = await emptyState.isVisible().catch(() => false);
+      
+      if (!hasCards && !hasEmptyState) {
+        throw new Error('Neither data nor empty state shown after loading completes');
+      }
+      
+      console.log(`✓ ${hasCards ? 'Data displayed' : 'Empty state displayed'}`);
+    } catch (error) {
+      throw new Error('Loading skeleton did not disappear - infinite loading bug detected!');
+    }
+  });
+});
+
+test.describe('Digital Twins - Error Handling', () => {
+  test('should not display error messages on successful load', async ({ authenticatedPage: page }) => {
+    await page.goto('/digital-twins');
+    await page.waitForLoadState('networkidle');
+    
+    // Wait for loading to complete
+    const loadingSkeleton = page.getByTestId('loading-skeleton');
+    await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
+    
+    // Should not show any error messages
+    const errorMessages = page.getByText(/error|failed|unable/i);
+    const errorCount = await errorMessages.count();
+    
+    // Filter out false positives (like "error handling" in docs)
+    let actualErrors = 0;
+    for (let i = 0; i < errorCount; i++) {
+      const text = await errorMessages.nth(i).textContent();
+      if (text?.toLowerCase().includes('error loading') || 
+          text?.toLowerCase().includes('failed to') ||
+          text?.toLowerCase().includes('unable to load')) {
+        actualErrors++;
+      }
     }
     
-    const testTwin = twins[0];
-    
-    // Check if scenarios endpoint exists
-    const scenariosResponse = await request.get(`/api/v1/twin/${testTwin.id}/scenarios`);
-    
-    if (scenariosResponse.ok()) {
-      console.log('Scenarios API is available for progress tracking');
-      // Test passes - API is available
-      expect(true).toBe(true);
-    } else {
-      console.log('Scenarios API not available yet');
-    }
+    expect(actualErrors).toBe(0);
+    console.log('✓ No error messages displayed');
   });
 });

@@ -3,6 +3,7 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [],
+  css: false,
   test: {
     environment: 'jsdom',
     globals: true,

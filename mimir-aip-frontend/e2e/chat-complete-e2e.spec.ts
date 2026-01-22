@@ -12,7 +12,7 @@ async function setupChatTest(page: any) {
   await setupAuthenticatedPage(page);
   
   await page.goto('/chat');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 }
 
 test.describe('Chat - Basic Functionality', () => {

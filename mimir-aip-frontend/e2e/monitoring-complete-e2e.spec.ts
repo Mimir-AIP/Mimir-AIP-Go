@@ -10,7 +10,7 @@ test.describe('Monitoring - Jobs Dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/monitoring/jobs');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display monitoring jobs page', async ({ page }) => {
@@ -168,7 +168,7 @@ test.describe('Monitoring - Alerts Management', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/monitoring/alerts');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display alerts page', async ({ page }) => {
@@ -311,7 +311,7 @@ test.describe('Monitoring - Rules Engine', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/monitoring/rules');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display rules page', async ({ page }) => {
@@ -325,7 +325,7 @@ test.describe('Monitoring - Rules Engine', () => {
     await page.getByRole('button', { name: /Create Rule/i }).click();
     
     // Should navigate to create page
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check that we're on the create rule page
     await expect(page.getByRole('heading', { name: /Create Monitoring Rule/i })).toBeVisible();
@@ -414,7 +414,7 @@ test.describe('Monitoring - System Metrics', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/monitoring');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display system overview', async ({ page }) => {
@@ -543,7 +543,7 @@ test.describe('Monitoring - Performance Dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/monitoring/performance');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display performance metrics', async ({ page }) => {
@@ -551,7 +551,7 @@ test.describe('Monitoring - Performance Dashboard', () => {
     // The page should either show a 404 or redirect to monitoring dashboard
     // Check if we can navigate to monitoring dashboard instead
     await page.goto('/monitoring');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     await expect(page.getByRole('heading', { name: /Monitoring Dashboard/i })).toBeVisible();
   });

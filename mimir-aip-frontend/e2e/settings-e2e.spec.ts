@@ -12,7 +12,7 @@ test.describe('Settings - AI Providers Management', () => {
     page = await browser.newPage();
     await setupAuthenticatedPage(page);
     await page.goto('/settings');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test.afterEach(async () => {
@@ -249,7 +249,7 @@ test.describe('Settings - Plugins Management', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/settings');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Navigate to plugins tab
     const pluginsTab = page.getByRole('tab', { name: /Plugins/i });

@@ -10,7 +10,7 @@ test.describe('Knowledge Graph - Visualization and Exploration', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display knowledge graph page', async ({ page }) => {
@@ -222,7 +222,7 @@ test.describe('Knowledge Graph - SPARQL Queries', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should open SPARQL query editor', async ({ page }) => {
@@ -343,7 +343,7 @@ test.describe('Knowledge Graph - Natural Language Queries', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should open natural language query interface', async ({ page }) => {
@@ -425,7 +425,7 @@ test.describe('Knowledge Graph - Path Finding', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should find path between nodes', async ({ page }) => {
@@ -485,7 +485,7 @@ test.describe('Knowledge Graph - Reasoning and Inference', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should trigger reasoning engine', async ({ page }) => {

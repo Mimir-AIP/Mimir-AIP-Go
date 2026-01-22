@@ -134,7 +134,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     
     // Navigate to chat
     await page.goto('http://localhost:8080/chat');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     
     // Check chat interface loaded
@@ -185,7 +185,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     
     // Navigate to Settings
     await page.goto('http://localhost:8080/settings');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     
     // Check Settings page loaded
@@ -223,7 +223,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     
     // Navigate to Pipelines
     await page.goto('http://localhost:8080/pipelines');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     
     // Check page loaded
@@ -252,7 +252,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     
     // Navigate to Ontologies
     await page.goto('http://localhost:8080/ontologies');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     
     // Check page loaded
@@ -281,7 +281,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     
     // Navigate to Models
     await page.goto('http://localhost:8080/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     
     // Check page loaded
@@ -299,7 +299,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     
     // Navigate to Digital Twins
     await page.goto('http://localhost:8080/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     
     // Check page loaded
@@ -455,7 +455,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     console.log('🔍 VALIDATE: Pipeline Creation Interface');
 
     await page.goto('http://localhost:8080/pipelines');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check Create Pipeline button exists
     const createBtn = page.getByRole('button', { name: /Create Pipeline/i }).first();
@@ -473,7 +473,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     console.log('🔍 VALIDATE: Ontology Creation from Pipelines');
 
     await page.goto('http://localhost:8080/ontologies');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check "Create from Pipeline" functionality
     const createFromPipelineBtn = page.getByRole('button', { name: /from Pipeline/i }).first();
@@ -491,7 +491,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     console.log('🔍 VALIDATE: ML Model Training Interface');
 
     await page.goto('http://localhost:8080/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check Train Model button
     const trainBtn = page.getByRole('button', { name: /Train Model/i }).first();
@@ -514,7 +514,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     console.log('🔍 VALIDATE: Digital Twin Management');
 
     await page.goto('http://localhost:8080/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check Create Twin button
     const createTwinBtn = page.getByRole('button', { name: /Create Twin/i }).first();
@@ -539,7 +539,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
       // Click on first twin
       const firstTwinLink = twinRows.first().locator('a').first();
       await firstTwinLink.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Look for scenario/analysis interface
       const scenarioBtn = page.getByRole('button', { name: /What-If|Scenario|Simulate|Run/i }).first();
@@ -555,7 +555,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     console.log('🔍 VALIDATE: Anomaly Detection & Alerting');
 
     await page.goto('http://localhost:8080/monitoring');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check for alerts/rules interface
     const alertsSection = page.locator('text=/Alert|Rule|Monitor/i').first();
@@ -568,7 +568,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     console.log('🔍 VALIDATE: Agent Chat with Tool Integration');
 
     await page.goto('http://localhost:8080/chat');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check chat interface
     const chatInput = page.locator('textarea, [role="textbox"]').first();
@@ -593,7 +593,7 @@ test.describe('Mimir AIP - Incremental Agent Tools Test', () => {
     console.log('🔍 VALIDATE: End-to-End Workflow Orchestration');
 
     await page.goto('http://localhost:8080/workflows');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check workflow interface
     const workflowTable = page.locator('table').first();

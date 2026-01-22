@@ -155,6 +155,69 @@ export async function waitForToast(page: Page, text: string | RegExp, timeout: n
 }
 
 /**
+ * Wait for page to be ready by checking for specific indicators
+ * 
+ * This replaces the unreliable waitForLoadState('networkidle') pattern.
+ * Instead of waiting for all network activity to stop (which may never happen
+ * with polling/websockets), we wait for specific page elements to load.
+ * 
+ * @param page - Playwright page object
+ * @param options - Indicators to wait for
+ *   - heading: Wait for h1 heading (usually page title)
+ *   - loadingGone: Wait for loading skeleton/spinner to disappear
+ *   - testId: Wait for specific test ID element
+ *   - timeout: Maximum time to wait (default 10s)
+ * 
+ * @example
+ * // Wait for page heading
+ * await waitForPageReady(page, { heading: 'Digital Twins' });
+ * 
+ * // Wait for loading to finish
+ * await waitForPageReady(page, { loadingGone: true });
+ * 
+ * // Wait for specific element
+ * await waitForPageReady(page, { testId: 'data-table' });
+ */
+export async function waitForPageReady(
+  page: Page,
+  options: {
+    heading?: string | RegExp;
+    loadingGone?: boolean;
+    testId?: string;
+    timeout?: number;
+  } = {}
+) {
+  const timeout = options.timeout ?? 10000;
+
+  // Wait for dom content loaded first (fast, basic check)
+  await page.waitForLoadState('domcontentloaded');
+
+  // Wait for heading if specified
+  if (options.heading) {
+    await expect(
+      page.getByRole('heading', { name: options.heading })
+    ).toBeVisible({ timeout });
+  }
+
+  // Wait for loading indicators to disappear
+  if (options.loadingGone) {
+    const loadingIndicators = page.locator(
+      '[data-testid="loading-skeleton"], [data-testid="loading-spinner"], .loading, .spinner, [role="progressbar"]'
+    );
+    // If loading indicators exist, wait for them to disappear
+    const count = await loadingIndicators.count();
+    if (count > 0) {
+      await expect(loadingIndicators.first()).not.toBeVisible({ timeout });
+    }
+  }
+
+  // Wait for specific test ID element
+  if (options.testId) {
+    await expect(page.getByTestId(options.testId)).toBeVisible({ timeout });
+  }
+}
+
+/**
  * Create a test with custom fixtures
  */
 export const test = base.extend<{

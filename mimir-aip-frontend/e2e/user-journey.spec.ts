@@ -25,7 +25,7 @@ test.describe('Mimir AIP - TDD User Journey Tests', () => {
     console.log('=== Step 1: Dashboard ===');
     
     await page.goto('http://localhost:8080/dashboard');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check page title contains Mimir
     const title = await page.title();
@@ -67,7 +67,7 @@ test.describe('Mimir AIP - TDD User Journey Tests', () => {
     
     for (const p of pages) {
       await page.goto(`http://localhost:8080${p.path}`);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       const html = await page.content();
       
@@ -97,7 +97,7 @@ test.describe('Mimir AIP - TDD User Journey Tests', () => {
     console.log('=== Step 3: Chat & Mock LLM ===');
     
     await page.goto('http://localhost:8080/chat');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // EXPECTED: Can type and send message
     const input = page.locator('textarea, input[type="text"]').first();
@@ -132,7 +132,7 @@ test.describe('Mimir AIP - TDD User Journey Tests', () => {
     console.log('=== Step 4: Create Pipeline (UI) ===');
     
     await page.goto('http://localhost:8080/pipelines');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // EXPECTED: "Create Pipeline" button exists
     const createBtn = page.locator('button:has-text("Create Pipeline"), a:has-text("Create Pipeline")').first();
@@ -187,7 +187,7 @@ test.describe('Mimir AIP - TDD User Journey Tests', () => {
     console.log('=== Step 5: Provider Selection ===');
     
     await page.goto('http://localhost:8080/settings');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const pageContent = await page.content();
     
@@ -216,7 +216,7 @@ test.describe('Mimir AIP - TDD User Journey Tests', () => {
     console.log('=== Step 6: ML Models ===');
     
     await page.goto('http://localhost:8080/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const pageContent = await page.content();
     
@@ -249,7 +249,7 @@ test.describe('Mimir AIP - TDD User Journey Tests', () => {
     console.log('=== Step 7: Ontologies ===');
     
     await page.goto('http://localhost:8080/ontologies');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const pageContent = await page.content();
     

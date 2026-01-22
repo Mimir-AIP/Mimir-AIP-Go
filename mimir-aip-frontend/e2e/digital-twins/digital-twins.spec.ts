@@ -10,7 +10,7 @@ import { test, expect } from '../helpers';
 test.describe('Digital Twins - UI Workflows', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
   });
 
   test('should load and display digital twins list from backend', async ({ authenticatedPage: page }) => {
@@ -61,7 +61,7 @@ test.describe('Digital Twins - UI Workflows', () => {
     await createButton.click();
     
     // Wait for form to load
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check if we have ontologies available
     const noOntologiesMessage = page.getByText(/no.*ontolog/i);
@@ -110,7 +110,7 @@ test.describe('Digital Twins - UI Workflows', () => {
     // Navigate to list if not already there
     if (!page.url().endsWith('/digital-twins')) {
       await page.goto('/digital-twins');
-      await page.waitForLoadState('networkidle');
+      await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     }
     
     // Wait for loading to complete
@@ -150,7 +150,7 @@ test.describe('Digital Twins - UI Workflows', () => {
     console.log(`✓ Navigated to: ${page.url()}`);
     
     // Verify details page loaded
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Should show twin information
     const detailsHeading = page.getByRole('heading').first();
@@ -228,11 +228,11 @@ test.describe('Digital Twins - UI Workflows', () => {
     // Navigate to first twin
     await twinCards.first().click();
     await expect(page).toHaveURL(/\/digital-twins\/[a-zA-Z0-9-]+/);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Go back using browser navigation
     await page.goBack();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Should show list again with data loaded
     await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
@@ -274,7 +274,7 @@ test.describe('Digital Twins - UI Workflows', () => {
   test('should refresh data when revisiting page', async ({ authenticatedPage: page }) => {
     // Load the page
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     
     const loadingSkeleton = page.getByTestId('loading-skeleton');
     await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
@@ -284,11 +284,11 @@ test.describe('Digital Twins - UI Workflows', () => {
     
     // Navigate away
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Navigate back
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     
     // Should load data again (not use stale)
     await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
@@ -324,7 +324,7 @@ test.describe('Digital Twins - UI Workflows', () => {
   test('should not show loading state indefinitely', async ({ authenticatedPage: page }) => {
     // This test specifically checks for the bug we fixed
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     
     // Loading skeleton should disappear within reasonable time
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -359,7 +359,7 @@ test.describe('Digital Twins - UI Workflows', () => {
 test.describe('Digital Twins - Error Handling', () => {
   test('should not display error messages on successful load', async ({ authenticatedPage: page }) => {
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     
     // Wait for loading to complete
     const loadingSkeleton = page.getByTestId('loading-skeleton');

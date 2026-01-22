@@ -10,7 +10,7 @@ test.describe('Workflows - Management', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display workflows page', async ({ page }) => {
@@ -142,7 +142,7 @@ test.describe('Workflows - Visual Builder', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should open workflow builder', async ({ page }) => {
@@ -268,7 +268,7 @@ test.describe('Workflows - Execution', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should execute workflow', async ({ page }) => {
@@ -386,7 +386,7 @@ test.describe('Workflows - Triggers and Scheduling', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should configure schedule trigger', async ({ page }) => {
@@ -499,7 +499,7 @@ test.describe('Workflows - Autonomous Workflows', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display autonomous workflows page', async ({ page }) => {
@@ -583,7 +583,7 @@ test.describe('Workflows - Variables and Context', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/workflows');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should define workflow variables', async ({ page }) => {

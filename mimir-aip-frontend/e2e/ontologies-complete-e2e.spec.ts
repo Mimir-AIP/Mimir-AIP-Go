@@ -10,7 +10,7 @@ test.describe('Ontologies - Complete Workflow', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/ontologies');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should display ontologies list page', async ({ page }) => {
@@ -37,7 +37,7 @@ test.describe('Ontologies - Complete Workflow', () => {
     await uploadLink.click();
     
     // Wait for navigation
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Should navigate to upload page
     await expect(page).toHaveURL(/\/ontologies\/upload/);
@@ -52,7 +52,7 @@ test.describe('Ontologies - Complete Workflow', () => {
     
     if (hasLink) {
       await uploadLink.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Try to upload without selecting file
       const submitButton = page.getByRole('button', { name: /Upload|Submit/i });
@@ -311,7 +311,7 @@ test.describe('Ontologies - AI-Powered Features', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/ontologies');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should suggest ontology improvements', async ({ page }) => {
@@ -383,7 +383,7 @@ test.describe('Ontologies - Mapping and Alignment', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/ontologies');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should map between ontologies', async ({ page }) => {

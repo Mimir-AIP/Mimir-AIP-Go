@@ -21,7 +21,7 @@ test('Verify complete twin workflow in UI', async ({ page }) => {
   
   console.log('\n=== Step 1: Navigate to Digital Twins ===');
   await page.goto('http://localhost:8080/digital-twins');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   
   console.log('\n=== Step 2: Click Create Digital Twin ===');
   await page.click('a[href="/digital-twins/create"]:first-of-type');
@@ -57,7 +57,7 @@ test('Verify complete twin workflow in UI', async ({ page }) => {
   const twinId = twinUrl.split('/').pop();
   console.log(`✓ Created twin: ${twinId}`);
   
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   
   console.log('\n=== Step 5: Click Scenarios tab ===');
   await page.getByRole('button', { name: /^Scenarios \(\d+\)$/ }).click();
@@ -125,7 +125,7 @@ test('Verify complete twin workflow in UI', async ({ page }) => {
   
   if (onResultsPage) {
     console.log('\n✅ SUCCESS: Redirected to simulation results page');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check for metrics
     const bodyText = await page.textContent('body');

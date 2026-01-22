@@ -10,7 +10,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display sidebar with all main menu items', async ({ page }) => {
@@ -30,7 +30,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Dashboard', async ({ page }) => {
     await page.getByRole('link', { name: /Dashboard/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.getByRole('heading', { name: /Dashboard/i })).toBeVisible();
@@ -38,7 +38,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Pipelines', async ({ page }) => {
     await page.getByRole('link', { name: /^Pipelines$/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/pipelines/);
     await expect(page.getByRole('heading', { name: /Pipelines/i })).toBeVisible();
@@ -46,7 +46,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Ontologies', async ({ page }) => {
     await page.getByRole('link', { name: /Ontologies/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/ontologies/);
     await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible();
@@ -54,7 +54,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Digital Twins', async ({ page }) => {
     await page.getByRole('link', { name: /Digital Twins/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/digital-twins/);
     await expect(page.getByRole('heading', { name: /Digital Twins/i })).toBeVisible();
@@ -63,7 +63,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
   test.skip('should navigate to Knowledge Graph', async ({ page }) => {
     // Skipped: Knowledge Graph link may have different text or require scrolling
     await page.getByRole('link', { name: /Knowledge Graph/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/knowledge-graph/);
     await expect(page.getByRole('heading', { name: /Knowledge Graph/i }).first()).toBeVisible();
@@ -71,7 +71,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Models', async ({ page }) => {
     await page.getByRole('link', { name: /Models/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/models/);
     await expect(page.getByRole('heading', { name: /Models|Machine Learning/i }).first()).toBeVisible();
@@ -79,7 +79,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Workflows', async ({ page }) => {
     await page.getByRole('link', { name: /Workflows/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/workflows/);
     await expect(page.getByRole('heading', { name: /Workflows/i }).first()).toBeVisible();
@@ -87,7 +87,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Monitoring', async ({ page }) => {
     await page.getByRole('link', { name: /Monitoring/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/monitoring/);
     await expect(page.getByRole('heading', { name: /Monitoring/i }).first()).toBeVisible();
@@ -95,7 +95,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Chat', async ({ page }) => {
     await page.getByRole('link', { name: /Chat/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/chat/);
     await expect(page.getByRole('heading', { name: /Chat|Agent/i })).toBeVisible();
@@ -103,7 +103,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Settings', async ({ page }) => {
     await page.getByRole('link', { name: /Settings/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/settings/);
     await expect(page.getByRole('heading', { name: /Settings/i })).toBeVisible();
@@ -112,7 +112,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
   test.skip('should highlight active navigation item', async ({ page }) => {
     // Skipped: Active link styling may use different class names
     await page.getByRole('link', { name: /Pipelines/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Active link should have special styling (check sidebar link specifically)
     const activeLink = page.getByRole('link', { name: /Pipelines/i }).first();
@@ -150,7 +150,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
   test('should navigate using breadcrumbs', async ({ page }) => {
     // Navigate to a deep page
     await page.goto('/pipelines');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Pipelines/i })).toBeVisible({ timeout: 10000 });
 
     // Check for breadcrumbs
     const breadcrumb = page.getByRole('navigation', { name: /Breadcrumb/i });
@@ -164,21 +164,21 @@ test.describe('Navigation - Sidebar and Menus', () => {
     // Skipped: Timeout issues with multiple sequential navigations
     // Navigate forward
     await page.getByRole('link', { name: /Pipelines/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await expect(page).toHaveURL(/\/pipelines/);
 
     await page.getByRole('link', { name: /Ontologies/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await expect(page).toHaveURL(/\/ontologies/);
 
     // Navigate back
     await page.goBack();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await expect(page).toHaveURL(/\/pipelines/);
 
     // Navigate forward
     await page.goForward();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await expect(page).toHaveURL(/\/ontologies/);
   });
 
@@ -230,7 +230,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Jobs from sidebar', async ({ page }) => {
     await page.getByRole('link', { name: /Jobs/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/jobs/);
     await expect(page.getByRole('heading', { name: /Jobs/i })).toBeVisible();
@@ -238,7 +238,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Plugins from sidebar', async ({ page }) => {
     await page.getByRole('link', { name: /Plugins/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/plugins/);
     await expect(page.getByRole('heading', { name: /Plugins/i })).toBeVisible();
@@ -246,7 +246,7 @@ test.describe('Navigation - Sidebar and Menus', () => {
 
   test('should navigate to Config from sidebar', async ({ page }) => {
     await page.getByRole('link', { name: /Config/i }).first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/config/);
     await expect(page.getByRole('heading', { name: /Config/i }).first()).toBeVisible();
@@ -257,7 +257,7 @@ test.describe('Navigation - Monitoring Submenu', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should expand monitoring submenu', async ({ page }) => {
@@ -276,7 +276,7 @@ test.describe('Navigation - Monitoring Submenu', () => {
 
   test('should navigate to monitoring jobs', async ({ page }) => {
     await page.goto('/monitoring/jobs');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/monitoring\/jobs/);
     await expect(page.getByRole('heading', { name: /Monitoring Jobs/i })).toBeVisible();
@@ -284,7 +284,7 @@ test.describe('Navigation - Monitoring Submenu', () => {
 
   test('should navigate to alerts', async ({ page }) => {
     await page.goto('/monitoring/alerts');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/monitoring\/alerts/);
     await expect(page.getByRole('heading', { name: /Alerts/i })).toBeVisible();
@@ -292,7 +292,7 @@ test.describe('Navigation - Monitoring Submenu', () => {
 
   test('should navigate to rules', async ({ page }) => {
     await page.goto('/monitoring/rules');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/monitoring\/rules/);
     await expect(page.getByRole('heading', { name: /Rules/i })).toBeVisible();
@@ -302,7 +302,7 @@ test.describe('Navigation - Monitoring Submenu', () => {
 test.describe('Navigation - 404 and Error Pages', () => {
   test('should display 404 for invalid routes', async ({ page }) => {
     await page.goto('/invalid-route-that-does-not-exist');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Should show 404 or redirect to home/login or show any error page
     const is404 = await page.getByText(/404|Not Found|Page.*not.*found/i).isVisible().catch(() => false);
@@ -317,7 +317,7 @@ test.describe('Navigation - 404 and Error Pages', () => {
     // Skipped: App may show cached data instead of error message
     // Navigate to a page that loads data
     await page.goto('/pipelines');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Pipelines/i })).toBeVisible({ timeout: 10000 });
 
     // NOTE: This is an acceptable use of mocking - testing error handling
     // We're specifically testing how the UI responds to API failures
@@ -330,7 +330,7 @@ test.describe('Navigation - 404 and Error Pages', () => {
     });
 
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Should show error message or empty state (both are acceptable)
     const hasError = await page.getByText(/Error|Failed|Unable to fetch/i).isVisible({ timeout: 3000 }).catch(() => false);

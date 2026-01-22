@@ -22,7 +22,7 @@ test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
 
     try {
       await page.goto('http://localhost:8080/pipelines');
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Click Create Pipeline button
       const createBtn = page.getByRole('button', { name: /Create Pipeline/i }).first();
@@ -81,7 +81,7 @@ test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
 
     try {
       await page.goto('http://localhost:8080/ontologies');
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Click "Create from Pipeline" button
       const createFromPipelineBtn = page.getByRole('button', { name: /Create from Pipeline|from Pipeline/i }).first();
@@ -143,7 +143,7 @@ test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
 
     try {
       await page.goto('http://localhost:8080/models');
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Look for Train Model button
       const trainBtn = page.getByRole('button', { name: /Train Model|Create Model/i }).first();
@@ -186,7 +186,7 @@ test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
 
     try {
       await page.goto('http://localhost:8080/digital-twins');
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Click Create Twin button
       const createTwinBtn = page.getByRole('button', { name: /Create Twin|New Twin/i }).first();
@@ -235,7 +235,7 @@ test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
 
     try {
       await page.goto('http://localhost:8080/monitoring');
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Look for alerts/rules section
       const alertsTab = page.getByRole('tab', { name: /Alerts|Rules/i }).first();
@@ -263,7 +263,7 @@ test.describe('Mimir AIP - Comprehensive UI-Based Autonomous Flow', () => {
 
     try {
       await page.goto('http://localhost:8080/chat');
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Wait for chat interface
       const chatInput = page.locator('textarea, [role="textbox"]').first();

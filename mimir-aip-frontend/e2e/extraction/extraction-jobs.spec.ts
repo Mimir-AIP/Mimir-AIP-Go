@@ -57,7 +57,7 @@ test.describe('Extraction Jobs - Real API', () => {
     
     // Step 2: Navigate to UI
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
     
     // Step 3: Verify UI loads
     const heading = page.getByRole('heading', { name: /extraction/i }).first();
@@ -94,7 +94,7 @@ test.describe('Extraction Jobs - Real API', () => {
 
   test('should filter extraction jobs by status', async ({ authenticatedPage: page }) => {
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
     
     // Look for status filter
     const statusFilter = page.locator('select[name="status"], select:has-text("Status")');
@@ -115,7 +115,7 @@ test.describe('Extraction Jobs - Real API', () => {
     // Skip if no test ontology was created
     
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
     
     // Look for ontology filter
     const ontologyFilter = page.locator('select[name="ontology"], select:has-text("Ontology")');
@@ -144,7 +144,7 @@ test.describe('Extraction Jobs - Real API', () => {
     
     // Step 2: Navigate to job details page
     await page.goto(`/extraction/${testData.extractionJobId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Step 3: Check if page loaded
     const notFound = page.locator('text=/404|not found/i');
@@ -173,7 +173,7 @@ test.describe('Extraction Jobs - Real API', () => {
     // Use our test extraction job
     
     await page.goto(`/extraction/${testData.extractionJobId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Look for "View Details" button
     const viewButton = page.getByRole('button', { name: /view.*details|details/i }).first();
@@ -214,7 +214,7 @@ test.describe('Extraction Jobs - Real API', () => {
     
     // Step 2: Navigate to UI
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
     
     // Wait for loading
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -230,7 +230,7 @@ test.describe('Extraction Jobs - Real API', () => {
 
   test('should refresh extraction jobs list', async ({ authenticatedPage: page }) => {
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
     
     // Look for refresh button
     const refreshButton = page.getByRole('button', { name: /refresh|reload/i });
@@ -257,7 +257,7 @@ test.describe('Extraction Jobs - Real API', () => {
   test('should show error message on failed job details fetch', async ({ authenticatedPage: page }) => {
     // Navigate to non-existent job
     await page.goto('/extraction/non-existent-job-id-12345');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Should show error message or 404
     const errorMessage = page.locator('text=/error|not found|doesn\'t exist/i');
@@ -289,7 +289,7 @@ test.describe('Extraction Jobs - Real API', () => {
     
     // Step 2: Navigate to UI
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
     
     // Wait for loading
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -319,7 +319,7 @@ test.describe('Extraction Jobs - Real API', () => {
     
     // Step 2: Navigate to UI
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
     
     // Wait for loading
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -377,7 +377,7 @@ test.describe('Extraction Jobs - Real API', () => {
     
     // Step 2: Navigate to jobs list in UI
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
     
     // Wait for loading
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -393,7 +393,7 @@ test.describe('Extraction Jobs - Real API', () => {
     // Use our test extraction job if available
     if (testData.extractionJobId) {
       await page.goto(`/extraction/${testData.extractionJobId}`);
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       // Check for statistics display
       const statsSection = page.locator('text=/entities.*extracted|triples.*generated|statistics/i');

@@ -18,7 +18,7 @@ test.describe('Mimir AIP - Detailed UI Interactions', () => {
     console.log('📝 Creating test pipeline for details testing...');
 
     await page.goto('http://localhost:8080/pipelines');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Click Create Pipeline button
     const createBtn = page.getByRole('button', { name: /Create Pipeline/i }).first();
@@ -103,7 +103,7 @@ steps:
     // Reload the pipelines page to ensure fresh data
     console.log('📄 Reloading pipelines page...');
     await page.goto('http://localhost:8080/pipelines');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
     // Check if we're on pipeline details page (after successful creation)
@@ -116,7 +116,7 @@ steps:
     if (!isOnPipelineDetails) {
       // Go to pipelines list page
       await page.goto('http://localhost:8080/pipelines');
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // Pipelines are displayed as cards, not table rows
       const pipelineCards = page.locator('[class*="grid"] > div[class*="Card"], .grid > div > div').filter({ hasText: 'Test-Pipeline' });
@@ -131,7 +131,7 @@ steps:
       // Click on the first pipeline card (should have a link or be clickable)
       const firstCard = pipelineCards.first();
       await firstCard.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
     }
 
     // Verify we're on pipeline details page
@@ -195,7 +195,7 @@ steps:
     console.log('🔧 Testing Ontology Details Interactions');
 
     await page.goto('http://localhost:8080/ontologies');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Find an ontology in the list
     const ontologyRows = page.locator('table tbody tr');
@@ -219,7 +219,7 @@ steps:
     }
 
     await ontologyLink.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify we're on ontology details page
     const ontologyHeading = page.getByRole('heading', { level: 1 }).first();
@@ -292,7 +292,7 @@ steps:
     console.log('🔧 Testing Knowledge Graph Query Interactions');
 
     await page.goto('http://localhost:8080/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify we're on knowledge graph page
     const kgHeading = page.getByRole('heading', { level: 1 }).first();
@@ -389,7 +389,7 @@ steps:
     console.log('🔧 Testing ML Model Predictions Interactions');
 
     await page.goto('http://localhost:8080/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Find a model in the list
     const modelRows = page.locator('table tbody tr');
@@ -413,7 +413,7 @@ steps:
     }
 
     await modelLink.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify we're on model details page
     const modelHeading = page.getByRole('heading', { level: 1 }).first();
@@ -484,7 +484,7 @@ steps:
     console.log('🔧 Testing Complete Digital Twin Functionality');
 
     await page.goto('http://localhost:8080/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check twin listing
     const twinRows = page.locator('table tbody tr');

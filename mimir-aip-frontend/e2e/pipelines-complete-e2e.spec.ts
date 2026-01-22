@@ -10,7 +10,7 @@ test.describe('Pipelines - Complete Workflow', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/pipelines');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Pipelines/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should display pipelines list page', async ({ page }) => {
@@ -510,7 +510,7 @@ test.describe('Pipelines - Step Configuration', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/pipelines');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Pipelines/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should configure Input plugin step', async ({ page }) => {

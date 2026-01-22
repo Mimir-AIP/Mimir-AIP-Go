@@ -17,7 +17,7 @@ test('ML Model Training Workflow', async ({ page }) => {
   console.log('─'.repeat(60));
   
   await page.goto('http://localhost:8080/models');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(2000);
   
   await page.screenshot({ path: 'test-results/ml-1-models-list.png', fullPage: true });
@@ -42,7 +42,7 @@ test('ML Model Training Workflow', async ({ page }) => {
     await trainButton.click();
   }
   
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(2000);
   
   await page.screenshot({ path: 'test-results/ml-2-train-page.png', fullPage: true });
@@ -183,7 +183,7 @@ test('ML Model Training Workflow', async ({ page }) => {
   console.log('─'.repeat(60));
   
   await page.goto('http://localhost:8080/models');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(2000);
   
   const finalModels = await page.locator('div:has-text("Model"), tr, a[href^="/models/"]').count();

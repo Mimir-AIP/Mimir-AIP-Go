@@ -10,7 +10,7 @@ test.describe('Extraction - Management', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should display extraction page', async ({ page }) => {
@@ -251,7 +251,7 @@ test.describe('Extraction - Entity Types', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
   });
 
   test.skip('should extract person entities', async ({ page }) => {
@@ -363,7 +363,7 @@ test.describe('Extraction - Batch Processing', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/extraction/batch');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test.skip('should display batch extraction page', async ({ page }) => {
@@ -418,7 +418,7 @@ test.describe('Extraction - Validation and Review', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/extraction');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Extraction/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should review extracted entities', async ({ page }) => {
@@ -532,7 +532,7 @@ test.describe('Extraction - Templates and Schemas', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/extraction/templates');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test.skip('should display extraction templates', async ({ page }) => {

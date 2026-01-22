@@ -14,7 +14,7 @@ test.describe('Digital Twins - UI Integration', () => {
     // Navigate to the page before each test
     await page.goto('/digital-twins');
     // Wait for page to be fully loaded
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should load and display digital twins list from backend', async ({ authenticatedPage: page }) => {
@@ -70,7 +70,7 @@ test.describe('Digital Twins - UI Integration', () => {
     await createButton.click();
     
     // Wait for dialog/page to load
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check if ontologies are available
     const noOntologiesMessage = page.getByText(/no.*ontolog/i);
@@ -106,7 +106,7 @@ test.describe('Digital Twins - UI Integration', () => {
     // Verify the twin appears in the list (navigate if needed)
     if (!page.url().includes('/digital-twins')) {
       await page.goto('/digital-twins');
-      await page.waitForLoadState('networkidle');
+      await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     }
     
     // Twin should be visible in the UI
@@ -138,7 +138,7 @@ test.describe('Digital Twins - UI Integration', () => {
     await expect(page).toHaveURL(/\/digital-twins\/[a-zA-Z0-9-]+/, { timeout: 10000 });
     
     // Verify details page loaded
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Should show twin information (tabs, details, etc.)
     const detailsHeading = page.getByRole('heading').first();
@@ -206,7 +206,7 @@ test.describe('Digital Twins - UI Integration', () => {
   test('should delete digital twin through UI', async ({ authenticatedPage: page }) => {
     // First, create a twin to delete (via UI)
     await page.getByRole('button', { name: /create.*twin/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const noOntologies = await page.getByText(/no.*ontolog/i).isVisible().catch(() => false);
     if (noOntologies) {
@@ -225,7 +225,7 @@ test.describe('Digital Twins - UI Integration', () => {
     
     // Navigate back to list
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     
     // Wait for loading to complete
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -260,7 +260,7 @@ test.describe('Digital Twins - UI Integration', () => {
 test.describe('Digital Twins - Data Verification', () => {
   test('should display correct twin count', async ({ authenticatedPage: page }) => {
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     
     // Wait for loading to complete
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -287,7 +287,7 @@ test.describe('Digital Twins - Data Verification', () => {
   test('should refresh data when navigating back', async ({ authenticatedPage: page }) => {
     // Load list
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
     
     const loadingSkeleton = page.getByTestId('loading-skeleton');
     await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
@@ -302,11 +302,11 @@ test.describe('Digital Twins - Data Verification', () => {
     
     // Navigate to a twin
     await twinCards.first().click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Navigate back
     await page.goBack();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Should load data again (not show stale)
     await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });

@@ -87,7 +87,7 @@ test.describe('Mimir AIP - Vision User Journey Tests', () => {
     console.log('=== Step 3: Ontology from Pipelines (UI) ===');
 
     await page.goto('http://localhost:8080/ontologies');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Wait for page to load
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15000 });
@@ -201,7 +201,7 @@ test.describe('Mimir AIP - Vision User Journey Tests', () => {
     console.log('=== Step 5: Model Training (UI) ===');
 
     await page.goto('http://localhost:8080/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check heading
     const heading = page.getByRole('heading', { level: 1 });
@@ -290,7 +290,7 @@ test.describe('Mimir AIP - Vision User Journey Tests', () => {
     console.log('=== Step 8: Agent Chat with Tools (UI) ===');
 
     await page.goto('http://localhost:8080/chat');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Wait for chat input
     const chatInput = page.locator('textarea, [role="textbox"]').first();

@@ -78,7 +78,7 @@ test.describe('Ontology Management - Real API', () => {
     
     // Step 2: Navigate to UI
     await page.goto('/ontologies');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
     
     // Step 3: Verify UI loads
     const heading = page.getByRole('heading', { name: /ontolog/i });
@@ -118,7 +118,7 @@ test.describe('Ontology Management - Real API', () => {
     
     // Check if upload page exists
     await page.goto('/ontologies/upload');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // If upload page doesn't exist, check for upload button on list page
     const pageNotFound = page.locator('text=/404|not found/i');
@@ -127,7 +127,7 @@ test.describe('Ontology Management - Real API', () => {
     if (hasNotFound) {
       // Go back to list page and look for create/upload button
       await page.goto('/ontologies');
-      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
       
       const uploadButton = page.getByRole('button', { name: /upload|create|add.*ontology/i });
       if (await uploadButton.isVisible().catch(() => false)) {
@@ -154,7 +154,7 @@ test.describe('Ontology Management - Real API', () => {
         
         // NOW verify it appears in the UI
         await page.goto('/ontologies');
-        await page.waitForLoadState('networkidle');
+        await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
         
         // Wait for loading to complete
         const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -224,7 +224,7 @@ test.describe('Ontology Management - Real API', () => {
       
       // Verify it appears in the list
       await page.goto('/ontologies');
-      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
       
       const newOntology = page.getByText(ontologyName);
       await expect(newOntology).toBeVisible({ timeout: 10000 });
@@ -248,7 +248,7 @@ test.describe('Ontology Management - Real API', () => {
     
     // Step 2: Navigate to ontology details page
     await page.goto(`/ontologies/${testData.ontologyId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Step 3: Check if page loaded successfully
     const notFound = page.locator('text=/404|not found/i');
@@ -270,7 +270,7 @@ test.describe('Ontology Management - Real API', () => {
 
   test('should filter ontologies by status', async ({ authenticatedPage: page, request }) => {
     await page.goto('/ontologies');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
     
     // Look for status filter
     const statusFilter = page.locator('select[name="status"], select:has-text("Status")');
@@ -314,7 +314,7 @@ test.describe('Ontology Management - Real API', () => {
     
     // Step 2: Navigate to ontologies list
     await page.goto('/ontologies');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Ontologies/i })).toBeVisible({ timeout: 10000 });
     
     // Wait for loading
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -363,7 +363,7 @@ test.describe('Ontology Management - Real API', () => {
       
       // Reload and verify it's gone from UI
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       const stillVisible = await ontologyElement.isVisible({ timeout: 2000 }).catch(() => false);
       expect(stillVisible).toBe(false);
@@ -377,7 +377,7 @@ test.describe('Ontology Management - Real API', () => {
     
     // Try to export via UI
     await page.goto(`/ontologies/${testData.ontologyId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const exportButton = page.getByRole('button', { name: /export|download/i });
     
@@ -411,7 +411,7 @@ test.describe('Ontology Management - Real API', () => {
 
   test('should handle upload errors gracefully', async ({ authenticatedPage: page }) => {
     await page.goto('/ontologies/upload');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check if page exists
     const notFound = page.locator('text=/404|not found/i');
@@ -446,7 +446,7 @@ test.describe('Ontology Management - Real API', () => {
   test('should navigate to ontology versions', async ({ authenticatedPage: page, request }) => {
     
     await page.goto(`/ontologies/${testData.ontologyId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Look for versions link/button
     const versionsLink = page.locator('a[href*="versions"], button:has-text("Versions")');
@@ -464,7 +464,7 @@ test.describe('Ontology Management - Real API', () => {
   test('should navigate to ontology suggestions', async ({ authenticatedPage: page, request }) => {
     
     await page.goto(`/ontologies/${testData.ontologyId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Look for suggestions link/button
     const suggestionsLink = page.locator('a[href*="suggestions"], button:has-text("Suggestions")');

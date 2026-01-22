@@ -17,7 +17,7 @@ test.describe('Pipeline Management', () => {
 
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/pipelines');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Pipelines/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should display pipelines list from backend', async ({ authenticatedPage: page, request }) => {
@@ -112,7 +112,7 @@ test.describe('Pipeline Management', () => {
 
     // Step 2: Navigate to pipelines page
     await page.goto('/pipelines');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Pipelines/i })).toBeVisible({ timeout: 10000 });
     
     // Wait for loading to complete
     const loadingSkeleton = page.getByTestId('loading-skeleton');
@@ -156,7 +156,7 @@ test.describe('Pipeline Management', () => {
 
     // Step 3: Navigate to pipeline details in UI
     await page.goto(`/pipelines/${pipelineId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Step 4: Verify UI displays the same data as API
     if (expectedName) {
@@ -189,7 +189,7 @@ test.describe('Pipeline Management', () => {
 
     // Step 2: Navigate to pipeline page in UI
     await page.goto(`/pipelines/${pipelineId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Step 3: Look for execute button in UI
     const executeButton = page.getByRole('button', { name: /execute|run/i });
@@ -251,7 +251,7 @@ test.describe('Pipeline Management', () => {
 
     // Step 3: Navigate to pipeline page
     await page.goto(`/pipelines/${pipelineId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Step 4: Check if UI shows history section
     const historySection = page.getByText(/history|execution/i);
@@ -304,7 +304,7 @@ test.describe('Pipeline Management', () => {
 
     // Step 3: Navigate to pipeline page
     await page.goto(`/pipelines/${pipelineId}`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Step 4: Look for validate button
     const validateButton = page.getByRole('button', { name: /validate/i });
@@ -350,7 +350,7 @@ test.describe('Pipeline Management', () => {
 
     // Step 2: Navigate to pipelines list
     await page.goto('/pipelines');
-    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /Pipelines/i })).toBeVisible({ timeout: 10000 });
     
     const loadingSkeleton = page.getByTestId('loading-skeleton');
     await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});
@@ -396,7 +396,7 @@ test.describe('Pipeline Management', () => {
 
     // Step 2: Check UI (already navigated in beforeEach)
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const loadingSkeleton = page.getByTestId('loading-skeleton');
     await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 }).catch(() => {});

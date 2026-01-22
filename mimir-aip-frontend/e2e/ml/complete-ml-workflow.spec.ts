@@ -17,7 +17,7 @@ test('Complete ML Workflow - CSV to Trained Model', async ({ page }) => {
   console.log('─'.repeat(60));
   
   await page.goto('http://localhost:8080/models/train');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(2000);
   
   await page.screenshot({ path: 'test-results/ml-workflow-1-train-page.png', fullPage: true });
@@ -111,7 +111,7 @@ test('Complete ML Workflow - CSV to Trained Model', async ({ page }) => {
     console.log('\n📊 STEP 5: View Model Details');
     console.log('─'.repeat(60));
     
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     
     const bodyText = await page.textContent('body');
@@ -146,7 +146,7 @@ test('Complete ML Workflow - CSV to Trained Model', async ({ page }) => {
     console.log('─'.repeat(60));
     
     await page.goto('http://localhost:8080/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
     
     const modelsText = await page.textContent('body');

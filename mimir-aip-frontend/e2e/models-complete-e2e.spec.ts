@@ -10,7 +10,7 @@ test.describe('Models - Management', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display models page', async ({ page }) => {
@@ -34,7 +34,7 @@ test.describe('Models - Management', () => {
     await trainLink.click();
     
     // Wait for navigation
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Should navigate to train page
     await expect(page).toHaveURL(/\/models\/train/);
@@ -156,7 +156,7 @@ test.describe('Models - Training', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should start model training', async ({ page }) => {
@@ -170,7 +170,7 @@ test.describe('Models - Training', () => {
       await trainLink.click();
 
       // Should navigate to training page
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       expect(page.url()).toContain('/models/train');
     } else {
       // No train link - test passes
@@ -181,7 +181,7 @@ test.describe('Models - Training', () => {
   test('should configure training parameters', async ({ page }) => {
     // Try to navigate to train page
     await page.goto('/models/train');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check if we're on the training page
     const onTrainPage = page.url().includes('/models/train');
@@ -261,7 +261,7 @@ test.describe('Models - Prediction', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should make single prediction', async ({ page }) => {
@@ -359,7 +359,7 @@ test.describe('Models - Auto-ML', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/models/automl');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display AutoML page', async ({ page }) => {
@@ -437,7 +437,7 @@ test.describe('Models - Evaluation', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should evaluate model', async ({ page }) => {
@@ -514,7 +514,7 @@ test.describe('Models - Deployment', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/models');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should deploy model', async ({ page }) => {
@@ -541,7 +541,7 @@ test.describe('Models - Deployment', () => {
 
   test('should view deployed models', async ({ page }) => {
     await page.goto('/models/deployments');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Deployments page may not exist - test passes either way
     const onDeploymentsPage = page.url().includes('/models/deployments');
@@ -550,7 +550,7 @@ test.describe('Models - Deployment', () => {
 
   test('should test deployed endpoint', async ({ page }) => {
     await page.goto('/models/deployments');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const testButton = page.getByRole('button', { name: /Test.*Endpoint/i }).first();
     if (await testButton.isVisible()) {
@@ -570,7 +570,7 @@ test.describe('Models - Deployment', () => {
 
   test('should undeploy model', async ({ page }) => {
     await page.goto('/models/deployments');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const undeployButton = page.getByRole('button', { name: /Undeploy|Remove/i }).first();
     if (await undeployButton.isVisible()) {
@@ -587,7 +587,7 @@ test.describe('Models - Deployment', () => {
 
   test('should scale deployment', async ({ page }) => {
     await page.goto('/models/deployments');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const scaleButton = page.getByRole('button', { name: /Scale/i }).first();
     if (await scaleButton.isVisible()) {

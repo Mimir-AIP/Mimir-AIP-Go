@@ -10,7 +10,7 @@ test.describe('Jobs - List and Management', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/jobs');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display jobs page', async ({ page }) => {
@@ -155,7 +155,7 @@ test.describe('Jobs - Execution Details', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/jobs');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display job execution information', async ({ page }) => {
@@ -323,7 +323,7 @@ test.describe('Jobs - Control and Management', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/jobs');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should cancel running job', async ({ page }) => {
@@ -418,7 +418,7 @@ test.describe('Jobs - Timeline and History', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/jobs');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display jobs timeline', async ({ page }) => {
@@ -486,7 +486,7 @@ test.describe('Jobs - Statistics and Analytics', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/jobs/analytics');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should display job statistics', async ({ page }) => {
@@ -571,7 +571,7 @@ test.describe('Jobs - Notifications', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/jobs');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should configure job notifications', async ({ page }) => {
@@ -619,7 +619,7 @@ test.describe('Jobs - Auto-refresh and Real-time Updates', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/jobs');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should enable auto-refresh', async ({ page }) => {

@@ -21,7 +21,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
   });
   test('should display knowledge graph stats', async ({ authenticatedPage: page, request }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Get actual stats from API
     const statsResponse = await request.get('/api/v1/kg/stats');
@@ -41,7 +41,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should execute a SPARQL SELECT query', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Ensure we're on SPARQL tab
     const sparqlTab = page.getByRole('button', { name: /sparql query/i });
@@ -71,7 +71,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should execute a SPARQL ASK query', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Fill query editor with ASK query
     const queryEditor = page.locator('textarea[placeholder*="SPARQL"], textarea[placeholder*="query"]');
@@ -94,7 +94,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should load sample queries', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Find a sample query button
     const sampleQuery = page.locator('button:has-text("Count"), button:has-text("List"), button:has-text("Show")').first();
@@ -113,7 +113,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should export query results to CSV', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Run a simple query first
     const queryEditor = page.locator('textarea[placeholder*="SPARQL"], textarea[placeholder*="query"]');
@@ -144,7 +144,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should export query results to JSON', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Run a query
     const queryEditor = page.locator('textarea[placeholder*="SPARQL"], textarea[placeholder*="query"]');
@@ -175,7 +175,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should handle query errors gracefully', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Fill invalid query
     const queryEditor = page.locator('textarea[placeholder*="SPARQL"], textarea[placeholder*="query"]');
@@ -199,7 +199,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should switch to natural language query tab', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Click Natural Language tab
     const nlTab = page.getByRole('button', { name: /natural language/i });
@@ -223,7 +223,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
     }
     
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Switch to NL tab
     const nlTab = page.getByRole('button', { name: /natural language/i });
@@ -282,7 +282,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should save query to history', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Run a query
     const queryEditor = page.locator('textarea[placeholder*="SPARQL"], textarea[placeholder*="query"]');
@@ -306,7 +306,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should clear query editor', async ({ authenticatedPage: page }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Fill query editor
     const queryEditor = page.locator('textarea[placeholder*="SPARQL"], textarea[placeholder*="query"]');
@@ -327,7 +327,7 @@ test.describe('Knowledge Graph Queries - Real API', () => {
 
   test('should display named graphs in sidebar', async ({ authenticatedPage: page, request }) => {
     await page.goto('/knowledge-graph');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Get stats from API
     const statsResponse = await request.get('/api/v1/kg/stats');

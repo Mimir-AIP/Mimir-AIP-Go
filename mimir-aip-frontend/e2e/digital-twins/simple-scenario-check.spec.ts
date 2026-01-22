@@ -7,7 +7,7 @@ test('Check if scenarios are visible for existing twin', async ({ page }) => {
   
   console.log(`\nNavigating to twin detail page: ${twinId}`);
   await page.goto(`http://localhost:8080/digital-twins/${twinId}`);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   
   // Take screenshot
   await page.screenshot({ path: 'test-results/twin-detail-full.png', fullPage: true });

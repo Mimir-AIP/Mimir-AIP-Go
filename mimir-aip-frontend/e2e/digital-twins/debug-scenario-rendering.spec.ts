@@ -53,7 +53,7 @@ test('Debug: Inspect scenario rendering on new twin', async ({ page }) => {
   
   console.log('\n=== Navigating to Twin Detail Page ===');
   await page.goto(`http://localhost:8080/digital-twins/${twinId}`);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   
   console.log('\n=== Clicking Scenarios Tab ===');
   const scenariosTab = page.getByRole('button', { name: /^Scenarios \(\d+\)$/ });

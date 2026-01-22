@@ -13,8 +13,9 @@ import (
 
 // setupRoutes sets up the HTTP routes with API versioning
 func (s *Server) setupRoutes() {
-	// Add middleware
+	// Add middleware (order matters!)
 	s.router.Use(s.loggingMiddleware)
+	s.router.Use(APITimeoutMiddleware()) // CRITICAL: Prevent indefinite API hangs
 	s.router.Use(s.errorRecoveryMiddleware)
 	s.router.Use(s.defaultUserMiddleware) // Inject anonymous user when auth is disabled
 	s.router.Use(utils.SecurityHeadersMiddleware)

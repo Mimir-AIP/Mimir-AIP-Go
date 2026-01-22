@@ -423,7 +423,7 @@ export default function PipelinesPage() {
       {!loading && !error && pipelines.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {pipelines.map((pipeline) => (
-            <Card key={pipeline.id} className="bg-gradient-to-br from-navy to-blue/30 text-white border-blue hover:border-orange/50 transition-all duration-200 p-6 group">
+            <Card key={pipeline.id} data-testid="pipeline-card" className="bg-gradient-to-br from-navy to-blue/30 text-white border-blue hover:border-orange/50 transition-all duration-200 p-6 group">
               <div className="flex justify-between items-start mb-3">
                 <h2 className="text-xl font-bold text-orange group-hover:text-orange/90">{pipeline.name || 'Unnamed Pipeline'}</h2>
                 <div className="flex flex-wrap gap-1.5 justify-end">

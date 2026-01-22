@@ -9,7 +9,8 @@ test.describe('Digital Twins - Complete Workflow', () => {
   test.beforeEach(async ({ page }) => {
     await setupAuthenticatedPage(page);
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    // Wait for page to load - use specific element instead of networkidle
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
   });
 
   test('should display digital twins list page', async ({ page }) => {
@@ -22,8 +23,9 @@ test.describe('Digital Twins - Complete Workflow', () => {
     // Click the main "Create Twin" button (not "Create Your First Twin")
     await page.getByRole('button', { name: 'Create Twin' }).click();
 
-    // Wait for ontologies to load
-    await page.waitForTimeout(2000);
+    // Wait for ontologies to finish loading (loading indicator should disappear)
+    const loadingOntologies = page.getByTestId('loading-ontologies');
+    await expect(loadingOntologies).not.toBeVisible({ timeout: 10000 });
 
     // Check if there are no ontologies
     const noOntologiesMessage = page.getByTestId('no-ontologies-message');
@@ -480,7 +482,8 @@ test.describe('Digital Twins - Complete Workflow', () => {
 test.describe('Digital Twins - AI-Powered Features', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/digital-twins');
-    await page.waitForLoadState('networkidle');
+    // Wait for page to load - use specific element instead of networkidle
+    await expect(page.getByTestId('digital-twins-heading')).toBeVisible({ timeout: 10000 });
   });
 
   test('should generate smart scenarios using AI', async ({ page }) => {

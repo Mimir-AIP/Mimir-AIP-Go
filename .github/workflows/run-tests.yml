@@ -92,17 +92,20 @@ jobs:
           name: frontend-coverage
           path: ./mimir-aip-frontend/coverage
 
-  # E2E tests with Playwright
+  # E2E tests with Playwright (requires running backend + frontend)
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
     if: ${{ !inputs.skip_e2e }}
-    defaults:
-      run:
-        working-directory: ./mimir-aip-frontend
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -111,16 +114,45 @@ jobs:
           cache: 'npm'
           cache-dependency-path: ./mimir-aip-frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Build unified Docker container
+        run: |
+          chmod +x ./build-unified.sh
+          ./build-unified.sh
+
+      - name: Start unified services
+        run: |
+          docker compose -f docker-compose.unified.yml up -d
+          # Wait for services to be healthy
+          timeout 60 bash -c 'until curl -f http://localhost:8080/api/v1/health > /dev/null 2>&1; do sleep 2; done'
+          echo "Backend is ready!"
+
+      - name: Verify backend is running
+        run: |
+          curl -f http://localhost:8080/api/v1/health || exit 1
+          echo "Backend health check passed"
+
+      - name: Install frontend dependencies
+        working-directory: ./mimir-aip-frontend
         run: npm ci
 
       - name: Install Playwright browsers
+        working-directory: ./mimir-aip-frontend
         run: npx playwright install --with-deps
 
-      - name: Run Playwright tests
+      - name: Run Playwright E2E tests
+        working-directory: ./mimir-aip-frontend
         run: npm run test:e2e
         env:
           CI: true
+          PLAYWRIGHT_BASE_URL: http://localhost:8080
+
+      - name: Show Docker logs on failure
+        if: failure()
+        run: |
+          echo "=== Backend Logs ==="
+          docker compose -f docker-compose.unified.yml logs mimir-aip-unified
+          echo "=== Docker Container Status ==="
+          docker ps -a
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -137,6 +169,10 @@ jobs:
           name: playwright-results
           path: ./mimir-aip-frontend/test-results/
           retention-days: 30
+
+      - name: Stop services
+        if: always()
+        run: docker compose -f docker-compose.unified.yml down
 
   # Integration tests
   integration-tests:

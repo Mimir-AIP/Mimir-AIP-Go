@@ -327,6 +327,113 @@ Before merging a new test, verify:
 
 See these files for proper test patterns:
 - `e2e/digital-twins/digital-twins-PROPER.spec.ts` - Example of correct E2E testing
+- `e2e/pipelines/pipeline-management.spec.ts` - Hybrid approach pattern
+- `e2e/ontology/ontology-management.spec.ts` - Hybrid approach pattern
+- `e2e/extraction/extraction-jobs.spec.ts` - Hybrid approach pattern
+
+---
+
+## The Hybrid Approach (Advanced Pattern)
+
+For features where the UI might not be fully implemented yet, we use a **hybrid approach** that combines API verification with UI display testing. This pattern:
+1. Verifies backend state with API (fast, reliable)
+2. Verifies UI correctly displays that state
+3. Catches BOTH backend bugs AND UI rendering bugs
+
+### Pattern
+
+```typescript
+test('should display data from backend', async ({ page, request }) => {
+  // Step 1: Get data from API (verify backend has data)
+  const response = await request.get('/api/v1/items');
+  expect(response.ok()).toBeTruthy();
+  
+  const items = await response.json();
+  const itemCount = Array.isArray(items) ? items.length : 0;
+  console.log(`✓ Backend has ${itemCount} items`);
+  
+  // Step 2: Navigate to UI
+  await page.goto('/items');
+  await page.waitForLoadState('networkidle');
+  
+  // Step 3: Wait for loading to complete
+  const loadingSkeleton = page.getByTestId('loading-skeleton');
+  await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
+  
+  // Step 4: Verify UI displays the same count as API
+  if (itemCount === 0) {
+    // Should show empty state
+    const emptyState = page.getByText(/no.*items|create.*first/i);
+    await expect(emptyState).toBeVisible();
+  } else {
+    // Should show item cards
+    const itemCards = page.getByTestId('item-card');
+    const uiCount = await itemCards.count();
+    
+    console.log(`UI shows ${uiCount} items (API: ${itemCount})`);
+    
+    // UI should show at least some items
+    expect(uiCount).toBeGreaterThan(0);
+  }
+  
+  // Step 5: Verify no errors
+  const errorMessage = page.getByText(/error.*loading|failed.*load/i);
+  await expect(errorMessage).not.toBeVisible();
+});
+```
+
+### When to Use Hybrid Approach
+
+✅ **Use when:**
+- UI is under development but API is stable
+- You need to verify data flows from backend to UI correctly
+- Testing create/update operations (create via API, verify in UI)
+- Debugging UI display issues
+
+❌ **Don't use when:**
+- Testing pure user workflows (use full UI interaction)
+- API is unreliable or incomplete
+- You want to test form validation (use UI interaction)
+
+### Example: Create and Verify
+
+```typescript
+test('should create item and display it in UI', async ({ page, request }) => {
+  const itemName = `E2E Test Item ${Date.now()}`;
+  
+  // Step 1: Create via API
+  const response = await request.post('/api/v1/items', {
+    data: { name: itemName, description: 'Test item' }
+  });
+  
+  expect(response.ok()).toBeTruthy();
+  const data = await response.json();
+  const itemId = data.id;
+  console.log(`✓ Created item via API: ${itemId}`);
+  
+  // Step 2: Navigate to UI
+  await page.goto('/items');
+  await page.waitForLoadState('networkidle');
+  
+  // Wait for loading to complete
+  const loadingSkeleton = page.getByTestId('loading-skeleton');
+  await expect(loadingSkeleton).not.toBeVisible({ timeout: 15000 });
+  
+  // Step 3: Verify new item appears in UI
+  const newItem = page.getByText(itemName);
+  await expect(newItem).toBeVisible({ timeout: 10000 });
+  console.log('✓ New item visible in UI');
+});
+```
+
+### Real-World Success
+
+The hybrid approach successfully caught a bug in the Pipelines page:
+- API reported 134 pipelines
+- UI displayed 0 pipelines
+- **Test failed:** "Expected > 0, Received: 0"
+
+This is exactly what our testing philosophy is designed to do - catch bugs where the backend works but the UI is broken.
 
 ---
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Input"
 )
 
 // PipelineExecutionResult represents the result of a pipeline execution
@@ -149,8 +150,11 @@ func executeStep(ctx context.Context, registry *pipelines.PluginRegistry, step p
 
 // registerDefaultPlugins registers the built-in plugins
 func registerDefaultPlugins(registry *pipelines.PluginRegistry) error {
-	// This will be expanded as we implement more plugins
-	// For now, we'll register mock plugins for testing
+	// Register Input plugins
+	csvPlugin := Input.NewCSVPlugin()
+	if err := registry.RegisterPlugin(csvPlugin); err != nil {
+		return fmt.Errorf("failed to register CSV plugin: %w", err)
+	}
 
 	// Register a real API input plugin
 	apiPlugin := &RealAPIPlugin{}

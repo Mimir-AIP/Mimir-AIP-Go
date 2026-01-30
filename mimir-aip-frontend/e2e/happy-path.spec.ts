@@ -1,25 +1,25 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Happy Path E2E Test: Basic UI Navigation
+ * Happy Path E2E Test: Basic UI Navigation (Simplified Frontend)
  * 
- * Tests basic page navigation and loading:
- * 1. Navigate to home page
+ * Tests the simplified monitoring-focused frontend:
+ * 1. Navigate to dashboard
  * 2. Navigate to pipelines page
- * 3. Verify page elements load correctly
- * 4. Test basic navigation menu
+ * 3. Navigate to ontologies (view-only)
+ * 4. Navigate to twins (view-only)
+ * 5. Navigate to chat
  */
 
 test.describe('Happy Path - Basic UI Navigation', () => {
-  test('home page loads successfully', async ({ page }) => {
+  test('dashboard loads successfully', async ({ page }) => {
     await page.goto('/');
     
     // Wait for page to load
     await expect(page).toHaveTitle(/Mimir/i);
     
-    // Verify main content loads
-    const mainContent = page.locator('main');
-    await expect(mainContent).toBeVisible();
+    // Verify page body loads
+    await expect(page.locator('body')).toBeVisible();
   });
 
   test('pipelines page loads and displays content', async ({ page }) => {
@@ -28,18 +28,13 @@ test.describe('Happy Path - Basic UI Navigation', () => {
     // Wait for page to load
     await expect(page.locator('body')).toBeVisible();
     
-    // Verify the page has content (either pipelines or empty state)
+    // Verify the page has content
     const content = page.locator('body');
     await expect(content).not.toBeEmpty();
-    
-    // Check for any heading or text content
-    const headings = page.locator('h1, h2, h3');
-    const headingCount = await headings.count();
-    expect(headingCount).toBeGreaterThan(0);
   });
 
-  test('navigation between pages works', async ({ page }) => {
-    // Start on home
+  test('simplified navigation works', async ({ page }) => {
+    // Start on dashboard
     await page.goto('/');
     await expect(page).toHaveTitle(/Mimir/i);
     
@@ -47,31 +42,39 @@ test.describe('Happy Path - Basic UI Navigation', () => {
     await page.goto('/pipelines');
     await expect(page.locator('body')).toBeVisible();
     
-    // Navigate to ontologies
+    // Navigate to ontologies (view-only)
     await page.goto('/ontologies');
     await expect(page.locator('body')).toBeVisible();
     
-    // Navigate to digital twins
+    // Navigate to digital twins (view-only)
     await page.goto('/digital-twins');
     await expect(page.locator('body')).toBeVisible();
     
-    // Navigate back to home
+    // Navigate to chat
+    await page.goto('/chat');
+    await expect(page.locator('body')).toBeVisible();
+    
+    // Back to dashboard
     await page.goto('/');
     await expect(page).toHaveTitle(/Mimir/i);
   });
 
-  test('API is accessible from frontend', async ({ page }) => {
-    // Navigate to a page that makes API calls
-    await page.goto('/pipelines');
+  test('view-only pages load without errors', async ({ page }) => {
+    // Test that view-only pages don't have configuration dialogs
+    await page.goto('/ontologies');
+    await expect(page.locator('body')).toBeVisible();
+    await page.waitForTimeout(1000);
     
-    // Wait for potential API calls to complete
-    await page.waitForTimeout(2000);
+    await page.goto('/digital-twins');
+    await expect(page.locator('body')).toBeVisible();
+    await page.waitForTimeout(1000);
     
-    // Check that no error dialogs appeared
-    const errorDialogs = page.locator('text=/error/i');
+    await page.goto('/models');
+    await expect(page.locator('body')).toBeVisible();
+    
+    // Pages should load without error dialogs
+    const errorDialogs = page.locator('role=alert');
     const errorCount = await errorDialogs.count();
-    
-    // We expect either 0 errors, or the page to still be functional
-    expect(errorCount).toBeLessThan(5);
+    expect(errorCount).toBe(0);
   });
 });

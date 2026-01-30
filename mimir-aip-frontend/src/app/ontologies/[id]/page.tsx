@@ -455,20 +455,14 @@ LIMIT 50`,
             </div>
 
             <div>
-              <h3 className="text-lg font-semibold mb-2">Quick Actions</h3>
+              <h3 className="text-lg font-semibold mb-2">Actions</h3>
               <div className="flex gap-2">
                 <button
                   onClick={() => setActiveTab("queries")}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
                 >
-                  Run Sample Queries
+                  View Sample Queries
                 </button>
-                <Link
-                  href="/knowledge-graph"
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded inline-block"
-                >
-                  Open Query Editor
-                </Link>
               </div>
             </div>
           </div>

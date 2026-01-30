@@ -1,27 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { listDigitalTwins, listOntologies, type DigitalTwin, type Ontology } from "@/lib/api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { toast } from "sonner";
-import { Plus, Network, Calendar, Database } from "lucide-react";
+import { Network, Calendar, Database, Activity } from "lucide-react";
 
 export default function DigitalTwinsPage() {
-  const router = useRouter();
   const [twins, setTwins] = useState<DigitalTwin[]>([]);
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Set page title
-  useEffect(() => {
-    document.title = "Digital Twins - Mimir AIP";
-  }, []);
 
   useEffect(() => {
     loadData();
@@ -40,7 +30,6 @@ export default function DigitalTwinsPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load digital twins";
       setError(message);
-      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -56,120 +45,141 @@ export default function DigitalTwinsPage() {
       year: "numeric",
       month: "short",
       day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     });
   }
 
   if (loading) {
     return (
-      <div className="container mx-auto py-8">
-        <LoadingSkeleton />
+      <div className="space-y-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-orange mb-2">Digital Twins</h1>
+          <p className="text-white/60">Loading digital twins...</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map(i => (
+            <Card key={i} className="bg-navy border-blue p-6 animate-pulse h-48"></Card>
+          ))}
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto py-8">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-red-600">Error: {error}</p>
-            <Button onClick={loadData} className="mt-4">
-              Retry
-            </Button>
-          </CardContent>
+      <div className="space-y-6">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-orange mb-2">Digital Twins</h1>
+        </div>
+        <Card className="bg-red-900/20 border-red-500 text-red-400 p-6">
+          <p>Error: {error}</p>
+          <button 
+            onClick={loadData}
+            className="mt-4 bg-blue hover:bg-orange text-white px-4 py-2 rounded"
+          >
+            Retry
+          </button>
         </Card>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="space-y-6">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="digital-twins-heading">Digital Twins</h1>
-          <p className="text-muted-foreground mt-2">
-            Simulate business scenarios and analyze impact on your organization
+          <h1 className="text-3xl font-bold text-orange">Digital Twins</h1>
+          <p className="text-white/60 mt-2">
+            View simulations and their current status
           </p>
         </div>
-        <Link href="/digital-twins/create">
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Twin
-          </Button>
-        </Link>
+        <button
+          onClick={loadData}
+          className="bg-blue hover:bg-orange text-white px-4 py-2 rounded border border-blue"
+        >
+          Refresh
+        </button>
       </div>
 
       {twins.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-12">
-              <Network className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Create Your First Digital Twin</h3>
-              <p className="text-muted-foreground mb-6">
-                Create your first digital twin from an ontology to start simulating scenarios
-              </p>
-              <Link href="/digital-twins/create">
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Your First Twin
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
+        <Card className="bg-navy border-blue p-12 text-center">
+          <Network className="h-16 w-16 mx-auto text-white/40 mb-4" />
+          <h3 className="text-xl font-semibold text-white mb-2">No Digital Twins Yet</h3>
+          <p className="text-white/60 mb-4">
+            Digital twins are automatically created when you set up ontologies and pipelines
+          </p>
+          <p className="text-sm text-white/40">
+            Create a pipeline to get started with automatic twin generation
+          </p>
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {twins.map((twin) => (
-            <Card
-              key={twin.id}
-              className="hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => router.push(`/digital-twins/${twin.id}`)}
-            >
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2">
-                      <Network className="h-5 w-5" />
-                      {twin.name}
-                    </CardTitle>
-                    <CardDescription className="mt-2">
-                      {twin.description || "No description"}
-                    </CardDescription>
-                  </div>
-                  <Badge variant="secondary">{twin.model_type}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Database className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Ontology:</span>
-                    <span className="font-medium truncate">
-                      {getOntologyName(twin.ontology_id)}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-                    <div>
-                      <p className="text-2xl font-bold">{twin.entity_count || 0}</p>
-                      <p className="text-xs text-muted-foreground">Entities</p>
+            <Link key={twin.id} href={`/digital-twins/${twin.id}`}>
+              <Card className="bg-navy border-blue hover:border-orange/50 transition-colors cursor-pointer h-full">
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Network className="h-5 w-5 text-orange" />
+                      <h3 className="text-lg font-semibold text-white">{twin.name}</h3>
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold">{twin.relationship_count || 0}</p>
-                      <p className="text-xs text-muted-foreground">Relationships</p>
+                    <Badge variant="secondary">{twin.model_type}</Badge>
+                  </div>
+                  
+                  {twin.description && (
+                    <p className="text-sm text-white/60 mb-4 line-clamp-2">
+                      {twin.description}
+                    </p>
+                  )}
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Database className="h-4 w-4 text-white/40" />
+                      <span className="text-white/40">Ontology:</span>
+                      <span className="text-white truncate">
+                        {getOntologyName(twin.ontology_id)}
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 pt-3 border-t border-blue/30">
+                      <div className="flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-green-400" />
+                        <div>
+                          <p className="text-xl font-bold text-white">{twin.entity_count || 0}</p>
+                          <p className="text-xs text-white/40">Entities</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-blue-400" />
+                        <div>
+                          <p className="text-xl font-bold text-white">{twin.relationship_count || 0}</p>
+                          <p className="text-xs text-white/40">Relationships</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 text-xs text-white/40 pt-2 border-t border-blue/30">
+                      <Calendar className="h-3 w-3" />
+                      Created {formatDate(twin.created_at)}
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
-                    <Calendar className="h-3 w-3" />
-                    Created {formatDate(twin.created_at)}
+                  
+                  <div className="mt-4 pt-4 border-t border-blue/30">
+                    <span className="text-xs text-orange">Click to view details →</span>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </Card>
+            </Link>
           ))}
+        </div>
+      )}
+      
+      {/* Summary */}
+      {twins.length > 0 && (
+        <div className="mt-6 p-4 bg-blue/20 rounded-lg">
+          <p className="text-sm text-white/60">
+            Total: {twins.length} digital twin{twins.length === 1 ? "" : "s"} | 
+            Auto-generated from pipeline and ontology data
+          </p>
         </div>
       )}
     </div>

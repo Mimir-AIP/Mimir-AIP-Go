@@ -83,14 +83,10 @@ export default function Topbar() {
                   <div className="font-medium text-white">Admin</div>
                   <div className="text-xs">admin@mimir-aip.com</div>
                 </div>
-                <Link
-                  href="/settings"
-                  className="flex items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-blue/30 rounded mt-1"
-                  onClick={() => setShowUserMenu(false)}
-                >
-                  <User size={16} />
-                  <span>Profile</span>
-                </Link>
+                <div className="px-3 py-2 text-sm text-white/80">
+                  <User size={16} className="inline mr-2" />
+                  <span>Admin</span>
+                </div>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm text-white/80 hover:bg-blue/30 rounded"

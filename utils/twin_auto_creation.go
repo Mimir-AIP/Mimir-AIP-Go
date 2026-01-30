@@ -170,6 +170,13 @@ func (t *TwinAutoCreator) createTwinFromModel(ontologyID, modelID, modelType, ta
 		return nil, fmt.Errorf("failed to insert twin: %w", err)
 	}
 
+	// Auto-configure the twin with scenarios and monitoring
+	if err := t.AutoConfigureTwin(twin.ID, ontologyID, modelType); err != nil {
+		t.logger.Warn("Auto-configuration partially failed for twin",
+			String("twin_id", twin.ID),
+			String("error", err.Error()))
+	}
+
 	return twin, nil
 }
 
@@ -215,14 +222,19 @@ func (t *TwinAutoCreator) createMonitoringRulesForTwin(twinID, modelID string) e
 	}{
 		{"High Deviation Alert", "z_score", 3.0, "prediction_deviation"},
 		{"Confidence Drop Alert", "threshold_below", 0.5, "model_confidence"},
+		{"Entity Unavailable Alert", "entity_status", 0.0, "entity_availability"},
+		{"Utilization Spike Alert", "threshold_above", 0.9, "utilization"},
+		{"Data Quality Alert", "data_quality", 0.7, "data_completeness"},
 	}
 
 	for _, rule := range rules {
 		ruleID := uuid.New().String()
 		config, _ := json.Marshal(map[string]any{
-			"metric":    rule.metric,
-			"threshold": rule.threshold,
-			"model_id":  modelID,
+			"metric":       rule.metric,
+			"threshold":    rule.threshold,
+			"model_id":     modelID,
+			"auto_created": true,
+			"created_from": "auto_twin_creation",
 		})
 
 		query := `
@@ -236,6 +248,149 @@ func (t *TwinAutoCreator) createMonitoringRulesForTwin(twinID, modelID string) e
 		}
 	}
 
+	return nil
+}
+
+// AutoConfigureTwin fully configures a digital twin with scenarios, monitoring, and initial state
+func (t *TwinAutoCreator) AutoConfigureTwin(twinID, ontologyID, modelType string) error {
+	// Generate and save scenarios based on model type
+	scenarios := t.generateScenariosForModelType(twinID, modelType)
+	if err := t.saveScenarios(twinID, scenarios); err != nil {
+		t.logger.Warn("Failed to save auto-generated scenarios",
+			String("twin_id", twinID),
+			String("error", err.Error()))
+	}
+
+	// Create monitoring rules
+	if err := t.createMonitoringRulesForTwin(twinID, ""); err != nil {
+		t.logger.Warn("Failed to create monitoring rules",
+			String("twin_id", twinID),
+			String("error", err.Error()))
+	}
+
+	t.logger.Info("Auto-configured digital twin",
+		String("twin_id", twinID),
+		String("model_type", modelType),
+		Int("scenario_count", len(scenarios)))
+
+	return nil
+}
+
+// generateScenariosForModelType creates model-type specific scenarios
+type AutoScenario struct {
+	ID          string                   `json:"id"`
+	TwinID      string                   `json:"twin_id"`
+	Name        string                   `json:"name"`
+	Description string                   `json:"description"`
+	Type        string                   `json:"scenario_type"`
+	Events      []map[string]interface{} `json:"events"`
+	Duration    int                      `json:"duration"`
+	CreatedAt   time.Time                `json:"created_at"`
+}
+
+func (t *TwinAutoCreator) generateScenariosForModelType(twinID, modelType string) []AutoScenario {
+	now := time.Now()
+	scenarios := []AutoScenario{
+		{
+			ID:          fmt.Sprintf("scenario_%s_baseline", twinID),
+			TwinID:      twinID,
+			Name:        "Baseline Operations",
+			Description: "Normal operating conditions with no disruptions. Establishes performance baseline.",
+			Type:        "baseline",
+			Events:      []map[string]interface{}{},
+			Duration:    30,
+			CreatedAt:   now,
+		},
+		{
+			ID:          fmt.Sprintf("scenario_%s_stress", twinID),
+			TwinID:      twinID,
+			Name:        "Stress Test",
+			Description: "High load conditions testing system limits.",
+			Type:        "stress_test",
+			Events:      []map[string]interface{}{},
+			Duration:    50,
+			CreatedAt:   now,
+		},
+	}
+
+	// Add model-type specific scenarios
+	switch modelType {
+	case "organization":
+		scenarios = append(scenarios, AutoScenario{
+			ID:          fmt.Sprintf("scenario_%s_dept_failure", twinID),
+			TwinID:      twinID,
+			Name:        "Department Failure",
+			Description: "Simulates failure of a key department and impact on organization.",
+			Type:        "dept_failure",
+			Events:      []map[string]interface{}{},
+			Duration:    40,
+			CreatedAt:   now,
+		})
+	case "department":
+		scenarios = append(scenarios, AutoScenario{
+			ID:          fmt.Sprintf("scenario_%s_staff_shortage", twinID),
+			TwinID:      twinID,
+			Name:        "Staff Shortage",
+			Description: "Simulates reduced staffing levels.",
+			Type:        "staff_shortage",
+			Events:      []map[string]interface{}{},
+			Duration:    35,
+			CreatedAt:   now,
+		})
+	case "process":
+		scenarios = append(scenarios, AutoScenario{
+			ID:          fmt.Sprintf("scenario_%s_bottleneck", twinID),
+			TwinID:      twinID,
+			Name:        "Process Bottleneck",
+			Description: "Identifies bottlenecks in the process flow.",
+			Type:        "bottleneck",
+			Events:      []map[string]interface{}{},
+			Duration:    45,
+			CreatedAt:   now,
+		})
+	case "individual":
+		scenarios = append(scenarios, AutoScenario{
+			ID:          fmt.Sprintf("scenario_%s_skill_gap", twinID),
+			TwinID:      twinID,
+			Name:        "Skill Gap Analysis",
+			Description: "Analyzes impact of missing skills.",
+			Type:        "skill_gap",
+			Events:      []map[string]interface{}{},
+			Duration:    25,
+			CreatedAt:   now,
+		})
+	default:
+		// Generic scenarios for unknown types
+		scenarios = append(scenarios, AutoScenario{
+			ID:          fmt.Sprintf("scenario_%s_generic", twinID),
+			TwinID:      twinID,
+			Name:        "Generic Impact Analysis",
+			Description: "General purpose scenario for impact analysis.",
+			Type:        "generic",
+			Events:      []map[string]interface{}{},
+			Duration:    30,
+			CreatedAt:   now,
+		})
+	}
+
+	return scenarios
+}
+
+func (t *TwinAutoCreator) saveScenarios(twinID string, scenarios []AutoScenario) error {
+	for _, scenario := range scenarios {
+		eventsJSON, _ := json.Marshal(scenario.Events)
+		query := `
+			INSERT INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		_, err := t.db.Exec(query, scenario.ID, scenario.TwinID, scenario.Name,
+			scenario.Description, scenario.Type, string(eventsJSON), scenario.Duration, scenario.CreatedAt)
+		if err != nil {
+			t.logger.Debug("Could not save scenario (table may not exist)",
+				String("scenario_name", scenario.Name),
+				String("error", err.Error()))
+		}
+	}
 	return nil
 }
 

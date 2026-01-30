@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/AI"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/gorilla/mux"
 )
 
@@ -649,6 +651,55 @@ func (s *Server) handleReloadPlugin(w http.ResponseWriter, r *http.Request) {
 
 	writeJSONResponse(w, http.StatusOK, map[string]any{
 		"message": fmt.Sprintf("Plugin '%s' reload triggered (requires server restart for full effect)", name),
+	})
+}
+
+// handleDiscoverPlugins triggers plugin auto-discovery from the plugins directory
+func (s *Server) handleDiscoverPlugins(w http.ResponseWriter, r *http.Request) {
+	if s.registry == nil {
+		writeErrorResponse(w, http.StatusServiceUnavailable, "Plugin registry not available")
+		return
+	}
+
+	pluginDir := os.Getenv("PLUGIN_DIR")
+	if pluginDir == "" {
+		pluginDir = "/app/plugins"
+	}
+
+	var db *sql.DB
+	if s.persistence != nil {
+		db = s.persistence.GetDB()
+	}
+
+	// Create discovery instance
+	discovery := utils.NewPluginDiscovery(pluginDir, s.registry)
+	if db != nil {
+		discovery.SetDB(db)
+	}
+
+	// Run discovery
+	if err := discovery.AutoDiscoverAndRegister(); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Plugin discovery failed: %v", err))
+		return
+	}
+
+	// Get list of all registered plugins
+	allPlugins := s.registry.GetAllPlugins()
+	pluginList := []map[string]string{}
+	for pluginType, typePlugins := range allPlugins {
+		for pluginName := range typePlugins {
+			pluginList = append(pluginList, map[string]string{
+				"type": pluginType,
+				"name": pluginName,
+			})
+		}
+	}
+
+	writeJSONResponse(w, http.StatusOK, map[string]any{
+		"message":       "Plugin discovery completed",
+		"directory":     pluginDir,
+		"total_plugins": len(pluginList),
+		"plugins":       pluginList,
 	})
 }
 

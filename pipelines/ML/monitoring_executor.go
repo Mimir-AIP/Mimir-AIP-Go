@@ -8,7 +8,6 @@ import (
 	"time"
 
 	storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
-	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
 
 // MonitoringExecutor orchestrates the execution of monitoring jobs
@@ -45,7 +44,7 @@ func (me *MonitoringExecutor) ExecuteMonitoringJob(ctx context.Context, jobID st
 
 	// Track statistics
 	metricsChecked := 0
-	totalAlerts := 0
+	totalAnomalies := 0
 
 	// Process each metric
 	for _, metricName := range metrics {
@@ -67,8 +66,8 @@ func (me *MonitoringExecutor) ExecuteMonitoringJob(ctx context.Context, jobID st
 		// Get current value (most recent point)
 		currentValue := timeSeries.Points[len(timeSeries.Points)-1].Value
 
-		// Evaluate rules for this metric
-		alerts, err := me.RuleEngine.EvaluateRules(
+		// Evaluate rules for this metric - returns count of anomalies detected
+		anomalyCount, err := me.RuleEngine.EvaluateRules(
 			ctx,
 			job.OntologyID,
 			"", // entityID - empty for ontology-level metrics
@@ -81,31 +80,9 @@ func (me *MonitoringExecutor) ExecuteMonitoringJob(ctx context.Context, jobID st
 			continue
 		}
 
-		// Save alerts to database
-		for _, alert := range alerts {
-			if err := me.RuleEngine.SaveAlert(ctx, &alert); err != nil {
-				log.Printf("[Monitoring] Error: Failed to save alert: %v", err)
-			} else {
-				log.Printf("[Monitoring] Created alert: %s - %s", alert.Severity, alert.Message)
-				totalAlerts++
-
-				// Publish anomaly.detected event to trigger alert actions
-				utils.GetEventBus().Publish(utils.Event{
-					Type:   utils.EventAnomalyDetected,
-					Source: "monitoring-executor",
-					Payload: map[string]any{
-						"alert_id":    alert.ID,
-						"ontology_id": alert.OntologyID,
-						"entity_id":   alert.EntityID,
-						"metric_name": alert.MetricName,
-						"alert_type":  alert.AlertType,
-						"severity":    alert.Severity,
-						"message":     alert.Message,
-						"value":       alert.Value,
-						"threshold":   alert.Threshold,
-					},
-				})
-			}
+		if anomalyCount > 0 {
+			log.Printf("[Monitoring] Detected %d anomalies for metric: %s", anomalyCount, metricName)
+			totalAnomalies += anomalyCount
 		}
 
 		metricsChecked++
@@ -119,7 +96,7 @@ func (me *MonitoringExecutor) ExecuteMonitoringJob(ctx context.Context, jobID st
 		CompletedAt:    &completedAt,
 		Status:         "success",
 		MetricsChecked: metricsChecked,
-		AlertsCreated:  totalAlerts,
+		AlertsCreated:  totalAnomalies, // Keep field name for backwards compatibility
 	}
 	if err := me.Storage.RecordMonitoringRun(ctx, run); err != nil {
 		log.Printf("[Monitoring] Warning: Failed to record monitoring run: %v", err)
@@ -127,11 +104,11 @@ func (me *MonitoringExecutor) ExecuteMonitoringJob(ctx context.Context, jobID st
 
 	// Update job status
 	status := "success"
-	if err := me.Storage.UpdateMonitoringJobStatus(ctx, jobID, status, totalAlerts); err != nil {
+	if err := me.Storage.UpdateMonitoringJobStatus(ctx, jobID, status, totalAnomalies); err != nil {
 		log.Printf("[Monitoring] Warning: Failed to update job status: %v", err)
 	}
 
-	log.Printf("[Monitoring] Job completed: checked %d metrics, created %d alerts", metricsChecked, totalAlerts)
+	log.Printf("[Monitoring] Job completed: checked %d metrics, detected %d anomalies", metricsChecked, totalAnomalies)
 	return nil
 }
 

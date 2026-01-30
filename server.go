@@ -190,12 +190,8 @@ func NewServer() *Server {
 	// Initialize pipeline auto-extraction (must be after plugin registration and pipeline store)
 	utils.InitializePipelineAutoExtraction(s.registry, utils.GetPipelineStore())
 
-	// Initialize alert action executor (must be after persistence backend and plugin registry)
-	if persistence != nil {
-		utils.InitializeAlertActionExecutor(persistence.GetDB(), s.registry)
-		// Enable email sender to read SMTP config from database
-		utils.SetEmailSenderDB(persistence.GetDB())
-	}
+	// Initialize anomaly pipeline trigger (must be after plugin registry and pipeline store)
+	utils.InitializeAnomalyPipelineTrigger(s.registry, utils.GetPipelineStore())
 
 	// Initialize auto-ML handler (must be after persistence and TDB2 backends)
 	ml.InitializeAutoMLHandler(persistence, tdb2Backend)
@@ -203,6 +199,17 @@ func NewServer() *Server {
 	// Initialize twin auto-creator (creates twins when models finish training)
 	if persistence != nil {
 		utils.InitializeTwinAutoCreator(persistence.GetDB())
+	}
+
+	// Initialize plugin auto-discovery (scan /app/plugins directory)
+	pluginDir := os.Getenv("PLUGIN_DIR")
+	if pluginDir == "" {
+		pluginDir = "/app/plugins"
+	}
+	if persistence != nil {
+		utils.InitializePluginDiscovery(pluginDir, registry, persistence.GetDB())
+	} else {
+		utils.InitializePluginDiscovery(pluginDir, registry, nil)
 	}
 
 	// Start the scheduler

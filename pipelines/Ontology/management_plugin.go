@@ -45,6 +45,8 @@ func (p *ManagementPlugin) ExecuteStep(ctx context.Context, stepConfig pipelines
 		return p.handleList(ctx, stepConfig, globalContext)
 	case "get":
 		return p.handleGet(ctx, stepConfig, globalContext)
+	case "update":
+		return p.handleUpdate(ctx, stepConfig, globalContext)
 	case "delete":
 		return p.handleDelete(ctx, stepConfig, globalContext)
 	case "stats":
@@ -71,7 +73,7 @@ func (p *ManagementPlugin) ValidateConfig(config map[string]any) error {
 		return fmt.Errorf("operation is required")
 	}
 
-	validOperations := []string{"upload", "validate", "list", "get", "delete", "stats"}
+	validOperations := []string{"upload", "validate", "list", "get", "update", "delete", "stats"}
 	valid := false
 	for _, op := range validOperations {
 		if operation == op {
@@ -96,7 +98,7 @@ func (p *ManagementPlugin) GetInputSchema() map[string]any {
 			"operation": map[string]any{
 				"type":        "string",
 				"description": "Operation to perform",
-				"enum":        []string{"upload", "validate", "list", "get", "delete", "stats"},
+				"enum":        []string{"upload", "validate", "list", "get", "update", "delete", "stats"},
 			},
 			"ontology_id": map[string]any{
 				"type":        "string",
@@ -275,6 +277,89 @@ func (p *ManagementPlugin) handleGet(ctx context.Context, stepConfig pipelines.S
 	result.Set("ontology", ontology)
 	if includeContent {
 		result.Set("content", content)
+	}
+
+	return result, nil
+}
+
+// handleUpdate updates an ontology and creates automatic version if enabled
+func (p *ManagementPlugin) handleUpdate(ctx context.Context, stepConfig pipelines.StepConfig, globalContext *pipelines.PluginContext) (*pipelines.PluginContext, error) {
+	ontologyID, _ := stepConfig.Config["ontology_id"].(string)
+	name, _ := stepConfig.Config["name"].(string)
+	description, _ := stepConfig.Config["description"].(string)
+	version, _ := stepConfig.Config["version"].(string)
+	ontologyData, _ := stepConfig.Config["ontology_data"].(string)
+	modifiedBy, _ := stepConfig.Config["modified_by"].(string)
+
+	if ontologyID == "" {
+		return nil, fmt.Errorf("ontology_id is required")
+	}
+
+	// Get existing ontology
+	existingOntology, err := p.persistence.GetOntology(ctx, ontologyID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ontology: %w", err)
+	}
+
+	// Update fields if provided
+	if name != "" {
+		existingOntology.Name = name
+	}
+	if description != "" {
+		existingOntology.Description = description
+	}
+	if version != "" {
+		existingOntology.Version = version
+	}
+	// Update auto_version setting if explicitly provided
+	if autoVersionParam, ok := stepConfig.Config["auto_version"]; ok {
+		if autoVersionBool, ok := autoVersionParam.(bool); ok {
+			existingOntology.AutoVersion = autoVersionBool
+		}
+	}
+
+	// If new ontology data provided, update file and TDB2
+	if ontologyData != "" {
+		// Validate ontology syntax
+		validationResult := p.validateOntologyData(ontologyData, existingOntology.Format)
+		if !validationResult.Valid {
+			return nil, fmt.Errorf("ontology validation failed: %v", validationResult.Errors)
+		}
+
+		// Write updated content to file
+		if err := os.WriteFile(existingOntology.FilePath, []byte(ontologyData), 0644); err != nil {
+			return nil, fmt.Errorf("failed to write ontology file: %w", err)
+		}
+
+		// Update TDB2 graph
+		if err := p.tdb2Backend.LoadOntology(ctx, existingOntology.TDB2Graph, ontologyData, existingOntology.Format); err != nil {
+			return nil, fmt.Errorf("failed to update ontology in TDB2: %w", err)
+		}
+	}
+
+	// Update database
+	if err := p.persistence.UpdateOntology(ctx, existingOntology); err != nil {
+		return nil, fmt.Errorf("failed to update ontology metadata: %w", err)
+	}
+
+	// Create automatic version if enabled and ontology data was updated
+	var createdVersion *OntologyVersion
+	if ontologyData != "" && existingOntology.AutoVersion {
+		versioningService := NewVersioningService(p.persistence.GetDB())
+		createdVersion, err = versioningService.CreateVersionOnUpdate(ontologyID, modifiedBy, existingOntology.FilePath)
+		if err != nil {
+			// Log warning but don't fail the update
+			fmt.Printf("Warning: failed to create automatic version: %v\n", err)
+		}
+	}
+
+	result := pipelines.NewPluginContext()
+	result.Set("ontology_id", ontologyID)
+	result.Set("status", "updated")
+	result.Set("auto_version", existingOntology.AutoVersion)
+	if createdVersion != nil {
+		result.Set("version_created", createdVersion.Version)
+		result.Set("version_id", createdVersion.ID)
 	}
 
 	return result, nil

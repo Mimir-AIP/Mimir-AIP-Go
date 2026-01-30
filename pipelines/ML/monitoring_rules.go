@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"time"
 
 	storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
 
 // RuleEngine evaluates monitoring rules against time-series data
@@ -24,22 +24,6 @@ func NewRuleEngine(storageBE *storage.PersistenceBackend) *RuleEngine {
 	}
 }
 
-// Alert represents a monitoring alert
-type Alert struct {
-	ID         string
-	OntologyID string
-	EntityID   string
-	MetricName string
-	AlertType  string
-	Severity   string
-	Message    string
-	Value      float64
-	Threshold  string
-	Status     string
-	CreatedAt  time.Time
-	ResolvedAt *time.Time
-}
-
 // RuleCondition represents parsed condition from monitoring rule
 type RuleCondition struct {
 	Operator      string      // "<", ">", "between", "change_percent", "z_score"
@@ -49,6 +33,7 @@ type RuleCondition struct {
 }
 
 // EvaluateRules checks data against all enabled rules for a metric
+// When a rule is violated, it publishes an anomaly event (does not manage alert lifecycle)
 func (re *RuleEngine) EvaluateRules(
 	ctx context.Context,
 	ontologyID string,
@@ -56,14 +41,14 @@ func (re *RuleEngine) EvaluateRules(
 	metricName string,
 	currentValue float64,
 	timeSeries *TimeSeries,
-) ([]Alert, error) {
+) (int, error) {
 	// Get all enabled rules for this metric
 	rules, err := re.Storage.GetMonitoringRules(ctx, entityID, metricName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get monitoring rules: %w", err)
+		return 0, fmt.Errorf("failed to get monitoring rules: %w", err)
 	}
 
-	var alerts []Alert
+	anomalyCount := 0
 
 	for _, rule := range rules {
 		// Skip disabled rules
@@ -71,19 +56,10 @@ func (re *RuleEngine) EvaluateRules(
 			continue
 		}
 
-		// Check if we should skip due to recent duplicate alert
-		isDuplicate, err := re.CheckDuplicateAlert(ctx, entityID, metricName, rule.RuleType, 24)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check duplicate alert: %w", err)
-		}
-		if isDuplicate {
-			continue // Skip creating duplicate alert
-		}
-
 		// Parse rule condition
 		condition, err := re.parseCondition(rule.Condition)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse condition for rule %s: %w", rule.ID, err)
+			return 0, fmt.Errorf("failed to parse condition for rule %s: %w", rule.ID, err)
 		}
 
 		// Evaluate rule based on type
@@ -101,25 +77,37 @@ func (re *RuleEngine) EvaluateRules(
 			continue // Skip unknown rule types
 		}
 
-		// Create alert if rule violated
+		// Publish anomaly event if rule violated
 		if violated {
-			alert := Alert{
-				OntologyID: ontologyID,
-				EntityID:   entityID,
-				MetricName: metricName,
-				AlertType:  rule.RuleType,
-				Severity:   rule.Severity,
-				Message:    message,
-				Value:      currentValue,
-				Threshold:  rule.Condition,
-				Status:     "active",
-				CreatedAt:  time.Now(),
-			}
-			alerts = append(alerts, alert)
+			re.publishAnomalyEvent(ontologyID, entityID, metricName, rule.RuleType, rule.Severity, message, currentValue, rule.Condition)
+			anomalyCount++
 		}
 	}
 
-	return alerts, nil
+	return anomalyCount, nil
+}
+
+// publishAnomalyEvent publishes an anomaly detected event to trigger pipelines
+func (re *RuleEngine) publishAnomalyEvent(
+	ontologyID, entityID, metricName, alertType, severity, message string,
+	value float64, threshold string,
+) {
+	event := utils.Event{
+		Type:   utils.EventAnomalyDetected,
+		Source: "rule-engine",
+		Payload: map[string]any{
+			"ontology_id": ontologyID,
+			"entity_id":   entityID,
+			"metric_name": metricName,
+			"alert_type":  alertType,
+			"severity":    severity,
+			"message":     message,
+			"value":       value,
+			"threshold":   threshold,
+		},
+	}
+
+	utils.GetEventBus().Publish(event)
 }
 
 // evaluateThreshold checks if value violates threshold condition
@@ -291,118 +279,4 @@ func (re *RuleEngine) parseCondition(conditionJSON string) (*RuleCondition, erro
 	}
 
 	return nil, fmt.Errorf("unknown condition format: %s", conditionJSON)
-}
-
-// CheckDuplicateAlert checks if similar alert exists within specified hours
-func (re *RuleEngine) CheckDuplicateAlert(
-	ctx context.Context,
-	entityID string,
-	metricName string,
-	alertType string,
-	withinHours int,
-) (bool, error) {
-	// Query alerts table for similar alert in last N hours
-	query := `
-		SELECT COUNT(*) 
-		FROM alerts 
-		WHERE entity_id = ? 
-		  AND metric_name = ? 
-		  AND alert_type = ?
-		  AND status = 'active'
-		  AND created_at > datetime('now', '-' || ? || ' hours')
-	`
-
-	var count int
-	// We need to access the database through the storage backend's DB connection
-	// Since PersistenceBackend doesn't expose QueryRowContext directly, we'll need to add a method or use GetDB()
-	// For now, let's assume we can access it (will be fixed in integration)
-	row := re.Storage.GetDB().QueryRowContext(ctx, query, entityID, metricName, alertType, withinHours)
-	err := row.Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("failed to check duplicate alert: %w", err)
-	}
-
-	return count > 0, nil
-}
-
-// SaveAlert saves an alert to the database
-func (re *RuleEngine) SaveAlert(ctx context.Context, alert *Alert) error {
-	query := `
-		INSERT INTO alerts (
-			ontology_id, entity_id, metric_name, alert_type, severity,
-			message, value, threshold, status, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	result, err := re.Storage.GetDB().ExecContext(ctx, query,
-		alert.OntologyID, alert.EntityID, alert.MetricName, alert.AlertType,
-		alert.Severity, alert.Message, alert.Value, alert.Threshold,
-		alert.Status, alert.CreatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to save alert: %w", err)
-	}
-
-	// Get the ID of the newly created alert
-	alertID, err := result.LastInsertId()
-	if err == nil {
-		alert.ID = fmt.Sprintf("%d", alertID)
-	}
-
-	return nil
-}
-
-// GetActiveAlerts retrieves all active alerts
-func (re *RuleEngine) GetActiveAlerts(ctx context.Context, ontologyID string) ([]Alert, error) {
-	query := `
-		SELECT ontology_id, entity_id, metric_name, alert_type, severity,
-			message, value, threshold, status, created_at
-		FROM alerts
-		WHERE status = 'active'
-	`
-	args := []interface{}{}
-
-	if ontologyID != "" {
-		query += " AND ontology_id = ?"
-		args = append(args, ontologyID)
-	}
-
-	query += " ORDER BY created_at DESC"
-
-	rows, err := re.Storage.GetDB().QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get active alerts: %w", err)
-	}
-	defer rows.Close()
-
-	var alerts []Alert
-	for rows.Next() {
-		var alert Alert
-		err := rows.Scan(
-			&alert.OntologyID, &alert.EntityID, &alert.MetricName, &alert.AlertType,
-			&alert.Severity, &alert.Message, &alert.Value, &alert.Threshold,
-			&alert.Status, &alert.CreatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan alert: %w", err)
-		}
-		alerts = append(alerts, alert)
-	}
-
-	return alerts, rows.Err()
-}
-
-// ResolveAlert marks an alert as resolved
-func (re *RuleEngine) ResolveAlert(ctx context.Context, alertID string) error {
-	now := time.Now()
-	query := `
-		UPDATE alerts
-		SET status = 'resolved', resolved_at = ?
-		WHERE id = ?
-	`
-	_, err := re.Storage.GetDB().ExecContext(ctx, query, now, alertID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve alert: %w", err)
-	}
-	return nil
 }

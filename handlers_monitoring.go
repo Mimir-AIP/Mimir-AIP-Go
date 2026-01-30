@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/ML"
 	storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -388,77 +387,5 @@ func (s *Server) handleDeleteMonitoringRule(w http.ResponseWriter, r *http.Reque
 
 	writeSuccessResponse(w, map[string]any{
 		"message": "Monitoring rule deleted successfully",
-	})
-}
-
-// --- Alert Handlers ---
-
-// handleListAlerts lists alerts with optional filters
-// GET /api/v1/monitoring/alerts?ontology_id=xxx&status=active&severity=high
-func (s *Server) handleListAlerts(w http.ResponseWriter, r *http.Request) {
-	ontologyID := r.URL.Query().Get("ontology_id")
-	status := r.URL.Query().Get("status")
-	severity := r.URL.Query().Get("severity")
-
-	ctx := context.Background()
-	ruleEngine := ml.NewRuleEngine(s.persistence)
-
-	// Get alerts
-	alerts, err := ruleEngine.GetActiveAlerts(ctx, ontologyID)
-	if err != nil {
-		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to list alerts: %v", err))
-		return
-	}
-
-	// Filter by status and severity if provided
-	var filteredAlerts []ml.Alert
-	for _, alert := range alerts {
-		if status != "" && alert.Status != status {
-			continue
-		}
-		if severity != "" && alert.Severity != severity {
-			continue
-		}
-		filteredAlerts = append(filteredAlerts, alert)
-	}
-
-	// Ensure alerts is never nil - return empty array instead
-	if filteredAlerts == nil {
-		filteredAlerts = []ml.Alert{}
-	}
-
-	writeSuccessResponse(w, map[string]any{
-		"alerts": filteredAlerts,
-		"count":  len(filteredAlerts),
-	})
-}
-
-// handleAcknowledgeAlert acknowledges/resolves an alert
-// PATCH /api/v1/monitoring/alerts/{id}
-func (s *Server) handleAcknowledgeAlert(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	alertID := vars["id"]
-
-	var req struct {
-		Status string `json:"status"` // "acknowledged" or "resolved"
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeBadRequestResponse(w, "Invalid request body")
-		return
-	}
-
-	ctx := context.Background()
-	ruleEngine := ml.NewRuleEngine(s.persistence)
-
-	if req.Status == "resolved" {
-		if err := ruleEngine.ResolveAlert(ctx, alertID); err != nil {
-			writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to resolve alert: %v", err))
-			return
-		}
-	}
-
-	writeSuccessResponse(w, map[string]any{
-		"message": fmt.Sprintf("Alert %s successfully", req.Status),
 	})
 }

@@ -1,423 +1,184 @@
 package utils
 
 import (
-	"bytes"
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 )
 
-// AlertAction represents an automated action when an alert is triggered
-type AlertAction struct {
-	ID         int
-	Name       string
-	RuleID     string
-	AlertType  string
-	Severity   string
-	ActionType string // 'execute_pipeline', 'send_email', 'webhook'
-	Config     string // JSON configuration
-	IsEnabled  bool
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+// PipelineTriggerConfig defines which pipeline to run when an anomaly is detected
+type PipelineTriggerConfig struct {
+	// PipelineID is the specific pipeline to execute (optional - if empty, searches by tag)
+	PipelineID string `json:"pipeline_id,omitempty"`
+	// Tag is the tag to search for when PipelineID is empty (e.g., "alert", "export")
+	Tag string `json:"tag,omitempty"`
+	// Context to pass to the pipeline (merged with anomaly data)
+	Context map[string]any `json:"context,omitempty"`
 }
 
-// AlertActionConfig represents parsed configuration for an action
-type AlertActionConfig struct {
-	// For execute_pipeline action
-	PipelineFile string         `json:"pipeline_file,omitempty"`
-	PipelineName string         `json:"pipeline_name,omitempty"`
-	Context      map[string]any `json:"context,omitempty"`
-
-	// For send_email action
-	To      []string `json:"to,omitempty"`
-	Subject string   `json:"subject,omitempty"`
-	Body    string   `json:"body,omitempty"`
-
-	// For webhook action
-	WebhookURL string         `json:"webhook_url,omitempty"`
-	Headers    map[string]any `json:"headers,omitempty"`
-	Payload    map[string]any `json:"payload,omitempty"`
+// AnomalyPipelineTrigger handles triggering pipelines on anomaly detection
+type AnomalyPipelineTrigger struct {
+	registry      *pipelines.PluginRegistry
+	pipelineStore *PipelineStore
+	logger        *Logger
 }
 
-// AlertActionExecutor handles execution of alert actions
-type AlertActionExecutor struct {
-	db       *sql.DB
-	registry *pipelines.PluginRegistry
-	logger   *Logger
-}
-
-// NewAlertActionExecutor creates a new alert action executor
-func NewAlertActionExecutor(db *sql.DB, registry *pipelines.PluginRegistry) *AlertActionExecutor {
-	return &AlertActionExecutor{
-		db:       db,
-		registry: registry,
-		logger:   GetLogger(),
+// NewAnomalyPipelineTrigger creates a new anomaly pipeline trigger
+func NewAnomalyPipelineTrigger(registry *pipelines.PluginRegistry, store *PipelineStore) *AnomalyPipelineTrigger {
+	return &AnomalyPipelineTrigger{
+		registry:      registry,
+		pipelineStore: store,
+		logger:        GetLogger(),
 	}
 }
 
-// HandleAnomalyDetected handles anomaly.detected events
-func (e *AlertActionExecutor) HandleAnomalyDetected(event Event) error {
-	e.logger.Info("Handling anomaly detected event",
+// HandleAnomalyDetected handles anomaly.detected events by triggering pipelines
+func (t *AnomalyPipelineTrigger) HandleAnomalyDetected(event Event) error {
+	t.logger.Info("Anomaly detected - triggering pipelines",
 		String("event_type", event.Type),
 		String("source", event.Source))
 
-	// Extract alert info from event payload
-	alertID, ok := event.Payload["alert_id"]
-	if !ok {
-		e.logger.Warn("Anomaly event missing alert_id")
-		return nil // Don't fail the event handler
-	}
-
+	// Extract anomaly info from event payload
+	ontologyID, _ := event.Payload["ontology_id"].(string)
+	entityID, _ := event.Payload["entity_id"].(string)
+	metricName, _ := event.Payload["metric_name"].(string)
 	alertType, _ := event.Payload["alert_type"].(string)
 	severity, _ := event.Payload["severity"].(string)
-	ruleID, _ := event.Payload["rule_id"].(string)
+	message, _ := event.Payload["message"].(string)
+	value, _ := event.Payload["value"].(float64)
 
-	e.logger.Info("Processing alert actions",
-		String("alert_id", fmt.Sprintf("%v", alertID)),
-		String("alert_type", alertType),
-		String("severity", severity))
+	// Get trigger configuration from event (or use defaults)
+	config := t.getTriggerConfig(event.Payload)
 
-	// Get matching alert actions
-	actions, err := e.GetMatchingActions(ruleID, alertType, severity)
+	// Find pipeline to execute
+	pipeline, err := t.findPipeline(config)
 	if err != nil {
-		e.logger.Error("Failed to get matching actions", err)
-		return fmt.Errorf("failed to get matching actions: %w", err)
+		t.logger.Error("Failed to find pipeline for anomaly", err,
+			String("tag", config.Tag),
+			String("pipeline_id", config.PipelineID))
+		return nil // Don't fail - just log
 	}
 
-	if len(actions) == 0 {
-		e.logger.Debug("No matching actions found for alert")
+	if pipeline == nil {
+		t.logger.Warn("No pipeline found for anomaly",
+			String("tag", config.Tag),
+			String("pipeline_id", config.PipelineID))
 		return nil
 	}
 
-	// Execute each action
-	for _, action := range actions {
-		if err := e.ExecuteAction(&action, alertID, event.Payload); err != nil {
-			e.logger.Error("Failed to execute alert action", err,
-				String("action_name", action.Name),
-				String("action_type", action.ActionType))
-			// Continue with other actions even if one fails
-			continue
-		}
-	}
+	t.logger.Info("Executing pipeline for anomaly",
+		String("pipeline_id", pipeline.Metadata.ID),
+		String("pipeline_name", pipeline.Metadata.Name),
+		String("metric", metricName),
+		String("severity", severity))
 
-	return nil
-}
-
-// GetMatchingActions retrieves alert actions that match the criteria
-func (e *AlertActionExecutor) GetMatchingActions(ruleID, alertType, severity string) ([]AlertAction, error) {
-	query := `
-		SELECT id, name, rule_id, alert_type, severity, action_type, config, is_enabled, created_at, updated_at
-		FROM alert_actions
-		WHERE is_enabled = 1
-		  AND (rule_id IS NULL OR rule_id = ?)
-		  AND (alert_type IS NULL OR alert_type = ?)
-		  AND (severity IS NULL OR severity = ?)
-		ORDER BY id
-	`
-
-	rows, err := e.db.Query(query, ruleID, alertType, severity)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query alert actions: %w", err)
-	}
-	defer rows.Close()
-
-	var actions []AlertAction
-	for rows.Next() {
-		var action AlertAction
-		var ruleIDNull, alertTypeNull, severityNull sql.NullString
-
-		err := rows.Scan(
-			&action.ID,
-			&action.Name,
-			&ruleIDNull,
-			&alertTypeNull,
-			&severityNull,
-			&action.ActionType,
-			&action.Config,
-			&action.IsEnabled,
-			&action.CreatedAt,
-			&action.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan alert action: %w", err)
-		}
-
-		if ruleIDNull.Valid {
-			action.RuleID = ruleIDNull.String
-		}
-		if alertTypeNull.Valid {
-			action.AlertType = alertTypeNull.String
-		}
-		if severityNull.Valid {
-			action.Severity = severityNull.String
-		}
-
-		actions = append(actions, action)
-	}
-
-	return actions, rows.Err()
-}
-
-// ExecuteAction executes a single alert action
-func (e *AlertActionExecutor) ExecuteAction(action *AlertAction, alertID interface{}, eventPayload map[string]any) error {
-	startTime := time.Now()
-
-	// Parse configuration
-	var config AlertActionConfig
-	if err := json.Unmarshal([]byte(action.Config), &config); err != nil {
-		return e.recordExecution(action.ID, alertID, "failed", err.Error(), nil)
-	}
-
-	var result map[string]any
-	var err error
-
-	// Execute based on action type
-	switch action.ActionType {
-	case "execute_pipeline":
-		result, err = e.executePipeline(&config, eventPayload)
-	case "send_email":
-		result, err = e.sendEmail(&config, eventPayload)
-	case "webhook":
-		result, err = e.callWebhook(&config, eventPayload)
-	default:
-		err = fmt.Errorf("unknown action type: %s", action.ActionType)
-	}
-
-	// Record execution
-	status := "success"
-	errorMsg := ""
-	if err != nil {
-		status = "failed"
-		errorMsg = err.Error()
-	}
-
-	duration := time.Since(startTime)
-	if result == nil {
-		result = make(map[string]any)
-	}
-	result["duration_ms"] = duration.Milliseconds()
-
-	return e.recordExecution(action.ID, alertID, status, errorMsg, result)
-}
-
-// executePipeline executes a pipeline as an alert action
-func (e *AlertActionExecutor) executePipeline(config *AlertActionConfig, eventPayload map[string]any) (map[string]any, error) {
-	pipelineFile := config.PipelineFile
-	if pipelineFile == "" && config.PipelineName != "" {
-		pipelineFile = fmt.Sprintf("pipelines/%s.yaml", config.PipelineName)
-	}
-
-	if pipelineFile == "" {
-		return nil, fmt.Errorf("pipeline_file or pipeline_name is required")
-	}
-
-	e.logger.Info("Executing pipeline action",
-		String("pipeline_file", pipelineFile))
-
-	// Parse pipeline
-	pipelineConfig, err := ParsePipeline(pipelineFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse pipeline: %w", err)
-	}
-
-	// Merge context from config and event payload
+	// Build context with anomaly data
 	ctx := context.Background()
 	globalContext := pipelines.NewPluginContext()
 
-	// Add event payload to context
-	for k, v := range eventPayload {
-		globalContext.Set(k, v)
-	}
+	// Add anomaly data to context
+	globalContext.Set("anomaly.ontology_id", ontologyID)
+	globalContext.Set("anomaly.entity_id", entityID)
+	globalContext.Set("anomaly.metric_name", metricName)
+	globalContext.Set("anomaly.type", alertType)
+	globalContext.Set("anomaly.severity", severity)
+	globalContext.Set("anomaly.message", message)
+	globalContext.Set("anomaly.value", value)
+	globalContext.Set("anomaly.timestamp", time.Now().Format(time.RFC3339))
+	globalContext.Set("anomaly.triggered_at", event.Timestamp.Format(time.RFC3339))
 
-	// Add configured context (overrides event payload)
+	// Add configured context (can override defaults)
 	for k, v := range config.Context {
 		globalContext.Set(k, v)
 	}
 
+	// Add original event payload
+	for k, v := range event.Payload {
+		if _, exists := globalContext.Get(k); !exists {
+			globalContext.Set(k, v)
+		}
+	}
+
 	// Execute pipeline
-	result, err := ExecutePipeline(ctx, pipelineConfig)
+	_, err = ExecutePipelineWithRegistry(ctx, &pipeline.Config, t.registry)
 	if err != nil {
-		return nil, fmt.Errorf("pipeline execution failed: %w", err)
+		t.logger.Error("Pipeline execution failed for anomaly", err,
+			String("pipeline_id", pipeline.Metadata.ID),
+			String("metric", metricName))
+		return nil // Don't fail the event handler
 	}
 
-	if !result.Success {
-		return nil, fmt.Errorf("pipeline failed: %s", result.Error)
-	}
-
-	return map[string]any{
-		"success":     result.Success,
-		"pipeline":    pipelineFile,
-		"executed_at": result.ExecutedAt,
-	}, nil
-}
-
-// sendEmail sends an email alert action
-func (e *AlertActionExecutor) sendEmail(config *AlertActionConfig, eventPayload map[string]any) (map[string]any, error) {
-	if len(config.To) == 0 {
-		return nil, fmt.Errorf("email recipients (to) are required")
-	}
-
-	// Prepare email content with event data
-	subject := config.Subject
-	if subject == "" {
-		subject = fmt.Sprintf("Alert: %v", eventPayload["alert_type"])
-	}
-
-	body := config.Body
-	if body == "" {
-		// Default body with event details
-		body = fmt.Sprintf(`
-Alert Notification
-
-Type: %v
-Severity: %v
-Message: %v
-Value: %v
-Threshold: %v
-
-Timestamp: %v
-`,
-			eventPayload["alert_type"],
-			eventPayload["severity"],
-			eventPayload["message"],
-			eventPayload["value"],
-			eventPayload["threshold"],
-			time.Now().Format(time.RFC3339),
-		)
-	}
-
-	e.logger.Info("Sending email alert",
-		Int("recipients", len(config.To)),
-		String("subject", subject))
-
-	// Get email sender (configured via SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM env vars)
-	sender := GetEmailSender()
-	if sender == nil {
-		return nil, fmt.Errorf("email sender not configured")
-	}
-
-	err := sender.Send(config.To, subject, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send email: %w", err)
-	}
-
-	return map[string]any{
-		"recipients": config.To,
-		"subject":    subject,
-		"sent_at":    time.Now().Format(time.RFC3339),
-	}, nil
-}
-
-// callWebhook calls a webhook as an alert action
-func (e *AlertActionExecutor) callWebhook(config *AlertActionConfig, eventPayload map[string]any) (map[string]any, error) {
-	if config.WebhookURL == "" {
-		return nil, fmt.Errorf("webhook_url is required")
-	}
-
-	e.logger.Info("Calling webhook",
-		String("url", config.WebhookURL))
-
-	// Merge event payload into webhook payload
-	payload := make(map[string]any)
-	for k, v := range eventPayload {
-		payload[k] = v
-	}
-	for k, v := range config.Payload {
-		payload[k] = v
-	}
-
-	// Serialize payload to JSON
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal webhook payload: %w", err)
-	}
-
-	// Create HTTP request
-	req, err := http.NewRequest("POST", config.WebhookURL, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create webhook request: %w", err)
-	}
-
-	// Set default headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Mimir-AIP-AlertAction/1.0")
-
-	// Add custom headers from config
-	for key, value := range config.Headers {
-		if strVal, ok := value.(string); ok {
-			req.Header.Set(key, strVal)
-		}
-	}
-
-	// Execute request with timeout
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		e.logger.Error("Webhook call failed", err, String("url", config.WebhookURL))
-		return nil, fmt.Errorf("webhook call failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read response body (limit to 1MB)
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-
-	e.logger.Info("Webhook called successfully",
-		String("url", config.WebhookURL),
-		Int("status_code", resp.StatusCode))
-
-	result := map[string]any{
-		"webhook_url":   config.WebhookURL,
-		"status_code":   resp.StatusCode,
-		"called_at":     time.Now().Format(time.RFC3339),
-		"response_size": len(respBody),
-	}
-
-	// Check for non-2xx status codes
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		result["response_body"] = string(respBody)
-		return result, fmt.Errorf("webhook returned non-success status: %d", resp.StatusCode)
-	}
-
-	return result, nil
-}
-
-// recordExecution records an alert action execution in the database
-func (e *AlertActionExecutor) recordExecution(actionID int, alertID interface{}, status string, errorMsg string, result map[string]any) error {
-	resultJSON := "{}"
-	if result != nil {
-		bytes, err := json.Marshal(result)
-		if err == nil {
-			resultJSON = string(bytes)
-		}
-	}
-
-	query := `
-		INSERT INTO alert_action_executions (action_id, alert_id, status, error_message, result, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`
-
-	_, err := e.db.Exec(query, actionID, alertID, status, errorMsg, resultJSON, time.Now())
-	if err != nil {
-		e.logger.Error("Failed to record action execution", err)
-		return fmt.Errorf("failed to record execution: %w", err)
-	}
+	t.logger.Info("Pipeline executed successfully for anomaly",
+		String("pipeline_id", pipeline.Metadata.ID),
+		String("metric", metricName))
 
 	return nil
 }
 
-// InitializeAlertActionExecutor sets up the alert action executor
+// getTriggerConfig extracts trigger configuration from event payload or returns defaults
+func (t *AnomalyPipelineTrigger) getTriggerConfig(payload map[string]any) *PipelineTriggerConfig {
+	config := &PipelineTriggerConfig{
+		Tag:     "alert", // Default tag to search for
+		Context: make(map[string]any),
+	}
+
+	// Check if pipeline_id is specified in payload
+	if pipelineID, ok := payload["trigger_pipeline_id"].(string); ok && pipelineID != "" {
+		config.PipelineID = pipelineID
+	}
+
+	// Check if tag is specified in payload
+	if tag, ok := payload["trigger_tag"].(string); ok && tag != "" {
+		config.Tag = tag
+	}
+
+	// Check for additional context
+	if ctx, ok := payload["trigger_context"].(map[string]any); ok {
+		config.Context = ctx
+	}
+
+	return config
+}
+
+// findPipeline finds a pipeline to execute based on configuration
+func (t *AnomalyPipelineTrigger) findPipeline(config *PipelineTriggerConfig) (*PipelineDefinition, error) {
+	// If specific pipeline ID provided, use that
+	if config.PipelineID != "" {
+		return t.pipelineStore.GetPipeline(config.PipelineID)
+	}
+
+	// Otherwise, search by tag
+	pipelines, err := t.pipelineStore.ListPipelines(map[string]any{
+		"tags": []string{config.Tag},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pipelines: %w", err)
+	}
+
+	if len(pipelines) == 0 {
+		return nil, nil
+	}
+
+	// Return first enabled pipeline with matching tag
+	for _, p := range pipelines {
+		if p.Metadata.Enabled {
+			return p, nil
+		}
+	}
+
+	// No enabled pipelines found
+	return nil, nil
+}
+
+// InitializeAnomalyPipelineTrigger sets up the anomaly pipeline trigger
 // This should be called during application startup
-func InitializeAlertActionExecutor(db *sql.DB, registry *pipelines.PluginRegistry) {
-	executor := NewAlertActionExecutor(db, registry)
+func InitializeAnomalyPipelineTrigger(registry *pipelines.PluginRegistry, store *PipelineStore) {
+	trigger := NewAnomalyPipelineTrigger(registry, store)
 
 	// Subscribe to anomaly detection events
-	GetEventBus().Subscribe(EventAnomalyDetected, executor.HandleAnomalyDetected)
+	GetEventBus().Subscribe(EventAnomalyDetected, trigger.HandleAnomalyDetected)
 
-	GetLogger().Info("Alert action executor initialized")
+	GetLogger().Info("Anomaly pipeline trigger initialized")
 }

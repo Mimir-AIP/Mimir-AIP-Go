@@ -79,6 +79,7 @@ func (p *PersistenceBackend) initSchema() error {
 		tdb2_graph TEXT NOT NULL,
 		format TEXT NOT NULL DEFAULT 'turtle',
 		status TEXT NOT NULL DEFAULT 'active',
+		auto_version BOOLEAN NOT NULL DEFAULT 1,
 		auto_train_models BOOLEAN NOT NULL DEFAULT 0,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -217,6 +218,7 @@ func (p *PersistenceBackend) initSchema() error {
 		auto_apply_classes BOOLEAN NOT NULL DEFAULT 0,
 		auto_apply_properties BOOLEAN NOT NULL DEFAULT 0,
 		auto_apply_modify BOOLEAN NOT NULL DEFAULT 0,
+		auto_version BOOLEAN NOT NULL DEFAULT 1,
 		max_risk_level TEXT NOT NULL DEFAULT 'low',
 		min_confidence REAL NOT NULL DEFAULT 0.8,
 		require_approval TEXT,
@@ -742,6 +744,12 @@ func (p *PersistenceBackend) runMigrations() error {
 		// Ontologies: auto-twin creation flag
 		`ALTER TABLE ontologies ADD COLUMN auto_create_twins BOOLEAN NOT NULL DEFAULT 0;`,
 
+		// Ontologies: auto-versioning flag (default true)
+		`ALTER TABLE ontologies ADD COLUMN auto_version BOOLEAN NOT NULL DEFAULT 1;`,
+
+		// Auto-update policies: auto-versioning flag (default true)
+		`ALTER TABLE auto_update_policies ADD COLUMN auto_version BOOLEAN NOT NULL DEFAULT 1;`,
+
 		// Digital twins: link to model that created it
 		`ALTER TABLE digital_twins ADD COLUMN model_id TEXT;`,
 		`CREATE INDEX IF NOT EXISTS idx_digital_twins_model ON digital_twins(model_id);`,
@@ -765,6 +773,7 @@ type Ontology struct {
 	TDB2Graph   string    `json:"tdb2_graph"`
 	Format      string    `json:"format"`
 	Status      string    `json:"status"`
+	AutoVersion bool      `json:"auto_version"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	CreatedBy   string    `json:"created_by"`
@@ -774,12 +783,12 @@ type Ontology struct {
 // CreateOntology inserts a new ontology into the database
 func (p *PersistenceBackend) CreateOntology(ctx context.Context, ont *Ontology) error {
 	query := `
-		INSERT INTO ontologies (id, name, description, version, file_path, tdb2_graph, format, status, created_by, metadata)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO ontologies (id, name, description, version, file_path, tdb2_graph, format, status, auto_version, created_by, metadata)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := p.db.ExecContext(ctx, query,
 		ont.ID, ont.Name, ont.Description, ont.Version, ont.FilePath,
-		ont.TDB2Graph, ont.Format, ont.Status, ont.CreatedBy, ont.Metadata,
+		ont.TDB2Graph, ont.Format, ont.Status, ont.AutoVersion, ont.CreatedBy, ont.Metadata,
 	)
 	return err
 }
@@ -787,7 +796,7 @@ func (p *PersistenceBackend) CreateOntology(ctx context.Context, ont *Ontology) 
 // GetOntology retrieves an ontology by ID
 func (p *PersistenceBackend) GetOntology(ctx context.Context, id string) (*Ontology, error) {
 	query := `
-		SELECT id, name, description, version, file_path, tdb2_graph, format, status,
+		SELECT id, name, description, version, file_path, tdb2_graph, format, status, auto_version,
 		       created_at, updated_at, created_by, metadata
 		FROM ontologies
 		WHERE id = ?
@@ -796,7 +805,7 @@ func (p *PersistenceBackend) GetOntology(ctx context.Context, id string) (*Ontol
 	var createdBy, metadata sql.NullString
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&ont.ID, &ont.Name, &ont.Description, &ont.Version, &ont.FilePath,
-		&ont.TDB2Graph, &ont.Format, &ont.Status, &ont.CreatedAt, &ont.UpdatedAt,
+		&ont.TDB2Graph, &ont.Format, &ont.Status, &ont.AutoVersion, &ont.CreatedAt, &ont.UpdatedAt,
 		&createdBy, &metadata,
 	)
 	if err == sql.ErrNoRows {
@@ -813,7 +822,7 @@ func (p *PersistenceBackend) ListOntologies(ctx context.Context, status string) 
 	var args []any
 	if status != "" {
 		query = `
-			SELECT id, name, description, version, file_path, tdb2_graph, format, status,
+			SELECT id, name, description, version, file_path, tdb2_graph, format, status, auto_version,
 			       created_at, updated_at, created_by, metadata
 			FROM ontologies
 			WHERE status = ?
@@ -822,7 +831,7 @@ func (p *PersistenceBackend) ListOntologies(ctx context.Context, status string) 
 		args = append(args, status)
 	} else {
 		query = `
-			SELECT id, name, description, version, file_path, tdb2_graph, format, status,
+			SELECT id, name, description, version, file_path, tdb2_graph, format, status, auto_version,
 			       created_at, updated_at, created_by, metadata
 			FROM ontologies
 			ORDER BY created_at DESC
@@ -841,7 +850,7 @@ func (p *PersistenceBackend) ListOntologies(ctx context.Context, status string) 
 		var createdBy, metadata sql.NullString
 		err := rows.Scan(
 			&ont.ID, &ont.Name, &ont.Description, &ont.Version, &ont.FilePath,
-			&ont.TDB2Graph, &ont.Format, &ont.Status, &ont.CreatedAt, &ont.UpdatedAt,
+			&ont.TDB2Graph, &ont.Format, &ont.Status, &ont.AutoVersion, &ont.CreatedAt, &ont.UpdatedAt,
 			&createdBy, &metadata,
 		)
 		if err != nil {
@@ -865,6 +874,23 @@ func (p *PersistenceBackend) UpdateOntologyStatus(ctx context.Context, id, statu
 func (p *PersistenceBackend) DeleteOntology(ctx context.Context, id string) error {
 	query := `DELETE FROM ontologies WHERE id = ?`
 	_, err := p.db.ExecContext(ctx, query, id)
+	return err
+}
+
+// UpdateOntology updates an ontology's metadata and content
+func (p *PersistenceBackend) UpdateOntology(ctx context.Context, ont *Ontology) error {
+	query := `
+		UPDATE ontologies 
+		SET name = ?, description = ?, version = ?, file_path = ?, 
+		    tdb2_graph = ?, format = ?, status = ?, auto_version = ?,
+		    updated_at = CURRENT_TIMESTAMP, metadata = ?
+		WHERE id = ?
+	`
+	_, err := p.db.ExecContext(ctx, query,
+		ont.Name, ont.Description, ont.Version, ont.FilePath,
+		ont.TDB2Graph, ont.Format, ont.Status, ont.AutoVersion,
+		ont.Metadata, ont.ID,
+	)
 	return err
 }
 

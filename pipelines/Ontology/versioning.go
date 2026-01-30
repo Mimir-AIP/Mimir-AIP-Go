@@ -3,6 +3,11 @@ package ontology
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 )
 
 // VersionDiff represents the difference between two versions
@@ -96,6 +101,140 @@ func (v *VersioningService) GetVersionByID(versionID int) (*OntologyVersion, err
 	}
 
 	return version, nil
+}
+
+// AutoCreateVersion automatically creates a new version when ontology is modified
+func (v *VersioningService) AutoCreateVersion(ontologyID, modifiedBy string, oldContent, newContent string) (*OntologyVersion, error) {
+	// Generate version number based on timestamp
+	version := fmt.Sprintf("auto-%s", time.Now().Format("20060102-150405"))
+
+	// Generate changelog from content diff
+	changelog := v.generateChangelog(oldContent, newContent)
+
+	// Create the version
+	return v.CreateVersion(ontologyID, version, changelog, modifiedBy)
+}
+
+// generateChangelog creates a human-readable changelog from content changes
+func (v *VersioningService) generateChangelog(oldContent, newContent string) string {
+	if oldContent == "" {
+		return "Initial version created"
+	}
+
+	// Calculate basic diff statistics
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+
+	oldCount := len(oldLines)
+	newCount := len(newLines)
+
+	var changes []string
+
+	if newCount > oldCount {
+		changes = append(changes, fmt.Sprintf("Added %d lines", newCount-oldCount))
+	} else if newCount < oldCount {
+		changes = append(changes, fmt.Sprintf("Removed %d lines", oldCount-newCount))
+	}
+
+	// Look for specific patterns indicating type of changes
+	if strings.Contains(newContent, "owl:Class") && !strings.Contains(oldContent, "owl:Class") {
+		changes = append(changes, "Added new classes")
+	}
+	if strings.Contains(newContent, "owl:ObjectProperty") && !strings.Contains(oldContent, "owl:ObjectProperty") {
+		changes = append(changes, "Added new object properties")
+	}
+	if strings.Contains(newContent, "owl:DatatypeProperty") && !strings.Contains(oldContent, "owl:DatatypeProperty") {
+		changes = append(changes, "Added new datatype properties")
+	}
+
+	if len(changes) == 0 {
+		return fmt.Sprintf("Ontology modified (%d -> %d lines)", oldCount, newCount)
+	}
+
+	return strings.Join(changes, "; ")
+}
+
+// ShouldAutoVersion checks if auto-versioning is enabled for an ontology
+func (v *VersioningService) ShouldAutoVersion(ontologyID string) (bool, error) {
+	var autoVersion bool
+	err := v.db.QueryRow(`
+		SELECT auto_version FROM ontologies 
+		WHERE id = ?
+	`, ontologyID).Scan(&autoVersion)
+
+	if err == sql.ErrNoRows {
+		return false, fmt.Errorf("ontology not found: %s", ontologyID)
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to check auto_version setting: %w", err)
+	}
+
+	return autoVersion, nil
+}
+
+// CreateVersionOnUpdate creates a version if auto-versioning is enabled
+func (v *VersioningService) CreateVersionOnUpdate(ontologyID, modifiedBy string, filePath string) (*OntologyVersion, error) {
+	// Check if auto-versioning is enabled
+	shouldVersion, err := v.ShouldAutoVersion(ontologyID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !shouldVersion {
+		return nil, nil // Auto-versioning disabled, skip
+	}
+
+	// Read current file content
+	newContentBytes, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ontology file: %w", err)
+	}
+	newContent := string(newContentBytes)
+
+	// Get previous version content for comparison
+	var oldContent string
+	latestVersion, err := v.GetLatestVersion(ontologyID)
+	if err != nil {
+		utils.GetLogger().Warn("Failed to get latest version for comparison",
+			utils.Component("versioning"),
+			utils.Error(err))
+		// Continue anyway - this is just for changelog generation
+	}
+
+	if latestVersion != nil {
+		// Try to get the previous version's file content
+		// We need to query the ontologies table to get the file path from that version
+		// For now, we'll just compare with empty string (initial state)
+		oldContent = "" // Simplified - in production, you might want to store file content per version
+	}
+
+	// Create automatic version
+	version, err := v.AutoCreateVersion(ontologyID, modifiedBy, oldContent, newContent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create automatic version: %w", err)
+	}
+
+	utils.GetLogger().Info("Auto-created version for ontology",
+		utils.Component("versioning"),
+		utils.String("ontology_id", ontologyID),
+		utils.String("version", version.Version))
+
+	return version, nil
+}
+
+// SetAutoVersionSetting updates the auto-versioning setting for an ontology
+func (v *VersioningService) SetAutoVersionSetting(ontologyID string, enabled bool) error {
+	_, err := v.db.Exec(`
+		UPDATE ontologies 
+		SET auto_version = ?, updated_at = CURRENT_TIMESTAMP 
+		WHERE id = ?
+	`, enabled, ontologyID)
+
+	if err != nil {
+		return fmt.Errorf("failed to update auto_version setting: %w", err)
+	}
+
+	return nil
 }
 
 // GetVersions retrieves all versions for an ontology

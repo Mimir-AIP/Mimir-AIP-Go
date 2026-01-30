@@ -203,28 +203,8 @@ func (s *Server) handleCreateTwin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate and save default scenarios for the new twin
-	scenarios := s.generateDefaultScenariosForTwin(twin)
-	scenarioIDs := []string{}
-
-	for _, scenario := range scenarios {
-		eventsJSON, err := json.Marshal(scenario.Events)
-		if err != nil {
-			utils.GetLogger().Warn(fmt.Sprintf("Failed to serialize events for scenario %s: %v", scenario.Name, err))
-			continue
-		}
-
-		scenarioQuery := `
-			INSERT INTO simulation_scenarios (id, twin_id, name, description, scenario_type, events, duration, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`
-		_, err = db.Exec(scenarioQuery, scenario.ID, scenario.TwinID, scenario.Name, scenario.Description, scenario.Type, string(eventsJSON), scenario.Duration, scenario.CreatedAt)
-		if err != nil {
-			utils.GetLogger().Warn(fmt.Sprintf("Failed to save scenario %s: %v", scenario.Name, err))
-		} else {
-			scenarioIDs = append(scenarioIDs, scenario.ID)
-		}
-	}
+	// Auto-configure twin with scenarios and monitoring rules
+	scenarioCount := s.autoConfigureTwin(twin.ID, twin.ModelType, db)
 
 	writeSuccessResponse(w, map[string]interface{}{
 		"twin_id":            twin.ID,
@@ -232,9 +212,28 @@ func (s *Server) handleCreateTwin(w http.ResponseWriter, r *http.Request) {
 		"model_type":         twin.ModelType,
 		"entity_count":       len(twin.Entities),
 		"relationship_count": len(twin.Relationships),
-		"scenarios_created":  len(scenarioIDs),
-		"message":            "Digital twin created successfully",
+		"scenarios_created":  scenarioCount,
+		"auto_configured":    true,
+		"message":            "Digital twin created and auto-configured successfully",
 	})
+}
+
+// autoConfigureTwin sets up scenarios and monitoring for a newly created twin
+func (s *Server) autoConfigureTwin(twinID, modelType string, db *sql.DB) int {
+	creator := utils.NewTwinAutoCreator(db)
+
+	// Auto-configure with scenarios and monitoring
+	if err := creator.AutoConfigureTwin(twinID, "", modelType); err != nil {
+		utils.GetLogger().Warn(fmt.Sprintf("Failed to auto-configure twin %s: %v", twinID, err))
+		return 0
+	}
+
+	// Count created scenarios
+	var count int
+	query := `SELECT COUNT(*) FROM simulation_scenarios WHERE twin_id = ?`
+	db.QueryRow(query, twinID).Scan(&count)
+
+	return count
 }
 
 // handleListTwins lists all digital twins

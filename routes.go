@@ -110,11 +110,16 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/ontology/validate", s.handleValidateOntology).Methods("POST")
 
 	// Ontology versioning endpoints
+	// NOTE: POST /ontology/{id}/versions is DEPRECATED - versioning is now automatic
+	// when ontology is updated via PUT /ontology/{id} (auto_version is true by default)
 	v1.HandleFunc("/ontology/{id}/versions", s.handleListVersions).Methods("GET")
 	v1.HandleFunc("/ontology/{id}/versions", s.handleCreateVersion).Methods("POST")
 	v1.HandleFunc("/ontology/{id}/versions/compare", s.handleCompareVersions).Methods("GET")
 	v1.HandleFunc("/ontology/{id}/versions/{vid}", s.handleGetVersion).Methods("GET")
 	v1.HandleFunc("/ontology/{id}/versions/{vid}", s.handleDeleteVersion).Methods("DELETE")
+
+	// Auto-versioning control endpoint
+	v1.HandleFunc("/ontology/{id}/auto-version", s.handleSetAutoVersionSetting).Methods("PUT")
 
 	// Drift detection endpoints
 	v1.HandleFunc("/ontology/{id}/drift/detect", s.handleTriggerDriftDetection).Methods("POST")
@@ -237,8 +242,6 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/monitoring/rules", s.handleListMonitoringRules).Methods("GET")
 	v1.HandleFunc("/monitoring/rules", s.handleCreateMonitoringRule).Methods("POST")
 	v1.HandleFunc("/monitoring/rules/{id}", s.handleDeleteMonitoringRule).Methods("DELETE")
-	v1.HandleFunc("/monitoring/alerts", s.handleListAlerts).Methods("GET")
-	v1.HandleFunc("/monitoring/alerts/{id}", s.handleAcknowledgeAlert).Methods("PATCH")
 
 	// Anomaly Detection endpoints
 	v1.HandleFunc("/anomalies", s.handleListAnomalies).Methods("GET")
@@ -273,6 +276,7 @@ func (s *Server) setupRoutes() {
 	// Plugin management endpoints
 	v1.HandleFunc("/settings/plugins", s.handleListPluginMetadata).Methods("GET")
 	v1.HandleFunc("/settings/plugins/upload", s.handleUploadPlugin).Methods("POST")
+	v1.HandleFunc("/settings/plugins/discover", s.handleDiscoverPlugins).Methods("POST")
 	v1.HandleFunc("/settings/plugins/{id}", s.handleUpdatePlugin).Methods("PUT")
 	v1.HandleFunc("/settings/plugins/{id}", s.handleDeletePlugin).Methods("DELETE")
 	v1.HandleFunc("/settings/plugins/{id}/reload", s.handleReloadPlugin).Methods("POST")

@@ -196,7 +196,13 @@ func (s *Server) handleGetOntology(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUpdateOntology handles requests to update an ontology
+// Automatically creates a version if auto_version is enabled (default: true)
 func (s *Server) handleUpdateOntology(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil || s.tdb2Backend == nil {
+		writeInternalServerErrorResponse(w, "Ontology features are not available")
+		return
+	}
+
 	vars := mux.Vars(r)
 	ontologyID := vars["id"]
 
@@ -205,17 +211,72 @@ func (s *Server) handleUpdateOntology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req OntologyUploadRequest
+	var req struct {
+		Name         string `json:"name,omitempty"`
+		Description  string `json:"description,omitempty"`
+		Version      string `json:"version,omitempty"`
+		OntologyData string `json:"ontology_data,omitempty"`
+		ModifiedBy   string `json:"modified_by,omitempty"`
+		AutoVersion  *bool  `json:"auto_version,omitempty"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
 		return
 	}
 
-	// TODO: Implement ontology update logic
+	// Get ontology management plugin
+	plugin, err := s.registry.GetPlugin("Ontology", "management")
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Ontology plugin not available: %v", err))
+		return
+	}
+
+	// Create step config
+	stepConfig := pipelines.StepConfig{
+		Name:   "update_ontology",
+		Plugin: "Ontology.management",
+		Config: map[string]any{
+			"operation":     "update",
+			"ontology_id":   ontologyID,
+			"name":          req.Name,
+			"description":   req.Description,
+			"version":       req.Version,
+			"ontology_data": req.OntologyData,
+			"modified_by":   req.ModifiedBy,
+		},
+	}
+
+	// Add auto_version setting if explicitly provided
+	if req.AutoVersion != nil {
+		stepConfig.Config["auto_version"] = *req.AutoVersion
+	}
+
+	// Execute plugin
+	ctx := context.Background()
+	globalContext := pipelines.NewPluginContext()
+	result, err := plugin.ExecuteStep(ctx, stepConfig, globalContext)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to update ontology: %v", err))
+		return
+	}
+
+	// Extract results
+	status, _ := result.Get("status")
+	versionCreated, _ := result.Get("version_created")
+	versionID, _ := result.Get("version_id")
+	autoVersion, _ := result.Get("auto_version")
+
 	response := map[string]any{
-		"ontology_id": ontologyID,
-		"status":      "updated",
-		"message":     "Ontology update not yet implemented",
+		"ontology_id":  ontologyID,
+		"status":       status,
+		"auto_version": autoVersion,
+		"message":      "Ontology updated successfully",
+	}
+
+	if versionCreated != nil {
+		response["version_created"] = versionCreated
+		response["version_id"] = versionID
+		response["auto_version_message"] = "Automatic version created"
 	}
 
 	writeSuccessResponse(w, response)
@@ -839,6 +900,11 @@ type CreateVersionRequest struct {
 
 // handleCreateVersion creates a new version of an ontology
 // POST /api/v1/ontology/:id/versions
+//
+// DEPRECATED: Manual version creation is deprecated. Versioning is now automatic
+// when ontologies are updated (PUT /api/v1/ontology/:id). This endpoint is kept
+// for backward compatibility but automatic versioning (enabled by default) is preferred.
+// To disable automatic versioning for an ontology, set auto_version=false in the update request.
 func (s *Server) handleCreateVersion(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	ontologyID := vars["id"]
@@ -858,6 +924,13 @@ func (s *Server) handleCreateVersion(w http.ResponseWriter, r *http.Request) {
 	db := s.persistence.GetDB()
 	versioningService := ontology.NewVersioningService(db)
 
+	// Check if auto-versioning is enabled - warn if it is
+	autoVersionEnabled, err := versioningService.ShouldAutoVersion(ontologyID)
+	if err == nil && autoVersionEnabled {
+		// Return warning header
+		w.Header().Set("X-Deprecation-Warning", "Manual versioning is deprecated. Automatic versioning is enabled for this ontology. Use PUT /api/v1/ontology/:id to trigger automatic versioning.")
+	}
+
 	// Create version
 	version, err := versioningService.CreateVersion(ontologyID, req.Version, req.Changelog, req.CreatedBy)
 	if err != nil {
@@ -865,7 +938,13 @@ func (s *Server) handleCreateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeSuccessResponse(w, version)
+	response := map[string]any{
+		"version":   version,
+		"warning":   "Manual version creation is deprecated. Automatic versioning is now the default.",
+		"migration": "Use PUT /api/v1/ontology/:id to update ontology and automatically create versions.",
+	}
+
+	writeJSONResponse(w, http.StatusOK, response)
 }
 
 // handleListVersions lists all versions of an ontology
@@ -979,6 +1058,42 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSetAutoVersionSetting handles requests to enable/disable auto-versioning for an ontology
+// PUT /api/v1/ontology/:id/auto-version
+func (s *Server) handleSetAutoVersionSetting(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	if ontologyID == "" {
+		writeBadRequestResponse(w, "ontology ID is required")
+		return
+	}
+
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeBadRequestResponse(w, fmt.Sprintf("Invalid request body: %v", err))
+		return
+	}
+
+	// Get versioning service
+	db := s.persistence.GetDB()
+	versioningService := ontology.NewVersioningService(db)
+
+	// Update setting
+	if err := versioningService.SetAutoVersionSetting(ontologyID, req.Enabled); err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to update auto-version setting: %v", err))
+		return
+	}
+
+	writeSuccessResponse(w, map[string]any{
+		"ontology_id":  ontologyID,
+		"auto_version": req.Enabled,
+		"message":      fmt.Sprintf("Auto-versioning %s for ontology", map[bool]string{true: "enabled", false: "disabled"}[req.Enabled]),
+	})
 }
 
 // ========================================

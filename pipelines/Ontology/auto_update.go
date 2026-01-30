@@ -20,6 +20,7 @@ type AutoUpdatePolicy struct {
 	AutoApplyClasses    bool             `json:"auto_apply_classes"`    // Auto-apply add_class suggestions
 	AutoApplyProperties bool             `json:"auto_apply_properties"` // Auto-apply add_property suggestions
 	AutoApplyModify     bool             `json:"auto_apply_modify"`     // Auto-apply modify suggestions
+	AutoVersion         bool             `json:"auto_version"`          // Auto-create versions when ontology changes (default: true)
 	MaxRiskLevel        RiskLevel        `json:"max_risk_level"`        // Maximum risk level to auto-apply
 	MinConfidence       float64          `json:"min_confidence"`        // Minimum confidence threshold (0.0-1.0)
 	RequireApproval     []SuggestionType `json:"require_approval"`      // Types that always require manual approval
@@ -222,7 +223,7 @@ func (a *AutoUpdateEngine) compareRiskLevel(level1, level2 RiskLevel) int {
 // getPolicy retrieves the auto-update policy for an ontology
 func (a *AutoUpdateEngine) getPolicy(ctx context.Context, ontologyID string) (*AutoUpdatePolicy, error) {
 	query := `SELECT id, ontology_id, enabled, auto_apply_classes, auto_apply_properties, 
-	          auto_apply_modify, max_risk_level, min_confidence, require_approval, 
+	          auto_apply_modify, auto_version, max_risk_level, min_confidence, require_approval, 
 	          notification_email, created_at, updated_at 
 	          FROM auto_update_policies WHERE ontology_id = ?`
 
@@ -237,6 +238,7 @@ func (a *AutoUpdateEngine) getPolicy(ctx context.Context, ontologyID string) (*A
 		&policy.AutoApplyClasses,
 		&policy.AutoApplyProperties,
 		&policy.AutoApplyModify,
+		&policy.AutoVersion,
 		&policy.MaxRiskLevel,
 		&policy.MinConfidence,
 		&requireApprovalJSON,
@@ -253,6 +255,7 @@ func (a *AutoUpdateEngine) getPolicy(ctx context.Context, ontologyID string) (*A
 			AutoApplyClasses:    false,
 			AutoApplyProperties: false,
 			AutoApplyModify:     false,
+			AutoVersion:         true, // Auto-versioning enabled by default
 			MaxRiskLevel:        RiskLevelLow,
 			MinConfidence:       0.8,
 			RequireApproval:     []SuggestionType{SuggestionDeprecate},
@@ -292,7 +295,7 @@ func (a *AutoUpdateEngine) CreateOrUpdatePolicy(ctx context.Context, policy *Aut
 		// Update
 		query := `UPDATE auto_update_policies 
 		          SET enabled = ?, auto_apply_classes = ?, auto_apply_properties = ?, 
-		              auto_apply_modify = ?, max_risk_level = ?, min_confidence = ?, 
+		              auto_apply_modify = ?, auto_version = ?, max_risk_level = ?, min_confidence = ?, 
 		              require_approval = ?, notification_email = ?, updated_at = ? 
 		          WHERE ontology_id = ?`
 		_, err = a.db.ExecContext(ctx, query,
@@ -300,6 +303,7 @@ func (a *AutoUpdateEngine) CreateOrUpdatePolicy(ctx context.Context, policy *Aut
 			policy.AutoApplyClasses,
 			policy.AutoApplyProperties,
 			policy.AutoApplyModify,
+			policy.AutoVersion,
 			policy.MaxRiskLevel,
 			policy.MinConfidence,
 			string(requireApprovalJSON),
@@ -311,15 +315,16 @@ func (a *AutoUpdateEngine) CreateOrUpdatePolicy(ctx context.Context, policy *Aut
 		// Insert
 		query := `INSERT INTO auto_update_policies 
 		          (ontology_id, enabled, auto_apply_classes, auto_apply_properties, 
-		           auto_apply_modify, max_risk_level, min_confidence, require_approval, 
+		           auto_apply_modify, auto_version, max_risk_level, min_confidence, require_approval, 
 		           notification_email, created_at, updated_at) 
-		          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		_, err = a.db.ExecContext(ctx, query,
 			policy.OntologyID,
 			policy.Enabled,
 			policy.AutoApplyClasses,
 			policy.AutoApplyProperties,
 			policy.AutoApplyModify,
+			policy.AutoVersion,
 			policy.MaxRiskLevel,
 			policy.MinConfidence,
 			string(requireApprovalJSON),

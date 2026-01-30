@@ -80,7 +80,13 @@ func (t *TDB2Backend) InsertTriples(ctx context.Context, triples []Triple) error
 	}
 	sb.WriteString("}\n")
 
-	return t.ExecuteUpdate(ctx, sb.String())
+	sparqlQuery := sb.String()
+
+	err := t.ExecuteUpdate(ctx, sparqlQuery)
+	if err != nil {
+		fmt.Printf("ERROR TDB2: ExecuteUpdate failed: %v\n", err)
+	}
+	return err
 }
 
 // ExecuteUpdate executes a SPARQL UPDATE query

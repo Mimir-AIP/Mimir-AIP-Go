@@ -39,6 +39,7 @@ func (s *Server) setupRoutes() {
 
 	// Pipeline execution
 	v1.HandleFunc("/pipelines/execute", s.handleExecutePipeline).Methods("POST")
+	v1.HandleFunc("/pipelines/{id}/execute", s.handleExecutePipelineByID).Methods("POST")
 
 	// Pipeline management
 	v1.HandleFunc("/pipelines", s.handleListPipelines).Methods("GET")

@@ -9,13 +9,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.unified
-    image: mimir-aip:unified-latest
+    image: mimir-aip:unified
     container_name: mimir-aip-unified
     restart: unless-stopped
     
-    # Port mapping - single port for both API and UI
+    # Port mapping - API/UI and Fuseki admin/query port
     ports:
       - "8080:8080"  # Backend API + Frontend UI
+      - "3030:3030"  # Jena Fuseki (admin/query/update)
     
     # Environment variables
     environment:

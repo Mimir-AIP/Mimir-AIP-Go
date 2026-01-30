@@ -1309,6 +1309,8 @@ export interface DigitalTwin {
   base_state?: Record<string, unknown>;
   entities?: TwinEntity[];
   relationships?: TwinRelationship[];
+  entity_count?: number;
+  relationship_count?: number;
   created_at: string;
   updated_at?: string;
 }

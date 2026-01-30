@@ -77,7 +77,80 @@ func (s *Server) handleExecutePipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine pipeline to execute
+	// Check if pipeline_id is provided (API-created pipeline)
+	if req.PipelineID != "" {
+		// Get pipeline from store
+		store := utils.GetPipelineStore()
+		pipeline, err := store.GetPipeline(req.PipelineID)
+		if err != nil || pipeline == nil {
+			writeErrorResponse(w, http.StatusNotFound, fmt.Sprintf("Pipeline not found: %s", req.PipelineID))
+			return
+		}
+
+		// Initialize context
+		ctx := context.Background()
+		globalContext := pipelines.NewPluginContext()
+		if req.Context != nil {
+			for k, v := range req.Context {
+				globalContext.Set(k, v)
+			}
+		}
+
+		// Convert PipelineDefinition to PipelineConfig for execution
+		config := &pipeline.Config
+
+		// Execute pipeline using the server's registry
+		result, err := utils.ExecutePipelineWithRegistry(ctx, config, s.registry)
+		if err != nil {
+			utils.GetEventBus().Publish(utils.Event{
+				Type:   utils.EventPipelineFailed,
+				Source: "pipeline-execution-handler",
+				Payload: map[string]any{
+					"pipeline_id":   req.PipelineID,
+					"pipeline_name": pipeline.Name,
+					"error":         err.Error(),
+				},
+			})
+			writeInternalServerErrorResponse(w, fmt.Sprintf("Pipeline execution failed: %v", err))
+			return
+		}
+
+		// Publish appropriate event based on result
+		if result.Success {
+			utils.GetEventBus().Publish(utils.Event{
+				Type:   utils.EventPipelineCompleted,
+				Source: "pipeline-execution-handler",
+				Payload: map[string]any{
+					"pipeline_id":   req.PipelineID,
+					"pipeline_name": pipeline.Name,
+					"context":       result.Context,
+				},
+			})
+		} else {
+			utils.GetEventBus().Publish(utils.Event{
+				Type:   utils.EventPipelineFailed,
+				Source: "pipeline-execution-handler",
+				Payload: map[string]any{
+					"pipeline_id":   req.PipelineID,
+					"pipeline_name": pipeline.Name,
+					"error":         result.Error,
+				},
+			})
+		}
+
+		// Return response
+		response := PipelineExecutionResponse{
+			Success:    result.Success,
+			Error:      result.Error,
+			Context:    result.Context,
+			ExecutedAt: time.Now().Format(time.RFC3339),
+		}
+
+		writeSuccessResponse(w, response)
+		return
+	}
+
+	// Legacy: Determine pipeline file to execute (YAML-based pipelines)
 	pipelineFile := req.PipelineFile
 	if pipelineFile == "" && req.PipelineName != "" {
 		// Try to find pipeline by name in config
@@ -85,7 +158,7 @@ func (s *Server) handleExecutePipeline(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pipelineFile == "" {
-		writeBadRequestResponse(w, "Either pipeline_name or pipeline_file must be provided")
+		writeBadRequestResponse(w, "Either pipeline_id, pipeline_name or pipeline_file must be provided")
 		return
 	}
 
@@ -140,6 +213,93 @@ func (s *Server) handleExecutePipeline(w http.ResponseWriter, r *http.Request) {
 			Payload: map[string]any{
 				"pipeline_file": pipelineFile,
 				"pipeline_name": req.PipelineName,
+				"error":         result.Error,
+			},
+		})
+	}
+
+	// Return response
+	response := PipelineExecutionResponse{
+		Success:    result.Success,
+		Error:      result.Error,
+		Context:    result.Context,
+		ExecutedAt: time.Now().Format(time.RFC3339),
+	}
+
+	writeSuccessResponse(w, response)
+}
+
+// handleExecutePipelineByID handles pipeline execution requests by pipeline ID
+func (s *Server) handleExecutePipelineByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	pipelineID := vars["id"]
+
+	// Get pipeline from store
+	store := utils.GetPipelineStore()
+	pipeline, err := store.GetPipeline(pipelineID)
+	if err != nil || pipeline == nil {
+		writeErrorResponse(w, http.StatusNotFound, fmt.Sprintf("Pipeline not found: %s", pipelineID))
+		return
+	}
+
+	// Parse optional execution context from request body
+	var req struct {
+		Context map[string]any `json:"context"`
+	}
+	if r.Body != nil && r.Body != http.NoBody {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			// Ignore parse errors - context is optional
+			req.Context = make(map[string]any)
+		}
+	}
+
+	// Initialize context
+	ctx := context.Background()
+	globalContext := pipelines.NewPluginContext()
+	if req.Context != nil {
+		for k, v := range req.Context {
+			globalContext.Set(k, v)
+		}
+	}
+
+	// Convert PipelineDefinition to PipelineConfig for execution
+	config := &pipeline.Config
+
+	// Execute pipeline using the server's registry
+	result, err := utils.ExecutePipelineWithRegistry(ctx, config, s.registry)
+	if err != nil {
+		// Publish pipeline failed event
+		utils.GetEventBus().Publish(utils.Event{
+			Type:   utils.EventPipelineFailed,
+			Source: "pipeline-execution-handler",
+			Payload: map[string]any{
+				"pipeline_id":   pipelineID,
+				"pipeline_name": pipeline.Name,
+				"error":         err.Error(),
+			},
+		})
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Pipeline execution failed: %v", err))
+		return
+	}
+
+	// Publish appropriate event based on result
+	if result.Success {
+		utils.GetEventBus().Publish(utils.Event{
+			Type:   utils.EventPipelineCompleted,
+			Source: "pipeline-execution-handler",
+			Payload: map[string]any{
+				"pipeline_id":   pipelineID,
+				"pipeline_name": pipeline.Name,
+				"context":       result.Context,
+			},
+		})
+	} else {
+		utils.GetEventBus().Publish(utils.Event{
+			Type:   utils.EventPipelineFailed,
+			Source: "pipeline-execution-handler",
+			Payload: map[string]any{
+				"pipeline_id":   pipelineID,
+				"pipeline_name": pipeline.Name,
 				"error":         result.Error,
 			},
 		})

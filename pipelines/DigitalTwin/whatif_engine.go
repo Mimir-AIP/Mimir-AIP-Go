@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -65,7 +66,25 @@ func NewWhatIfEngineWithDB(llmClient AI.LLMClient, db *sql.DB) *WhatIfEngine {
 
 // AnalyzeQuestion takes a natural language question and runs a simulation
 func (wie *WhatIfEngine) AnalyzeQuestion(ctx context.Context, query WhatIfQuery, twin *DigitalTwin) (*WhatIfResponse, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[WHATIF PANIC] %v\n", r)
+			fmt.Printf("[WHATIF PANIC] Stack: %s\n", debug.Stack())
+		}
+	}()
+
 	startTime := time.Now()
+
+	// Validate inputs
+	if twin == nil {
+		return nil, fmt.Errorf("twin cannot be nil")
+	}
+	if wie.llmClient == nil {
+		return nil, fmt.Errorf("llmClient cannot be nil")
+	}
+	if len(twin.Entities) == 0 {
+		return nil, fmt.Errorf("twin has no entities - cannot run what-if analysis")
+	}
 
 	response := &WhatIfResponse{
 		Question:    query.Question,
@@ -86,6 +105,9 @@ func (wie *WhatIfEngine) AnalyzeQuestion(ctx context.Context, query WhatIfQuery,
 		wie.simEngine = NewSimulationEngineWithML(twin, wie.db)
 	} else {
 		wie.simEngine = NewSimulationEngine(twin)
+	}
+	if wie.simEngine == nil {
+		return nil, fmt.Errorf("failed to create simulation engine")
 	}
 	wie.simEngine.SetMaxSteps(100)
 	wie.simEngine.SetSnapshotInterval(5)
@@ -534,6 +556,10 @@ func (wie *WhatIfEngine) calculateConfidence(twin *DigitalTwin, run *SimulationR
 // Helper functions
 
 func (wie *WhatIfEngine) buildEntityContext(twin *DigitalTwin) string {
+	if twin == nil || len(twin.Entities) == 0 {
+		return "No entities available"
+	}
+
 	// Group by type
 	typeCounts := make(map[string]int)
 	typeExamples := make(map[string][]string)

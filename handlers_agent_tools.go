@@ -852,8 +852,25 @@ func (s *Server) toolQueryOntology(ctx context.Context, input map[string]interfa
 		return nil, fmt.Errorf("knowledge graph backend not available")
 	}
 
-	// Add LIMIT if not present
+	// Validate and inject GRAPH clause if ontologyID provided and query doesn't have one
 	queryLower := strings.ToLower(query)
+	if ontologyID != "" && !strings.Contains(queryLower, "graph") {
+		// Inject GRAPH clause into WHERE clause
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+
+		// Find WHERE clause and inject GRAPH
+		whereIdx := strings.Index(strings.ToUpper(query), "WHERE")
+		if whereIdx != -1 {
+			// Find the opening brace after WHERE
+			braceIdx := strings.Index(query[whereIdx:], "{")
+			if braceIdx != -1 {
+				insertPos := whereIdx + braceIdx + 1
+				query = query[:insertPos] + fmt.Sprintf("\n  GRAPH <%s> {", graphURI) + query[insertPos:] + "\n  }"
+			}
+		}
+	}
+
+	// Add LIMIT if not present
 	if !strings.Contains(queryLower, "limit") {
 		query = fmt.Sprintf("%s LIMIT %d", query, limit)
 	}

@@ -87,7 +87,7 @@ func (s *Server) handlePathFinding(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
 	// Find paths using SPARQL property paths
-	paths, err := s.findPathsSPARQL(ctx, req.Source, req.Target, req.MaxDepth, req.MaxPaths)
+	paths, err := s.findPathsSPARQL(ctx, req.Source, req.Target, req.MaxDepth, req.MaxPaths, req.OntologyID)
 	if err != nil {
 		logger.Error("Failed to find paths", err, utils.Component("path-finding"))
 		http.Error(w, fmt.Sprintf("Failed to find paths: %v", err), http.StatusInternalServerError)
@@ -119,13 +119,13 @@ func (s *Server) handlePathFinding(w http.ResponseWriter, r *http.Request) {
 }
 
 // findPathsSPARQL finds paths between two entities using SPARQL property paths
-func (s *Server) findPathsSPARQL(ctx context.Context, source, target string, maxDepth, maxPaths int) ([]Path, error) {
+func (s *Server) findPathsSPARQL(ctx context.Context, source, target string, maxDepth, maxPaths int, ontologyID string) ([]Path, error) {
 	logger := utils.GetLogger()
 	var allPaths []Path
 
 	// Try different path lengths from 1 to maxDepth
 	for depth := 1; depth <= maxDepth && len(allPaths) < maxPaths; depth++ {
-		paths, err := s.findPathsAtDepth(ctx, source, target, depth)
+		paths, err := s.findPathsAtDepth(ctx, source, target, depth, ontologyID)
 		if err != nil {
 			logger.Warn("Failed to find paths at depth", utils.Component("path-finding"))
 			continue
@@ -143,7 +143,16 @@ func (s *Server) findPathsSPARQL(ctx context.Context, source, target string, max
 }
 
 // findPathsAtDepth finds paths of a specific length
-func (s *Server) findPathsAtDepth(ctx context.Context, source, target string, depth int) ([]Path, error) {
+func (s *Server) findPathsAtDepth(ctx context.Context, source, target string, depth int, ontologyID string) ([]Path, error) {
+	// Build GRAPH clause
+	var graphClause string
+	if ontologyID != "" {
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+		graphClause = fmt.Sprintf("  GRAPH <%s> {\n", graphURI)
+	} else {
+		graphClause = "  GRAPH ?g {\n"
+	}
+
 	// Build SPARQL query with intermediate nodes
 	var intermediateNodes strings.Builder
 	var selectVars strings.Builder
@@ -155,12 +164,17 @@ func (s *Server) findPathsAtDepth(ctx context.Context, source, target string, de
 		}
 
 		if i == 1 {
-			intermediateNodes.WriteString(fmt.Sprintf("  <%s> ?p%d ?n%d .\n", source, i, i))
+			intermediateNodes.WriteString(fmt.Sprintf("    <%s> ?p%d ?n%d .\n", source, i, i))
 		} else if i == depth {
-			intermediateNodes.WriteString(fmt.Sprintf("  ?n%d ?p%d <%s> .\n", i-1, i, target))
+			intermediateNodes.WriteString(fmt.Sprintf("    ?n%d ?p%d <%s> .\n", i-1, i, target))
 		} else {
-			intermediateNodes.WriteString(fmt.Sprintf("  ?n%d ?p%d ?n%d .\n", i-1, i, i))
+			intermediateNodes.WriteString(fmt.Sprintf("    ?n%d ?p%d ?n%d .\n", i-1, i, i))
 		}
+	}
+
+	closeGraphClause := ""
+	if graphClause != "" {
+		closeGraphClause = "  }"
 	}
 
 	query := fmt.Sprintf(`
@@ -169,9 +183,10 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
 SELECT DISTINCT%s
 WHERE {
+%s%s
 %s}
 LIMIT 10
-`, selectVars.String(), intermediateNodes.String())
+`, selectVars.String(), graphClause, intermediateNodes.String(), closeGraphClause)
 
 	result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 	if err != nil {
@@ -247,7 +262,9 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
 SELECT ?label WHERE {
-  <%s> rdfs:label|skos:prefLabel ?label .
+  GRAPH ?g {
+    <%s> rdfs:label|skos:prefLabel ?label .
+  }
 }
 LIMIT 1
 `, uri)

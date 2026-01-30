@@ -8,11 +8,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	ontology "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
 	Storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
+	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
 	"github.com/gorilla/mux"
 )
 
@@ -364,6 +366,13 @@ func (s *Server) handleSPARQLQuery(w http.ResponseWriter, r *http.Request) {
 	if req.Query == "" {
 		writeBadRequestResponse(w, "query is required")
 		return
+	}
+
+	// Warn if query doesn't contain GRAPH clause
+	queryUpper := strings.ToUpper(req.Query)
+	if !strings.Contains(queryUpper, "GRAPH") {
+		log := utils.GetLogger()
+		log.Warn("User SPARQL query does not contain GRAPH clause - may return no results", utils.Component("sparql-query"))
 	}
 
 	// Apply pagination if requested

@@ -73,15 +73,18 @@ func (s *Server) handleCreateTwin(w http.ResponseWriter, r *http.Request) {
 	// Query entities and relationships from knowledge graph using TDB2Graph
 	query := req.Query
 	if query == "" {
-		// Default query to get all entities
-		query = `
+		// Default query to get all entities from ontology's named graph
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", req.OntologyID)
+		query = fmt.Sprintf(`
 			PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 			SELECT ?entity ?type ?label
 			WHERE {
-				?entity a ?type .
-				OPTIONAL { ?entity rdfs:label ?label }
+				GRAPH <%s> {
+					?entity a ?type .
+					OPTIONAL { ?entity rdfs:label ?label }
+				}
 			}
-		`
+		`, graphURI)
 	}
 
 	results, err := s.tdb2Backend.QuerySPARQL(context.Background(), query)
@@ -140,14 +143,17 @@ func (s *Server) handleCreateTwin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Query relationships
-	relQuery := `
+	// Query relationships from ontology's named graph
+	graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", req.OntologyID)
+	relQuery := fmt.Sprintf(`
 		SELECT ?source ?target ?predicate
 		WHERE {
-			?source ?predicate ?target .
-			FILTER(isIRI(?target))
+			GRAPH <%s> {
+				?source ?predicate ?target .
+				FILTER(isIRI(?target))
+			}
 		}
-	`
+	`, graphURI)
 	relResults, err := s.tdb2Backend.QuerySPARQL(context.Background(), relQuery)
 	if err == nil {
 		for _, binding := range relResults.Bindings {
@@ -1044,13 +1050,17 @@ func (s *Server) generateDefaultScenariosForTwin(twin *DigitalTwin.DigitalTwin) 
 
 // handleWhatIfAnalysis performs natural language what-if analysis
 func (s *Server) handleWhatIfAnalysis(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[WHATIF] Starting what-if analysis")
+
 	if s.persistence == nil {
+		log.Printf("[WHATIF] ERROR: persistence is nil")
 		writeErrorResponse(w, http.StatusServiceUnavailable, "Digital twin service not available")
 		return
 	}
 
 	vars := mux.Vars(r)
 	twinID := vars["id"]
+	log.Printf("[WHATIF] Twin ID: %s", twinID)
 
 	// Parse request
 	var req struct {
@@ -1058,35 +1068,74 @@ func (s *Server) handleWhatIfAnalysis(w http.ResponseWriter, r *http.Request) {
 		MaxResults int    `json:"max_results,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("[WHATIF] ERROR: Failed to parse request: %v", err)
 		writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
 		return
 	}
 
+	log.Printf("[WHATIF] Question: %s", req.Question)
+
 	if req.Question == "" {
+		log.Printf("[WHATIF] ERROR: question is empty")
 		writeErrorResponse(w, http.StatusBadRequest, "question is required")
 		return
 	}
 
 	// Load twin
+	log.Printf("[WHATIF] Loading twin from database")
 	db := s.persistence.GetDB()
-	var twinJSON string
-	query := `SELECT base_state FROM digital_twins WHERE id = ?`
-	err := db.QueryRow(query, twinID).Scan(&twinJSON)
-	if err != nil {
-		writeErrorResponse(w, http.StatusNotFound, "Digital twin not found")
+	if db == nil {
+		log.Printf("[WHATIF] ERROR: database is nil")
+		writeErrorResponse(w, http.StatusInternalServerError, "Database not available")
 		return
 	}
 
+	var twinJSON string
+	query := `SELECT base_state FROM digital_twins WHERE id = ?`
+	log.Printf("[WHATIF] Executing query: %s with id=%s", query, twinID)
+	err := db.QueryRow(query, twinID).Scan(&twinJSON)
+	if err != nil {
+		log.Printf("[WHATIF] ERROR: Failed to load twin: %v", err)
+		writeErrorResponse(w, http.StatusNotFound, fmt.Sprintf("Digital twin not found: %v", err))
+		return
+	}
+
+	log.Printf("[WHATIF] Twin JSON loaded, length: %d bytes", len(twinJSON))
+
 	var twin DigitalTwin.DigitalTwin
 	if err := twin.FromJSON(twinJSON); err != nil {
+		log.Printf("[WHATIF] ERROR: Failed to parse twin JSON: %v", err)
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse twin: %v", err))
 		return
 	}
 	twin.ID = twinID
 
-	// Create what-if engine with the configured LLM client and ML integration
-	whatIfEngine := DigitalTwin.NewWhatIfEngineWithDB(s.llmClient, db)
+	log.Printf("[WHATIF] Twin parsed successfully, entities: %d", len(twin.Entities))
 
+	// Validate twin has entities
+	if len(twin.Entities) == 0 {
+		log.Printf("[WHATIF] ERROR: Twin has no entities")
+		writeErrorResponse(w, http.StatusBadRequest, "Twin has no entities - cannot perform what-if analysis")
+		return
+	}
+
+	// Create what-if engine with the configured LLM client and ML integration
+	log.Printf("[WHATIF] Checking LLM client")
+	if s.llmClient == nil {
+		log.Printf("[WHATIF] ERROR: LLM client is nil")
+		writeErrorResponse(w, http.StatusInternalServerError, "LLM client not configured")
+		return
+	}
+
+	log.Printf("[WHATIF] Creating WhatIfEngine")
+	whatIfEngine := DigitalTwin.NewWhatIfEngineWithDB(s.llmClient, db)
+	if whatIfEngine == nil {
+		log.Printf("[WHATIF] ERROR: WhatIfEngine is nil")
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to create what-if engine")
+		return
+	}
+
+	log.Printf("[WHATIF] Running AnalyzeQuestion")
 	// Run analysis
 	response, err := whatIfEngine.AnalyzeQuestion(context.Background(), DigitalTwin.WhatIfQuery{
 		Question:   req.Question,
@@ -1094,10 +1143,12 @@ func (s *Server) handleWhatIfAnalysis(w http.ResponseWriter, r *http.Request) {
 		MaxResults: req.MaxResults,
 	}, &twin)
 	if err != nil {
+		log.Printf("[WHATIF] ERROR: Analysis failed: %v", err)
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Analysis failed: %v", err))
 		return
 	}
 
+	log.Printf("[WHATIF] Analysis completed successfully")
 	writeSuccessResponse(w, response)
 }
 

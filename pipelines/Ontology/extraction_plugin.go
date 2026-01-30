@@ -232,9 +232,11 @@ func (p *ExtractionPlugin) handleExtract(ctx context.Context, stepConfig pipelin
 		}
 
 		if err := p.tdb2Backend.InsertTriples(ctx, kgTriples); err != nil {
+			fmt.Printf("ERROR: Failed to insert triples into TDB2: %v\n", err)
 			p.failJob(ctx, jobID, fmt.Sprintf("Failed to store triples: %v", err))
 			return nil, fmt.Errorf("failed to store triples in TDB2: %w", err)
 		}
+		fmt.Printf("INFO: Successfully inserted %d triples into TDB2 for ontology %s\n", len(kgTriples), ontologyID)
 	}
 
 	// Store extracted entities in database
@@ -254,6 +256,13 @@ func (p *ExtractionPlugin) handleExtract(ctx context.Context, stepConfig pipelin
 
 	if err := p.updateExtractionJob(ctx, job); err != nil {
 		return nil, fmt.Errorf("failed to update job with results: %w", err)
+	}
+
+	// Update ontology status to "active" after successful extraction
+	updateStatusQuery := `UPDATE ontologies SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+	if _, err := p.db.ExecContext(ctx, updateStatusQuery, ontologyID); err != nil {
+		// Log warning but don't fail the job since extraction succeeded
+		fmt.Printf("Warning: failed to update ontology status to active for %s: %v\n", ontologyID, err)
 	}
 
 	// Return result in context

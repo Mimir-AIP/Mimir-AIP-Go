@@ -245,6 +245,10 @@ func (se *SimulationEngine) RunSimulation(scenario *SimulationScenario) (*Simula
 
 // initializeState creates the initial state from the digital twin
 func (se *SimulationEngine) initializeState() (*TwinState, error) {
+	if se.twin == nil {
+		return nil, fmt.Errorf("twin cannot be nil")
+	}
+
 	state := &TwinState{
 		Timestamp:     time.Now(),
 		Step:          0,

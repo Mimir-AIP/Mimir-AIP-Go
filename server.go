@@ -10,6 +10,7 @@ import (
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	AI "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/AI"
+	DP "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Data_Processing"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Input"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/ML"
@@ -45,8 +46,9 @@ type Server struct {
 
 // PipelineExecutionRequest represents a request to execute a pipeline
 type PipelineExecutionRequest struct {
-	PipelineName string         `json:"pipeline_name,omitempty"`
-	PipelineFile string         `json:"pipeline_file,omitempty"`
+	PipelineID   string         `json:"pipeline_id,omitempty"`   // API-created pipeline ID
+	PipelineName string         `json:"pipeline_name,omitempty"` // Legacy: pipeline name
+	PipelineFile string         `json:"pipeline_file,omitempty"` // Legacy: YAML file path
 	Context      map[string]any `json:"context,omitempty"`
 }
 
@@ -239,6 +241,13 @@ func (s *Server) registerDefaultPlugins() {
 	excelPlugin := Input.NewExcelPlugin()
 	xmlPlugin := Input.NewXMLPlugin() // NEW: Demo plugin for auto-discovery
 	jsonInputPlugin := Input.NewJSONPlugin()
+	firmsPlugin := Input.NewFIRMSPlugin()
+	polymarketPlugin := Input.NewPolymarketPlugin()
+	gdeltPlugin := Input.NewGDELTPlugin()
+	validatePlugin := DP.NewValidatePlugin()
+	dedupePlugin := DP.NewDeduplicatePlugin()
+	// Register Data_Processing plugins
+	transformPlugin := DP.NewTransformPlugin()
 
 	if err := s.registry.RegisterPlugin(csvPlugin); err != nil {
 		log.Printf("Failed to register CSV plugin: %v", err)
@@ -268,6 +277,42 @@ func (s *Server) registerDefaultPlugins() {
 		log.Printf("Failed to register JSON input plugin: %v", err)
 	} else {
 		log.Println("Registered JSON input plugin")
+	}
+
+	if err := s.registry.RegisterPlugin(firmsPlugin); err != nil {
+		log.Printf("Failed to register FIRMS input plugin: %v", err)
+	} else {
+		log.Println("Registered FIRMS input plugin")
+	}
+
+	if err := s.registry.RegisterPlugin(polymarketPlugin); err != nil {
+		log.Printf("Failed to register Polymarket input plugin: %v", err)
+	} else {
+		log.Println("Registered Polymarket input plugin")
+	}
+
+	if err := s.registry.RegisterPlugin(gdeltPlugin); err != nil {
+		log.Printf("Failed to register GDELT input plugin: %v", err)
+	} else {
+		log.Println("Registered GDELT input plugin")
+	}
+
+	if err := s.registry.RegisterPlugin(transformPlugin); err != nil {
+		log.Printf("Failed to register Data_Processing.transform plugin: %v", err)
+	} else {
+		log.Println("Registered Data_Processing.transform plugin")
+	}
+
+	if err := s.registry.RegisterPlugin(validatePlugin); err != nil {
+		log.Printf("Failed to register Data_Processing.validate plugin: %v", err)
+	} else {
+		log.Println("Registered Data_Processing.validate plugin")
+	}
+
+	if err := s.registry.RegisterPlugin(dedupePlugin); err != nil {
+		log.Printf("Failed to register Data_Processing.deduplicate plugin: %v", err)
+	} else {
+		log.Println("Registered Data_Processing.deduplicate plugin")
 	}
 
 	// Register output plugins

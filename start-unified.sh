@@ -26,13 +26,14 @@ if [ ! -f /app/llama.cpp/main ]; then
 fi
 
 # Start Jena Fuseki server in background with update support
-echo "Starting Jena Fuseki server on port 3030..."
+FUSEKI_DATASET=${FUSEKI_DATASET:-mimir}
+echo "Starting Jena Fuseki server on port ${FUSEKI_PORT:-3030} with dataset /$FUSEKI_DATASET..."
 cd /opt/jena
 java $JVM_ARGS -jar fuseki-server.jar \
-    --port=3030 \
+    --port=${FUSEKI_PORT:-3030} \
     --update \
     --loc=/app/data/tdb2 \
-    /mimir > /app/logs/fuseki.log 2>&1 &
+    /${FUSEKI_DATASET} > /app/logs/fuseki.log 2>&1 &
 FUSEKI_PID=$!
 echo "Jena Fuseki started with PID $FUSEKI_PID"
 

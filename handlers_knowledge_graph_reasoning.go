@@ -68,7 +68,7 @@ func (s *Server) handleReasoning(w http.ResponseWriter, r *http.Request) {
 	log.Info("Starting reasoning", utils.Component("reasoning"))
 
 	// Count asserted triples
-	assertedCount, err := s.countTriples(ctx)
+	assertedCount, err := s.countTriples(ctx, req.OntologyID)
 	if err != nil {
 		log.Error("Failed to count asserted triples", err, utils.Component("reasoning"))
 		assertedCount = 0
@@ -80,7 +80,7 @@ func (s *Server) handleReasoning(w http.ResponseWriter, r *http.Request) {
 	statistics := make(map[string]int)
 
 	for _, rule := range req.Rules {
-		ruleInferences, err := s.applyReasoningRule(ctx, rule, req.MaxDepth)
+		ruleInferences, err := s.applyReasoningRule(ctx, rule, req.OntologyID, req.MaxDepth)
 		if err != nil {
 			log.Warn(fmt.Sprintf("Failed to apply rule %s: %v", rule, err))
 			continue
@@ -109,8 +109,17 @@ func (s *Server) handleReasoning(w http.ResponseWriter, r *http.Request) {
 }
 
 // countTriples counts the number of triples in the knowledge graph
-func (s *Server) countTriples(ctx context.Context) (int, error) {
-	query := `SELECT (COUNT(*) AS ?count) WHERE { ?s ?p ?o }`
+// If ontologyID is provided, counts only triples in that ontology's graph
+func (s *Server) countTriples(ctx context.Context, ontologyID ...string) (int, error) {
+	var query string
+	if len(ontologyID) > 0 && ontologyID[0] != "" {
+		// Count triples in specific ontology graph
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID[0])
+		query = fmt.Sprintf(`SELECT (COUNT(*) AS ?count) WHERE { GRAPH <%s> { ?s ?p ?o } }`, graphURI)
+	} else {
+		// Count triples across all named graphs
+		query = `SELECT (COUNT(*) AS ?count) WHERE { GRAPH ?g { ?s ?p ?o } }`
+	}
 
 	result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 	if err != nil {
@@ -129,22 +138,22 @@ func (s *Server) countTriples(ctx context.Context) (int, error) {
 }
 
 // applyReasoningRule applies a specific reasoning rule
-func (s *Server) applyReasoningRule(ctx context.Context, rule string, maxDepth int) ([]InferredTriple, error) {
+func (s *Server) applyReasoningRule(ctx context.Context, rule string, ontologyID string, maxDepth int) ([]InferredTriple, error) {
 	log := utils.GetLogger()
 
 	switch rule {
 	case "rdfs:subClassOf":
-		return s.applySubClassOfReasoning(ctx, maxDepth)
+		return s.applySubClassOfReasoning(ctx, ontologyID, maxDepth)
 	case "rdfs:domain":
-		return s.applyDomainReasoning(ctx)
+		return s.applyDomainReasoning(ctx, ontologyID)
 	case "rdfs:range":
-		return s.applyRangeReasoning(ctx)
+		return s.applyRangeReasoning(ctx, ontologyID)
 	case "owl:transitiveProperty":
-		return s.applyTransitivePropertyReasoning(ctx, maxDepth)
+		return s.applyTransitivePropertyReasoning(ctx, ontologyID, maxDepth)
 	case "owl:symmetricProperty":
-		return s.applySymmetricPropertyReasoning(ctx)
+		return s.applySymmetricPropertyReasoning(ctx, ontologyID)
 	case "owl:inverseOf":
-		return s.applyInverseOfReasoning(ctx)
+		return s.applyInverseOfReasoning(ctx, ontologyID)
 	default:
 		log.Warn(fmt.Sprintf("Unknown reasoning rule: %s", rule))
 		return []InferredTriple{}, nil
@@ -152,15 +161,26 @@ func (s *Server) applyReasoningRule(ctx context.Context, rule string, maxDepth i
 }
 
 // applySubClassOfReasoning infers types based on subclass hierarchy
-func (s *Server) applySubClassOfReasoning(ctx context.Context, maxDepth int) ([]InferredTriple, error) {
-	query := `
+func (s *Server) applySubClassOfReasoning(ctx context.Context, ontologyID string, maxDepth int) ([]InferredTriple, error) {
+	// Build GRAPH clause
+	var graphClause string
+	if ontologyID != "" {
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+		graphClause = fmt.Sprintf("GRAPH <%s>", graphURI)
+	} else {
+		graphClause = "GRAPH ?g"
+	}
+
+	query := fmt.Sprintf(`
 	SELECT ?instance ?subClass ?superClass WHERE {
-		?instance rdf:type ?subClass .
-		?subClass rdfs:subClassOf ?superClass .
-		FILTER(?subClass != ?superClass)
+		%s {
+			?instance rdf:type ?subClass .
+			?subClass rdfs:subClassOf ?superClass .
+			FILTER(?subClass != ?superClass)
+		}
 	}
 	LIMIT 1000
-	`
+	`, graphClause)
 
 	result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 	if err != nil {
@@ -186,14 +206,25 @@ func (s *Server) applySubClassOfReasoning(ctx context.Context, maxDepth int) ([]
 }
 
 // applyDomainReasoning infers types based on rdfs:domain
-func (s *Server) applyDomainReasoning(ctx context.Context) ([]InferredTriple, error) {
-	query := `
+func (s *Server) applyDomainReasoning(ctx context.Context, ontologyID string) ([]InferredTriple, error) {
+	// Build GRAPH clause
+	var graphClause string
+	if ontologyID != "" {
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+		graphClause = fmt.Sprintf("GRAPH <%s>", graphURI)
+	} else {
+		graphClause = "GRAPH ?g"
+	}
+
+	query := fmt.Sprintf(`
 	SELECT ?subject ?property ?domain WHERE {
-		?subject ?property ?object .
-		?property rdfs:domain ?domain .
+		%s {
+			?subject ?property ?object .
+			?property rdfs:domain ?domain .
+		}
 	}
 	LIMIT 1000
-	`
+	`, graphClause)
 
 	result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 	if err != nil {
@@ -225,15 +256,26 @@ func (s *Server) applyDomainReasoning(ctx context.Context) ([]InferredTriple, er
 }
 
 // applyRangeReasoning infers types based on rdfs:range
-func (s *Server) applyRangeReasoning(ctx context.Context) ([]InferredTriple, error) {
-	query := `
+func (s *Server) applyRangeReasoning(ctx context.Context, ontologyID string) ([]InferredTriple, error) {
+	// Build GRAPH clause
+	var graphClause string
+	if ontologyID != "" {
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+		graphClause = fmt.Sprintf("GRAPH <%s>", graphURI)
+	} else {
+		graphClause = "GRAPH ?g"
+	}
+
+	query := fmt.Sprintf(`
 	SELECT ?object ?property ?range WHERE {
-		?subject ?property ?object .
-		?property rdfs:range ?range .
-		FILTER(isURI(?object))
+		%s {
+			?subject ?property ?object .
+			?property rdfs:range ?range .
+			FILTER(isURI(?object))
+		}
 	}
 	LIMIT 1000
-	`
+	`, graphClause)
 
 	result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 	if err != nil {
@@ -265,13 +307,24 @@ func (s *Server) applyRangeReasoning(ctx context.Context) ([]InferredTriple, err
 }
 
 // applyTransitivePropertyReasoning infers transitive relationships
-func (s *Server) applyTransitivePropertyReasoning(ctx context.Context, maxDepth int) ([]InferredTriple, error) {
-	// Find all transitive properties
-	propsQuery := `
-	SELECT ?property WHERE {
-		?property rdf:type owl:TransitiveProperty .
+func (s *Server) applyTransitivePropertyReasoning(ctx context.Context, ontologyID string, maxDepth int) ([]InferredTriple, error) {
+	// Build GRAPH clause
+	var graphClause string
+	if ontologyID != "" {
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+		graphClause = fmt.Sprintf("GRAPH <%s>", graphURI)
+	} else {
+		graphClause = "GRAPH ?g"
 	}
-	`
+
+	// Find all transitive properties
+	propsQuery := fmt.Sprintf(`
+	SELECT ?property WHERE {
+		%s {
+			?property rdf:type owl:TransitiveProperty .
+		}
+	}
+	`, graphClause)
 
 	propsResult, err := s.tdb2Backend.QuerySPARQL(ctx, propsQuery)
 	if err != nil {
@@ -291,11 +344,13 @@ func (s *Server) applyTransitivePropertyReasoning(ctx context.Context, maxDepth 
 
 		query := fmt.Sprintf(`
 		SELECT ?x ?z WHERE {
-			?x <%s> ?y .
-			?y <%s> ?z .
+			%s {
+				?x <%s> ?y .
+				?y <%s> ?z .
+			}
 		}
 		LIMIT 500
-		`, property, property)
+		`, graphClause, property, property)
 
 		result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 		if err != nil {
@@ -326,13 +381,24 @@ func (s *Server) applyTransitivePropertyReasoning(ctx context.Context, maxDepth 
 }
 
 // applySymmetricPropertyReasoning infers symmetric relationships
-func (s *Server) applySymmetricPropertyReasoning(ctx context.Context) ([]InferredTriple, error) {
-	// Find all symmetric properties
-	propsQuery := `
-	SELECT ?property WHERE {
-		?property rdf:type owl:SymmetricProperty .
+func (s *Server) applySymmetricPropertyReasoning(ctx context.Context, ontologyID string) ([]InferredTriple, error) {
+	// Build GRAPH clause
+	var graphClause string
+	if ontologyID != "" {
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+		graphClause = fmt.Sprintf("GRAPH <%s>", graphURI)
+	} else {
+		graphClause = "GRAPH ?g"
 	}
-	`
+
+	// Find all symmetric properties
+	propsQuery := fmt.Sprintf(`
+	SELECT ?property WHERE {
+		%s {
+			?property rdf:type owl:SymmetricProperty .
+		}
+	}
+	`, graphClause)
 
 	propsResult, err := s.tdb2Backend.QuerySPARQL(ctx, propsQuery)
 	if err != nil {
@@ -352,10 +418,12 @@ func (s *Server) applySymmetricPropertyReasoning(ctx context.Context) ([]Inferre
 
 		query := fmt.Sprintf(`
 		SELECT ?x ?y WHERE {
-			?x <%s> ?y .
+			%s {
+				?x <%s> ?y .
+			}
 		}
 		LIMIT 500
-		`, property)
+		`, graphClause, property)
 
 		result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 		if err != nil {
@@ -381,14 +449,25 @@ func (s *Server) applySymmetricPropertyReasoning(ctx context.Context) ([]Inferre
 }
 
 // applyInverseOfReasoning infers inverse relationships
-func (s *Server) applyInverseOfReasoning(ctx context.Context) ([]InferredTriple, error) {
-	query := `
+func (s *Server) applyInverseOfReasoning(ctx context.Context, ontologyID string) ([]InferredTriple, error) {
+	// Build GRAPH clause
+	var graphClause string
+	if ontologyID != "" {
+		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+		graphClause = fmt.Sprintf("GRAPH <%s>", graphURI)
+	} else {
+		graphClause = "GRAPH ?g"
+	}
+
+	query := fmt.Sprintf(`
 	SELECT ?property ?inverseProperty ?x ?y WHERE {
-		?property owl:inverseOf ?inverseProperty .
-		?x ?property ?y .
+		%s {
+			?property owl:inverseOf ?inverseProperty .
+			?x ?property ?y .
+		}
 	}
 	LIMIT 500
-	`
+	`, graphClause)
 
 	result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
 	if err != nil {

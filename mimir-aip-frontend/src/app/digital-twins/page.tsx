@@ -153,11 +153,11 @@ export default function DigitalTwinsPage() {
 
                   <div className="grid grid-cols-2 gap-4 pt-2 border-t">
                     <div>
-                      <p className="text-2xl font-bold">{twin.entities?.length || 0}</p>
+                      <p className="text-2xl font-bold">{twin.entity_count || 0}</p>
                       <p className="text-xs text-muted-foreground">Entities</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">{twin.relationships?.length || 0}</p>
+                      <p className="text-2xl font-bold">{twin.relationship_count || 0}</p>
                       <p className="text-xs text-muted-foreground">Relationships</p>
                     </div>
                   </div>

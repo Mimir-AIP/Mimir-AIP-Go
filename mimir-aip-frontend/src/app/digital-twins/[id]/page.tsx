@@ -153,7 +153,7 @@ export default function TwinDetailPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                <p className="text-3xl font-bold">{twin.entities?.length || 0}</p>
+                <p className="text-3xl font-bold">{twin.entity_count || twin.entities?.length || 0}</p>
                 <p className="text-sm text-muted-foreground">Entities</p>
               </div>
             </CardContent>
@@ -161,7 +161,7 @@ export default function TwinDetailPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                <p className="text-3xl font-bold">{twin.relationships?.length || 0}</p>
+                <p className="text-3xl font-bold">{twin.relationship_count || twin.relationships?.length || 0}</p>
                 <p className="text-sm text-muted-foreground">Relationships</p>
               </div>
             </CardContent>

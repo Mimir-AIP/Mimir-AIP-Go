@@ -104,7 +104,7 @@ func TestRealisticComputerRepairShop_FullWorkflow(t *testing.T) {
 		verifyCompleteSystem(t, server, ontologyID, twinID)
 	})
 
-	t.Logf("\n" + strings.Repeat("=", 70))
+	t.Logf("%s", "\n"+strings.Repeat("=", 70))
 	t.Logf("✅ REALISTIC E2E TEST COMPLETED")
 	t.Logf("Computer Repair Shop workflow tested:")
 	t.Logf("  - Data ingestion: ✓")
@@ -113,7 +113,7 @@ func TestRealisticComputerRepairShop_FullWorkflow(t *testing.T) {
 	t.Logf("  - Knowledge graph: ✓")
 	t.Logf("  - Digital twin: ✓")
 	t.Logf("  - Business simulations: ✓")
-	t.Logf(strings.Repeat("=", 70))
+	t.Logf("%s", strings.Repeat("=", 70))
 }
 
 // ============================================================================

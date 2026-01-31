@@ -14,33 +14,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAuthManager_HashPassword tests password hashing
+// TestAuthManager_HashPassword tests password hashing with bcrypt
 func TestAuthManager_HashPassword(t *testing.T) {
 	am := utils.NewAuthManager("test-secret", 24*time.Hour, 100)
 
 	// Test basic hashing
 	password := "testpassword123"
-	hash1 := am.HashPassword(password)
-	hash2 := am.HashPassword(password)
+	hash1, err := am.HashPassword(password)
+	require.NoError(t, err, "HashPassword should not error")
+	hash2, err := am.HashPassword(password)
+	require.NoError(t, err, "HashPassword should not error")
 
-	// Same password should produce same hash
-	assert.Equal(t, hash1, hash2, "Same password should produce identical hashes")
+	// With bcrypt, same password produces DIFFERENT hashes (due to salt)
+	// but both should verify correctly
 	assert.NotEmpty(t, hash1, "Hash should not be empty")
+	assert.NotEmpty(t, hash2, "Hash should not be empty")
+	assert.NotEqual(t, hash1, hash2, "bcrypt produces different hashes due to salt")
 
-	// Different passwords should produce different hashes
-	hash3 := am.HashPassword("differentpassword")
+	// Both should verify correctly
+	assert.True(t, am.VerifyPassword(password, hash1), "First hash should verify")
+	assert.True(t, am.VerifyPassword(password, hash2), "Second hash should verify")
+
+	// Different passwords should produce different hashes (usually)
+	hash3, err := am.HashPassword("differentpassword")
+	require.NoError(t, err)
 	assert.NotEqual(t, hash1, hash3, "Different passwords should produce different hashes")
 
-	// Verify hex encoding (should be 64 characters for SHA-256)
-	assert.Len(t, hash1, 64, "SHA-256 hash should be 64 hex characters")
+	// Verify bcrypt format (starts with $2a$)
+	assert.True(t, strings.HasPrefix(hash1, "$2"), "bcrypt hash should start with $2")
 }
 
-// TestAuthManager_VerifyPassword tests password verification
+// TestAuthManager_VerifyPassword tests password verification with bcrypt
 func TestAuthManager_VerifyPassword(t *testing.T) {
 	am := utils.NewAuthManager("test-secret", 24*time.Hour, 100)
 
 	password := "testpassword123"
-	hash := am.HashPassword(password)
+	hash, err := am.HashPassword(password)
+	require.NoError(t, err)
 
 	// Correct password should verify
 	assert.True(t, am.VerifyPassword(password, hash), "Correct password should verify")
@@ -50,6 +60,10 @@ func TestAuthManager_VerifyPassword(t *testing.T) {
 
 	// Empty password should not verify
 	assert.False(t, am.VerifyPassword("", hash), "Empty password should not verify")
+
+	// Different hash of same password should still verify
+	hash2, _ := am.HashPassword(password)
+	assert.True(t, am.VerifyPassword(password, hash2), "Different bcrypt hash of same password should verify")
 }
 
 // TestAuthManager_CreateUser tests user creation

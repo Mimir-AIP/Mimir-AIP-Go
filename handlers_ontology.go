@@ -1513,7 +1513,8 @@ func (s *Server) handleGetOntologyEntities(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// transformSPARQLResultsToEntities transforms SPARQL query results into entity objects
+// transformSPARQLResultsToEntities transforms SPARQL query results into SPARQL-format entity objects
+// Returns format with .value properties for UI compatibility
 func transformSPARQLResultsToEntities(result *knowledgegraph.QueryResult, filterType string) []map[string]any {
 	if result == nil || len(result.Bindings) == 0 {
 		return []map[string]any{}
@@ -1523,52 +1524,63 @@ func transformSPARQLResultsToEntities(result *knowledgegraph.QueryResult, filter
 	entityMap := make(map[string]map[string]any)
 
 	for _, binding := range result.Bindings {
-		entityURI := binding["entity"].Value
+		entityVar, hasEntity := binding["entity"]
+		if !hasEntity {
+			continue
+		}
+
+		entityURI := entityVar.Value
 		if entityURI == "" {
 			continue
 		}
 
 		if _, exists := entityMap[entityURI]; !exists {
 			entityMap[entityURI] = map[string]any{
-				"uri": entityURI,
+				"entity": map[string]string{
+					"value": entityURI,
+					"type":  entityVar.Type,
+				},
 			}
 		}
 
 		entity := entityMap[entityURI]
 
-		// Add type
-		if typeVal := binding["type"].Value; typeVal != "" {
-			if existingType, hasType := entity["type"]; !hasType || existingType == "" {
-				entity["type"] = typeVal
+		// Add type with .value format
+		if typeVar, hasType := binding["type"]; hasType && typeVar.Value != "" {
+			if _, hasTypeField := entity["type"]; !hasTypeField {
+				entity["type"] = map[string]string{
+					"value": typeVar.Value,
+					"type":  typeVar.Type,
+				}
 			}
 		}
 
-		// Add label
-		if label := binding["label"].Value; label != "" {
-			if _, hasLabel := entity["label"]; !hasLabel {
-				entity["label"] = label
-			}
-			if _, hasName := entity["name"]; !hasName {
-				entity["name"] = label
+		// Add label with .value format
+		if labelVar, hasLabel := binding["label"]; hasLabel && labelVar.Value != "" {
+			if _, hasLabelField := entity["label"]; !hasLabelField {
+				entity["label"] = map[string]string{
+					"value": labelVar.Value,
+					"type":  labelVar.Type,
+				}
 			}
 		}
 
 		// Add properties if present
-		if property := binding["property"].Value; property != "" {
-			if value, hasValue := binding["value"]; hasValue && value.Value != "" {
+		if propVar, hasProp := binding["property"]; hasProp && propVar.Value != "" {
+			if valueVar, hasValue := binding["value"]; hasValue && valueVar.Value != "" {
 				if entity["properties"] == nil {
 					entity["properties"] = map[string]any{}
 				}
 				if props, ok := entity["properties"].(map[string]any); ok {
 					// Extract property name from URI
-					propName := property
-					for i := len(property) - 1; i >= 0; i-- {
-						if property[i] == '#' || property[i] == '/' {
-							propName = property[i+1:]
+					propName := propVar.Value
+					for i := len(propVar.Value) - 1; i >= 0; i-- {
+						if propVar.Value[i] == '#' || propVar.Value[i] == '/' {
+							propName = propVar.Value[i+1:]
 							break
 						}
 					}
-					props[propName] = value.Value
+					props[propName] = valueVar.Value
 				}
 			}
 		}

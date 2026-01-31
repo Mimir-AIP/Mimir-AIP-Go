@@ -37,16 +37,35 @@ export default function OntologyDetailPage() {
       setOntology(ontologyRes.data?.ontology);
       setStats(statsRes?.data?.stats);
 
-      // Query entities
-      const entityQuery = `
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT ?entity ?type ?label
-        WHERE {
-          ?entity a ?type .
-          OPTIONAL { ?entity rdfs:label ?label }
-        }
-        LIMIT 50
-      `;
+      // Query entities from the ontology's specific graph
+      const graphUri = ontologyRes.data?.ontology?.tdb2_graph;
+      let entityQuery: string;
+      
+      if (graphUri) {
+        entityQuery = `
+          PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+          SELECT ?entity ?type ?label
+          WHERE {
+            GRAPH <${graphUri}> {
+              ?entity a ?type .
+              OPTIONAL { ?entity rdfs:label ?label }
+            }
+          }
+          LIMIT 50
+        `;
+      } else {
+        // Fallback to querying all graphs if no specific graph URI
+        entityQuery = `
+          PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+          SELECT ?entity ?type ?label
+          WHERE {
+            ?entity a ?type .
+            OPTIONAL { ?entity rdfs:label ?label }
+          }
+          LIMIT 50
+        `;
+      }
+      
       const entityRes = await executeSPARQLQuery(entityQuery);
       setEntities(entityRes.data?.bindings || []);
     } catch (err) {

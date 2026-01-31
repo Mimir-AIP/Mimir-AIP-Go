@@ -3,11 +3,30 @@ package utils
 import (
 	stdcontext "context"
 	"fmt"
+	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/google/uuid"
 )
+
+// sanitizeName sanitizes a name for use in filenames and URIs
+func sanitizeName(name string) string {
+	// Replace spaces and special characters with underscores
+	sanitized := strings.ToLower(name)
+	// Remove any non-alphanumeric characters except underscores and hyphens
+	sanitized = regexp.MustCompile(`[^a-z0-9_-]`).ReplaceAllString(sanitized, "_")
+	// Remove multiple consecutive underscores
+	sanitized = regexp.MustCompile(`_+`).ReplaceAllString(sanitized, "_")
+	// Trim leading and trailing underscores
+	sanitized = strings.Trim(sanitized, "_")
+	if sanitized == "" {
+		return "unnamed"
+	}
+	return sanitized
+}
 
 // PipelineExtractionHandler handles automatic extraction when pipelines complete
 type PipelineExtractionHandler struct {
@@ -285,12 +304,18 @@ func (h *PipelineExtractionHandler) createOntologyForPipeline(pipeline *Pipeline
 	// Generate a unique ontology ID based on pipeline name
 	ontologyID := fmt.Sprintf("pipeline_%s_%s", pipeline.Metadata.Name, uuid.New().String()[:8])
 
+	// Sanitize pipeline name for use in filenames and URIs
+	sanitizedName := sanitizeName(pipeline.Metadata.Name)
+	version := "1.0.0"
+
 	// Create the ontology
 	ont := &storage.Ontology{
 		ID:          ontologyID,
 		Name:        fmt.Sprintf("Auto-created ontology for pipeline: %s", pipeline.Metadata.Name),
 		Description: fmt.Sprintf("Automatically created ontology for pipeline %s (ID: %s)", pipeline.Metadata.Name, pipeline.Metadata.ID),
-		Version:     "1.0.0",
+		Version:     version,
+		FilePath:    filepath.Join("data/ontologies", fmt.Sprintf("%s-%s.ttl", sanitizedName, version)),
+		TDB2Graph:   fmt.Sprintf("http://mimir-aip.io/ontology/%s/%s", sanitizedName, version),
 		Format:      "turtle",
 		Status:      "active",
 		CreatedBy:   "auto-extraction",

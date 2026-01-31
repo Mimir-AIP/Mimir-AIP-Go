@@ -871,6 +871,17 @@ export async function getOntology(id: string, includeContent = false): Promise<{
 }
 
 /**
+ * Update an ontology
+ * PUT /api/v1/ontology/:id
+ */
+export async function updateOntology(id: string, updates: Partial<Ontology>): Promise<{ success: boolean; data: { ontology: Ontology } }> {
+  return apiFetch(`/api/v1/ontology/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  });
+}
+
+/**
  * Delete an ontology
  * DELETE /api/v1/ontology/:id
  */

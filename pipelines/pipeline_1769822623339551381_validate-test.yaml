@@ -1,0 +1,24 @@
+id: pipeline_1769822623339551381
+name: validate-test
+metadata:
+    id: pipeline_1769822623339551381
+    name: validate-test
+    description: ""
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T01:23:43.339551822Z
+    updated_at: 2026-01-31T01:23:43.339551822Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: validate-test
+    enabled: true
+    steps:
+        - name: csv-step
+          plugin: Input.csv
+          config:
+            file_path: /some/path.csv
+            has_headers: true
+          output: data

@@ -1,0 +1,53 @@
+id: pipeline_1769821794478737417
+name: iot-sensor-ingestion
+metadata:
+    id: pipeline_1769821794478737417
+    name: iot-sensor-ingestion
+    description: Ingest and transform IoT sensor data
+    tags:
+        - iot
+        - sensors
+        - automated
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T01:09:54.478737888Z
+    updated_at: 2026-01-31T01:09:54.478737888Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: iot-sensor-ingestion
+    enabled: true
+    steps:
+        - name: fetch-sensor-data
+          plugin: Input.api
+          config:
+            method: GET
+            url: http://127.0.0.1:45759
+          output: sensor_data
+        - name: filter-temperature-sensors
+          plugin: Data_Processing.transform
+          config:
+            expression: sensor_id.startsWith('temp')
+            field: sensor_id
+            input: sensor_data
+            op: contains
+            operation: filter
+          output: temperature_data
+        - name: calculate-fahrenheit
+          plugin: Data_Processing.transform
+          config:
+            field: value
+            function: custom
+            input: temperature_data
+            operation: map
+          output: transformed_temperature
+        - name: sort-by-value
+          plugin: Data_Processing.transform
+          config:
+            input: transformed_temperature
+            keys:
+                - asc: false
+                  field: value
+            operation: sort
+          output: sorted_sensors

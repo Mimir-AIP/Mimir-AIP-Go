@@ -1,0 +1,24 @@
+id: pipeline_1769822620835137258
+name: error-handling-test
+metadata:
+    id: pipeline_1769822620835137258
+    name: error-handling-test
+    description: ""
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T01:23:40.835137809Z
+    updated_at: 2026-01-31T01:23:40.835137809Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: error-handling-test
+    enabled: true
+    steps:
+        - name: fetch-data
+          plugin: Input.api
+          config:
+            method: GET
+            url: http://127.0.0.1:37285
+          output: api_data

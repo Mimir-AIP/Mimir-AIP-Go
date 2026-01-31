@@ -18,11 +18,11 @@ func TestEntityExtractionEffectiveness(t *testing.T) {
 
 		ontology := &OntologyContext{
 			BaseURI: "http://test.org/",
-			Classes: []RDFClass{
+			Classes: []OntologyClass{
 				{URI: "http://test.org/Product", Label: "Product"},
 				{URI: "http://test.org/Service", Label: "Service"},
 			},
-			Properties: []RDFProperty{
+			Properties: []OntologyProperty{
 				{URI: "http://test.org/name", Label: "name"},
 				{URI: "http://test.org/category", Label: "category"},
 				{URI: "http://test.org/price", Label: "price"},
@@ -53,10 +53,10 @@ EMP-004,Diana,Director,IT,120000,true`
 
 		ontology := &OntologyContext{
 			BaseURI: "http://company.org/",
-			Classes: []RDFClass{
+			Classes: []OntologyClass{
 				{URI: "http://company.org/Employee", Label: "Employee"},
 			},
-			Properties: []RDFProperty{
+			Properties: []OntologyProperty{
 				{URI: "http://company.org/name", Label: "name"},
 				{URI: "http://company.org/type", Label: "type"},
 				{URI: "http://company.org/department", Label: "department"},

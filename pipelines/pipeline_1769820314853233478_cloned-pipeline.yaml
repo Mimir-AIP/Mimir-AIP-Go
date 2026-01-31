@@ -1,0 +1,24 @@
+id: pipeline_1769820314853233478
+name: cloned-pipeline
+metadata:
+    id: pipeline_1769820314853233478
+    name: cloned-pipeline
+    description: ""
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T00:45:14.853234239Z
+    updated_at: 2026-01-31T00:45:14.853234239Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: original-pipeline
+    enabled: true
+    steps:
+        - name: test-step
+          plugin: Input.csv
+          config:
+            file_path: /tmp/test.csv
+            has_headers: true
+          output: data

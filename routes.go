@@ -176,16 +176,8 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/twin/{id}/analyze", s.handleAnalyzeOntology).Methods("GET")                 // Analyze ontology for patterns/risks
 	v1.HandleFunc("/twin/{id}/insights", s.handleGetInsights).Methods("GET")                    // Proactive insights & suggestions
 
-	// Autonomous Workflow endpoints
-	v1.HandleFunc("/workflows", s.handleListWorkflows).Methods("GET")
-	v1.HandleFunc("/workflows", s.handleCreateWorkflow).Methods("POST")
-	v1.HandleFunc("/workflows/{id}", s.handleGetWorkflow).Methods("GET")
-	v1.HandleFunc("/workflows/{id}/execute", s.handleExecuteWorkflow).Methods("POST")
-	utils.GetLogger().Info("Registered workflow routes on v1 subrouter")
-
 	// Schema inference endpoints
 	v1.HandleFunc("/data/{id}/infer-schema", s.handleInferSchemaFromImport).Methods("POST")
-	v1.HandleFunc("/schema/{id}/generate-ontology", s.handleGenerateOntologyFromSchema).Methods("POST")
 
 	// System/Version endpoints
 	v1.HandleFunc("/version", s.handleVersion).Methods("GET")

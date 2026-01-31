@@ -15,9 +15,9 @@ import * as path from 'path';
  * NO MOCKS - Real browser, real server, real data
  */
 
-// Test data setup - Computer Repair Shop
-const createTestData = () => {
-  const partsCSV = `part_id,name,category,current_stock,min_stock,reorder_point,unit_cost,supplier_id
+// Pure function to create test data - no side effects
+function getPartsCSV(): string {
+  return `part_id,name,category,current_stock,min_stock,reorder_point,unit_cost,supplier_id
 CPU-001,Intel i5-12400,CPU,15,5,8,180.00,TECH-CORP
 CPU-002,AMD Ryzen 5 5600X,CPU,12,5,8,220.00,TECH-CORP
 RAM-001,Corsair 16GB DDR4,Memory,25,10,15,65.00,MEMORY-PLUS
@@ -28,8 +28,10 @@ GPU-001,NVIDIA RTX 3060,Graphics,3,2,3,350.00,GPU-WORLD
 GPU-002,AMD RX 6600,Graphics,5,2,4,280.00,GPU-WORLD
 PSU-001,Corsair 650W PSU,Power Supply,18,6,10,85.00,POWER-TECH
 PSU-002,EVGA 750W PSU,Power Supply,12,4,7,110.00,POWER-TECH`;
+}
 
-  const supplierCSV = `supplier_id,part_id,supplier_name,unit_price,lead_time_days,minimum_order,price_change_pct
+function getSupplierCSV(): string {
+  return `supplier_id,part_id,supplier_name,unit_price,lead_time_days,minimum_order,price_change_pct
 TECH-CORP,CPU-001,Tech Corporation,175.00,3,5,2.9
 TECH-CORP,CPU-002,Tech Corporation,215.00,3,5,2.4
 MEMORY-PLUS,RAM-001,Memory Plus Inc,62.00,2,10,3.3
@@ -40,38 +42,36 @@ GPU-WORLD,GPU-001,GPU World Ltd,340.00,7,3,6.3
 GPU-WORLD,GPU-002,GPU World Ltd,275.00,7,3,5.8
 POWER-TECH,PSU-001,Power Tech Co,82.00,5,8,2.5
 POWER-TECH,PSU-002,Power Tech Co,105.00,5,6,2.9`;
+}
 
-  const jobsData = {
+function getJobsData() {
+  return {
     jobs: [
       { job_id: "JOB-001", customer: "John Smith", device: "Dell Laptop", parts: ["SSD-001", "RAM-001"], total: 280.00, date: "2026-01-20" },
       { job_id: "JOB-002", customer: "Sarah Johnson", device: "HP Desktop", parts: ["CPU-001", "RAM-001"], total: 420.00, date: "2026-01-21" },
       { job_id: "JOB-003", customer: "Mike Davis", device: "Gaming PC", parts: ["GPU-001", "PSU-002"], total: 750.00, date: "2026-01-22" },
     ]
   };
+}
 
-  return { partsCSV, supplierCSV, jobsData };
-};
-
-test.describe('🖥️ Real User: Computer Repair Shop Workflow', () => {
-  let testData: ReturnType<typeof createTestData>;
+test.describe('Computer Repair Shop Workflow', () => {
   let tempDir: string;
 
   test.beforeAll(() => {
-    testData = createTestData();
     tempDir = fs.mkdtempSync('/tmp/mimir-e2e-');
     
     // Write test files
-    fs.writeFileSync(path.join(tempDir, 'parts_inventory.csv'), testData.partsCSV);
-    fs.writeFileSync(path.join(tempDir, 'supplier_pricing.csv'), testData.supplierCSV);
-    fs.writeFileSync(path.join(tempDir, 'repair_jobs.json'), JSON.stringify(testData.jobsData, null, 2));
+    fs.writeFileSync(path.join(tempDir, 'parts_inventory.csv'), getPartsCSV());
+    fs.writeFileSync(path.join(tempDir, 'supplier_pricing.csv'), getSupplierCSV());
+    fs.writeFileSync(path.join(tempDir, 'repair_jobs.json'), JSON.stringify(getJobsData(), null, 2));
     
-    console.log('✓ Test data created:', tempDir);
+    console.log('Test data created:', tempDir);
   });
 
   test.afterAll(() => {
     // Cleanup temp files
     fs.rmSync(tempDir, { recursive: true, force: true });
-    console.log('✓ Test data cleaned up');
+    console.log('Test data cleaned up');
   });
 
   test('User navigates to dashboard and sees system status', async ({ page }) => {

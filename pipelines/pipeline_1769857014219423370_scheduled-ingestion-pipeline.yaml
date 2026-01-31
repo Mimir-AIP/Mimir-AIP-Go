@@ -1,0 +1,24 @@
+id: pipeline_1769857014219423370
+name: scheduled-ingestion-pipeline
+metadata:
+    id: pipeline_1769857014219423370
+    name: scheduled-ingestion-pipeline
+    description: ""
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T10:56:54.219423945Z
+    updated_at: 2026-01-31T10:56:54.219423945Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: scheduled-ingestion-pipeline
+    enabled: true
+    steps:
+        - name: fetch-data
+          plugin: Input.api
+          config:
+            method: GET
+            url: http://127.0.0.1:38331
+          output: api_data

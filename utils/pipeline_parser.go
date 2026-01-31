@@ -42,11 +42,9 @@ func getSchema() (map[string]any, error) {
 }
 
 // ValidatePipelineConfig validates the pipeline configuration file against the schema
+// Supports both ConfigFile format (with pipelines array) and single PipelineConfig format
 func ValidatePipelineConfig(pipelineFilePath string) (bool, error) {
-	schema, err := getSchema()
-	if err != nil {
-		return false, fmt.Errorf("error getting schema: %w", err)
-	}
+	schema, schemaErr := getSchema()
 
 	pipelineFile, err := os.ReadFile(pipelineFilePath)
 	if err != nil {
@@ -61,7 +59,54 @@ func ValidatePipelineConfig(pipelineFilePath string) (bool, error) {
 		return false, fmt.Errorf("pipeline config is empty")
 	}
 
-	// Basic validation: check that all required top-level keys in the schema exist in the pipeline config
+	// If schema is not available, do basic validation
+	if schemaErr != nil {
+		// Detect format and do basic validation
+		if _, hasPipelines := pipelineConfig["pipelines"]; hasPipelines {
+			return validateConfigFileBasic(pipelineConfig)
+		}
+		return validateSinglePipelineBasic(pipelineConfig)
+	}
+
+	// Detect format: ConfigFile has 'pipelines' key, single pipeline has 'name' directly
+	if _, hasPipelines := pipelineConfig["pipelines"]; hasPipelines {
+		// ConfigFile format - validate against top-level schema
+		return validateAgainstSchema(pipelineConfig, schema)
+	}
+
+	// Single pipeline format - validate against nested pipeline schema
+	pipelineSchema := extractPipelineSchema(schema)
+	if pipelineSchema == nil {
+		// No nested schema available, do basic validation
+		return validateSinglePipelineBasic(pipelineConfig)
+	}
+
+	return validateAgainstSchema(pipelineConfig, pipelineSchema)
+}
+
+// extractPipelineSchema extracts the pipeline item schema from the full schema
+func extractPipelineSchema(schema map[string]any) map[string]any {
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	pipelinesProp, ok := properties["pipelines"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	items, ok := pipelinesProp["items"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	return items
+}
+
+// validateAgainstSchema validates a config against a schema
+func validateAgainstSchema(config map[string]any, schema map[string]any) (bool, error) {
+	// Check required keys
 	requiredKeys, ok := schema["required"].([]any)
 	if ok {
 		for _, key := range requiredKeys {
@@ -69,12 +114,39 @@ func ValidatePipelineConfig(pipelineFilePath string) (bool, error) {
 			if !ok {
 				continue
 			}
-			if _, exists := pipelineConfig[keyStr]; !exists {
+			if _, exists := config[keyStr]; !exists {
 				return false, fmt.Errorf("missing required key: %s", keyStr)
 			}
 		}
 	}
-	//TODO add advanced validation
+
+	return true, nil
+}
+
+// validateSinglePipelineBasic performs basic validation for single pipeline format
+func validateSinglePipelineBasic(config map[string]any) (bool, error) {
+	// Single pipeline requires 'name' and 'steps'
+	if _, exists := config["name"]; !exists {
+		return false, fmt.Errorf("missing required key: name")
+	}
+	if _, exists := config["steps"]; !exists {
+		return false, fmt.Errorf("missing required key: steps")
+	}
+	return true, nil
+}
+
+// validateConfigFileBasic performs basic validation for ConfigFile format
+func validateConfigFileBasic(config map[string]any) (bool, error) {
+	// ConfigFile requires 'pipelines' array
+	pipelines, exists := config["pipelines"]
+	if !exists {
+		return false, fmt.Errorf("missing required key: pipelines")
+	}
+
+	// Check that pipelines is actually an array
+	if _, ok := pipelines.([]any); !ok {
+		return false, fmt.Errorf("pipelines must be an array")
+	}
 
 	return true, nil
 }

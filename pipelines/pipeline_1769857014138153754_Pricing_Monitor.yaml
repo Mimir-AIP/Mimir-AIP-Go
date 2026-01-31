@@ -1,0 +1,24 @@
+id: pipeline_1769857014138153754
+name: Pricing Monitor
+metadata:
+    id: pipeline_1769857014138153754
+    name: Pricing Monitor
+    description: Monitor supplier pricing
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T10:56:54.138154137Z
+    updated_at: 2026-01-31T10:56:54.138154137Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: Pricing Monitor
+    enabled: true
+    steps:
+        - name: read-pricing
+          plugin: Input.csv
+          config:
+            file_path: /tmp/TestRealisticComputerRepairShop_FullWorkflow4042474555/001/supplier_pricing.csv
+            has_headers: true
+          output: pricing

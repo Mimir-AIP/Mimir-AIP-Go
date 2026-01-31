@@ -1,0 +1,43 @@
+id: pipeline_1769853111230669185
+name: Daily Inventory Sync
+metadata:
+    id: pipeline_1769853111230669185
+    name: Daily Inventory Sync
+    description: Automatically sync inventory from supplier API
+    tags: []
+    enabled: true
+    auto_extract_ontology: true
+    created_at: 2026-01-31T09:51:51.230669806Z
+    updated_at: 2026-01-31T09:51:51.230669806Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: Daily Inventory Sync
+    enabled: true
+    steps:
+        - name: fetch-inventory
+          plugin: Input.csv
+          config:
+            file_path: /tmp/TestRealisticComputerRepairShop_FullWorkflow1563874731/001/parts_inventory.csv
+            has_headers: true
+          output: inventory_data
+        - name: validate-stock-levels
+          plugin: Data_Processing.validate
+          config:
+            input: inventory_data
+            required:
+                - part_id
+                - current_stock
+                - unit_cost
+            types:
+                current_stock: number
+                unit_cost: number
+          output: validated_inventory
+        - name: check-reorder-needed
+          plugin: Data_Processing.transform
+          config:
+            condition: current_stock <= reorder_point
+            input: validated_inventory
+            operation: filter
+          output: reorder_alerts

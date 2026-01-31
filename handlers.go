@@ -560,8 +560,7 @@ func (s *Server) handleCreatePipeline(w http.ResponseWriter, r *http.Request) {
 		"pipeline": pipeline,
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	writeJSONResponse(w, http.StatusOK, response)
+	writeJSONResponse(w, http.StatusCreated, response)
 }
 
 // handleUpdatePipeline handles requests to update an existing pipeline

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
+	knowledgegraph "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/KnowledgeGraph"
 	ontology "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Ontology"
 	Storage "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines/Storage"
 	"github.com/Mimir-AIP/Mimir-AIP-Go/utils"
@@ -1417,4 +1418,179 @@ func (s *Server) handleGetSuggestionSummary(w http.ResponseWriter, r *http.Reque
 		"ontology_id": ontologyID,
 		"summary":     summary,
 	})
+}
+
+// handleGetOntologyEntities handles requests to get entities extracted into an ontology
+// GET /api/v1/ontology/{id}/entities
+func (s *Server) handleGetOntologyEntities(w http.ResponseWriter, r *http.Request) {
+	if s.persistence == nil || s.tdb2Backend == nil {
+		writeInternalServerErrorResponse(w, "Ontology features are not available")
+		return
+	}
+
+	vars := mux.Vars(r)
+	ontologyID := vars["id"]
+
+	if ontologyID == "" {
+		writeBadRequestResponse(w, "ontology ID is required")
+		return
+	}
+
+	// Verify ontology exists
+	ctx := context.Background()
+	ont, err := s.persistence.GetOntology(ctx, ontologyID)
+	if err != nil {
+		writeNotFoundResponse(w, fmt.Sprintf("Ontology not found: %v", err))
+		return
+	}
+
+	// Get query parameters for filtering
+	entityType := r.URL.Query().Get("type")
+	limit := 100 // default limit
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+		if limit > 1000 {
+			limit = 1000 // max limit
+		}
+	}
+
+	// Build SPARQL query to get entities
+	graphURI := ont.TDB2Graph
+	if graphURI == "" {
+		graphURI = fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+	}
+
+	var query string
+	if entityType != "" {
+		// Filter by entity type
+		query = fmt.Sprintf(`
+			PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+			SELECT ?entity ?type ?label ?property ?value WHERE {
+				GRAPH <%s> {
+					?entity a <%s> .
+					?entity a ?type .
+					OPTIONAL { ?entity rdfs:label ?label }
+					OPTIONAL { 
+						?entity ?property ?value .
+						FILTER(?property != rdfs:label)
+					}
+				}
+			}
+			LIMIT %d
+		`, graphURI, entityType, limit)
+	} else {
+		// Get all entities
+		query = fmt.Sprintf(`
+			PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+			SELECT DISTINCT ?entity ?type ?label WHERE {
+				GRAPH <%s> {
+					?entity a ?type .
+					OPTIONAL { ?entity rdfs:label ?label }
+					FILTER(?type != <http://www.w3.org/2002/07/owl#Class>)
+					FILTER(?type != <http://www.w3.org/2002/07/owl#ObjectProperty>)
+					FILTER(?type != <http://www.w3.org/2002/07/owl#DatatypeProperty>)
+					FILTER(?type != <http://www.w3.org/2002/07/owl#Ontology>)
+				}
+			}
+			LIMIT %d
+		`, graphURI, limit)
+	}
+
+	// Execute query
+	result, err := s.tdb2Backend.QuerySPARQL(ctx, query)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to query entities: %v", err))
+		return
+	}
+
+	// Transform results into entity objects
+	entities := transformSPARQLResultsToEntities(result, entityType)
+
+	writeSuccessResponse(w, map[string]any{
+		"ontology_id": ontologyID,
+		"entities":    entities,
+		"count":       len(entities),
+	})
+}
+
+// transformSPARQLResultsToEntities transforms SPARQL query results into entity objects
+func transformSPARQLResultsToEntities(result *knowledgegraph.QueryResult, filterType string) []map[string]any {
+	if result == nil || len(result.Bindings) == 0 {
+		return []map[string]any{}
+	}
+
+	// Group by entity URI
+	entityMap := make(map[string]map[string]any)
+
+	for _, binding := range result.Bindings {
+		entityURI := binding["entity"].Value
+		if entityURI == "" {
+			continue
+		}
+
+		if _, exists := entityMap[entityURI]; !exists {
+			entityMap[entityURI] = map[string]any{
+				"uri": entityURI,
+			}
+		}
+
+		entity := entityMap[entityURI]
+
+		// Add type
+		if typeVal := binding["type"].Value; typeVal != "" {
+			if existingType, hasType := entity["type"]; !hasType || existingType == "" {
+				entity["type"] = typeVal
+			}
+		}
+
+		// Add label
+		if label := binding["label"].Value; label != "" {
+			if _, hasLabel := entity["label"]; !hasLabel {
+				entity["label"] = label
+			}
+			if _, hasName := entity["name"]; !hasName {
+				entity["name"] = label
+			}
+		}
+
+		// Add properties if present
+		if property := binding["property"].Value; property != "" {
+			if value, hasValue := binding["value"]; hasValue && value.Value != "" {
+				if entity["properties"] == nil {
+					entity["properties"] = map[string]any{}
+				}
+				if props, ok := entity["properties"].(map[string]any); ok {
+					// Extract property name from URI
+					propName := property
+					for i := len(property) - 1; i >= 0; i-- {
+						if property[i] == '#' || property[i] == '/' {
+							propName = property[i+1:]
+							break
+						}
+					}
+					props[propName] = value.Value
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	entities := make([]map[string]any, 0, len(entityMap))
+	for _, entity := range entityMap {
+		// Skip ontology structure entities
+		if entityType, ok := entity["type"].(string); ok {
+			if entityType == "http://www.w3.org/2002/07/owl#Class" ||
+				entityType == "http://www.w3.org/2002/07/owl#ObjectProperty" ||
+				entityType == "http://www.w3.org/2002/07/owl#DatatypeProperty" ||
+				entityType == "http://www.w3.org/2002/07/owl#Ontology" {
+				continue
+			}
+			if filterType != "" && entityType != filterType {
+				continue
+			}
+		}
+		entities = append(entities, entity)
+	}
+
+	return entities
 }

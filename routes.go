@@ -107,6 +107,7 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/ontology/{id}/validate", s.handleValidateOntology).Methods("POST")
 	v1.HandleFunc("/ontology/{id}/stats", s.handleOntologyStats).Methods("GET")
 	v1.HandleFunc("/ontology/{id}/export", s.handleExportOntology).Methods("GET")
+	v1.HandleFunc("/ontology/{id}/entities", s.handleGetOntologyEntities).Methods("GET")
 	v1.HandleFunc("/ontology/validate", s.handleValidateOntology).Methods("POST")
 
 	// Ontology versioning endpoints

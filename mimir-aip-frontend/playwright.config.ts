@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:8080',
     trace: 'on-first-retry',
   },
   projects: [
@@ -17,8 +17,7 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // Note: To run E2E tests, first start the backend and frontend servers:
-  // Terminal 1: cd .. && go run . --server 8080
-  // Terminal 2: npm run dev
+  // Note: For Docker unified container, server runs on port 8080
+  // Docker compose: docker compose -f docker-compose.unified.yml up
   // Then: npx playwright test
 });

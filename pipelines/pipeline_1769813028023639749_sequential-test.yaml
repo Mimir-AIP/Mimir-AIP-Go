@@ -1,0 +1,24 @@
+id: pipeline_1769813028023639749
+name: sequential-test
+metadata:
+    id: pipeline_1769813028023639749
+    name: sequential-test
+    description: ""
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-30T22:43:48.023640125Z
+    updated_at: 2026-01-30T22:43:48.023640125Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: sequential-test
+    enabled: true
+    steps:
+        - name: input
+          plugin: Input.csv
+          config:
+            file_path: /tmp/TestFullAutoChain_SequentialStepsSequential_data_processing_ste3533220712/001/sequential_test.csv
+            has_headers: true
+          output: data

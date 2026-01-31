@@ -1,0 +1,25 @@
+id: pipeline_1769817895350407909
+name: happy-path-test-pipeline
+metadata:
+    id: pipeline_1769817895350407909
+    name: happy-path-test-pipeline
+    description: Test pipeline for happy path
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T00:04:55.3504083Z
+    updated_at: 2026-01-31T00:04:55.3504083Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: happy-path-test-pipeline
+    enabled: true
+    steps:
+        - name: read-csv
+          plugin: Input.csv
+          config:
+            delimiter: ','
+            file_path: /tmp/TestHappyPath_PipelineCreationAndExecution3502920458/001/test_data.csv
+            has_headers: true
+          output: csv_data

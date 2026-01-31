@@ -121,7 +121,7 @@ func TestAuth_TokenRefresh(t *testing.T) {
 	server.router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Skip("Login failed, skipping token refresh test")
+		t.Fatalf("CRITICAL: Login endpoint returned %d, expected 200. Auth system not functioning. Full test body: %s", w.Code, w.Body.String())
 	}
 
 	var loginResponse map[string]any
@@ -226,7 +226,7 @@ func TestAuth_CheckEndpoint(t *testing.T) {
 		server.router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Skip("Login failed, skipping auth check with token test")
+			t.Fatalf("CRITICAL: Login failed with status %d. Cannot test authenticated endpoints. Response: %s", w.Code, w.Body.String())
 		}
 
 		var loginResponse map[string]any
@@ -301,7 +301,7 @@ func TestAuth_MeEndpoint(t *testing.T) {
 		server.router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Skip("Login failed, skipping me endpoint test")
+			t.Fatalf("CRITICAL: Login failed with status %d. Cannot test /auth/me endpoint. Response: %s", w.Code, w.Body.String())
 		}
 
 		var loginResponse map[string]any
@@ -512,9 +512,7 @@ func TestAuth_CreateAPIKey(t *testing.T) {
 		w := httptest.NewRecorder()
 		server.router.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Skip("Login failed, skipping API key creation test")
-		}
+		require.Equal(t, http.StatusOK, w.Code, "Login must succeed to create API key")
 
 		var loginResponse map[string]any
 		json.Unmarshal(w.Body.Bytes(), &loginResponse)
@@ -562,9 +560,7 @@ func TestAuth_CreateAPIKey(t *testing.T) {
 		w := httptest.NewRecorder()
 		server.router.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Skip("Login failed, skipping API key creation test")
-		}
+		require.Equal(t, http.StatusOK, w.Code, "Login must succeed to create API key with default name")
 
 		var loginResponse map[string]any
 		json.Unmarshal(w.Body.Bytes(), &loginResponse)

@@ -568,9 +568,7 @@ func TestFullAutoChain_VerifyWorkDone(t *testing.T) {
 		w := httptest.NewRecorder()
 		server.router.ServeHTTP(w, req)
 
-		if w.Code != http.StatusCreated {
-			t.Skip("Pipeline creation failed, skipping verification")
-		}
+		require.Equal(t, http.StatusCreated, w.Code, "Pipeline creation must succeed to continue chain verification")
 
 		var response map[string]any
 		err = json.Unmarshal(w.Body.Bytes(), &response)

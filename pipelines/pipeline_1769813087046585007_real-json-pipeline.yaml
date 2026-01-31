@@ -1,0 +1,23 @@
+id: pipeline_1769813087046585007
+name: real-json-pipeline
+metadata:
+    id: pipeline_1769813087046585007
+    name: real-json-pipeline
+    description: Process real JSON test data
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-30T22:44:47.046585739Z
+    updated_at: 2026-01-30T22:44:47.046585739Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: real-json-pipeline
+    enabled: true
+    steps:
+        - name: read-json
+          plugin: Input.json
+          config:
+            file_path: /tmp/TestFullAutoChain_WithRealFiles1429404939/001/real_test_data.json
+          output: json_data

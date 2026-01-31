@@ -126,9 +126,7 @@ func TestScheduler_EnableDisableJob(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Skip("Job creation failed, skipping enable/disable test")
-	}
+	require.Equal(t, http.StatusCreated, w.Code, "Job creation must succeed to test enable/disable")
 
 	jobID := "test-enable-job"
 
@@ -214,9 +212,7 @@ func TestScheduler_UpdateJob(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Skip("Job creation failed, skipping update test")
-	}
+	require.Equal(t, http.StatusCreated, w.Code, "Job creation must succeed to test updates")
 
 	jobID := "test-update-job"
 
@@ -325,9 +321,7 @@ func TestScheduler_DeleteJob(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Skip("Job creation failed, skipping delete test")
-	}
+	require.Equal(t, http.StatusCreated, w.Code, "Job creation must succeed to test deletion")
 
 	jobID := "test-delete-job"
 
@@ -504,9 +498,7 @@ func TestScheduler_CreateDuplicateJob(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Skip("Job creation failed, skipping duplicate test")
-	}
+	require.Equal(t, http.StatusCreated, w.Code, "Job creation must succeed to test duplicate prevention")
 
 	t.Run("Create duplicate job", func(t *testing.T) {
 		// Try to create the same job again

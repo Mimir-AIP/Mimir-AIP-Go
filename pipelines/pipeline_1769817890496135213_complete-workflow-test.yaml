@@ -1,0 +1,27 @@
+id: pipeline_1769817890496135213
+name: complete-workflow-test
+metadata:
+    id: pipeline_1769817890496135213
+    name: complete-workflow-test
+    description: ""
+    tags:
+        - ingestion
+        - auto-ml
+        - auto-twin
+    enabled: true
+    auto_extract_ontology: true
+    created_at: 2026-01-31T00:04:50.496135581Z
+    updated_at: 2026-01-31T00:04:50.496135581Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: complete-workflow-test
+    enabled: true
+    steps:
+        - name: csv-input
+          plugin: Input.csv
+          config:
+            file_path: /tmp/TestHappyPath_CompleteAutomaticWorkflow2791260739/001/workflow_test.csv
+            has_headers: true
+          output: products

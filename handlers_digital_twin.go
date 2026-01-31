@@ -236,6 +236,65 @@ func (s *Server) autoConfigureTwin(twinID, modelType string, db *sql.DB) int {
 	return count
 }
 
+// getOntologyStatsForTwin retrieves entity and relationship counts from TDB2 for a given ontology ID
+func (s *Server) getOntologyStatsForTwin(ctx context.Context, ontologyID string) (entityCount, relationshipCount int) {
+	if s.persistence == nil || s.tdb2Backend == nil {
+		return 0, 0
+	}
+
+	// Get ontology to find the TDB2 graph URI
+	ont, err := s.persistence.GetOntology(ctx, ontologyID)
+	if err != nil {
+		return 0, 0
+	}
+
+	// Get the graph URI for this ontology
+	graphURI := ont.TDB2Graph
+	if graphURI == "" {
+		graphURI = fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+	}
+
+	// Query to count entities (distinct subjects with a type, excluding OWL metadata)
+	entitiesQuery := fmt.Sprintf(`
+		PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+		SELECT (COUNT(DISTINCT ?entity) AS ?count) WHERE {
+			GRAPH <%s> {
+				?entity a ?type .
+				FILTER(?type != <http://www.w3.org/2002/07/owl#Class>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#ObjectProperty>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#DatatypeProperty>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#Ontology>)
+			}
+		}
+	`, graphURI)
+
+	entitiesResult, err := s.tdb2Backend.QuerySPARQL(ctx, entitiesQuery)
+	if err == nil && len(entitiesResult.Bindings) > 0 {
+		if countVal, ok := entitiesResult.Bindings[0]["count"]; ok {
+			fmt.Sscanf(countVal.Value, "%d", &entityCount)
+		}
+	}
+
+	// Query to count relationships (distinct predicate usage between entities)
+	relationshipsQuery := fmt.Sprintf(`
+		SELECT (COUNT(*) AS ?count) WHERE {
+			GRAPH <%s> {
+				?source ?predicate ?target .
+				FILTER(isIRI(?target))
+			}
+		}
+	`, graphURI)
+
+	relationshipsResult, err := s.tdb2Backend.QuerySPARQL(ctx, relationshipsQuery)
+	if err == nil && len(relationshipsResult.Bindings) > 0 {
+		if countVal, ok := relationshipsResult.Bindings[0]["count"]; ok {
+			fmt.Sscanf(countVal.Value, "%d", &relationshipCount)
+		}
+	}
+
+	return entityCount, relationshipCount
+}
+
 // handleListTwins lists all digital twins
 func (s *Server) handleListTwins(w http.ResponseWriter, r *http.Request) {
 	if s.persistence == nil {
@@ -266,13 +325,18 @@ func (s *Server) handleListTwins(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// Get actual entity and relationship counts from the linked ontology
+		entityCount, relationshipCount := s.getOntologyStatsForTwin(r.Context(), ontologyID)
+
 		twins = append(twins, map[string]interface{}{
-			"id":          id,
-			"ontology_id": ontologyID,
-			"name":        name,
-			"description": description,
-			"model_type":  modelType,
-			"created_at":  createdAt,
+			"id":                 id,
+			"ontology_id":        ontologyID,
+			"name":               name,
+			"description":        description,
+			"model_type":         modelType,
+			"created_at":         createdAt,
+			"entity_count":       entityCount,
+			"relationship_count": relationshipCount,
 		})
 	}
 
@@ -480,7 +544,26 @@ func (s *Server) handleGetTwin(w http.ResponseWriter, r *http.Request) {
 	twin.CreatedAt = createdAt
 	twin.UpdatedAt = updatedAt
 
-	writeSuccessResponse(w, twin)
+	// Get actual entity and relationship counts from the linked ontology
+	entityCount, relationshipCount := s.getOntologyStatsForTwin(r.Context(), ontologyID)
+
+	// Build response with ontology stats
+	response := map[string]interface{}{
+		"id":                 twin.ID,
+		"ontology_id":        twin.OntologyID,
+		"name":               twin.Name,
+		"description":        twin.Description,
+		"model_type":         twin.ModelType,
+		"base_state":         twin.BaseState,
+		"entities":           twin.Entities,
+		"relationships":      twin.Relationships,
+		"created_at":         twin.CreatedAt,
+		"updated_at":         twin.UpdatedAt,
+		"entity_count":       entityCount,
+		"relationship_count": relationshipCount,
+	}
+
+	writeSuccessResponse(w, response)
 }
 
 // handleGetTwinState retrieves the current state of a digital twin

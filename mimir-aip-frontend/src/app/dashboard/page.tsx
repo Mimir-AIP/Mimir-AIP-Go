@@ -62,7 +62,8 @@ export default function DashboardPage() {
 
   // Determine system health based on recent job status
   const failedJobs = recentJobs.filter(j => j.status === 'failed');
-  const systemHealthy = failedJobs.length === 0 && recentJobs.length > 0;
+  const hasJobs = recentJobs.length > 0;
+  const systemHealthy = failedJobs.length === 0;
 
   if (loading) {
     return (
@@ -106,15 +107,15 @@ export default function DashboardPage() {
       </div>
 
       {/* System Status */}
-      <Card className={`p-6 border-l-4 ${systemHealthy ? 'border-l-green-500 bg-navy' : 'border-l-red-500 bg-red-900/10'}`}>
+      <Card className={`p-6 border-l-4 ${!hasJobs ? 'border-l-blue-500 bg-navy' : systemHealthy ? 'border-l-green-500 bg-navy' : 'border-l-red-500 bg-red-900/10'}`}>
         <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${systemHealthy ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-            <Activity className={`w-6 h-6 ${systemHealthy ? 'text-green-500' : 'text-red-500'}`} />
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${!hasJobs ? 'bg-blue-500/20' : systemHealthy ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+            <Activity className={`w-6 h-6 ${!hasJobs ? 'text-blue-400' : systemHealthy ? 'text-green-500' : 'text-red-500'}`} />
           </div>
           <div>
             <h2 className="text-xl font-semibold text-white">System Status</h2>
-            <p className={systemHealthy ? 'text-green-400' : 'text-red-400'}>
-              {systemHealthy ? 'All systems operational' : `${failedJobs.length} recent job(s) failed`}
+            <p className={!hasJobs ? 'text-blue-400' : systemHealthy ? 'text-green-400' : 'text-red-400'}>
+              {!hasJobs ? 'No recent executions - ready to process' : systemHealthy ? 'All systems operational' : `${failedJobs.length} recent job(s) failed`}
             </p>
           </div>
         </div>

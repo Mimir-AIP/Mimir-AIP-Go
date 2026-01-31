@@ -90,9 +90,15 @@ export function AgentChat({ twinId }: AgentChatProps) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto bg-gradient-to-b from-navy to-blue/5 rounded-lg shadow-xl">
-      {/* Model Selector Toggle - Top Right */}
-      <div className="absolute top-4 right-4 z-10">
+    <div className="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto bg-gradient-to-b from-navy to-blue/5 rounded-lg shadow-xl relative">
+      {/* Header with Model Selector Toggle */}
+      <div className="flex items-center justify-between p-4 border-b border-blue">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-400">Model:</span>
+          <span className="text-sm text-orange font-medium">
+            {modelName.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')}
+          </span>
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -101,7 +107,7 @@ export function AgentChat({ twinId }: AgentChatProps) {
           data-testid="model-selector-toggle"
         >
           <Settings2 className="h-4 w-4 mr-2" />
-          {modelName.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')}
+          Change
         </Button>
       </div>
 

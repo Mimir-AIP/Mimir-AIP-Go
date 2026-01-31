@@ -87,7 +87,7 @@ test.describe('🖥️ Real User: Computer Repair Shop Workflow', () => {
     await page.screenshot({ path: 'test-results/01-dashboard-initial.png' });
     
     // Verify main navigation exists
-    const nav = page.locator('nav, header');
+    const nav = page.locator('nav, header').first();
     await expect(nav).toBeVisible();
     console.log('✓ Navigation visible');
   });

@@ -284,6 +284,11 @@ func (h *PipelineExtractionHandler) prepareExtractionData(ctx *pipelines.PluginC
 					return v
 				}
 			case map[string]any:
+				// Check if this is a result object with rows
+				if rows, ok := v["rows"].([]map[string]any); ok && len(rows) > 0 {
+					h.logger.Info("[AUTO-EXTRACTION] Found rows in result object", String("key", key), Int("records", len(rows)))
+					return rows
+				}
 				// Single record - wrap in array
 				h.logger.Info("[AUTO-EXTRACTION] Found map data in context, wrapping in array", String("key", key))
 				return []map[string]any{v}

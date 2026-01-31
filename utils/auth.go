@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // AuthClaims represents JWT claims
@@ -102,15 +102,16 @@ func NewAuthManager(jwtSecret string, tokenExpiry time.Duration, rateLimit int) 
 	}
 }
 
-// HashPassword hashes a password using SHA-256
-func (am *AuthManager) HashPassword(password string) string {
-	hash := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(hash[:])
+// HashPassword hashes a password using bcrypt (adaptive, salted)
+func (am *AuthManager) HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
 }
 
-// VerifyPassword verifies a password against a hash
+// VerifyPassword verifies a password against a bcrypt hash
 func (am *AuthManager) VerifyPassword(password, hash string) bool {
-	return am.HashPassword(password) == hash
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
 }
 
 // CreateUser creates a new user
@@ -119,10 +120,15 @@ func (am *AuthManager) CreateUser(username, password string, roles []string) (*U
 		return nil, fmt.Errorf("user already exists")
 	}
 
+	hash, err := am.HashPassword(password)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
 	user := &User{
 		ID:       generateID(),
 		Username: username,
-		Password: am.HashPassword(password),
+		Password: hash,
 		Roles:    roles,
 		Active:   true,
 	}

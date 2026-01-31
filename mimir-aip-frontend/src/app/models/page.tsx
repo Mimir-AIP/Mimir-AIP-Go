@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { listModels, type ClassifierModel } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -83,7 +82,7 @@ export default function ModelsPage() {
         <div>
           <h1 className="text-3xl font-bold text-orange">ML Models</h1>
           <p className="text-white/60 mt-2">
-            View trained machine learning models and their performance
+            Monitor auto-trained model performance. Manage via chat.
           </p>
         </div>
         <button
@@ -108,61 +107,59 @@ export default function ModelsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {models.map((model) => (
-            <Link key={model.id} href={`/models/${model.id}`}>
-              <Card className="bg-navy border-blue hover:border-orange/50 transition-colors cursor-pointer h-full">
-                <div className="p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center gap-2">
-                      <Brain className="h-5 w-5 text-orange" />
-                      <h3 className="text-lg font-semibold text-white">{model.name}</h3>
-                    </div>
-                    <Badge variant={model.is_active ? "default" : "secondary"} className={model.is_active ? "bg-green-600" : ""}>
-                      {model.is_active ? "Active" : "Inactive"}
-                    </Badge>
+            <Card key={model.id} className="bg-navy border-blue h-full">
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-2">
+                    <Brain className="h-5 w-5 text-orange" />
+                    <h3 className="text-lg font-semibold text-white">{model.name}</h3>
                   </div>
-                  
-                  <p className="text-sm text-white/60 mb-4">{model.algorithm}</p>
-                  
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <TrendingUp className="h-4 w-4 text-green-400" />
-                      <span className="text-white/40">Accuracy:</span>
-                      <span className="text-white font-medium">{formatAccuracy(model.validate_accuracy)}</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <p className="text-white/40 text-xs">Precision</p>
-                        <p className="font-medium text-white">{formatAccuracy(model.precision_score)}</p>
-                      </div>
-                      <div>
-                        <p className="text-white/40 text-xs">Recall</p>
-                        <p className="font-medium text-white">{formatAccuracy(model.recall_score)}</p>
-                      </div>
-                      <div>
-                        <p className="text-white/40 text-xs">F1 Score</p>
-                        <p className="font-medium text-white">{formatAccuracy(model.f1_score)}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 text-xs text-white/40 pt-3 border-t border-blue/30">
-                      <Calendar className="h-3 w-3" />
-                      Trained {formatDate(model.created_at)}
-                    </div>
-                    
-                    {model.training_rows && (
-                      <p className="text-xs text-white/40">
-                        {model.training_rows.toLocaleString()} training rows
-                      </p>
-                    )}
-                  </div>
-                  
-                  <div className="mt-4 pt-4 border-t border-blue/30">
-                    <span className="text-xs text-orange">Click to view details →</span>
-                  </div>
+                  <Badge variant={model.is_active ? "default" : "secondary"} className={model.is_active ? "bg-green-600" : ""}>
+                    {model.is_active ? "Active" : "Inactive"}
+                  </Badge>
                 </div>
-              </Card>
-            </Link>
+                
+                <p className="text-sm text-white/60 mb-4">{model.algorithm}</p>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <TrendingUp className="h-4 w-4 text-green-400" />
+                    <span className="text-white/40">Accuracy:</span>
+                    <span className="text-white font-medium">{formatAccuracy(model.validate_accuracy)}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <p className="text-white/40 text-xs">Precision</p>
+                      <p className="font-medium text-white">{formatAccuracy(model.precision_score)}</p>
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs">Recall</p>
+                      <p className="font-medium text-white">{formatAccuracy(model.recall_score)}</p>
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs">F1 Score</p>
+                      <p className="font-medium text-white">{formatAccuracy(model.f1_score)}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 text-xs text-white/40 pt-3 border-t border-blue/30">
+                    <Calendar className="h-3 w-3" />
+                    Trained {formatDate(model.created_at)}
+                  </div>
+                  
+                  {model.training_rows && (
+                    <p className="text-xs text-white/40">
+                      {model.training_rows.toLocaleString()} training rows
+                    </p>
+                  )}
+                </div>
+                
+                <div className="mt-4 pt-4 border-t border-blue/30">
+                  <span className="text-xs text-white/40">Auto-trained from ontology data</span>
+                </div>
+              </div>
+            </Card>
           ))}
         </div>
       )}

@@ -89,7 +89,7 @@ export default function DigitalTwinsPage() {
         <div>
           <h1 className="text-3xl font-bold text-orange">Digital Twins</h1>
           <p className="text-white/60 mt-2">
-            View simulations and their current status
+            Monitor simulation status. Manage via chat.
           </p>
         </div>
         <button
@@ -114,61 +114,59 @@ export default function DigitalTwinsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {twins.map((twin) => (
-            <Link key={twin.id} href={`/digital-twins/${twin.id}`}>
-              <Card className="bg-navy border-blue hover:border-orange/50 transition-colors cursor-pointer h-full">
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
+            <Card key={twin.id} className="bg-navy border-blue h-full">
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Network className="h-5 w-5 text-orange" />
+                    <h3 className="text-lg font-semibold text-white">{twin.name}</h3>
+                  </div>
+                  <Badge variant="secondary">{twin.model_type}</Badge>
+                </div>
+                
+                {twin.description && (
+                  <p className="text-sm text-white/60 mb-4 line-clamp-2">
+                    {twin.description}
+                  </p>
+                )}
+                
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Database className="h-4 w-4 text-white/40" />
+                    <span className="text-white/40">Ontology:</span>
+                    <span className="text-white truncate">
+                      {getOntologyName(twin.ontology_id)}
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 pt-3 border-t border-blue/30">
                     <div className="flex items-center gap-2">
-                      <Network className="h-5 w-5 text-orange" />
-                      <h3 className="text-lg font-semibold text-white">{twin.name}</h3>
-                    </div>
-                    <Badge variant="secondary">{twin.model_type}</Badge>
-                  </div>
-                  
-                  {twin.description && (
-                    <p className="text-sm text-white/60 mb-4 line-clamp-2">
-                      {twin.description}
-                    </p>
-                  )}
-                  
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Database className="h-4 w-4 text-white/40" />
-                      <span className="text-white/40">Ontology:</span>
-                      <span className="text-white truncate">
-                        {getOntologyName(twin.ontology_id)}
-                      </span>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4 pt-3 border-t border-blue/30">
-                      <div className="flex items-center gap-2">
-                        <Activity className="h-4 w-4 text-green-400" />
-                        <div>
-                          <p className="text-xl font-bold text-white">{twin.entity_count || 0}</p>
-                          <p className="text-xs text-white/40">Entities</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Activity className="h-4 w-4 text-blue-400" />
-                        <div>
-                          <p className="text-xl font-bold text-white">{twin.relationship_count || 0}</p>
-                          <p className="text-xs text-white/40">Relationships</p>
-                        </div>
+                      <Activity className="h-4 w-4 text-green-400" />
+                      <div>
+                        <p className="text-xl font-bold text-white">{twin.entity_count || 0}</p>
+                        <p className="text-xs text-white/40">Entities</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-2 text-xs text-white/40 pt-2 border-t border-blue/30">
-                      <Calendar className="h-3 w-3" />
-                      Created {formatDate(twin.created_at)}
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-blue-400" />
+                      <div>
+                        <p className="text-xl font-bold text-white">{twin.relationship_count || 0}</p>
+                        <p className="text-xs text-white/40">Relationships</p>
+                      </div>
                     </div>
                   </div>
                   
-                  <div className="mt-4 pt-4 border-t border-blue/30">
-                    <span className="text-xs text-orange">Click to view details →</span>
+                  <div className="flex items-center gap-2 text-xs text-white/40 pt-2 border-t border-blue/30">
+                    <Calendar className="h-3 w-3" />
+                    Created {formatDate(twin.created_at)}
                   </div>
                 </div>
-              </Card>
-            </Link>
+                
+                <div className="mt-4 pt-4 border-t border-blue/30">
+                  <span className="text-xs text-white/40">Auto-generated from pipeline and ontology data</span>
+                </div>
+              </div>
+            </Card>
           ))}
         </div>
       )}

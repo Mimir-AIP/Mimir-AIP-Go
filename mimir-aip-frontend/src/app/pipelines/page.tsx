@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -456,9 +455,6 @@ export default function PipelinesPage() {
               </div>
               
               <div className="flex flex-wrap gap-2 pt-3 border-t border-blue/30">
-                <Button asChild size="sm" className="bg-orange hover:bg-orange/90 text-navy">
-                  <Link href={`/pipelines/${pipeline.id}`}>View Details</Link>
-                </Button>
                 <Button
                   size="sm"
                   variant="outline"

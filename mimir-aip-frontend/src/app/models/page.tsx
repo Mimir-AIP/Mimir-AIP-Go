@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { listModels, type ClassifierModel } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -155,8 +156,14 @@ export default function ModelsPage() {
                   )}
                 </div>
                 
-                <div className="mt-4 pt-4 border-t border-blue/30">
-                  <span className="text-xs text-white/40">Auto-trained from ontology data</span>
+                <div className="mt-4 pt-4 border-t border-blue/30 flex justify-between items-center">
+                  <span className="text-xs text-white/40">Auto-trained</span>
+                  <Link
+                    href={`/models/${model.id}`}
+                    className="text-xs bg-blue hover:bg-orange text-white px-3 py-1.5 rounded transition-colors"
+                  >
+                    View Details
+                  </Link>
                 </div>
               </div>
             </Card>

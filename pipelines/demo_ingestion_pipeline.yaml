@@ -1,0 +1,51 @@
+name: demo-repair-shop-ingestion
+version: "1.0"
+description: Import computer repair shop demo data from CSV files
+
+metadata:
+  auto_extract_ontology: true
+  target_ontology_id: ""
+  tags: ["demo", "repair-shop", "ingestion", "computer-parts"]
+  
+steps:
+  - name: ingest-parts-csv
+    plugin: Input.csv
+    config:
+      file_path: "/app/pipelines/demo_parts.csv"
+      has_headers: true
+      delimiter: ","
+    output: parts_raw
+    
+  - name: process-parts-data
+    plugin: Transform.map
+    config:
+      mappings:
+        part_id: "{{row.part_id}}"
+        name: "{{row.name}}"
+        category: "{{row.category}}"
+        current_stock: "{{row.current_stock}}"
+        min_stock: "{{row.min_stock}}"
+        reorder_point: "{{row.reorder_point}}"
+        unit_cost: "{{row.unit_cost}}"
+        supplier_id: "{{row.supplier_id}}"
+    input: parts_raw
+    output: parts_processed
+    
+  - name: store-to-persistence
+    plugin: Storage.persistence
+    config:
+      table: "parts_inventory"
+      operation: "upsert"
+      key_field: "part_id"
+    input: parts_processed
+    output: stored_parts
+    
+  - name: trigger-auto-extraction
+    plugin: Ontology.hybrid
+    config:
+      source_type: "csv"
+      auto_extract: true
+      create_entities: true
+      entity_types: ["Part", "Supplier"]
+    input: parts_processed
+    output: extraction_result

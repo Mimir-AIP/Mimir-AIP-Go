@@ -1,0 +1,43 @@
+# Demo Data Ingestion Pipeline
+# This pipeline imports the generated demo data into Mimir
+
+name: demo-data-ingestion
+description: Import repair shop demo data from SQLite database
+version: "1.0"
+enabled: true
+
+metadata:
+  auto_extract_ontology: true
+  tags: ["demo", "repair-shop", "ingestion"]
+
+steps:
+  - name: read-parts-from-sqlite
+    plugin: Storage.sqlite
+    config:
+      db_path: "./demo/repair_shop.db"
+      query: "SELECT part_id, name, category, current_stock, min_stock, reorder_point, unit_cost, supplier_id FROM parts_inventory"
+      output_format: json
+    output: parts_data
+
+  - name: read-suppliers-from-sqlite
+    plugin: Storage.sqlite
+    config:
+      db_path: "./demo/repair_shop.db"
+      query: "SELECT supplier_id, supplier_name, lead_time_days, minimum_order, reliability_score FROM suppliers"
+      output_format: json
+    output: suppliers_data
+
+  - name: read-jobs-from-sqlite
+    plugin: Storage.sqlite
+    config:
+      db_path: "./demo/repair_shop.db"
+      query: "SELECT job_id, customer_name, device_type, problem_description, status, total_cost, created_at FROM repair_jobs LIMIT 100"
+      output_format: json
+    output: jobs_data
+
+  - name: write-to-mimir
+    plugin: Output.csv
+    config:
+      file_path: "/data/demo_export.csv"
+      headers: true
+    input: parts_data

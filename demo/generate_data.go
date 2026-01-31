@@ -173,8 +173,7 @@ func main() {
 	fmt.Println(strings.Repeat("=", 60))
 
 	// Create database
-	dbPath := "./demo/repair_shop.db"
-	os.MkdirAll("./demo", 0755)
+	dbPath := "./repair_shop.db"
 
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -229,7 +228,7 @@ func main() {
 }
 
 func (g *DemoDataGenerator) createSchema() error {
-	schema, err := os.ReadFile("./demo/schema.sql")
+	schema, err := os.ReadFile("./schema.sql")
 	if err != nil {
 		return err
 	}
@@ -403,23 +402,33 @@ func (g *DemoDataGenerator) createStockMovements(count int) {
 
 func (g *DemoDataGenerator) createSalesData() {
 	// Create sales from completed jobs
+	// First, read all completed jobs into a slice to avoid database lock
+	type jobInfo struct {
+		jobID     string
+		totalCost float64
+		createdAt time.Time
+	}
+
 	rows, err := g.DB.Query("SELECT job_id, total_cost, created_at FROM repair_jobs WHERE status = 'completed' LIMIT 300")
 	if err != nil {
 		fmt.Printf("    Warning: %v\n", err)
 		return
 	}
-	defer rows.Close()
 
+	var jobs []jobInfo
 	for rows.Next() {
-		var jobID string
-		var totalCost float64
-		var createdAt time.Time
-		rows.Scan(&jobID, &totalCost, &createdAt)
+		var j jobInfo
+		rows.Scan(&j.jobID, &j.totalCost, &j.createdAt)
+		jobs = append(jobs, j)
+	}
+	rows.Close()
 
+	// Now insert sales records after closing the query
+	for _, job := range jobs {
 		_, err := g.DB.Exec(`
 			INSERT INTO sales (job_id, sale_date, total_amount, payment_method)
 			VALUES (?, ?, ?, ?)
-		`, jobID, createdAt.Format("2006-01-02"), totalCost, []string{"credit", "cash", "debit"}[rand.Intn(3)])
+		`, job.jobID, job.createdAt.Format("2006-01-02"), job.totalCost, []string{"credit", "cash", "debit"}[rand.Intn(3)])
 		if err != nil {
 			fmt.Printf("    Warning: %v\n", err)
 		}

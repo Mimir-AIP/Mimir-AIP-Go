@@ -1,0 +1,27 @@
+id: pipeline_1769857628948297819
+name: full-auto-chain-pipeline
+metadata:
+    id: pipeline_1769857628948297819
+    name: full-auto-chain-pipeline
+    description: Pipeline to process CSV and trigger auto-extraction
+    tags:
+        - auto
+        - csv
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T11:07:08.948298382Z
+    updated_at: 2026-01-31T11:07:08.948298382Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: full-auto-chain-pipeline
+    enabled: true
+    steps:
+        - name: read-csv
+          plugin: Input.csv
+          config:
+            delimiter: ','
+            file_path: /tmp/TestFullAutoChain_EndToEnd20421676/001/products.csv
+            has_headers: true
+          output: csv_data

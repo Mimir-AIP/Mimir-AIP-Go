@@ -1,0 +1,77 @@
+id: pipeline_1769857611392297781
+name: continuous-customer-ingestion
+metadata:
+    id: pipeline_1769857611392297781
+    name: continuous-customer-ingestion
+    description: Automatically ingest customer data from API
+    tags:
+        - automated
+        - api
+        - customers
+    enabled: true
+    auto_extract_ontology: true
+    target_ontology_id: customer-ontology-v1
+    created_at: 2026-01-31T11:06:51.392298785Z
+    updated_at: 2026-01-31T11:06:51.392298785Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: continuous-customer-ingestion
+    enabled: true
+    steps:
+        - name: fetch-customers
+          plugin: Input.api
+          config:
+            headers:
+                Accept: application/json
+            method: GET
+            poll_interval: 300
+            url: http://127.0.0.1:39113
+          output: api_response
+        - name: transform-customers
+          plugin: Data_Processing.transform
+          config:
+            input: api_response
+            operation: flatten
+            sep: .
+          output: flattened_data
+        - name: filter-active-customers
+          plugin: Data_Processing.transform
+          config:
+            field: customers.status
+            input: flattened_data
+            op: ==
+            operation: filter
+            value: active
+          output: active_customers
+        - name: select-relevant-fields
+          plugin: Data_Processing.transform
+          config:
+            fields:
+                - customers.id
+                - customers.name
+                - customers.email
+                - customers.age
+                - customers.city
+                - customers.revenue
+            input: active_customers
+            operation: select
+          output: processed_customers
+        - name: validate-customer-data
+          plugin: Data_Processing.validate
+          config:
+            input: processed_customers
+            rules:
+                ranges:
+                    customers.age:
+                        max: 120
+                        min: 18
+                required:
+                    - customers.id
+                    - customers.name
+                    - customers.email
+                types:
+                    customers.age: number
+                    customers.revenue: number
+          output: validated_customers

@@ -1,0 +1,27 @@
+id: pipeline_1769874435586482710
+name: Repair Shop Auto-Ingestion
+metadata:
+    id: pipeline_1769874435586482710
+    name: Repair Shop Auto-Ingestion
+    description: Auto-extract parts data into ontology
+    tags:
+        - ingestion
+        - auto-extract
+    enabled: true
+    auto_extract_ontology: true
+    target_ontology_id: a360961f-8774-4e73-9308-40eb9ee8e6aa
+    created_at: 2026-01-31T15:47:15.586483643Z
+    updated_at: 2026-01-31T15:47:15.586483643Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: repair-shop-auto-ingestion
+    enabled: true
+    steps:
+        - name: read-parts-csv
+          plugin: Input.csv
+          config:
+            file_path: /tmp/TestRepairShop_EndToEndAutoExtraction1139787692/001/parts_inventory.csv
+            has_headers: true
+          output: parts_data

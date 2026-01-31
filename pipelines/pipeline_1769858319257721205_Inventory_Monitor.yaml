@@ -1,0 +1,24 @@
+id: pipeline_1769858319257721205
+name: Inventory Monitor
+metadata:
+    id: pipeline_1769858319257721205
+    name: Inventory Monitor
+    description: Monitor inventory levels
+    tags: []
+    enabled: true
+    auto_extract_ontology: false
+    created_at: 2026-01-31T11:18:39.257724219Z
+    updated_at: 2026-01-31T11:18:39.257724219Z
+    created_by: anonymous
+    updated_by: anonymous
+    version: 1
+config:
+    name: Inventory Monitor
+    enabled: true
+    steps:
+        - name: read-inventory
+          plugin: Input.csv
+          config:
+            file_path: /tmp/TestRealisticComputerRepairShop_FullWorkflow1268123400/001/parts_inventory.csv
+            has_headers: true
+          output: inventory

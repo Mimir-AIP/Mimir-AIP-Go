@@ -554,38 +554,126 @@ func (s *Server) handleOntologyStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get ontology management plugin
-	plugin, err := s.registry.GetPlugin("Ontology", "management")
-	if err != nil {
-		writeInternalServerErrorResponse(w, fmt.Sprintf("Ontology plugin not available: %v", err))
-		return
-	}
-
-	// Create step config
-	stepConfig := pipelines.StepConfig{
-		Name:   "ontology_stats",
-		Plugin: "Ontology.management",
-		Config: map[string]any{
-			"operation":   "stats",
-			"ontology_id": ontologyID,
-		},
-	}
-
-	// Execute plugin
+	// Get ontology from persistence to get the TDB2Graph
 	ctx := context.Background()
-	globalContext := pipelines.NewPluginContext()
-	result, err := plugin.ExecuteStep(ctx, stepConfig, globalContext)
+	ont, err := s.persistence.GetOntology(ctx, ontologyID)
 	if err != nil {
-		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to get stats: %v", err))
+		writeNotFoundResponse(w, fmt.Sprintf("Ontology not found: %v", err))
 		return
 	}
 
-	stats, _ := result.Get("stats")
-	ontologyName, _ := result.Get("ontology_name")
+	// Get the graph URI for this ontology
+	graphURI := ont.TDB2Graph
+	if graphURI == "" {
+		graphURI = fmt.Sprintf("http://mimir.ai/ontology/%s", ontologyID)
+	}
+
+	// Query to count total triples in the ontology's graph
+	triplesQuery := fmt.Sprintf(`
+		SELECT (COUNT(*) AS ?count) WHERE {
+			GRAPH <%s> { ?s ?p ?o }
+		}
+	`, graphURI)
+
+	triplesResult, err := s.tdb2Backend.QuerySPARQL(ctx, triplesQuery)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to count triples: %v", err))
+		return
+	}
+
+	totalTriples := 0
+	if len(triplesResult.Bindings) > 0 {
+		if countVal, ok := triplesResult.Bindings[0]["count"]; ok {
+			fmt.Sscanf(countVal.Value, "%d", &totalTriples)
+		}
+	}
+
+	// Query to count unique entities (distinct subjects with a type)
+	entitiesQuery := fmt.Sprintf(`
+		PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+		SELECT (COUNT(DISTINCT ?entity) AS ?count) WHERE {
+			GRAPH <%s> {
+				?entity a ?type .
+				FILTER(?type != <http://www.w3.org/2002/07/owl#Class>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#ObjectProperty>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#DatatypeProperty>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#Ontology>)
+			}
+		}
+	`, graphURI)
+
+	entitiesResult, err := s.tdb2Backend.QuerySPARQL(ctx, entitiesQuery)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to count entities: %v", err))
+		return
+	}
+
+	totalEntities := 0
+	if len(entitiesResult.Bindings) > 0 {
+		if countVal, ok := entitiesResult.Bindings[0]["count"]; ok {
+			fmt.Sscanf(countVal.Value, "%d", &totalEntities)
+		}
+	}
+
+	// Query to count unique classes (entity types)
+	classesQuery := fmt.Sprintf(`
+		SELECT (COUNT(DISTINCT ?type) AS ?count) WHERE {
+			GRAPH <%s> {
+				?entity a ?type .
+				FILTER(?type != <http://www.w3.org/2002/07/owl#Class>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#ObjectProperty>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#DatatypeProperty>)
+				FILTER(?type != <http://www.w3.org/2002/07/owl#Ontology>)
+			}
+		}
+	`, graphURI)
+
+	classesResult, err := s.tdb2Backend.QuerySPARQL(ctx, classesQuery)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to count classes: %v", err))
+		return
+	}
+
+	totalClasses := 0
+	if len(classesResult.Bindings) > 0 {
+		if countVal, ok := classesResult.Bindings[0]["count"]; ok {
+			fmt.Sscanf(countVal.Value, "%d", &totalClasses)
+		}
+	}
+
+	// Query to count unique properties (predicates)
+	propertiesQuery := fmt.Sprintf(`
+		SELECT (COUNT(DISTINCT ?p) AS ?count) WHERE {
+			GRAPH <%s> { ?s ?p ?o }
+		}
+	`, graphURI)
+
+	propertiesResult, err := s.tdb2Backend.QuerySPARQL(ctx, propertiesQuery)
+	if err != nil {
+		writeInternalServerErrorResponse(w, fmt.Sprintf("Failed to count properties: %v", err))
+		return
+	}
+
+	totalProperties := 0
+	if len(propertiesResult.Bindings) > 0 {
+		if countVal, ok := propertiesResult.Bindings[0]["count"]; ok {
+			fmt.Sscanf(countVal.Value, "%d", &totalProperties)
+		}
+	}
+
+	// Build the stats response
+	stats := map[string]any{
+		"total_entities":   totalEntities,
+		"total_classes":    totalClasses,
+		"total_properties": totalProperties,
+		"total_triples":    totalTriples,
+		"graph_uri":        graphURI,
+	}
 
 	response := map[string]any{
+		"ontology_id":   ontologyID,
+		"ontology_name": ont.Name,
 		"stats":         stats,
-		"ontology_name": ontologyName,
 	}
 
 	writeSuccessResponse(w, response)

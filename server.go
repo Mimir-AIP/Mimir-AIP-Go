@@ -188,7 +188,7 @@ func NewServer() *Server {
 	}
 
 	// Initialize pipeline auto-extraction (must be after plugin registration and pipeline store)
-	utils.InitializePipelineAutoExtraction(s.registry, utils.GetPipelineStore())
+	utils.InitializePipelineAutoExtraction(s.registry, utils.GetPipelineStore(), s.persistence)
 
 	// Initialize anomaly pipeline trigger (must be after plugin registry and pipeline store)
 	utils.InitializeAnomalyPipelineTrigger(s.registry, utils.GetPipelineStore())

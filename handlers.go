@@ -117,7 +117,7 @@ func (s *Server) handleExecutePipeline(w http.ResponseWriter, r *http.Request) {
 
 		// Publish appropriate event based on result
 		if result.Success {
-			utils.GetEventBus().Publish(utils.Event{
+			event := utils.Event{
 				Type:   utils.EventPipelineCompleted,
 				Source: "pipeline-execution-handler",
 				Payload: map[string]any{
@@ -125,7 +125,14 @@ func (s *Server) handleExecutePipeline(w http.ResponseWriter, r *http.Request) {
 					"pipeline_name": pipeline.Name,
 					"context":       result.Context,
 				},
-			})
+			}
+			utils.GetLogger().Info("Publishing pipeline completion event",
+				utils.String("pipeline_id", req.PipelineID),
+				utils.String("pipeline_name", pipeline.Name),
+				utils.String("event_type", event.Type))
+			utils.GetEventBus().Publish(event)
+			utils.GetLogger().Info("Pipeline completion event published",
+				utils.String("pipeline_id", req.PipelineID))
 		} else {
 			utils.GetEventBus().Publish(utils.Event{
 				Type:   utils.EventPipelineFailed,
@@ -283,8 +290,13 @@ func (s *Server) handleExecutePipelineByID(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Publish appropriate event based on result
+	utils.GetLogger().Info("Pipeline execution completed",
+		utils.String("pipeline_id", pipelineID),
+		utils.Bool("result_success", result.Success),
+		utils.String("result_error", result.Error))
+
 	if result.Success {
-		utils.GetEventBus().Publish(utils.Event{
+		event := utils.Event{
 			Type:   utils.EventPipelineCompleted,
 			Source: "pipeline-execution-handler",
 			Payload: map[string]any{
@@ -292,7 +304,13 @@ func (s *Server) handleExecutePipelineByID(w http.ResponseWriter, r *http.Reques
 				"pipeline_name": pipeline.Name,
 				"context":       result.Context,
 			},
-		})
+		}
+		utils.GetLogger().Info("Publishing EventPipelineCompleted",
+			utils.String("pipeline_id", pipelineID),
+			utils.String("event_type", event.Type))
+		utils.GetEventBus().Publish(event)
+		utils.GetLogger().Info("EventPipelineCompleted published",
+			utils.String("pipeline_id", pipelineID))
 	} else {
 		utils.GetEventBus().Publish(utils.Event{
 			Type:   utils.EventPipelineFailed,

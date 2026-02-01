@@ -3,10 +3,12 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { getModel, type ClassifierModel } from "@/lib/api";
+import { getModel, predictWithModel, type ClassifierModel } from "@/lib/api";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Brain, TrendingUp, Calendar, Target, CheckCircle, Info, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Brain, TrendingUp, Calendar, Target, CheckCircle, Info, ChevronDown, ChevronRight, Play, Sparkles } from "lucide-react";
 
 export default function ModelDetailPage() {
   const params = useParams();
@@ -17,6 +19,13 @@ export default function ModelDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [expandedFeatures, setExpandedFeatures] = useState(false);
+  
+  // Prediction state
+  const [predictionInputs, setPredictionInputs] = useState<Record<string, number>>({});
+  const [predictionResult, setPredictionResult] = useState<any>(null);
+  const [predicting, setPredicting] = useState(false);
+  const [predictionError, setPredictionError] = useState<string | null>(null);
+  const [showPredictionForm, setShowPredictionForm] = useState(false);
 
   useEffect(() => {
     loadModel();
@@ -51,6 +60,28 @@ export default function ModelDetailPage() {
     if (accuracy >= 0.9) return "text-green-400";
     if (accuracy >= 0.7) return "text-yellow-400";
     return "text-red-400";
+  }
+
+  async function handlePredict() {
+    if (!model) return;
+    
+    try {
+      setPredicting(true);
+      setPredictionError(null);
+      const result = await predictWithModel(id, predictionInputs);
+      setPredictionResult(result);
+    } catch (err) {
+      setPredictionError(err instanceof Error ? err.message : "Prediction failed");
+    } finally {
+      setPredicting(false);
+    }
+  }
+
+  function updatePredictionInput(feature: string, value: string) {
+    setPredictionInputs(prev => ({
+      ...prev,
+      [feature]: parseFloat(value) || 0
+    }));
   }
 
   if (loading) {
@@ -306,11 +337,90 @@ export default function ModelDetailPage() {
         </Card>
       )}
 
+      {/* Simple Prediction Interface */}
+      <Card className="bg-gradient-to-br from-navy to-navy/80 border-orange/50 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Sparkles className="h-6 w-6 text-orange" />
+          <h2 className="text-xl font-bold text-white">Test Predictions</h2>
+          <span className="text-xs text-white/40">Simple interface for non-technical users</span>
+        </div>
+        
+        <p className="text-white/60 text-sm mb-4">
+          Enter values below to see what the model predicts. No technical knowledge required!
+        </p>
+
+        <button
+          onClick={() => setShowPredictionForm(!showPredictionForm)}
+          className="w-full py-2 bg-orange/20 hover:bg-orange/30 border border-orange/50 text-orange rounded transition-colors flex items-center justify-center gap-2 mb-4"
+        >
+          <Play className="h-4 w-4" />
+          {showPredictionForm ? "Hide Prediction Form" : "Show Prediction Form"}
+        </button>
+
+        {showPredictionForm && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {featureColumns.map((feature: string) => (
+                <div key={feature} className="space-y-1">
+                  <label className="text-xs text-white/60">{feature}</label>
+                  <Input
+                    type="number"
+                    placeholder="0.0"
+                    className="bg-blue/20 border-blue text-white"
+                    onChange={(e) => updatePredictionInput(feature, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <Button
+              onClick={handlePredict}
+              disabled={predicting}
+              className="w-full bg-orange hover:bg-orange/80 text-white"
+            >
+              {predicting ? "Predicting..." : "Get Prediction"}
+            </Button>
+
+            {predictionError && (
+              <div className="p-3 bg-red-500/20 border border-red-500 rounded text-red-400 text-sm">
+                {predictionError}
+              </div>
+            )}
+
+            {predictionResult && (
+              <div className="p-4 bg-green-500/10 border border-green-500/50 rounded-lg">
+                <h4 className="text-sm font-semibold text-green-400 mb-2">Prediction Result</h4>
+                <div className="space-y-2">
+                  {predictionResult.predicted_class && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/60">Predicted Class:</span>
+                      <Badge className="bg-orange text-white">{predictionResult.predicted_class}</Badge>
+                    </div>
+                  )}
+                  {predictionResult.confidence && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/60">Confidence:</span>
+                      <span className="text-green-400 font-bold">{(predictionResult.confidence * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {predictionResult.predicted_value !== undefined && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-white/60">Predicted Value:</span>
+                      <span className="text-orange font-bold">{predictionResult.predicted_value.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
       {/* Actions */}
       <div className="flex gap-4">
         <Link
           href={`/chat?model_id=${id}`}
-          className="flex-1 py-3 bg-orange hover:bg-orange/80 text-white rounded text-center transition-colors"
+          className="flex-1 py-3 bg-blue/20 hover:bg-blue/30 text-blue border border-blue rounded text-center transition-colors"
         >
           Chat About This Model
         </Link>

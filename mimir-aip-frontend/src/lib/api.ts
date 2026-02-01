@@ -2608,6 +2608,20 @@ export async function predict(modelId: string, data: PredictionRequest): Promise
 }
 
 /**
+ * Simple prediction with input data map (for non-technical users)
+ * POST /api/v1/models/:id/predict
+ */
+export async function predictWithModel(
+  modelId: string, 
+  inputData: Record<string, number>
+): Promise<any> {
+  return apiFetch(`/api/v1/models/${modelId}/predict`, {
+    method: "POST",
+    body: JSON.stringify({ input_data: inputData }),
+  });
+}
+
+/**
  * Update model status (activate/deactivate)
  * PATCH /api/v1/models/:id/status
  */

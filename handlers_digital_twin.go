@@ -63,8 +63,8 @@ func (s *Server) handleCreateTwin(w http.ResponseWriter, r *http.Request) {
 		req.ModelType = "organization"
 	}
 
-	// Verify ontology exists
-	_, err := s.persistence.GetOntology(context.Background(), req.OntologyID)
+	// Verify ontology exists and get its details
+	ontology, err := s.persistence.GetOntology(context.Background(), req.OntologyID)
 	if err != nil {
 		writeErrorResponse(w, http.StatusNotFound, fmt.Sprintf("Ontology not found: %s", req.OntologyID))
 		return
@@ -74,7 +74,11 @@ func (s *Server) handleCreateTwin(w http.ResponseWriter, r *http.Request) {
 	query := req.Query
 	if query == "" {
 		// Default query to get all entities from ontology's named graph
-		graphURI := fmt.Sprintf("http://mimir.ai/ontology/%s", req.OntologyID)
+		// Use the actual TDB2 graph URI from the ontology, not a constructed one
+		graphURI := ontology.TDB2Graph
+		if graphURI == "" {
+			graphURI = fmt.Sprintf("http://mimir.ai/ontology/%s", req.OntologyID)
+		}
 		query = fmt.Sprintf(`
 			PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 			SELECT ?entity ?type ?label

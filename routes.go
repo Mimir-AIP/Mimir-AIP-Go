@@ -83,6 +83,19 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/scheduler/jobs/{id}/disable", s.handleDisableJob).Methods("POST")
 	v1.HandleFunc("/scheduler/jobs/{id}/logs", s.handleGetJobLogs).Methods("GET")
 
+	// Drift detection management endpoints (NEW)
+	v1.HandleFunc("/drift/jobs", s.handleListDriftDetections).Methods("GET")
+	v1.HandleFunc("/drift/jobs", s.handleCreateDriftDetection).Methods("POST")
+	v1.HandleFunc("/drift/jobs/{id}", s.handleGetDriftDetection).Methods("GET")
+	v1.HandleFunc("/drift/jobs/{id}", s.handleUpdateDriftDetection).Methods("PUT")
+	v1.HandleFunc("/drift/jobs/{id}", s.handleDeleteDriftDetection).Methods("DELETE")
+	v1.HandleFunc("/drift/jobs/{id}/enable", s.handleEnableDriftDetection).Methods("POST")
+	v1.HandleFunc("/drift/jobs/{id}/disable", s.handleDisableDriftDetection).Methods("POST")
+	v1.HandleFunc("/drift/jobs/{id}/trigger", s.handleTriggerDriftCheck).Methods("POST")
+	v1.HandleFunc("/drift/events", s.handleGetDriftEvents).Methods("GET")
+	v1.HandleFunc("/drift/stats", s.handleGetDriftStats).Methods("GET")
+	v1.HandleFunc("/drift/webhook", s.handleWebhookDrift).Methods("POST")
+
 	// Execution logs endpoints
 	v1.HandleFunc("/logs/executions", s.handleListExecutionLogs).Methods("GET")
 	v1.HandleFunc("/logs/executions/{id}", s.handleGetExecutionLog).Methods("GET")

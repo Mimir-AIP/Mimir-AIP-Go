@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { getDigitalTwin, getTwinState, listScenarios, type DigitalTwin, type SimulationScenario } from "@/lib/api";
+import { getDigitalTwin, getTwinState, listScenarios, runSimulation, type DigitalTwin, type SimulationScenario } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Network, Database, Calendar, Activity, ChevronDown, ChevronRight, Zap } from "lucide-react";
+import { ArrowLeft, Network, Database, Calendar, Activity, ChevronDown, ChevronRight, Zap, Play } from "lucide-react";
 
 export default function DigitalTwinDetailPage() {
   const params = useParams();
@@ -18,6 +18,11 @@ export default function DigitalTwinDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedEntities, setExpandedEntities] = useState<Set<string>>(new Set());
+  
+  // Scenario execution state
+  const [runningScenario, setRunningScenario] = useState<string | null>(null);
+  const [simulationResults, setSimulationResults] = useState<Record<string, any>>({});
+  const [simulationError, setSimulationError] = useState<string | null>(null);
 
   useEffect(() => {
     loadTwin();
@@ -52,6 +57,19 @@ export default function DigitalTwinDetailPage() {
       newExpanded.add(entityUri);
     }
     setExpandedEntities(newExpanded);
+  }
+
+  async function handleRunScenario(scenarioId: string) {
+    try {
+      setRunningScenario(scenarioId);
+      setSimulationError(null);
+      const result = await runSimulation(id, scenarioId);
+      setSimulationResults(prev => ({ ...prev, [scenarioId]: result }));
+    } catch (err) {
+      setSimulationError(err instanceof Error ? err.message : "Simulation failed");
+    } finally {
+      setRunningScenario(null);
+    }
   }
 
   function formatDate(dateString: string): string {
@@ -231,21 +249,77 @@ export default function DigitalTwinDetailPage() {
         </Card>
       )}
 
-      {/* Scenarios */}
+      {/* Scenarios with Run Controls */}
       {scenarios.length > 0 && (
         <Card className="bg-navy border-blue">
-          <div className="p-4 border-b border-blue/30">
+          <div className="p-4 border-b border-blue/30 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white">Scenarios ({scenarios.length})</h2>
+            <span className="text-xs text-white/40">Click Run to execute simulation</span>
           </div>
+          
+          {simulationError && (
+            <div className="p-3 bg-red-500/20 border-b border-red-500 text-red-400 text-sm">
+              {simulationError}
+            </div>
+          )}
+          
           <div className="divide-y divide-blue/30">
             {scenarios.map((scenario) => (
-              <div key={scenario.id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-white font-medium">{scenario.name}</p>
-                  <p className="text-white/60 text-sm">{scenario.description || "No description"}</p>
-                  <p className="text-white/40 text-xs mt-1">{scenario.events?.length || 0} events • {scenario.duration} steps</p>
+              <div key={scenario.id} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex-1">
+                    <p className="text-white font-medium">{scenario.name}</p>
+                    <p className="text-white/60 text-sm">{scenario.description || "No description"}</p>
+                    <p className="text-white/40 text-xs mt-1">{scenario.events?.length || 0} events • {scenario.duration} steps</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{scenario.scenario_type || "Standard"}</Badge>
+                    <button
+                      onClick={() => handleRunScenario(scenario.id)}
+                      disabled={runningScenario === scenario.id}
+                      className="px-3 py-1 bg-orange hover:bg-orange/80 disabled:bg-orange/50 text-white text-sm rounded transition-colors flex items-center gap-1"
+                    >
+                      {runningScenario === scenario.id ? (
+                        <>
+                          <Activity className="h-3 w-3 animate-spin" />
+                          Running...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3 w-3" />
+                          Run
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <Badge variant="outline">{scenario.scenario_type || "Standard"}</Badge>
+                
+                {/* Simulation Results */}
+                {simulationResults[scenario.id] && (
+                  <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded">
+                    <h4 className="text-sm font-semibold text-green-400 mb-2">Simulation Results</h4>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <span className="text-white/40">Status:</span>
+                        <Badge className="ml-2 bg-green-500/20 text-green-400">
+                          {simulationResults[scenario.id].status}
+                        </Badge>
+                      </div>
+                      <div>
+                        <span className="text-white/40">Run ID:</span>
+                        <span className="text-white ml-2 font-mono text-xs">
+                          {simulationResults[scenario.id].run_id?.slice(0, 8)}...
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-white/40">Final State:</span>
+                        <span className="text-orange ml-2">
+                          {simulationResults[scenario.id].metrics?.final_state || "N/A"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

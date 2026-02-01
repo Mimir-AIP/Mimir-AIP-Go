@@ -165,7 +165,6 @@ export default function OntologyDetailPage() {
           GRAPH <${graphUri}> {
             ?subject ?property ?object .
             OPTIONAL { ?property rdfs:label ?label }
-            FILTER(?property != <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>)
           }
         }
         GROUP BY ?property ?label

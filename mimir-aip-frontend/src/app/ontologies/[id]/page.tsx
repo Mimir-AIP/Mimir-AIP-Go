@@ -133,9 +133,12 @@ export default function OntologyDetailPage() {
         SELECT DISTINCT ?class ?label (COUNT(?instance) as ?instanceCount)
         WHERE {
           GRAPH <${graphUri}> {
-            ?class a <http://www.w3.org/2002/07/owl#Class> .
+            ?instance a ?class .
             OPTIONAL { ?class rdfs:label ?label }
-            OPTIONAL { ?instance a ?class }
+            FILTER(?class != <http://www.w3.org/2002/07/owl#Class>)
+            FILTER(?class != <http://www.w3.org/2002/07/owl#ObjectProperty>)
+            FILTER(?class != <http://www.w3.org/2002/07/owl#DatatypeProperty>)
+            FILTER(?class != <http://www.w3.org/2002/07/owl#Ontology>)
           }
         }
         GROUP BY ?class ?label
@@ -163,7 +166,6 @@ export default function OntologyDetailPage() {
             ?subject ?property ?object .
             OPTIONAL { ?property rdfs:label ?label }
             FILTER(?property != <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>)
-            FILTER(isIRI(?object))
           }
         }
         GROUP BY ?property ?label

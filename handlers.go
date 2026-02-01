@@ -563,19 +563,34 @@ func (s *Server) handleCreatePipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log if this is an ingestion pipeline (scheduling will be done via Jobs page)
-	for _, tag := range req.Metadata.Tags {
-		if tag == "ingestion" {
-			utils.GetLogger().Info("Created ingestion pipeline",
-				utils.String("pipeline_id", pipeline.Metadata.ID),
-				utils.String("name", pipeline.Metadata.Name))
-			break
-		}
+	// Automatically create scheduled job for continuous monitoring
+	// Use metadata.Schedule if provided, otherwise default to every 5 minutes
+	scheduleCron := pipeline.Metadata.Schedule
+	if scheduleCron == "" {
+		scheduleCron = "*/5 * * * *" // Default: every 5 minutes
 	}
 
+	jobID := fmt.Sprintf("auto-scheduled-%s", pipeline.Metadata.ID)
+	jobName := fmt.Sprintf("Auto: %s", pipeline.Metadata.Name)
+
+	if err := s.scheduler.AddJob(jobID, jobName, pipeline.Metadata.ID, scheduleCron); err != nil {
+		utils.GetLogger().Warn("Failed to auto-create scheduled job",
+			utils.String("pipeline_id", pipeline.Metadata.ID),
+			utils.String("error", err.Error()))
+	} else {
+		utils.GetLogger().Info("Auto-created scheduled job for pipeline",
+			utils.String("job_id", jobID),
+			utils.String("pipeline_id", pipeline.Metadata.ID),
+			utils.String("schedule", scheduleCron))
+	}
+
+	// Store auto-monitoring info in response
 	response := map[string]any{
-		"message":  "Pipeline created successfully",
-		"pipeline": pipeline,
+		"message":          "Pipeline created successfully",
+		"pipeline":         pipeline,
+		"auto_scheduled":   true,
+		"schedule_cron":    scheduleCron,
+		"scheduled_job_id": jobID,
 	}
 
 	writeJSONResponse(w, http.StatusCreated, response)

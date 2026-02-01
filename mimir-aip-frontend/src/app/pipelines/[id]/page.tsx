@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { getPipeline, executePipeline, getPipelineLogs, type Pipeline, type ExecutionLog } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getPipeline, executePipeline, getPipelineLogs, type Pipeline, type ExecutionLog } from "@/lib/api";
 import { ArrowLeft, GitBranch, Play, Clock, CheckCircle, XCircle, AlertCircle, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,9 +49,8 @@ export default function PipelineDetailPage() {
     
     try {
       setExecuting(true);
-      await executePipeline(pipeline.id);
+      await executePipeline(pipeline.id, {});
       toast.success("Pipeline execution started");
-      // Reload after a few seconds
       setTimeout(loadPipelineData, 3000);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Execution failed");
@@ -90,8 +89,7 @@ export default function PipelineDetailPage() {
     );
   }
 
-  const config = pipeline.config || {};
-  const steps = config.Steps || [];
+  const steps = pipeline.steps || [];
   const metadata = pipeline.metadata || {};
 
   return (
@@ -124,8 +122,8 @@ export default function PipelineDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div>
             <p className="text-white/60 text-sm mb-1">Status</p>
-            <Badge className={metadata.enabled ? "bg-green-500/20 text-green-400" : "bg-gray-500/20 text-gray-400"}>
-              {metadata.enabled ? "Enabled" : "Disabled"}
+            <Badge className={pipeline.enabled ? "bg-green-500/20 text-green-400" : "bg-gray-500/20 text-gray-400"}>
+              {pipeline.enabled ? "Enabled" : "Disabled"}
             </Badge>
           </div>
           <div>
@@ -139,25 +137,25 @@ export default function PipelineDetailPage() {
           <div>
             <p className="text-white/60 text-sm mb-1">Created</p>
             <p className="text-white text-sm">
-              {metadata.created_at ? new Date(metadata.created_at).toLocaleDateString() : "Unknown"}
+              {pipeline.created_at ? new Date(pipeline.created_at).toLocaleDateString() : "Unknown"}
             </p>
           </div>
         </div>
       </Card>
 
       {/* Linked Ontology */}
-      {metadata.target_ontology_id && (
+      {(metadata as any).target_ontology_id && (
         <Card className="bg-navy border-blue p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <GitBranch className="h-5 w-5 text-blue" />
               <div>
                 <h3 className="text-white font-semibold">Linked Ontology</h3>
-                <p className="text-white/60 text-sm">{metadata.target_ontology_id}</p>
+                <p className="text-white/60 text-sm">{(metadata as any).target_ontology_id}</p>
               </div>
             </div>
             <Link
-              href={`/ontologies/${metadata.target_ontology_id}`}
+              href={`/ontologies/${(metadata as any).target_ontology_id}`}
               className="flex items-center gap-2 px-4 py-2 bg-blue/20 hover:bg-blue/30 text-blue rounded transition-colors"
             >
               View Ontology
@@ -186,16 +184,18 @@ export default function PipelineDetailPage() {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-white font-medium">{step.Name || step.name || `Step ${index + 1}`}</h3>
+                      <h3 className="text-white font-medium">
+                        {step.name || step.Name || `Step ${index + 1}`}
+                      </h3>
                       <Badge variant="outline" className="text-xs">
-                        {step.Plugin || step.plugin || "Unknown"}
+                        {step.plugin || step.Plugin || "Unknown"}
                       </Badge>
                     </div>
-                    {step.Config && Object.keys(step.Config).length > 0 && (
+                    {step.config && Object.keys(step.config).length > 0 && (
                       <div className="bg-blue/10 rounded p-3 mt-2">
                         <p className="text-white/40 text-xs mb-1">Configuration:</p>
                         <pre className="text-xs text-white/60 overflow-x-auto">
-                          {JSON.stringify(step.Config, null, 2)}
+                          {JSON.stringify(step.config, null, 2)}
                         </pre>
                       </div>
                     )}
@@ -248,22 +248,17 @@ export default function PipelineDetailPage() {
                     {log.status}
                   </Badge>
                 </div>
-                {log.error && (
-                  <div className="mt-2 p-2 bg-red-500/10 rounded text-red-400 text-sm">
-                    {log.error}
-                  </div>
-                )}
               </div>
             ))
           )}
         </div>
       </Card>
 
-      {/* Configuration */}
-      {config.Description && (
+      {/* Description */}
+      {pipeline.description && (
         <Card className="bg-navy border-blue p-6">
           <h3 className="text-white font-semibold mb-2">Description</h3>
-          <p className="text-white/60">{config.Description}</p>
+          <p className="text-white/60">{pipeline.description}</p>
         </Card>
       )}
     </div>

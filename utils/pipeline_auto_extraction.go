@@ -333,11 +333,31 @@ func (h *PipelineExtractionHandler) createOntologyForPipeline(pipeline *Pipeline
 		return "", fmt.Errorf("failed to create ontology in persistence: %w", err)
 	}
 
+	// Enable auto-training for this ontology to continue the automation chain
+	if err := h.enableAutoTrainModels(ctx, ontologyID); err != nil {
+		h.logger.Warn("Failed to enable auto_train_models for ontology",
+			Error(err),
+			String("ontology_id", ontologyID))
+		// Continue anyway - this shouldn't block the extraction
+	}
+
 	h.logger.Info("Created new ontology for pipeline",
 		String("pipeline_name", pipeline.Metadata.Name),
 		String("ontology_id", ontologyID))
 
 	return ontologyID, nil
+}
+
+// enableAutoTrainModels sets the auto_train_models flag to true for an ontology
+func (h *PipelineExtractionHandler) enableAutoTrainModels(ctx stdcontext.Context, ontologyID string) error {
+	query := `UPDATE ontologies SET auto_train_models = 1 WHERE id = ?`
+	_, err := h.persistence.GetDB().ExecContext(ctx, query, ontologyID)
+	if err != nil {
+		return fmt.Errorf("failed to enable auto_train_models: %w", err)
+	}
+	h.logger.Info("Enabled auto_train_models for ontology",
+		String("ontology_id", ontologyID))
+	return nil
 }
 
 // InitializePipelineAutoExtraction sets up automatic extraction for pipelines

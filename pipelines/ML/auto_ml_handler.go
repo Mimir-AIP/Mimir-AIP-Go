@@ -111,6 +111,14 @@ func (h *AutoMLHandler) HandleExtractionCompleted(event utils.Event) error {
 		utils.Int("models_created", result.ModelsCreated),
 		utils.Int("models_failed", result.ModelsFailed))
 
+	// Enable auto-twin creation to continue the automation chain
+	if err := h.enableAutoCreateTwins(ontologyID); err != nil {
+		h.logger.Warn("Failed to enable auto_create_twins for ontology",
+			utils.Error(err),
+			utils.String("ontology_id", ontologyID))
+		// Continue anyway - this shouldn't block the event publishing
+	}
+
 	// Publish model.training.completed event for each model
 	for _, model := range result.TrainedModels {
 		utils.GetEventBus().Publish(utils.Event{
@@ -156,6 +164,18 @@ func (h *AutoMLHandler) shouldAutoTrain(ontologyID string) (bool, error) {
 	}
 
 	return autoTrain.Bool, nil
+}
+
+// enableAutoCreateTwins sets the auto_create_twins flag to true for an ontology
+func (h *AutoMLHandler) enableAutoCreateTwins(ontologyID string) error {
+	query := `UPDATE ontologies SET auto_create_twins = 1 WHERE id = ?`
+	_, err := h.storage.GetDB().Exec(query, ontologyID)
+	if err != nil {
+		return fmt.Errorf("failed to enable auto_create_twins: %w", err)
+	}
+	h.logger.Info("Enabled auto_create_twins for ontology",
+		utils.String("ontology_id", ontologyID))
+	return nil
 }
 
 // InitializeAutoMLHandler sets up automatic ML training

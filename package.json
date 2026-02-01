@@ -1,7 +1,7 @@
 {
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "puppeteer": "^24.34.0"
+    "puppeteer": "^24.36.1"
   },
   "scripts": {
     "dev": "bunx concurrently \"go run .\" \"bun run dev --cwd mimir-aip-frontend\""

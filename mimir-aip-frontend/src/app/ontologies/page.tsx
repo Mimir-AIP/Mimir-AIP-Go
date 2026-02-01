@@ -141,8 +141,14 @@ export default function OntologiesPage() {
                 </div>
               </div>
               
-              <div className="mt-4 pt-4 border-t border-blue/30">
+              <div className="mt-4 pt-4 border-t border-blue/30 flex justify-between items-center">
                 <span className="text-xs text-white/40">Auto-generated from pipeline data</span>
+                <Link
+                  href={`/ontologies/${ontology.id}`}
+                  className="text-xs bg-blue hover:bg-orange text-white px-3 py-1.5 rounded transition-colors"
+                >
+                  View Details
+                </Link>
               </div>
             </Card>
           ))}

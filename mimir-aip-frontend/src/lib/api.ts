@@ -871,6 +871,17 @@ export async function getOntology(id: string, includeContent = false): Promise<{
 }
 
 /**
+ * Update an ontology
+ * PUT /api/v1/ontology/:id
+ */
+export async function updateOntology(id: string, updates: Partial<Ontology>): Promise<{ success: boolean; data: { ontology: Ontology } }> {
+  return apiFetch(`/api/v1/ontology/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  });
+}
+
+/**
  * Delete an ontology
  * DELETE /api/v1/ontology/:id
  */
@@ -2593,6 +2604,20 @@ export async function predict(modelId: string, data: PredictionRequest): Promise
   return apiFetch(`/api/v1/models/${modelId}/predict`, {
     method: "POST",
     body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Simple prediction with input data map (for non-technical users)
+ * POST /api/v1/models/:id/predict
+ */
+export async function predictWithModel(
+  modelId: string, 
+  inputData: Record<string, number>
+): Promise<any> {
+  return apiFetch(`/api/v1/models/${modelId}/predict`, {
+    method: "POST",
+    body: JSON.stringify({ input_data: inputData }),
   });
 }
 

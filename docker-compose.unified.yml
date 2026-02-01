@@ -77,6 +77,38 @@ services:
     networks:
       - mimir-network
 
+  # Supplier Pricing API - Mock API for multi-source ingestion demo
+  supplier-api:
+    build:
+      context: ./demo/supplier_api
+      dockerfile: Dockerfile
+    image: mimir-supplier-api:demo
+    container_name: supplier-api
+    restart: unless-stopped
+    ports:
+      - "8090:8081"
+    environment:
+      - PORT=8081
+    networks:
+      - mimir-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Transactions Database - SQLite with sales data
+  transactions-db:
+    image: nouchka/sqlite3:latest
+    container_name: transactions-db
+    restart: unless-stopped
+    volumes:
+      - transactions_data:/data
+      - ./demo/transactions_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: sqlite3 /data/transactions.db -init /docker-entrypoint-initdb.d/init.sql "PRAGMA journal_mode=WAL;"
+    networks:
+      - mimir-network
+
 # Named volumes
 volumes:
   mimir_data:
@@ -94,6 +126,8 @@ volumes:
   mimir_ontologies:
     driver: local
   mimir_chromem:
+    driver: local
+  transactions_data:
     driver: local
 
 # Networks

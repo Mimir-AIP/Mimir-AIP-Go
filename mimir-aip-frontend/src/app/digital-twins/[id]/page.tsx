@@ -3,7 +3,12 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { getDigitalTwin, getTwinState, listScenarios, runSimulation, type DigitalTwin, type SimulationScenario } from "@/lib/api";
+import { getDigitalTwin, getTwinState, listScenarios, runSimulation, createScenario, type DigitalTwin, type SimulationScenario } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Plus, Wand2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Network, Database, Calendar, Activity, ChevronDown, ChevronRight, Zap, Play } from "lucide-react";
@@ -23,6 +28,16 @@ export default function DigitalTwinDetailPage() {
   const [runningScenario, setRunningScenario] = useState<string | null>(null);
   const [simulationResults, setSimulationResults] = useState<Record<string, any>>({});
   const [simulationError, setSimulationError] = useState<string | null>(null);
+  
+  // Scenario creation state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creatingScenario, setCreatingScenario] = useState(false);
+  const [newScenario, setNewScenario] = useState({
+    name: "",
+    description: "",
+    scenario_type: "custom",
+    duration: 10,
+  });
 
   useEffect(() => {
     loadTwin();
@@ -69,6 +84,34 @@ export default function DigitalTwinDetailPage() {
       setSimulationError(err instanceof Error ? err.message : "Simulation failed");
     } finally {
       setRunningScenario(null);
+    }
+  }
+
+  async function handleCreateScenario() {
+    try {
+      setCreatingScenario(true);
+      await createScenario(id, {
+        name: newScenario.name,
+        description: newScenario.description,
+        scenario_type: newScenario.scenario_type,
+        duration: newScenario.duration,
+        events: []
+      });
+      // Reload scenarios
+      const scenariosData = await listScenarios(id);
+      setScenarios(scenariosData);
+      setCreateDialogOpen(false);
+      // Reset form
+      setNewScenario({
+        name: "",
+        description: "",
+        scenario_type: "custom",
+        duration: 10,
+      });
+    } catch (err) {
+      setSimulationError(err instanceof Error ? err.message : "Failed to create scenario");
+    } finally {
+      setCreatingScenario(false);
     }
   }
 
@@ -250,12 +293,18 @@ export default function DigitalTwinDetailPage() {
       )}
 
       {/* Scenarios with Run Controls */}
-      {scenarios.length > 0 && (
-        <Card className="bg-navy border-blue">
-          <div className="p-4 border-b border-blue/30 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">Scenarios ({scenarios.length})</h2>
-            <span className="text-xs text-white/40">Click Run to execute simulation</span>
-          </div>
+      <Card className="bg-navy border-blue">
+        <div className="p-4 border-b border-blue/30 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-white">Scenarios ({scenarios.length})</h2>
+          <Button
+            onClick={() => setCreateDialogOpen(true)}
+            variant="outline"
+            className="text-xs border-orange text-orange hover:bg-orange/20"
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Create Custom Scenario
+          </Button>
+        </div>
           
           {simulationError && (
             <div className="p-3 bg-red-500/20 border-b border-red-500 text-red-400 text-sm">
@@ -324,7 +373,6 @@ export default function DigitalTwinDetailPage() {
             ))}
           </div>
         </Card>
-      )}
 
       {/* Twin ID Info */}
       <Card className="bg-navy border-blue p-4">
@@ -349,6 +397,75 @@ export default function DigitalTwinDetailPage() {
           Run Pipeline
         </Link>
       </div>
+
+      {/* Create Scenario Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="bg-navy border-blue text-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-orange flex items-center gap-2">
+              <Wand2 className="h-5 w-5" />
+              Create Custom Scenario
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm text-white/60 mb-1 block">Scenario Name</label>
+              <Input
+                value={newScenario.name}
+                onChange={(e) => setNewScenario(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g., Stress Test, Holiday Rush..."
+                className="bg-blue/20 border-blue text-white"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm text-white/60 mb-1 block">Description</label>
+              <Textarea
+                value={newScenario.description}
+                onChange={(e) => setNewScenario(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="What does this scenario simulate?"
+                className="bg-blue/20 border-blue text-white"
+                rows={3}
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm text-white/60 mb-1 block">Duration (steps)</label>
+              <Input
+                type="number"
+                value={newScenario.duration}
+                onChange={(e) => setNewScenario(prev => ({ ...prev, duration: parseInt(e.target.value) || 10 }))}
+                className="bg-blue/20 border-blue text-white w-32"
+              />
+            </div>
+            
+            <div className="bg-blue/10 rounded p-3 text-sm">
+              <p className="text-white/60">
+                <strong className="text-white">Note:</strong> This creates a basic scenario. 
+                For complex scenarios with multiple events, use the chat interface or API.
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreateDialogOpen(false)}
+              className="border-blue text-white hover:bg-blue/20"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateScenario}
+              disabled={creatingScenario || !newScenario.name}
+              className="bg-orange hover:bg-orange/80 text-white"
+            >
+              {creatingScenario ? "Creating..." : "Create Scenario"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

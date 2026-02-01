@@ -13,14 +13,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Database, FileText, Calendar, Info, ChevronDown, ChevronRight, Edit, Upload, RefreshCw, Code, Layers, Box } from "lucide-react";
+import { ArrowLeft, Database, FileText, Calendar, Info, ChevronDown, ChevronRight, Edit, Upload, RefreshCw, Code, Layers, Box, Folder, File } from "lucide-react";
 import { toast } from "sonner";
 
-// Entity, Class, and Property types
-interface Entity {
-  entity: { value: string; type: string };
-  type: { value: string; type: string };
-  label?: { value: string; type: string };
+// Hierarchical data types
+interface EntityProperty {
+  property: string;
+  value: string;
+  label?: string;
+}
+
+interface EntityDetail {
+  uri: string;
+  label: string;
+  type: string;
+  properties: EntityProperty[];
+}
+
+interface CategoryGroup {
+  category: string;
+  entities: EntityDetail[];
 }
 
 interface ClassInfo {
@@ -41,13 +53,16 @@ export default function OntologyDetailPage() {
 
   const [ontology, setOntology] = useState<Ontology | null>(null);
   const [stats, setStats] = useState<any>(null);
-  const [entities, setEntities] = useState<Entity[]>([]);
+  const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [properties, setProperties] = useState<PropertyInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedEntities, setExpandedEntities] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState("entities");
+  
+  // Tree expansion states
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [expandedEntities, setExpandedEntities] = useState<Set<string>>(new Set());
   
   // Edit mode states
   const [isEditing, setIsEditing] = useState(false);
@@ -84,7 +99,7 @@ export default function OntologyDetailPage() {
 
       // Load all data in parallel
       await Promise.all([
-        loadEntities(graphUri),
+        loadHierarchicalData(graphUri),
         loadClasses(graphUri),
         loadProperties(graphUri),
       ]);
@@ -97,14 +112,17 @@ export default function OntologyDetailPage() {
     }
   }
 
-  async function loadEntities(graphUri: string) {
+  // Load hierarchical data grouped by category
+  async function loadHierarchicalData(graphUri: string) {
     try {
+      // Get all entities with their category
       const query = `
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT DISTINCT ?entity ?type ?label
+        SELECT DISTINCT ?entity ?label ?category
         WHERE {
           GRAPH <${graphUri}> {
             ?entity a ?type .
+            ?entity <http://mimir-aip.io/ontology/demo_ingestion/1.0.0/prop_category> ?category .
             OPTIONAL { ?entity rdfs:label ?label }
             FILTER(?type != <http://www.w3.org/2002/07/owl#Class>)
             FILTER(?type != <http://www.w3.org/2002/07/owl#ObjectProperty>)
@@ -112,17 +130,67 @@ export default function OntologyDetailPage() {
             FILTER(?type != <http://www.w3.org/2002/07/owl#Ontology>)
           }
         }
-        ORDER BY ?label
+        ORDER BY ?category ?label
       `;
       const result = await executeSPARQLQuery(query);
-      const entityData: Entity[] = (result.data?.bindings || []).map((binding: Record<string, unknown>) => ({
-        entity: binding.entity as { value: string; type: string },
-        type: binding.type as { value: string; type: string },
-        label: binding.label as { value: string; type: string } | undefined,
+      const bindings = (result.data?.bindings || []) as Array<Record<string, { value: string; type: string }>>;
+
+      // Group by category
+      const groups: Map<string, EntityDetail[]> = new Map();
+      
+      for (const binding of bindings) {
+        const entityUri = binding.entity?.value || "";
+        const label = binding.label?.value || entityUri.split("/").pop() || "Unknown";
+        const category = binding.category?.value || "Uncategorized";
+        
+        if (!groups.has(category)) {
+          groups.set(category, []);
+        }
+        
+        // We'll load properties on demand when entity is expanded
+        groups.get(category)?.push({
+          uri: entityUri,
+          label,
+          type: binding.type?.value || "http://www.w3.org/2002/07/owl#Thing",
+          properties: [],
+        });
+      }
+
+      // Convert to array
+      const categoryData: CategoryGroup[] = Array.from(groups.entries()).map(([category, entities]) => ({
+        category,
+        entities,
       }));
-      setEntities(entityData);
+
+      setCategoryGroups(categoryData);
     } catch (err) {
-      console.error("Failed to load entities:", err);
+      console.error("Failed to load hierarchical data:", err);
+    }
+  }
+
+  // Load entity properties on demand
+  async function loadEntityProperties(entityUri: string, graphUri: string): Promise<EntityProperty[]> {
+    try {
+      const query = `
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?property ?value
+        WHERE {
+          GRAPH <${graphUri}> {
+            <${entityUri}> ?property ?value .
+          }
+        }
+      `;
+      const result = await executeSPARQLQuery(query);
+      const bindings = result.data?.bindings || [];
+
+      return bindings.map((binding: any) => ({
+        property: binding.property?.value || "",
+        value: binding.value?.value || "",
+        label: binding.property?.value?.split("/").pop()?.split("#").pop() || "",
+      }));
+    } catch (err) {
+      console.error("Failed to load entity properties:", err);
+      return [];
     }
   }
 
@@ -145,7 +213,7 @@ export default function OntologyDetailPage() {
         ORDER BY DESC(?instanceCount)
       `;
       const result = await executeSPARQLQuery(query);
-      const classData: ClassInfo[] = (result.data?.bindings || []).map((binding: Record<string, unknown>) => ({
+      const classData = (result.data?.bindings || []).map((binding: any) => ({
         class: binding.class as { value: string; type: string },
         label: binding.label as { value: string; type: string } | undefined,
         count: parseInt((binding.instanceCount as { value: string } | undefined)?.value || "0"),
@@ -172,7 +240,7 @@ export default function OntologyDetailPage() {
         LIMIT 100
       `;
       const result = await executeSPARQLQuery(query);
-      const propData: PropertyInfo[] = (result.data?.bindings || []).map((binding: Record<string, unknown>) => ({
+      const propData = (result.data?.bindings || []).map((binding: any) => ({
         property: binding.property as { value: string; type: string },
         label: binding.label as { value: string; type: string } | undefined,
         count: parseInt((binding.usageCount as { value: string } | undefined)?.value || "0"),
@@ -224,12 +292,44 @@ export default function OntologyDetailPage() {
     }
   }
 
-  function toggleEntity(entityUri: string) {
-    const newExpanded = new Set(expandedEntities);
-    if (newExpanded.has(entityUri)) {
-      newExpanded.delete(entityUri);
+  // Toggle category expansion
+  async function toggleCategory(category: string) {
+    const newExpanded = new Set(expandedCategories);
+    if (newExpanded.has(category)) {
+      newExpanded.delete(category);
     } else {
-      newExpanded.add(entityUri);
+      newExpanded.add(category);
+    }
+    setExpandedCategories(newExpanded);
+  }
+
+  // Toggle entity expansion and load properties
+  async function toggleEntity(entity: EntityDetail, category: string) {
+    const entityKey = `${category}:${entity.uri}`;
+    const newExpanded = new Set(expandedEntities);
+    
+    if (newExpanded.has(entityKey)) {
+      newExpanded.delete(entityKey);
+    } else {
+      newExpanded.add(entityKey);
+      // Load properties if not already loaded
+      if (entity.properties.length === 0) {
+        const graphUri = ontology?.tdb2_graph || `http://mimir-aip.io/ontology/${id}`;
+        const properties = await loadEntityProperties(entity.uri, graphUri);
+        
+        // Update the entity with properties
+        setCategoryGroups(prev => prev.map(group => {
+          if (group.category === category) {
+            return {
+              ...group,
+              entities: group.entities.map(e => 
+                e.uri === entity.uri ? { ...e, properties } : e
+              )
+            };
+          }
+          return group;
+        }));
+      }
     }
     setExpandedEntities(newExpanded);
   }
@@ -411,22 +511,22 @@ export default function OntologyDetailPage() {
             <p className="text-white font-medium">{new Date(ontology.created_at).toLocaleDateString()}</p>
           </div>
           <div>
-            <span className="text-white/40 text-sm">Entities</span>
-            <p className="text-white font-medium">{stats?.total_entities ?? entities.length}</p>
+            <span className="text-white/40 text-sm">Categories</span>
+            <p className="text-white font-medium">{categoryGroups.length}</p>
           </div>
         </div>
       </Card>
 
-      {/* Tabs for Entities, Classes, Properties */}
+      {/* Tabs for Hierarchical Entities, Classes, Properties */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-blue/20 w-full justify-start">
           <TabsTrigger value="entities" className="data-[state=active]:bg-orange flex items-center gap-2">
-            <Box className="h-4 w-4" />
-            Entities ({entities.length})
+            <Folder className="h-4 w-4" />
+            By Category ({categoryGroups.reduce((acc, g) => acc + g.entities.length, 0)} entities)
           </TabsTrigger>
           <TabsTrigger value="classes" className="data-[state=active]:bg-orange flex items-center gap-2">
             <Layers className="h-4 w-4" />
-            Classes ({classes.length})
+            By Type ({classes.length})
           </TabsTrigger>
           <TabsTrigger value="properties" className="data-[state=active]:bg-orange flex items-center gap-2">
             <Code className="h-4 w-4" />
@@ -434,56 +534,103 @@ export default function OntologyDetailPage() {
           </TabsTrigger>
         </TabsList>
 
+        {/* Hierarchical Tree View - By Category */}
         <TabsContent value="entities" className="mt-4">
           <Card className="bg-navy border-blue">
             <div className="p-4 border-b border-blue/30 flex justify-between items-center">
               <div>
-                <h2 className="text-lg font-semibold text-white">All Entities</h2>
-                <p className="text-white/60 text-sm">{entities.length} entities in this ontology</p>
+                <h2 className="text-lg font-semibold text-white">Entities by Category</h2>
+                <p className="text-white/60 text-sm">{categoryGroups.length} categories with {categoryGroups.reduce((acc, g) => acc + g.entities.length, 0)} total entities</p>
               </div>
               <Button variant="outline" size="sm" className="border-blue" onClick={() => loadOntologyData()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
             </div>
-            <div className="divide-y divide-blue/30 max-h-[600px] overflow-y-auto">
-              {entities.length === 0 ? (
+            <div className="divide-y divide-blue/30 max-h-[800px] overflow-y-auto">
+              {categoryGroups.length === 0 ? (
                 <p className="p-4 text-white/60">No entities found</p>
               ) : (
-                entities.map((entity, index) => {
-                  const entityUri = entity.entity?.value || `entity-${index}`;
-                  const entityType = entity.type?.value || "Unknown";
-                  const entityLabel = entity.label?.value || entityUri.split("/").pop() || entityUri;
-                  const isExpanded = expandedEntities.has(entityUri);
-
+                categoryGroups.map((group) => {
+                  const isCategoryExpanded = expandedCategories.has(group.category);
+                  
                   return (
-                    <div key={entityUri} className="p-4 hover:bg-blue/5">
+                    <div key={group.category} className="border-l-2 border-l-orange/50">
+                      {/* Category Header */}
                       <button
-                        onClick={() => toggleEntity(entityUri)}
-                        className="flex items-center justify-between w-full text-left"
+                        onClick={() => toggleCategory(group.category)}
+                        className="flex items-center justify-between w-full p-4 text-left hover:bg-blue/10 transition-colors"
                       >
                         <div className="flex items-center gap-3">
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-orange" />
+                          {isCategoryExpanded ? (
+                            <ChevronDown className="h-5 w-5 text-orange" />
                           ) : (
-                            <ChevronRight className="h-4 w-4 text-white/60" />
+                            <ChevronRight className="h-5 w-5 text-white/60" />
                           )}
+                          <Folder className="h-5 w-5 text-orange" />
                           <div>
-                            <span className="text-white font-medium">{entityLabel}</span>
-                            <p className="text-white/40 text-xs truncate max-w-md">{entityUri}</p>
+                            <span className="text-white font-semibold text-lg">{group.category}</span>
+                            <p className="text-white/40 text-sm">{group.entities.length} entities</p>
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {entityType.split("/").pop() || entityType}
-                        </Badge>
+                        <Badge className="bg-blue/30">{group.entities.length}</Badge>
                       </button>
-                      {isExpanded && (
-                        <div className="mt-3 ml-8 p-3 bg-blue/10 rounded text-sm space-y-2">
-                          <p className="text-white/60">URI: <span className="text-blue font-mono text-xs">{entityUri}</span></p>
-                          <p className="text-white/60">Type: <span className="text-blue">{entityType}</span></p>
-                          {entity.label && (
-                            <p className="text-white/60">Label: <span className="text-white">{entity.label.value}</span></p>
-                          )}
+                      
+                      {/* Entities in Category */}
+                      {isCategoryExpanded && (
+                        <div className="ml-8 border-l border-blue/30">
+                          {group.entities.map((entity, entityIndex) => {
+                            const entityKey = `${group.category}:${entity.uri}`;
+                            const isEntityExpanded = expandedEntities.has(entityKey);
+                            
+                            return (
+                              <div key={entity.uri} className="border-l border-blue/20">
+                                {/* Entity Header */}
+                                <button
+                                  onClick={() => toggleEntity(entity, group.category)}
+                                  className="flex items-center justify-between w-full p-3 text-left hover:bg-blue/5 transition-colors"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    {isEntityExpanded ? (
+                                      <ChevronDown className="h-4 w-4 text-orange" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4 text-white/60" />
+                                    )}
+                                    <File className="h-4 w-4 text-blue" />
+                                    <span className="text-white">{entity.label}</span>
+                                  </div>
+                                  <span className="text-white/40 text-xs font-mono">
+                                    {entity.uri.split("/").pop()}
+                                  </span>
+                                </button>
+                                
+                                {/* Entity Properties */}
+                                {isEntityExpanded && (
+                                  <div className="ml-8 p-3 bg-blue/10 rounded m-2">
+                                    <h4 className="text-sm font-semibold text-orange mb-2">Properties</h4>
+                                    <div className="space-y-1 text-sm">
+                                      {entity.properties.length === 0 ? (
+                                        <p className="text-white/40">Loading properties...</p>
+                                      ) : (
+                                        entity.properties
+                                          .filter(prop => prop.property !== "http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
+                                          .map((prop, propIndex) => (
+                                            <div key={propIndex} className="flex justify-between py-1 border-b border-blue/20 last:border-0">
+                                              <span className="text-white/60">
+                                                {prop.label || prop.property.split("/").pop()?.split("#").pop() || "Unknown"}:
+                                              </span>
+                                              <span className="text-white font-medium">
+                                                {prop.value.length > 50 ? prop.value.substring(0, 50) + "..." : prop.value}
+                                              </span>
+                                            </div>
+                                          ))
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -494,6 +641,7 @@ export default function OntologyDetailPage() {
           </Card>
         </TabsContent>
 
+        {/* Classes Tab */}
         <TabsContent value="classes" className="mt-4">
           <Card className="bg-navy border-blue">
             <div className="p-4 border-b border-blue/30">
@@ -522,6 +670,7 @@ export default function OntologyDetailPage() {
           </Card>
         </TabsContent>
 
+        {/* Properties Tab */}
         <TabsContent value="properties" className="mt-4">
           <Card className="bg-navy border-blue">
             <div className="p-4 border-b border-blue/30">

@@ -1,0 +1,45 @@
+name: supplier-pricing-api-ingestion
+version: "1.0"
+description: Pull real-time supplier pricing from API endpoint
+
+metadata:
+  auto_extract_ontology: true
+  target_ontology_id: "pipeline_Demo Ingestion_f104896c"
+  tags: ["demo", "supplier", "api", "pricing", "real-time"]
+  merge_strategy: " enrich_existing"
+  
+steps:
+  - name: fetch-supplier-api
+    plugin: Input.json
+    config:
+      file_path: "/app/demo/supplier_pricing_api.json"
+      root_element: "suppliers"
+    output: supplier_data
+    
+  - name: extract-part-pricing
+    plugin: Transform.map
+    config:
+      mappings:
+        supplier_id: "{{item.supplier_id}}"
+        supplier_name: "{{item.supplier_name}}"
+        parts_array: "{{item.parts}}"
+    input: supplier_data
+    output: supplier_flat
+    
+  - name: unnest-parts
+    plugin: Transform.unnest
+    config:
+      array_field: "parts_array"
+      keep_parent_fields: ["supplier_id", "supplier_name"]
+    input: supplier_flat
+    output: parts_unnested
+    
+  - name: merge-with-inventory
+    plugin: Ontology.merge
+    config:
+      target_ontology: "pipeline_Demo Ingestion_f104896c"
+      join_key: "part_id"
+      enrich_existing: true
+      create_relationships: true
+    input: parts_unnested
+    output: enriched_ontology

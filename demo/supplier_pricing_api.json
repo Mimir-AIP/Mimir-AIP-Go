@@ -1,0 +1,87 @@
+{
+  "suppliers": [
+    {
+      "supplier_id": "SUP-001",
+      "supplier_name": "TechCorp Wholesale",
+      "last_updated": "2026-02-01T00:00:00Z",
+      "parts": [
+        {
+          "part_id": "PART-0001",
+          "part_name": "Intel Core i9-13900K",
+          "unit_price": 579.99,
+          "lead_time_days": 2,
+          "minimum_order": 5,
+          "availability": "in_stock",
+          "price_change_pct": -1.69
+        },
+        {
+          "part_id": "PART-0002",
+          "part_name": "AMD Ryzen 9 7950X",
+          "unit_price": 539.99,
+          "lead_time_days": 3,
+          "minimum_order": 5,
+          "availability": "in_stock",
+          "price_change_pct": -1.82
+        }
+      ]
+    },
+    {
+      "supplier_id": "SUP-002",
+      "supplier_name": "Component Direct",
+      "last_updated": "2026-02-01T00:00:00Z",
+      "parts": [
+        {
+          "part_id": "PART-0017",
+          "part_name": "Corsair Vengeance DDR5 32GB",
+          "unit_price": 184.99,
+          "lead_time_days": 1,
+          "minimum_order": 10,
+          "availability": "in_stock",
+          "price_change_pct": -2.63
+        },
+        {
+          "part_id": "PART-0021",
+          "part_name": "Samsung 990 Pro 2TB NVMe",
+          "unit_price": 244.99,
+          "lead_time_days": 4,
+          "minimum_order": 10,
+          "availability": "low_stock",
+          "price_change_pct": -2.00
+        }
+      ]
+    },
+    {
+      "supplier_id": "SUP-003",
+      "supplier_name": "GPU World Ltd",
+      "last_updated": "2026-02-01T00:00:00Z",
+      "parts": [
+        {
+          "part_id": "PART-0009",
+          "part_name": "NVIDIA GeForce RTX 4090",
+          "unit_price": 1579.99,
+          "lead_time_days": 7,
+          "minimum_order": 3,
+          "availability": "in_stock",
+          "price_change_pct": -1.25
+        },
+        {
+          "part_id": "PART-0010",
+          "part_name": "NVIDIA GeForce RTX 4080",
+          "unit_price": 1179.99,
+          "lead_time_days": 5,
+          "minimum_order": 3,
+          "availability": "backorder",
+          "price_change_pct": -1.67
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "api_version": "2.0",
+    "response_time_ms": 45,
+    "total_suppliers": 3,
+    "total_parts": 6,
+    "pricing_update_frequency": "real-time",
+    "next_update": "2026-02-01T01:00:00Z"
+  }
+}

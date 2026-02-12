@@ -168,6 +168,9 @@ func (s *Server) setupRoutes() {
 	v1.HandleFunc("/jobs/export", s.handleExportJobs).Methods("GET")
 	v1.HandleFunc("/jobs/statistics", s.handleGetJobStatistics).Methods("GET")
 	v1.HandleFunc("/jobs/{id}/stop", s.handleStopJobExecution).Methods("POST")
+	
+	// Dashboard endpoints
+	v1.HandleFunc("/dashboard/stats", s.handleDashboardStats).Methods("GET")
 
 	// Digital Twin endpoints
 	v1.HandleFunc("/twins", s.handleListTwins).Methods("GET")

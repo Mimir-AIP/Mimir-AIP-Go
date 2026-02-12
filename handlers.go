@@ -1369,6 +1369,34 @@ func (s *Server) handleGetRecentJobs(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, recent)
 }
 
+// handleDashboardStats handles requests for dashboard statistics
+func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
+	
+	// Get pipelines
+	pipelineStore := utils.GetPipelineStore()
+	pipelines := pipelineStore.ListPipelines()
+	
+	// Get ontologies
+	ontologyStore := utils.GetOntologyStore()
+	ontologies := ontologyStore.ListOntologies("", "")
+	
+	// Get digital twins
+	twinStore := DigitalTwin.GetDigitalTwinStore()
+	twins := twinStore.ListTwins()
+	
+	// Get recent jobs
+	recentJobs := s.monitor.GetRecentExecutions(10)
+	
+	response := map[string]any{
+		"pipelines":   pipelines,
+		"ontologies":  ontologies,
+		"twins":       twins,
+		"recentJobs":  recentJobs,
+	}
+	
+	writeJSONResponse(w, http.StatusOK, response)
+}
+
 // handleExportJobs handles requests to export job data
 func (s *Server) handleExportJobs(w http.ResponseWriter, r *http.Request) {
 

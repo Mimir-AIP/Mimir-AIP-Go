@@ -58,6 +58,15 @@ export function StatRenderer({ schema }: StatRendererProps) {
     }
   };
 
+  // Color mappings for Tailwind - must be complete class names
+  const colorClasses: Record<string, { bg: string; text: string }> = {
+    'orange': { bg: 'bg-orange-500/10', text: 'text-orange-500' },
+    'blue-400': { bg: 'bg-blue-400/10', text: 'text-blue-400' },
+    'purple-400': { bg: 'bg-purple-400/10', text: 'text-purple-400' },
+    'yellow-400': { bg: 'bg-yellow-400/10', text: 'text-yellow-400' },
+    'green-400': { bg: 'bg-green-400/10', text: 'text-green-400' },
+  };
+
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -87,12 +96,17 @@ export function StatRenderer({ schema }: StatRendererProps) {
         const Icon = card.icon ? iconMap[card.icon] : Activity;
         const value = data[card.value];
         const CardWrapper = card.link ? Link : 'div';
+        const colors = colorClasses[card.color || 'orange'];
         
         return (
           <CardWrapper key={idx} href={card.link || ''}>
             <Card className={`bg-navy border-blue p-6 ${card.link ? 'hover:border-orange/50 transition-colors cursor-pointer' : ''}`}>
               <div className="flex items-center justify-between mb-4">
-                {Icon && <Icon className={`w-10 h-10 p-2 bg-${card.color || 'orange'}/10 rounded-lg text-${card.color || 'orange'}`} />}
+                {Icon && (
+                  <div className={`w-10 h-10 p-2 ${colors.bg} rounded-lg`}>
+                    <Icon className={`w-full h-full ${colors.text}`} />
+                  </div>
+                )}
                 <span className="text-xs text-white/40 uppercase tracking-wide">Active</span>
               </div>
               <p className="text-4xl font-bold text-white mb-1">{value}</p>

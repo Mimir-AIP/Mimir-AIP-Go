@@ -52,11 +52,18 @@ export function GridRenderer({ schema }: GridRendererProps) {
     const color = colors[value] || colors['default'] || 'bg-gray-500';
     return `px-2 py-1 text-xs font-semibold rounded-full ${color}`;
   };
+  
+  const getNestedValue = (obj: any, path: string) => {
+    return path.split('.').reduce((current, key) => current?.[key], obj);
+  };
 
   const formatValue = (value: any, format?: string) => {
-    if (!value) return '-';
+    if (value === null || value === undefined) return '-';
     if (format === 'date') {
       return new Date(value).toLocaleDateString();
+    }
+    if (format === 'percentage') {
+      return `${(value * 100).toFixed(2)}%`;
     }
     return value;
   };
@@ -127,17 +134,19 @@ export function GridRenderer({ schema }: GridRendererProps) {
           {data.map((item, idx) => {
             const title = item[schema.cardTemplate.title];
             const subtitle = schema.cardTemplate.subtitle ? item[schema.cardTemplate.subtitle] : null;
+            const badgeValue = schema.cardTemplate.badge ? item[schema.cardTemplate.badge.field] : null;
+            const badgeDisplay = badgeValue === true ? 'Active' : badgeValue === false ? 'Inactive' : badgeValue;
             
             return (
               <Card key={item.id || idx} className="bg-navy border-blue p-6 h-full">
                 <div className="flex justify-between items-start mb-3">
                   <h3 className="text-xl font-bold text-orange">{title}</h3>
-                  {schema.cardTemplate.badge && (
+                  {schema.cardTemplate.badge && badgeValue !== null && badgeValue !== undefined && (
                     <span className={getBadgeClass(
-                      item[schema.cardTemplate.badge.field],
+                      String(badgeValue),
                       schema.cardTemplate.badge.colors
                     )}>
-                      {item[schema.cardTemplate.badge.field]}
+                      {badgeDisplay}
                     </span>
                   )}
                 </div>
@@ -147,12 +156,15 @@ export function GridRenderer({ schema }: GridRendererProps) {
                 )}
                 
                 <div className="space-y-2 text-sm">
-                  {schema.cardTemplate.fields.map((field) => (
-                    <div key={field.field} className="flex justify-between">
-                      <span className="text-white/40">{field.label}</span>
-                      <span className="text-white">{formatValue(item[field.field], field.format)}</span>
-                    </div>
-                  ))}
+                  {schema.cardTemplate.fields.map((field) => {
+                    const value = getNestedValue(item, field.field);
+                    return (
+                      <div key={field.field} className="flex justify-between">
+                        <span className="text-white/40">{field.label}</span>
+                        <span className="text-white">{formatValue(value, field.format)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
                 
                 {schema.cardTemplate.actions && schema.cardTemplate.actions.length > 0 && (

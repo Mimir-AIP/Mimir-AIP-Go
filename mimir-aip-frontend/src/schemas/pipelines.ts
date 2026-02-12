@@ -5,7 +5,7 @@ export const pipelinesListSchema: PageSchema = {
   description: "Manage data ingestion and processing pipelines",
   components: [
     {
-      type: "table",
+      type: "grid",
       dataSource: {
         endpoint: "/api/v1/pipelines",
         transform: (data: any) => {
@@ -14,41 +14,24 @@ export const pipelinesListSchema: PageSchema = {
           return pipelines;
         },
       },
-      columns: [
-        {
-          key: "name",
-          label: "Pipeline Name",
-          type: "link",
-          link: {
+      cardTemplate: {
+        title: "name",
+        subtitle: "description",
+        fields: [
+          { label: "Type", field: "metadata.type" },
+          { label: "Steps", field: "config.steps.length" },
+          { label: "Created", field: "created_at", format: "date" },
+        ],
+        actions: [
+          {
+            label: "View Details",
+            type: "link",
             href: "/pipelines/{id}",
           },
-        },
-        {
-          key: "description",
-          label: "Description",
-          type: "text",
-        },
-        {
-          key: "metadata.type",
-          label: "Type",
-          type: "text",
-        },
-        {
-          key: "created_at",
-          label: "Created",
-          type: "date",
-        },
-      ],
-      searchable: true,
-      rowActions: [
-        {
-          label: "View",
-          type: "link",
-          href: "/pipelines/{id}",
-          variant: "secondary",
-        },
-      ],
+        ],
+      },
     },
   ],
 };
+
 

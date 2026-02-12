@@ -8,7 +8,11 @@ export const pipelinesListSchema: PageSchema = {
       type: "table",
       dataSource: {
         endpoint: "/api/v1/pipelines",
-        transform: (data) => Array.isArray(data) ? data : [],
+        transform: (data: any) => {
+          // Handle both direct array and wrapped response
+          const pipelines = Array.isArray(data) ? data : (data?.pipelines || []);
+          return pipelines;
+        },
       },
       columns: [
         {
@@ -25,16 +29,9 @@ export const pipelinesListSchema: PageSchema = {
           type: "text",
         },
         {
-          key: "status",
-          label: "Status",
-          type: "badge",
-          badge: {
-            colors: {
-              active: "bg-green-500/20 text-green-400",
-              inactive: "bg-gray-500/20 text-gray-400",
-              error: "bg-red-500/20 text-red-400",
-            },
-          },
+          key: "metadata.type",
+          label: "Type",
+          type: "text",
         },
         {
           key: "created_at",
@@ -45,26 +42,13 @@ export const pipelinesListSchema: PageSchema = {
       searchable: true,
       rowActions: [
         {
-          label: "Execute",
+          label: "View",
           type: "link",
-          href: "/pipelines/{id}/execute",
-          variant: "primary",
-        },
-        {
-          label: "Edit",
-          type: "link",
-          href: "/pipelines/{id}/edit",
+          href: "/pipelines/{id}",
           variant: "secondary",
         },
       ],
     },
   ],
-  actions: [
-    {
-      label: "Create Pipeline",
-      type: "link",
-      href: "/pipelines/new",
-      variant: "primary",
-    },
-  ],
 };
+

@@ -80,18 +80,20 @@ export function ActionButton({ action, data }: ActionButtonProps) {
     }
   };
 
-  const variantClasses = {
+  const variantClasses: Record<string, string> = {
     primary: 'bg-orange hover:bg-orange/80 text-white',
     secondary: 'bg-blue hover:bg-blue/80 text-white',
     danger: 'bg-red-500 hover:bg-red-600 text-white',
     ghost: 'bg-transparent hover:bg-blue/20 text-white border border-blue',
   };
+  
+  const variant = action.variant || 'primary';
 
   return (
     <button
       onClick={handleClick}
       className={`px-4 py-2 rounded transition-colors ${
-        variantClasses[action.variant || 'primary']
+        variantClasses[variant] || variantClasses.primary
       }`}
     >
       {action.label}

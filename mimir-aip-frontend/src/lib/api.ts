@@ -30,7 +30,7 @@ function clearAuthToken() {
 }
 
 // Generic fetch wrapper with error handling and auth
-async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
   // Add auth header if token exists

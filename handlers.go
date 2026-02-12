@@ -1369,6 +1369,64 @@ func (s *Server) handleGetRecentJobs(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, recent)
 }
 
+// handleDashboardStats handles requests for dashboard statistics
+func (s *Server) handleDashboardStats(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	
+	// Get pipelines
+	pipelineStore := utils.GetPipelineStore()
+	pipelines, err := pipelineStore.ListPipelines(nil)
+	if err != nil {
+		pipelines = []*utils.PipelineDefinition{}
+	}
+	
+	// Get ontologies
+	ontologies := []*storage.Ontology{}
+	if s.persistence != nil {
+		ontologies, _ = s.persistence.ListOntologies(ctx, "")
+	}
+	if ontologies == nil {
+		ontologies = []*storage.Ontology{}
+	}
+	
+	// Get digital twins
+	twins := []map[string]interface{}{}
+	if s.persistence != nil {
+		db := s.persistence.GetDB()
+		query := `SELECT id, ontology_id, name, description, model_type, created_at FROM digital_twins ORDER BY created_at DESC`
+		rows, err := db.Query(query)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var id, ontologyID, name, description, modelType string
+				var createdAt time.Time
+				if err := rows.Scan(&id, &ontologyID, &name, &description, &modelType, &createdAt); err == nil {
+					twins = append(twins, map[string]interface{}{
+						"id": id,
+						"ontology_id": ontologyID,
+						"name": name,
+						"description": description,
+						"model_type": modelType,
+						"created_at": createdAt.Format(time.RFC3339),
+					})
+				}
+			}
+		}
+	}
+	
+	// Get recent jobs
+	recentJobs := s.monitor.GetRecentExecutions(10)
+	
+	response := map[string]any{
+		"pipelines":   pipelines,
+		"ontologies":  ontologies,
+		"twins":       twins,
+		"recentJobs":  recentJobs,
+	}
+	
+	writeJSONResponse(w, http.StatusOK, response)
+}
+
 // handleExportJobs handles requests to export job data
 func (s *Server) handleExportJobs(w http.ResponseWriter, r *http.Request) {
 

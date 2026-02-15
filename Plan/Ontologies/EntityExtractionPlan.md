@@ -14,8 +14,8 @@ The entity extraction process follows a sequential pipeline:
 
 ## Rules and Patterns
 Initial pass will focus on extracting entities froom any ingested structured data(if none ingested this will be skipped). Subsequent passes will focus on unstructured data, then a final pass to combine and reconcile entities from both structured and unstructured sources.
-### Tabular Data
-Entity extraction from tabular data treats each row as a potential entity, with columns representing attributes. This deterministic process ensures consistent extraction across different tabular formats.
+### Structured Data from CIR
+Entity extraction from structured data in CIR format treats each data item as a potential entity, with properties representing attributes. This deterministic process ensures consistent extraction across different structured data formats normalized through CIR.
 
 #### Algorithm Overview
 1. **Header Identification**: Extract column headers to define attribute names.
@@ -23,60 +23,58 @@ Entity extraction from tabular data treats each row as a potential entity, with 
 3. **Attribute Assignment**: Assign cell values as entity attributes based on column headers.
 4. **Relationship Inference**: Infer relationships based on specific column patterns (e.g., hierarchical relationships).
 
-#### Pseudocode for Tabular Entity Extraction
+#### Pseudocode for Structured CIR Data Entity Extraction
 
 ```pseudocode
-function extractEntitiesFromTabularData(table_data):
-    # Assume table_data is a list of lists, first row is headers
-    if not table_data or len(table_data) < 2:
+function extractEntitiesFromStructuredCIRData(cir):
+    # Assume cir.data is an array of entity objects
+    if not cir.data or not isinstance(cir.data, list):
         return {'entities': [], 'relationships': []}
 
-    headers = table_data[0]
     entities = []
     relationships = []
 
-    for row in table_data[1:]:
-        if not row or not row[0]:  # Skip empty rows or rows without primary identifier
+    for item in cir.data:
+        if not item or not isinstance(item, dict):
             continue
 
+        # Use the first property as name, or 'name' if present
+        name_key = 'name' if 'name' in item else list(item.keys())[0]
         entity = {
-            'name': normalizeText(row[0]),
+            'name': normalizeText(item[name_key]),
             'attributes': {},
             'source': 'structured',
             'confidence': 0.9  # High confidence for structured data
         }
 
-        # Extract attributes from remaining columns
-        for i in range(1, min(len(headers), len(row))):
-            if row[i]:  # Only add non-empty attributes
-                attr_name = normalizeText(headers[i])
-                entity['attributes'][attr_name] = row[i]
+        # Extract attributes from remaining properties
+        for key, value in item.items():
+            if key != name_key and value is not None:
+                attr_name = normalizeText(key)
+                entity['attributes'][attr_name] = value
 
         entities.append(entity)
 
     # Infer relationships based on predefined patterns
     relationship_patterns = [
-        {'column': 'Manager', 'relation': 'reports_to'},
-        {'column': 'Supervisor', 'relation': 'reports_to'},
-        {'column': 'Department', 'relation': 'belongs_to'},
-        {'column': 'Location', 'relation': 'located_in'}
+        {'attribute': 'manager', 'relation': 'reports_to'},
+        {'attribute': 'supervisor', 'relation': 'reports_to'},
+        {'attribute': 'department', 'relation': 'belongs_to'},
+        {'attribute': 'location', 'relation': 'located_in'}
     ]
 
     for pattern in relationship_patterns:
-        if pattern['column'] in headers:
-            col_index = headers.index(pattern['column'])
-            for entity in entities:
-                if col_index < len(table_data[entities.index(entity) + 1]):
-                    target_name = table_data[entities.index(entity) + 1][col_index]
-                    if target_name:
-                        target_entity = findEntityByName(entities, normalizeText(target_name))
-                        if target_entity:
-                            relationships.append({
-                                'entity1': entity,
-                                'entity2': target_entity,
-                                'relation': pattern['relation'],
-                                'confidence': 0.85
-                            })
+        for entity in entities:
+            target_value = entity['attributes'].get(pattern['attribute'])
+            if target_value:
+                target_entity = findEntityByName(entities, normalizeText(target_value))
+                if target_entity:
+                    relationships.append({
+                        'entity1': entity,
+                        'entity2': target_entity,
+                        'relation': pattern['relation'],
+                        'confidence': 0.85
+                    })
 
     return {'entities': entities, 'relationships': relationships}
 

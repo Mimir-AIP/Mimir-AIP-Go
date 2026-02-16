@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mimir AIP - Orchestrator Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Mimir AIP Orchestrator</h1>
+        <div class="status-indicator" id="systemStatus">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+        </div>
+    </header>
+
+    <main>
+        <section class="dashboard-section">
+            <h2>System Overview</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Queue Length</div>
+                    <div class="metric-value" id="queueLength">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Active Workers</div>
+                    <div class="metric-value" id="activeWorkers">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Jobs Completed</div>
+                    <div class="metric-value" id="jobsCompleted">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Jobs Failed</div>
+                    <div class="metric-value" id="jobsFailed">-</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="dashboard-section">
+            <h2>Submit New Job</h2>
+            <form id="jobSubmissionForm" class="job-form">
+                <div class="form-group">
+                    <label for="jobType">Job Type</label>
+                    <select id="jobType" required>
+                        <option value="pipeline_execution">Pipeline Execution</option>
+                        <option value="ml_training">ML Training</option>
+                        <option value="ml_inference">ML Inference</option>
+                        <option value="digital_twin_update">Digital Twin Update</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="projectId">Project ID</label>
+                    <input type="text" id="projectId" placeholder="project-123" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="priority">Priority (1-5)</label>
+                    <input type="number" id="priority" min="1" max="5" value="1" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="cpu">CPU Cores</label>
+                    <input type="text" id="cpu" placeholder="500m" value="500m">
+                </div>
+
+                <div class="form-group">
+                    <label for="memory">Memory</label>
+                    <input type="text" id="memory" placeholder="1Gi" value="1Gi">
+                </div>
+
+                <button type="submit" class="btn-primary">Submit Job</button>
+            </form>
+            <div id="submitResult" class="result-message"></div>
+        </section>
+
+        <section class="dashboard-section">
+            <h2>Recent Jobs</h2>
+            <div id="jobsList" class="jobs-list">
+                <p class="placeholder">No jobs to display</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

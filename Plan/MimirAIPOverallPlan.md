@@ -6,6 +6,9 @@ Mimir AIP will be an ontology-backed data platform for data aggregation, process
 ### Backend: Go
 ### Frontend: Simple static site using a small number of primitive components(7 max) which will call backend orchestrator server via a REST API
 
+## Development:
+explained in: [DevelopmentPlan.md](DevelopmentPlan.md)
+
 ## Infrastructure:
 explained in: [Infrastructure/InfrastructurePlan.md](Infrastructure/InfrastructurePlan.md)
 
@@ -15,17 +18,23 @@ explained in: [Projects/ProjectsPlan.md](Projects/ProjectsPlan.md)
 ## Ontologies:
 explained in: [Ontologies/OntologyPlan.md](Ontologies/OntologyPlan.md)
 
+### Entity Extraction:
+explained in: [Ontologies/EntityExtractionPlan.md](Ontologies/EntityExtractionPlan.md)
+
 ## Pipelines:
 explained in: [Pipelines/PipelinePlan.md](Pipelines/PipelinePlan.md)
+
+### Jobs:
+explained in: [Pipelines/JobsPlan.md](Pipelines/JobsPlan.md)
 
 ## Storage:
 explained in: [Storage/StoragePlan.md](Storage/StoragePlan.md)
 
 ## ML Models:
-explained in: [ML Models/MLModelPlan.md](ML Models/MLModelPlan.md)
+explained in: [MLModels/MLModelPlan.md](MLModels/MLModelPlan.md)
 
 ## Digital Twin:
-explained in: [Digital Twins/DigitalTwinPlan.md](Digital Twins/DigitalTwinPlan.md)
+explained in: [DigitalTwins/DigitalTwinPlan.md](DigitalTwins/DigitalTwinPlan.md)
 
 
 

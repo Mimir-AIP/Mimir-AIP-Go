@@ -14,10 +14,16 @@ const (
 	DefaultContextMaxSize = 10485760 // 10MB
 )
 
+// PluginRegistry interface for accessing plugins
+type PluginRegistry interface {
+	GetPlugin(name string) (Plugin, bool)
+}
+
 // Service provides pipeline management and execution operations
 type Service struct {
-	store   metadatastore.MetadataStore
-	plugins map[string]Plugin
+	store          metadatastore.MetadataStore
+	plugins        map[string]Plugin
+	pluginRegistry PluginRegistry
 }
 
 // NewService creates a new pipeline service
@@ -25,6 +31,21 @@ func NewService(store metadatastore.MetadataStore) *Service {
 	s := &Service{
 		store:   store,
 		plugins: make(map[string]Plugin),
+	}
+
+	// Register default plugin
+	s.RegisterPlugin("default", NewDefaultPlugin())
+	s.RegisterPlugin("builtin", NewDefaultPlugin()) // Alias for default
+
+	return s
+}
+
+// NewServiceWithRegistry creates a new pipeline service with an external plugin registry
+func NewServiceWithRegistry(store metadatastore.MetadataStore, registry PluginRegistry) *Service {
+	s := &Service{
+		store:          store,
+		plugins:        make(map[string]Plugin),
+		pluginRegistry: registry,
 	}
 
 	// Register default plugin
@@ -153,8 +174,11 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 
 		log.Printf("  Step %d: %s (%s.%s)", currentStepIndex+1, step.Name, step.Plugin, step.Action)
 
-		// Get plugin
+		// Get plugin - check local registry first, then external registry
 		plugin, ok := s.plugins[step.Plugin]
+		if !ok && s.pluginRegistry != nil {
+			plugin, ok = s.pluginRegistry.GetPlugin(step.Plugin)
+		}
 		if !ok {
 			execution.Status = "failed"
 			execution.Error = fmt.Sprintf("unknown plugin: %s", step.Plugin)

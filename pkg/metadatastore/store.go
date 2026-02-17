@@ -25,4 +25,12 @@ type MetadataStore interface {
 	ListSchedules() ([]*models.Schedule, error)
 	ListSchedulesByProject(projectID string) ([]*models.Schedule, error)
 	DeleteSchedule(id string) error
+
+	// Plugin operations
+	SavePlugin(plugin *models.Plugin, binaryData []byte) error
+	GetPlugin(name string) (*models.Plugin, error)
+	GetPluginBinary(name string) ([]byte, error)
+	ListPlugins() ([]*models.Plugin, error)
+	DeletePlugin(name string) error
+	UpdatePluginStatus(name string, status models.PluginStatus) error
 }

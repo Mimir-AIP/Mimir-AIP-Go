@@ -21,8 +21,8 @@ spec:
       serviceAccountName: orchestrator-service-account
       containers:
       - name: orchestrator
-        image: localhost:5001/mimir-orchestrator:latest
-        imagePullPolicy: Always
+        image: mimir-aip/orchestrator:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 8080
           name: http

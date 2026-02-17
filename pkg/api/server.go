@@ -39,6 +39,11 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/jobs/", s.handleJobByID)
 }
 
+// RegisterHandler adds a custom handler to the server
+func (s *Server) RegisterHandler(path string, handler http.HandlerFunc) {
+	s.mux.HandleFunc(path, handler)
+}
+
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%s", s.port)

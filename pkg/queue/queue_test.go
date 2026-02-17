@@ -9,21 +9,16 @@ import (
 
 // TestEnqueueDequeue tests basic queue operations
 func TestEnqueueDequeue(t *testing.T) {
-	// This test requires a running Redis instance
-	// Skip if REDIS_URL is not set
-	t.Skip("Integration test - requires Redis")
-
-	q, err := NewQueue("redis://localhost:6379")
+	q, err := NewQueue()
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
-	defer q.Close()
 
-	// Create a test job
-	job := &models.Job{
-		ID:          "test-job-1",
-		Type:        models.JobTypePipelineExecution,
-		Status:      models.JobStatusQueued,
+	// Create a test work task
+	task := &models.WorkTask{
+		ID:          "test-task-1",
+		Type:        models.WorkTaskTypePipelineExecution,
+		Status:      models.WorkTaskStatusQueued,
 		Priority:    1,
 		SubmittedAt: time.Now(),
 		ProjectID:   "test-project",
@@ -33,53 +28,50 @@ func TestEnqueueDequeue(t *testing.T) {
 		},
 	}
 
-	// Enqueue the job
-	if err := q.Enqueue(job); err != nil {
-		t.Fatalf("Failed to enqueue job: %v", err)
+	// Enqueue the task
+	if err := q.Enqueue(task); err != nil {
+		t.Fatalf("Failed to enqueue task: %v", err)
 	}
 
-	// Dequeue the job
-	dequeuedJob, err := q.Dequeue()
+	// Dequeue the task
+	dequeuedTask, err := q.Dequeue()
 	if err != nil {
-		t.Fatalf("Failed to dequeue job: %v", err)
+		t.Fatalf("Failed to dequeue task: %v", err)
 	}
 
-	if dequeuedJob == nil {
-		t.Fatal("Dequeued job is nil")
+	if dequeuedTask == nil {
+		t.Fatal("Dequeued task is nil")
 	}
 
-	if dequeuedJob.ID != job.ID {
-		t.Errorf("Expected job ID %s, got %s", job.ID, dequeuedJob.ID)
+	if dequeuedTask.ID != task.ID {
+		t.Errorf("Expected task ID %s, got %s", task.ID, dequeuedTask.ID)
 	}
 }
 
 // TestQueueLength tests queue length tracking
 func TestQueueLength(t *testing.T) {
-	t.Skip("Integration test - requires Redis")
-
-	q, err := NewQueue("redis://localhost:6379")
+	q, err := NewQueue()
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
-	defer q.Close()
 
 	initialLength, err := q.QueueLength()
 	if err != nil {
 		t.Fatalf("Failed to get queue length: %v", err)
 	}
 
-	// Create and enqueue a job
-	job := &models.Job{
-		ID:          "test-job-2",
-		Type:        models.JobTypePipelineExecution,
-		Status:      models.JobStatusQueued,
+	// Create and enqueue a task
+	task := &models.WorkTask{
+		ID:          "test-task-2",
+		Type:        models.WorkTaskTypePipelineExecution,
+		Status:      models.WorkTaskStatusQueued,
 		Priority:    1,
 		SubmittedAt: time.Now(),
 		ProjectID:   "test-project",
 	}
 
-	if err := q.Enqueue(job); err != nil {
-		t.Fatalf("Failed to enqueue job: %v", err)
+	if err := q.Enqueue(task); err != nil {
+		t.Fatalf("Failed to enqueue task: %v", err)
 	}
 
 	newLength, err := q.QueueLength()
@@ -92,42 +84,39 @@ func TestQueueLength(t *testing.T) {
 	}
 }
 
-// TestJobStatusUpdate tests job status updates
-func TestJobStatusUpdate(t *testing.T) {
-	t.Skip("Integration test - requires Redis")
-
-	q, err := NewQueue("redis://localhost:6379")
+// TestWorkTaskStatusUpdate tests work task status updates
+func TestWorkTaskStatusUpdate(t *testing.T) {
+	q, err := NewQueue()
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
-	defer q.Close()
 
-	// Create and enqueue a job
-	job := &models.Job{
-		ID:          "test-job-3",
-		Type:        models.JobTypePipelineExecution,
-		Status:      models.JobStatusQueued,
+	// Create and enqueue a task
+	task := &models.WorkTask{
+		ID:          "test-task-3",
+		Type:        models.WorkTaskTypePipelineExecution,
+		Status:      models.WorkTaskStatusQueued,
 		Priority:    1,
 		SubmittedAt: time.Now(),
 		ProjectID:   "test-project",
 	}
 
-	if err := q.Enqueue(job); err != nil {
-		t.Fatalf("Failed to enqueue job: %v", err)
+	if err := q.Enqueue(task); err != nil {
+		t.Fatalf("Failed to enqueue task: %v", err)
 	}
 
-	// Update job status
-	if err := q.UpdateJobStatus(job.ID, models.JobStatusExecuting, ""); err != nil {
-		t.Fatalf("Failed to update job status: %v", err)
+	// Update task status
+	if err := q.UpdateWorkTaskStatus(task.ID, models.WorkTaskStatusExecuting, ""); err != nil {
+		t.Fatalf("Failed to update task status: %v", err)
 	}
 
-	// Get the updated job
-	updatedJob, err := q.GetJob(job.ID)
+	// Get the updated task
+	updatedTask, err := q.GetWorkTask(task.ID)
 	if err != nil {
-		t.Fatalf("Failed to get job: %v", err)
+		t.Fatalf("Failed to get task: %v", err)
 	}
 
-	if updatedJob.Status != models.JobStatusExecuting {
-		t.Errorf("Expected status %s, got %s", models.JobStatusExecuting, updatedJob.Status)
+	if updatedTask.Status != models.WorkTaskStatusExecuting {
+		t.Errorf("Expected status %s, got %s", models.WorkTaskStatusExecuting, updatedTask.Status)
 	}
 }

@@ -33,17 +33,17 @@ spec:
           value: "debug"
         - name: PORT
           value: "8080"
-        - name: REDIS_URL
-          valueFrom:
-            secretKeyRef:
-              name: redis-secret
-              key: url
+        - name: STORAGE_DIR
+          value: "/app/data"
         - name: MIN_WORKERS
           value: "1"
         - name: MAX_WORKERS
           value: "10"
         - name: QUEUE_THRESHOLD
           value: "5"
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
         resources:
           requests:
             memory: "256Mi"
@@ -63,6 +63,10 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: orchestrator-data-pvc
 ---
 apiVersion: v1
 kind: Service

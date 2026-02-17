@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 )
@@ -11,7 +10,6 @@ type Config struct {
 	Environment        string
 	LogLevel           string
 	Port               string
-	RedisURL           string
 	DatabaseURL        string
 	OrchestratorURL    string
 	JobTimeout         int
@@ -27,7 +25,6 @@ func LoadConfig() (*Config, error) {
 		Environment:        getEnv("ENVIRONMENT", "development"),
 		LogLevel:           getEnv("LOG_LEVEL", "info"),
 		Port:               getEnv("PORT", "8080"),
-		RedisURL:           getEnv("REDIS_URL", ""),
 		DatabaseURL:        getEnv("DATABASE_URL", ""),
 		OrchestratorURL:    getEnv("ORCHESTRATOR_URL", "http://localhost:8080"),
 		JobTimeout:         getEnvAsInt("JOB_TIMEOUT", 3600),
@@ -35,11 +32,6 @@ func LoadConfig() (*Config, error) {
 		MaxWorkers:         getEnvAsInt("MAX_WORKERS", 50),
 		QueueThreshold:     getEnvAsInt("QUEUE_THRESHOLD", 5),
 		StorageAccessToken: getEnv("STORAGE_ACCESS_TOKEN", ""),
-	}
-
-	// Validate required configuration
-	if config.RedisURL == "" {
-		return nil, fmt.Errorf("REDIS_URL is required")
 	}
 
 	return config, nil

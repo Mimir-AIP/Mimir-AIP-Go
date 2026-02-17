@@ -35,8 +35,8 @@ func NewServer(q *queue.Queue, port string) *Server {
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/ready", s.handleReady)
-	s.mux.HandleFunc("/api/jobs", s.handleJobs)
-	s.mux.HandleFunc("/api/jobs/", s.handleJobByID)
+	s.mux.HandleFunc("/api/worktasks", s.handleWorkTasks)
+	s.mux.HandleFunc("/api/worktasks/", s.handleWorkTaskByID)
 }
 
 // RegisterHandler adds a custom handler to the server
@@ -71,21 +71,21 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
 }
 
-// handleJobs handles job submission (POST) and listing (GET)
-func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
+// handleWorkTasks handles work task submission (POST) and listing (GET)
+func (s *Server) handleWorkTasks(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
-		s.handleJobSubmission(w, r)
+		s.handleWorkTaskSubmission(w, r)
 	case http.MethodGet:
-		s.handleJobList(w, r)
+		s.handleWorkTaskList(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-// handleJobSubmission handles job submission requests
-func (s *Server) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
-	var req models.JobSubmissionRequest
+// handleWorkTaskSubmission handles work task submission requests
+func (s *Server) handleWorkTaskSubmission(w http.ResponseWriter, r *http.Request) {
+	var req models.WorkTaskSubmissionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
@@ -93,7 +93,7 @@ func (s *Server) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 
 	// Validate request
 	if req.Type == "" {
-		http.Error(w, "Job type is required", http.StatusBadRequest)
+		http.Error(w, "WorkTask type is required", http.StatusBadRequest)
 		return
 	}
 	if req.ProjectID == "" {
@@ -101,11 +101,11 @@ func (s *Server) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create job
-	job := &models.Job{
+	// Create work task
+	task := &models.WorkTask{
 		ID:                   uuid.New().String(),
 		Type:                 req.Type,
-		Status:               models.JobStatusQueued,
+		Status:               models.WorkTaskStatusQueued,
 		Priority:             req.Priority,
 		SubmittedAt:          time.Now(),
 		ProjectID:            req.ProjectID,
@@ -115,22 +115,22 @@ func (s *Server) handleJobSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set default priority if not specified
-	if job.Priority == 0 {
-		job.Priority = 1
+	if task.Priority == 0 {
+		task.Priority = 1
 	}
 
-	// Enqueue job
-	if err := s.queue.Enqueue(job); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to enqueue job: %v", err), http.StatusInternalServerError)
+	// Enqueue work task
+	if err := s.queue.Enqueue(task); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to enqueue work task: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(job)
+	json.NewEncoder(w).Encode(task)
 }
 
-// handleJobList handles job list requests
-func (s *Server) handleJobList(w http.ResponseWriter, r *http.Request) {
+// handleWorkTaskList handles work task list requests
+func (s *Server) handleWorkTaskList(w http.ResponseWriter, r *http.Request) {
 	queueLength, err := s.queue.QueueLength()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get queue length: %v", err), http.StatusInternalServerError)
@@ -143,45 +143,44 @@ func (s *Server) handleJobList(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleJobByID handles job-specific requests
-func (s *Server) handleJobByID(w http.ResponseWriter, r *http.Request) {
-	// Extract job ID from path (e.g., /api/jobs/{id})
-	jobID := r.URL.Path[len("/api/jobs/"):]
+// handleWorkTaskByID handles work task-specific requests
+func (s *Server) handleWorkTaskByID(w http.ResponseWriter, r *http.Request) {
+	// Extract work task ID from path (e.g., /api/worktasks/{id})
+	taskID := r.URL.Path[len("/api/worktasks/"):]
 
 	switch r.Method {
 	case http.MethodGet:
-		s.handleGetJob(w, r, jobID)
+		s.handleGetWorkTask(w, r, taskID)
 	case http.MethodPost:
-		// Handle job completion updates
-		s.handleJobUpdate(w, r, jobID)
+		// Handle work task completion updates
+		s.handleWorkTaskUpdate(w, r, taskID)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-// handleGetJob retrieves a job by ID
-func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request, jobID string) {
-	job, err := s.queue.GetJob(jobID)
+// handleGetWorkTask retrieves a work task by ID
+func (s *Server) handleGetWorkTask(w http.ResponseWriter, r *http.Request, taskID string) {
+	task, err := s.queue.GetWorkTask(taskID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Job not found: %v", err), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("WorkTask not found: %v", err), http.StatusNotFound)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(job)
+	json.NewEncoder(w).Encode(task)
 }
 
-// handleJobUpdate handles job status updates
-func (s *Server) handleJobUpdate(w http.ResponseWriter, r *http.Request, jobID string) {
-	var result models.JobResult
+// handleWorkTaskUpdate handles work task status updates
+func (s *Server) handleWorkTaskUpdate(w http.ResponseWriter, r *http.Request, taskID string) {
+	var result models.WorkTaskResult
 	if err := json.NewDecoder(r.Body).Decode(&result); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	// Update job status
-	if err := s.queue.UpdateJobStatus(jobID, result.Status, result.ErrorMessage); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update job: %v", err), http.StatusInternalServerError)
+	if err := s.queue.UpdateWorkTaskStatus(taskID, result.Status, result.ErrorMessage); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update work task status: %v", err), http.StatusInternalServerError)
 		return
 	}
 

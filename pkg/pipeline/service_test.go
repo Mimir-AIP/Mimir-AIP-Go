@@ -2,10 +2,11 @@ package pipeline
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
-	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
 func setupTestService(t *testing.T) (*Service, string) {
@@ -15,9 +16,10 @@ func setupTestService(t *testing.T) (*Service, string) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
-	store, err := storage.NewFileStore(tmpDir)
+	dbPath := filepath.Join(tmpDir, "test.db")
+	store, err := metadatastore.NewSQLiteStore(dbPath)
 	if err != nil {
-		t.Fatalf("Failed to create file store: %v", err)
+		t.Fatalf("Failed to create SQLite store: %v", err)
 	}
 
 	service := NewService(store)

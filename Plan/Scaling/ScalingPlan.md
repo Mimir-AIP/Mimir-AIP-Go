@@ -1,28 +1,28 @@
 # Scalable Workers
 
-Scalable workers are on-demand Kubernetes Job instances that execute specific tasks (pipeline runs, ML training/inference, digital twin updates) and automatically terminate after completion. Workers are spawned dynamically based on job queue demand and are designed for horizontal scaling across the cluster.
+Scalable workers are on-demand Kubernetes Job instances that execute specific work tasks (pipeline runs, ML training/inference, digital twin updates) and automatically terminate after completion. Workers are spawned dynamically based on work task queue demand and are designed for horizontal scaling across the cluster.
 
 ## Worker Architecture
 
 ### Worker Types
 - **Pipeline Worker**: Executes data ingestion and processing pipelines
-- **ML Training Worker**: Handles machine learning model training jobs
+- **ML Training Worker**: Handles machine learning model training work tasks
 - **ML Inference Worker**: Performs model inference and prediction tasks
 - **Digital Twin Worker**: Updates and maintains digital twin states
 
 ### Worker Lifecycle
-1. **Queued**: Job submitted to Redis queue with task specification
+1. **Queued**: WorkTask submitted to in-memory queue with task specification
 2. **Scheduled**: Orchestrator creates Kubernetes Job manifest
 3. **Spawned**: Kubernetes schedules Job pod with appropriate resources
-4. **Executing**: Worker downloads task data, executes job, uploads results
+4. **Executing**: Worker downloads task data, executes work task, uploads results
 5. **Completed**: Job pod terminates, results stored, cleanup performed
 
 ## Worker Spawning Process
 
-### Job Submission
+### WorkTask Submission
 ```typescript
 // Orchestrator API endpoint
-POST /api/jobs
+POST /api/worktasks
 {
   "type": "pipeline_execution",
   "pipeline_id": "sensor-data-pipeline",
@@ -40,10 +40,10 @@ POST /api/jobs
 ```
 
 ### Queue Storage
-Jobs are stored in Redis with structured metadata:
+WorkTasks are stored in in-memory queue with structured metadata:
 ```json
 {
-  "job_id": "job-12345",
+  "worktask_id": "task-12345",
   "type": "pipeline_execution",
   "status": "queued",
   "priority": 1,
@@ -66,16 +66,16 @@ Jobs are stored in Redis with structured metadata:
 ```
 
 ### Kubernetes Job Creation
-Orchestrator generates Job manifest based on job requirements:
+Orchestrator generates Job manifest based on work task requirements:
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: worker-job-12345
+  name: worker-task-12345
   labels:
     app: mimir-worker
-    job-type: pipeline_execution
-    job-id: job-12345
+    worktask-type: pipeline_execution
+    worktask-id: task-12345
 spec:
   ttlSecondsAfterFinished: 300
   template:
@@ -85,17 +85,12 @@ spec:
       - name: worker
         image: mimir/worker:latest
         env:
-        - name: JOB_ID
-          value: "job-12345"
-        - name: JOB_TYPE
+        - name: WORKTASK_ID
+          value: "task-12345"
+        - name: WORKTASK_TYPE
           value: "pipeline_execution"
         - name: ORCHESTRATOR_URL
           value: "http://orchestrator:8080"
-        - name: REDIS_URL
-          valueFrom:
-            secretKeyRef:
-              name: redis-secret
-              key: url
         - name: STORAGE_ACCESS_TOKEN
           valueFrom:
             secretKeyRef:
@@ -109,12 +104,12 @@ spec:
             cpu: "4"
             memory: "8Gi"
         volumeMounts:
-        - name: job-data
+        - name: worktask-data
           mountPath: /app/data
         - name: model-cache
           mountPath: /app/models
       volumes:
-      - name: job-data
+      - name: worktask-data
         emptyDir: {}
       - name: model-cache
         persistentVolumeClaim:
@@ -138,7 +133,7 @@ for dataset in "${INPUT_DATASETS[@]}"; do
 done
 
 # Download model artifacts if needed
-if [ "$JOB_TYPE" = "ml_inference" ]; then
+if [ "$WORKTASK_TYPE" = "ml_inference" ]; then
   aws s3 sync "s3://models/$MODEL_ID/" /app/models/
 fi
 
@@ -154,7 +149,7 @@ Credentials are injected via Kubernetes secrets:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: job-12345-secrets
+  name: task-12345-secrets
 type: Opaque
 data:
   aws_access_key: <base64-encoded>
@@ -163,18 +158,18 @@ data:
 ```
 
 #### Output Data Handling
-Results are uploaded before job completion:
+Results are uploaded before work task completion:
 ```bash
 # Worker completion script
 #!/bin/bash
 
 # Upload results
-aws s3 sync /app/data/output/ "s3://results/$JOB_ID/"
+aws s3 sync /app/data/output/ "s3://results/$WORKTASK_ID/"
 
-# Update job status
-curl -X POST "$ORCHESTRATOR_URL/api/jobs/$JOB_ID/complete" \
+# Update work task status
+curl -X POST "$ORCHESTRATOR_URL/api/worktasks/$WORKTASK_ID/complete" \
      -H "Content-Type: application/json" \
-     -d "{\"status\": \"completed\", \"output_location\": \"s3://results/$JOB_ID/\"}"
+     -d "{\"status\": \"completed\", \"output_location\": \"s3://results/$WORKTASK_ID/\"}"
 
 # Cleanup temporary files
 rm -rf /app/data/*
@@ -183,118 +178,119 @@ rm -rf /app/data/*
 ### Task Execution Environment
 
 #### Worker Runtime
-```python
-# worker.py - Main worker execution logic
-import os
-import json
-from kubernetes import client, config
+```go
+// worker.go - Main worker execution logic
+package main
 
-def main():
-    job_id = os.environ['JOB_ID']
-    job_type = os.environ['JOB_TYPE']
+import (
+    "os"
+    "log"
+)
 
-    # Load job specification
-    job_spec = get_job_spec(job_id)
+func main() {
+    taskID := os.Getenv("WORKTASK_ID")
+    taskType := os.Getenv("WORKTASK_TYPE")
 
-    # Initialize storage access
-    storage = init_storage_client()
+    // Load work task specification
+    taskSpec := getWorkTaskSpec(taskID)
 
-    # Download inputs
-    download_inputs(job_spec['data_access'])
+    // Initialize storage access
+    storage := initStorageClient()
 
-    # Execute task based on type
-    if job_type == 'pipeline_execution':
-        result = execute_pipeline(job_spec)
-    elif job_type == 'ml_training':
-        result = execute_ml_training(job_spec)
-    elif job_type == 'ml_inference':
-        result = execute_ml_inference(job_spec)
+    // Download inputs
+    downloadInputs(taskSpec.DataAccess)
 
-    # Upload results
-    upload_results(result, job_spec['data_access'])
+    // Execute task based on type
+    var result *WorkTaskResult
+    switch taskType {
+    case "pipeline_execution":
+        result = executePipeline(taskSpec)
+    case "ml_training":
+        result = executeMLTraining(taskSpec)
+    case "ml_inference":
+        result = executeMLInference(taskSpec)
+    }
 
-    # Report completion
-    report_completion(job_id, result)
+    // Upload results
+    uploadResults(result, taskSpec.DataAccess)
 
-if __name__ == '__main__':
-    main()
+    // Report completion
+    reportCompletion(taskID, result)
+}
 ```
 
 ## Scaling Decision Logic
 
 ### Queue Monitoring
-Orchestrator continuously monitors job queue:
-```python
-# scaling_decision.py
-def should_spawn_worker(queue_length, active_workers, max_workers):
-    """
-    Determine if a new worker should be spawned
-    """
-    # Always maintain minimum workers
-    if active_workers < MIN_WORKERS:
-        return True
+Orchestrator continuously monitors work task queue:
+```go
+// scaling_decision.go
+func shouldSpawnWorker(queueLength, activeWorkers, maxWorkers int64) bool {
+    // Always maintain minimum workers
+    if activeWorkers < MIN_WORKERS && queueLength > 0 {
+        return true
+    }
 
-    # Scale based on queue depth
-    if queue_length > QUEUE_THRESHOLD:
-        return True
+    // Don't exceed max workers
+    if activeWorkers >= maxWorkers {
+        return false
+    }
 
-    # Scale based on job priority
-    high_priority_jobs = get_high_priority_jobs()
-    if high_priority_jobs and active_workers < max_workers:
-        return True
+    // Scale based on queue depth
+    if queueLength > QUEUE_THRESHOLD {
+        return true
+    }
 
-    # Scale down if queue is empty
-    if queue_length == 0 and active_workers > MIN_WORKERS:
-        return False
+    return false
+}
 
-    return False
-
-# Configuration
-MIN_WORKERS = 1
-MAX_WORKERS = 50
-QUEUE_THRESHOLD = 5
+// Configuration
+const (
+    MIN_WORKERS = 1
+    MAX_WORKERS = 50
+    QUEUE_THRESHOLD = 5
+)
 ```
 
 ### Resource-Aware Scaling
 Consider available cluster resources:
-```python
-def check_cluster_capacity(job_requirements):
-    """
-    Verify cluster has capacity for job requirements
-    """
-    available_cpu = get_cluster_available_cpu()
-    available_memory = get_cluster_available_memory()
+```go
+func checkClusterCapacity(taskRequirements ResourceRequirements) bool {
+    // Verify cluster has capacity for work task requirements
+    availableCPU := getClusterAvailableCPU()
+    availableMemory := getClusterAvailableMemory()
 
-    required_cpu = job_requirements.get('cpu', 1)
-    required_memory = parse_memory(job_requirements.get('memory', '1Gi'))
+    requiredCPU := taskRequirements.CPU
+    requiredMemory := parseMemory(taskRequirements.Memory)
 
-    return available_cpu >= required_cpu and available_memory >= required_memory
+    return availableCPU >= requiredCPU && availableMemory >= requiredMemory
+}
 ```
 
-### Job Type Prioritization
-Different scaling rules per job type:
-```python
-SCALING_RULES = {
-    'pipeline_execution': {
-        'priority': 1,
-        'max_concurrent': 20,
-        'resource_weight': 1.0
+### WorkTask Type Prioritization
+Different scaling rules per work task type:
+```go
+var SCALING_RULES = map[WorkTaskType]ScalingRule{
+    WorkTaskTypePipelineExecution: {
+        Priority:       1,
+        MaxConcurrent:  20,
+        ResourceWeight: 1.0,
     },
-    'ml_training': {
-        'priority': 3,
-        'max_concurrent': 5,
-        'resource_weight': 3.0  # Higher resource requirements
+    WorkTaskTypeMLTraining: {
+        Priority:       3,
+        MaxConcurrent:  5,
+        ResourceWeight: 3.0,  // Higher resource requirements
     },
-    'ml_inference': {
-        'priority': 2,
-        'max_concurrent': 10,
-        'resource_weight': 1.5
+    WorkTaskTypeMLInference: {
+        Priority:       2,
+        MaxConcurrent:  10,
+        ResourceWeight: 1.5,
     },
-    'digital_twin_update': {
-        'priority': 1,
-        'max_concurrent': 15,
-        'resource_weight': 1.2
-    }
+    WorkTaskTypeDigitalTwinUpdate: {
+        Priority:       1,
+        MaxConcurrent:  15,
+        ResourceWeight: 1.2,
+    },
 }
 ```
 
@@ -308,46 +304,51 @@ spec:
 ```
 
 ### Manual Cleanup Process
-```python
-def cleanup_completed_job(job_id):
-    """
-    Clean up resources after job completion
-    """
-    # Delete Kubernetes Job
-    delete_kubernetes_job(job_id)
+```go
+func cleanupCompletedWorkTask(taskID string) error {
+    // Delete Kubernetes Job
+    if err := deleteKubernetesJob(taskID); err != nil {
+        return err
+    }
 
-    # Clean up temporary storage
-    cleanup_temporary_files(job_id)
+    // Clean up temporary storage
+    if err := cleanupTemporaryFiles(taskID); err != nil {
+        return err
+    }
 
-    # Update job status in database
-    update_job_status(job_id, 'cleaned_up')
+    // Update work task status in queue
+    if err := updateWorkTaskStatus(taskID, WorkTaskStatusCleanedUp); err != nil {
+        return err
+    }
 
-    # Log completion metrics
-    log_job_metrics(job_id)
+    // Log completion metrics
+    logWorkTaskMetrics(taskID)
+    return nil
+}
 ```
 
 ### Failure Handling
 Handle worker failures gracefully:
-```python
-def handle_worker_failure(job_id, failure_reason):
-    """
-    Handle worker pod failures
-    """
-    if failure_reason == 'resource_exhausted':
-        # Retry with higher resource allocation
-        retry_job_with_more_resources(job_id)
-    elif failure_reason == 'timeout':
-        # Mark as timed out
-        mark_job_timeout(job_id)
-    else:
-        # Generic failure handling
-        log_failure_and_retry(job_id, failure_reason)
+```go
+func handleWorkerFailure(taskID string, failureReason string) error {
+    switch failureReason {
+    case "resource_exhausted":
+        // Retry with higher resource allocation
+        return retryWorkTaskWithMoreResources(taskID)
+    case "timeout":
+        // Mark as timed out
+        return markWorkTaskTimeout(taskID)
+    default:
+        // Generic failure handling
+        return logFailureAndRetry(taskID, failureReason)
+    }
+}
 ```
 
 ## Monitoring and Metrics
 
 ### Worker Metrics
-- Job execution time
+- WorkTask execution time
 - Resource utilization
 - Success/failure rates
 - Queue wait times
@@ -359,9 +360,9 @@ def handle_worker_failure(job_id, failure_reason):
 worker_pool_size{type="active"} <current_active_workers>
 worker_pool_size{type="pending"} <pending_workers>
 
-# Job queue metrics
-job_queue_length <current_queue_depth>
-job_processing_rate <jobs_per_minute>
+# WorkTask queue metrics
+worktask_queue_length <current_queue_depth>
+worktask_processing_rate <tasks_per_minute>
 
 # Resource utilization
 worker_cpu_utilization <average_cpu_percent>
@@ -379,7 +380,7 @@ spec:
   - name: worker.alerts
     rules:
     - alert: WorkerQueueBacklog
-      expr: job_queue_length > 20
+      expr: worktask_queue_length > 20
       for: 5m
       labels:
         severity: warning
@@ -408,5 +409,5 @@ spec:
 
 ### Resource Limits
 - CPU and memory limits prevent resource exhaustion
-- Storage quotas per job
+- Storage quotas per work task
 - Execution timeouts prevent runaway processes

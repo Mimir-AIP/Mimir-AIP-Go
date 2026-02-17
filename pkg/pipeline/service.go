@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
-	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
 const (
@@ -16,12 +16,12 @@ const (
 
 // Service provides pipeline management and execution operations
 type Service struct {
-	store   *storage.FileStore
+	store   metadatastore.MetadataStore
 	plugins map[string]Plugin
 }
 
 // NewService creates a new pipeline service
-func NewService(store *storage.FileStore) *Service {
+func NewService(store metadatastore.MetadataStore) *Service {
 	s := &Service{
 		store:   store,
 		plugins: make(map[string]Plugin),
@@ -185,7 +185,7 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 				// Resolve template
 				plugin := s.plugins["default"]
 				if dp, ok := plugin.(*DefaultPlugin); ok {
-					resolvedValue := dp.resolveTemplates(outputTemplate, execution.Context)
+					resolvedValue := dp.ResolveTemplates(outputTemplate, execution.Context)
 					execution.Context.SetStepData(step.Name, outputKey, resolvedValue)
 					log.Printf("    Output: %s = %v", outputKey, resolvedValue)
 				}

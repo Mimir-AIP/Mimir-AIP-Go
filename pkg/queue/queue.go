@@ -1,188 +1,183 @@
 package queue
 
 import (
-	"context"
-	"encoding/json"
+	"container/heap"
 	"fmt"
+	"sync"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
-const (
-	jobQueueKey     = "mimir:jobs:queue"
-	jobDataKeyFmt   = "mimir:jobs:data:%s"
-	jobStatusKeyFmt = "mimir:jobs:status:%s"
-)
-
-// Queue provides Redis-backed job queue operations
+// Queue provides in-memory work task queue operations with priority support
 type Queue struct {
-	client *redis.Client
-	ctx    context.Context
+	mu        sync.RWMutex
+	pq        *PriorityQueue
+	workTasks map[string]*models.WorkTask
+	taskIndex map[string]int // Maps task ID to index in priority queue
 }
 
-// NewQueue creates a new queue instance
-func NewQueue(redisURL string) (*Queue, error) {
-	opt, err := redis.ParseURL(redisURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse redis URL: %w", err)
-	}
-
-	client := redis.NewClient(opt)
-
-	// Test connection
-	ctx := context.Background()
-	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("failed to connect to redis: %w", err)
-	}
+// NewQueue creates a new in-memory queue instance
+func NewQueue() (*Queue, error) {
+	pq := make(PriorityQueue, 0)
+	heap.Init(&pq)
 
 	return &Queue{
-		client: client,
-		ctx:    ctx,
+		pq:        &pq,
+		workTasks: make(map[string]*models.WorkTask),
+		taskIndex: make(map[string]int),
 	}, nil
 }
 
-// Enqueue adds a job to the queue
-func (q *Queue) Enqueue(job *models.Job) error {
-	// Serialize job data
-	jobData, err := json.Marshal(job)
-	if err != nil {
-		return fmt.Errorf("failed to marshal job: %w", err)
+// Enqueue adds a work task to the queue
+func (q *Queue) Enqueue(task *models.WorkTask) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Calculate priority score (lower = higher priority, older first)
+	score := float64(time.Now().Unix()) / float64(task.Priority+1)
+
+	item := &PriorityQueueItem{
+		TaskID:   task.ID,
+		Priority: score,
 	}
 
-	// Store job data
-	jobDataKey := fmt.Sprintf(jobDataKeyFmt, job.ID)
-	if err := q.client.Set(q.ctx, jobDataKey, jobData, 24*time.Hour).Err(); err != nil {
-		return fmt.Errorf("failed to store job data: %w", err)
-	}
+	// Add to priority queue
+	heap.Push(q.pq, item)
 
-	// Add to queue with priority (lower score = higher priority)
-	score := float64(time.Now().Unix()) / float64(job.Priority+1)
-	if err := q.client.ZAdd(q.ctx, jobQueueKey, &redis.Z{
-		Score:  score,
-		Member: job.ID,
-	}).Err(); err != nil {
-		return fmt.Errorf("failed to enqueue job: %w", err)
-	}
+	// Store task data
+	q.workTasks[task.ID] = task
 
 	return nil
 }
 
-// Dequeue retrieves the next job from the queue
-func (q *Queue) Dequeue() (*models.Job, error) {
-	// Get the job with the lowest score (highest priority, oldest first)
-	result, err := q.client.ZPopMin(q.ctx, jobQueueKey, 1).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to dequeue job: %w", err)
+// Dequeue retrieves the next work task from the queue
+func (q *Queue) Dequeue() (*models.WorkTask, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.pq.Len() == 0 {
+		return nil, nil // No tasks available
 	}
 
-	if len(result) == 0 {
-		return nil, nil // No jobs available
+	// Pop highest priority task
+	item := heap.Pop(q.pq).(*PriorityQueueItem)
+
+	// Retrieve task data
+	task, ok := q.workTasks[item.TaskID]
+	if !ok {
+		return nil, fmt.Errorf("work task data not found: %s", item.TaskID)
 	}
 
-	jobID := result[0].Member.(string)
+	// Note: We keep the task in q.workTasks for status tracking
+	// It will be cleaned up by UpdateWorkTaskStatus when completed
 
-	// Retrieve job data
-	jobDataKey := fmt.Sprintf(jobDataKeyFmt, jobID)
-	jobData, err := q.client.Get(q.ctx, jobDataKey).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve job data: %w", err)
-	}
-
-	var job models.Job
-	if err := json.Unmarshal([]byte(jobData), &job); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job: %w", err)
-	}
-
-	return &job, nil
+	return task, nil
 }
 
-// GetJob retrieves a job by ID
-func (q *Queue) GetJob(jobID string) (*models.Job, error) {
-	jobDataKey := fmt.Sprintf(jobDataKeyFmt, jobID)
-	jobData, err := q.client.Get(q.ctx, jobDataKey).Result()
-	if err == redis.Nil {
-		return nil, fmt.Errorf("job not found: %s", jobID)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve job: %w", err)
+// GetWorkTask retrieves a work task by ID
+func (q *Queue) GetWorkTask(taskID string) (*models.WorkTask, error) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	task, ok := q.workTasks[taskID]
+	if !ok {
+		return nil, fmt.Errorf("work task not found: %s", taskID)
 	}
 
-	var job models.Job
-	if err := json.Unmarshal([]byte(jobData), &job); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal job: %w", err)
-	}
-
-	return &job, nil
+	return task, nil
 }
 
-// UpdateJobStatus updates the status of a job
-func (q *Queue) UpdateJobStatus(jobID string, status models.JobStatus, errorMsg string) error {
-	job, err := q.GetJob(jobID)
-	if err != nil {
-		return err
+// UpdateWorkTaskStatus updates the status of a work task
+func (q *Queue) UpdateWorkTaskStatus(taskID string, status models.WorkTaskStatus, errorMsg string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	task, ok := q.workTasks[taskID]
+	if !ok {
+		return fmt.Errorf("work task not found: %s", taskID)
 	}
 
-	job.Status = status
+	task.Status = status
 	if errorMsg != "" {
-		job.ErrorMessage = errorMsg
+		task.ErrorMessage = errorMsg
 	}
 
 	now := time.Now()
 	switch status {
-	case models.JobStatusExecuting:
-		job.StartedAt = &now
-	case models.JobStatusCompleted, models.JobStatusFailed, models.JobStatusTimeout, models.JobStatusCancelled:
-		job.CompletedAt = &now
-	}
-
-	// Update job data
-	jobData, err := json.Marshal(job)
-	if err != nil {
-		return fmt.Errorf("failed to marshal job: %w", err)
-	}
-
-	jobDataKey := fmt.Sprintf(jobDataKeyFmt, jobID)
-	if err := q.client.Set(q.ctx, jobDataKey, jobData, 24*time.Hour).Err(); err != nil {
-		return fmt.Errorf("failed to update job data: %w", err)
+	case models.WorkTaskStatusExecuting:
+		task.StartedAt = &now
+	case models.WorkTaskStatusCompleted, models.WorkTaskStatusFailed, models.WorkTaskStatusTimeout, models.WorkTaskStatusCancelled:
+		task.CompletedAt = &now
 	}
 
 	return nil
 }
 
-// QueueLength returns the current length of the job queue
+// QueueLength returns the current length of the work task queue
 func (q *Queue) QueueLength() (int64, error) {
-	length, err := q.client.ZCard(q.ctx, jobQueueKey).Result()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get queue length: %w", err)
-	}
-	return length, nil
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	return int64(q.pq.Len()), nil
 }
 
-// GetHighPriorityJobs returns jobs with priority above a threshold
-func (q *Queue) GetHighPriorityJobs(minPriority int) ([]*models.Job, error) {
-	// Get all job IDs from the queue
-	jobIDs, err := q.client.ZRange(q.ctx, jobQueueKey, 0, -1).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get job IDs: %w", err)
-	}
+// GetHighPriorityWorkTasks returns work tasks with priority above a threshold
+func (q *Queue) GetHighPriorityWorkTasks(minPriority int) ([]*models.WorkTask, error) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
 
-	var highPriorityJobs []*models.Job
-	for _, jobID := range jobIDs {
-		job, err := q.GetJob(jobID)
-		if err != nil {
-			continue
-		}
-		if job.Priority >= minPriority {
-			highPriorityJobs = append(highPriorityJobs, job)
+	var highPriorityTasks []*models.WorkTask
+	for _, task := range q.workTasks {
+		if task.Priority >= minPriority && task.Status == models.WorkTaskStatusQueued {
+			highPriorityTasks = append(highPriorityTasks, task)
 		}
 	}
 
-	return highPriorityJobs, nil
+	return highPriorityTasks, nil
 }
 
-// Close closes the Redis connection
+// Close closes the queue (no-op for in-memory implementation)
 func (q *Queue) Close() error {
-	return q.client.Close()
+	return nil
+}
+
+// PriorityQueueItem represents an item in the priority queue
+type PriorityQueueItem struct {
+	TaskID   string
+	Priority float64 // Lower value = higher priority
+	index    int     // Index in heap
+}
+
+// PriorityQueue implements heap.Interface
+type PriorityQueue []*PriorityQueueItem
+
+func (pq PriorityQueue) Len() int { return len(pq) }
+
+func (pq PriorityQueue) Less(i, j int) bool {
+	// Lower priority value = higher priority
+	return pq[i].Priority < pq[j].Priority
+}
+
+func (pq PriorityQueue) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+	pq[i].index = i
+	pq[j].index = j
+}
+
+func (pq *PriorityQueue) Push(x interface{}) {
+	n := len(*pq)
+	item := x.(*PriorityQueueItem)
+	item.index = n
+	*pq = append(*pq, item)
+}
+
+func (pq *PriorityQueue) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil  // avoid memory leak
+	item.index = -1 // for safety
+	*pq = old[0 : n-1]
+	return item
 }

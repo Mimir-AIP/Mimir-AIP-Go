@@ -64,13 +64,13 @@ func (p *DefaultPlugin) httpRequest(params map[string]interface{}, ctx *models.P
 	}
 
 	// Resolve template variables in URL
-	url = p.resolveTemplates(url, ctx)
+	url = p.ResolveTemplates(url, ctx)
 
 	// Prepare request body if provided
 	var body io.Reader
 	if bodyData, ok := params["body"]; ok {
 		if bodyStr, ok := bodyData.(string); ok {
-			bodyStr = p.resolveTemplates(bodyStr, ctx)
+			bodyStr = p.ResolveTemplates(bodyStr, ctx)
 			body = bytes.NewBufferString(bodyStr)
 		}
 	}
@@ -85,7 +85,7 @@ func (p *DefaultPlugin) httpRequest(params map[string]interface{}, ctx *models.P
 	if headers, ok := params["headers"].(map[string]interface{}); ok {
 		for key, value := range headers {
 			if strValue, ok := value.(string); ok {
-				req.Header.Set(key, p.resolveTemplates(strValue, ctx))
+				req.Header.Set(key, p.ResolveTemplates(strValue, ctx))
 			}
 		}
 	}
@@ -121,7 +121,7 @@ func (p *DefaultPlugin) parseJSON(params map[string]interface{}, ctx *models.Pip
 	}
 
 	// Resolve templates
-	data = p.resolveTemplates(data, ctx)
+	data = p.ResolveTemplates(data, ctx)
 
 	// Parse JSON
 	var parsed interface{}
@@ -144,7 +144,7 @@ func (p *DefaultPlugin) ifElse(params map[string]interface{}, ctx *models.Pipeli
 
 	// Resolve condition template
 	conditionStr := fmt.Sprintf("%v", condition)
-	conditionStr = p.resolveTemplates(conditionStr, ctx)
+	conditionStr = p.ResolveTemplates(conditionStr, ctx)
 
 	// Evaluate condition (simple truthiness check)
 	isTrue := conditionStr != "" && conditionStr != "0" && conditionStr != "false" && conditionStr != "null"
@@ -185,7 +185,7 @@ func (p *DefaultPlugin) setContext(params map[string]interface{}, ctx *models.Pi
 
 	// Resolve template in value if it's a string
 	if strValue, ok := value.(string); ok {
-		value = p.resolveTemplates(strValue, ctx)
+		value = p.ResolveTemplates(strValue, ctx)
 	}
 
 	ctx.SetStepData(stepName, key, value)
@@ -234,8 +234,8 @@ func (p *DefaultPlugin) gotoAction(params map[string]interface{}, ctx *models.Pi
 	}, nil
 }
 
-// resolveTemplates resolves template variables in a string
-func (p *DefaultPlugin) resolveTemplates(input string, ctx *models.PipelineContext) string {
+// ResolveTemplates resolves template variables in a string
+func (p *DefaultPlugin) ResolveTemplates(input string, ctx *models.PipelineContext) string {
 	// Pattern: {{context.step_name.key}}
 	pattern := regexp.MustCompile(`\{\{([^}]+)\}\}`)
 

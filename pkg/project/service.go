@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
-	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
 var (
@@ -17,11 +17,11 @@ var (
 
 // Service provides project management operations
 type Service struct {
-	store *storage.FileStore
+	store metadatastore.MetadataStore
 }
 
 // NewService creates a new project service
-func NewService(store *storage.FileStore) *Service {
+func NewService(store metadatastore.MetadataStore) *Service {
 	return &Service{
 		store: store,
 	}

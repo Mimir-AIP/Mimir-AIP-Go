@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
-	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
 func setupTestService(t *testing.T) (*Service, string) {
@@ -17,9 +17,10 @@ func setupTestService(t *testing.T) (*Service, string) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
-	store, err := storage.NewFileStore(tmpDir)
+	dbPath := filepath.Join(tmpDir, "test.db")
+	store, err := metadatastore.NewSQLiteStore(dbPath)
 	if err != nil {
-		t.Fatalf("Failed to create file store: %v", err)
+		t.Fatalf("Failed to create SQLite store: %v", err)
 	}
 
 	service := NewService(store)
@@ -222,10 +223,13 @@ func TestProjectDelete(t *testing.T) {
 		t.Errorf("Expected status %s after deletion, got %s", models.ProjectStatusArchived, deleted.Status)
 	}
 
-	// Verify file still exists
-	projectFile := filepath.Join(tmpDir, "projects", created.ID+".json")
-	if _, err := os.Stat(projectFile); os.IsNotExist(err) {
-		t.Error("Expected project file to still exist (soft delete)")
+	// Verify project still exists in database (soft delete)
+	retrieved, err := service.Get(created.ID)
+	if err != nil {
+		t.Error("Expected project to still exist in database (soft delete)")
+	}
+	if retrieved.Status != models.ProjectStatusArchived {
+		t.Errorf("Expected archived status, got %s", retrieved.Status)
 	}
 }
 

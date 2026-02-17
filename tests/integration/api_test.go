@@ -69,10 +69,10 @@ func TestReadinessCheck(t *testing.T) {
 	}
 }
 
-// TestJobSubmission tests job submission through the API
-func TestJobSubmission(t *testing.T) {
-	jobRequest := models.JobSubmissionRequest{
-		Type:      models.JobTypePipelineExecution,
+// TestWorkTaskSubmission tests work task submission through the API
+func TestWorkTaskSubmission(t *testing.T) {
+	taskRequest := models.WorkTaskSubmissionRequest{
+		Type:      models.WorkTaskTypePipelineExecution,
 		Priority:  1,
 		ProjectID: "test-project",
 		TaskSpec: models.TaskSpec{
@@ -93,18 +93,18 @@ func TestJobSubmission(t *testing.T) {
 		},
 	}
 
-	jsonData, err := json.Marshal(jobRequest)
+	jsonData, err := json.Marshal(taskRequest)
 	if err != nil {
-		t.Fatalf("Failed to marshal job request: %v", err)
+		t.Fatalf("Failed to marshal work task request: %v", err)
 	}
 
 	resp, err := http.Post(
-		orchestratorURL+"/api/jobs",
+		orchestratorURL+"/api/worktasks",
 		"application/json",
 		bytes.NewBuffer(jsonData),
 	)
 	if err != nil {
-		t.Fatalf("Failed to submit job: %v", err)
+		t.Fatalf("Failed to submit work task: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -112,44 +112,44 @@ func TestJobSubmission(t *testing.T) {
 		t.Errorf("Expected status 201, got %d", resp.StatusCode)
 	}
 
-	var job models.Job
-	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+	var task models.WorkTask
+	if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if job.ID == "" {
-		t.Error("Expected non-empty job ID")
+	if task.ID == "" {
+		t.Error("Expected non-empty work task ID")
 	}
 
-	if job.Type != models.JobTypePipelineExecution {
-		t.Errorf("Expected job type %s, got %s", models.JobTypePipelineExecution, job.Type)
+	if task.Type != models.WorkTaskTypePipelineExecution {
+		t.Errorf("Expected work task type %s, got %s", models.WorkTaskTypePipelineExecution, task.Type)
 	}
 
-	if job.Status != models.JobStatusQueued {
-		t.Errorf("Expected job status %s, got %s", models.JobStatusQueued, job.Status)
+	if task.Status != models.WorkTaskStatusQueued {
+		t.Errorf("Expected work task status %s, got %s", models.WorkTaskStatusQueued, task.Status)
 	}
 
-	// Wait a bit and check if the job was processed
+	// Wait a bit and check if the work task was processed
 	time.Sleep(10 * time.Second)
 
-	// Get the job status
-	getResp, err := http.Get(orchestratorURL + "/api/jobs/" + job.ID)
+	// Get the work task status
+	getResp, err := http.Get(orchestratorURL + "/api/worktasks/" + task.ID)
 	if err != nil {
-		t.Fatalf("Failed to get job: %v", err)
+		t.Fatalf("Failed to get work task: %v", err)
 	}
 	defer getResp.Body.Close()
 
-	var updatedJob models.Job
-	if err := json.NewDecoder(getResp.Body).Decode(&updatedJob); err != nil {
-		t.Fatalf("Failed to decode job response: %v", err)
+	var updatedTask models.WorkTask
+	if err := json.NewDecoder(getResp.Body).Decode(&updatedTask); err != nil {
+		t.Fatalf("Failed to decode work task response: %v", err)
 	}
 
-	t.Logf("Job status after 10s: %s", updatedJob.Status)
+	t.Logf("Work task status after 10s: %s", updatedTask.Status)
 }
 
 // TestQueueLength tests the queue length endpoint
 func TestQueueLength(t *testing.T) {
-	resp, err := http.Get(orchestratorURL + "/api/jobs")
+	resp, err := http.Get(orchestratorURL + "/api/worktasks")
 	if err != nil {
 		t.Fatalf("Failed to get queue length: %v", err)
 	}
@@ -184,20 +184,20 @@ func TestFrontendAvailability(t *testing.T) {
 	}
 }
 
-// TestMultipleJobSubmissions tests submitting multiple jobs
-func TestMultipleJobSubmissions(t *testing.T) {
-	jobTypes := []models.JobType{
-		models.JobTypePipelineExecution,
-		models.JobTypeMLTraining,
-		models.JobTypeMLInference,
-		models.JobTypeDigitalTwinUpdate,
+// TestMultipleWorkTaskSubmissions tests submitting multiple work tasks
+func TestMultipleWorkTaskSubmissions(t *testing.T) {
+	taskTypes := []models.WorkTaskType{
+		models.WorkTaskTypePipelineExecution,
+		models.WorkTaskTypeMLTraining,
+		models.WorkTaskTypeMLInference,
+		models.WorkTaskTypeDigitalTwinUpdate,
 	}
 
-	submittedJobs := make([]string, 0)
+	submittedTasks := make([]string, 0)
 
-	for i, jobType := range jobTypes {
-		jobRequest := models.JobSubmissionRequest{
-			Type:      jobType,
+	for i, taskType := range taskTypes {
+		taskRequest := models.WorkTaskSubmissionRequest{
+			Type:      taskType,
 			Priority:  1,
 			ProjectID: fmt.Sprintf("test-project-%d", i),
 			TaskSpec: models.TaskSpec{
@@ -216,52 +216,52 @@ func TestMultipleJobSubmissions(t *testing.T) {
 			},
 		}
 
-		jsonData, err := json.Marshal(jobRequest)
+		jsonData, err := json.Marshal(taskRequest)
 		if err != nil {
-			t.Fatalf("Failed to marshal job request: %v", err)
+			t.Fatalf("Failed to marshal work task request: %v", err)
 		}
 
 		resp, err := http.Post(
-			orchestratorURL+"/api/jobs",
+			orchestratorURL+"/api/worktasks",
 			"application/json",
 			bytes.NewBuffer(jsonData),
 		)
 		if err != nil {
-			t.Fatalf("Failed to submit job: %v", err)
+			t.Fatalf("Failed to submit work task: %v", err)
 		}
 
-		var job models.Job
-		if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		var task models.WorkTask
+		if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
 			resp.Body.Close()
 			t.Fatalf("Failed to decode response: %v", err)
 		}
 		resp.Body.Close()
 
-		submittedJobs = append(submittedJobs, job.ID)
-		t.Logf("Submitted job %s of type %s", job.ID, jobType)
+		submittedTasks = append(submittedTasks, task.ID)
+		t.Logf("Submitted work task %s of type %s", task.ID, taskType)
 	}
 
-	t.Logf("Successfully submitted %d jobs", len(submittedJobs))
+	t.Logf("Successfully submitted %d work tasks", len(submittedTasks))
 
-	// Wait for jobs to be processed
+	// Wait for work tasks to be processed
 	time.Sleep(15 * time.Second)
 
-	// Check status of all jobs
-	for _, jobID := range submittedJobs {
-		resp, err := http.Get(orchestratorURL + "/api/jobs/" + jobID)
+	// Check status of all work tasks
+	for _, taskID := range submittedTasks {
+		resp, err := http.Get(orchestratorURL + "/api/worktasks/" + taskID)
 		if err != nil {
-			t.Logf("Warning: Failed to get job %s: %v", jobID, err)
+			t.Logf("Warning: Failed to get work task %s: %v", taskID, err)
 			continue
 		}
 
-		var job models.Job
-		if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		var task models.WorkTask
+		if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
 			resp.Body.Close()
-			t.Logf("Warning: Failed to decode job %s: %v", jobID, err)
+			t.Logf("Warning: Failed to decode work task %s: %v", taskID, err)
 			continue
 		}
 		resp.Body.Close()
 
-		t.Logf("Job %s status: %s", jobID, job.Status)
+		t.Logf("Work task %s status: %s", taskID, task.Status)
 	}
 }

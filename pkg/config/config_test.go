@@ -11,7 +11,6 @@ func TestLoadConfig(t *testing.T) {
 	os.Setenv("ENVIRONMENT", "test")
 	os.Setenv("LOG_LEVEL", "debug")
 	os.Setenv("PORT", "9090")
-	os.Setenv("REDIS_URL", "redis://test:6379")
 	os.Setenv("MIN_WORKERS", "2")
 	os.Setenv("MAX_WORKERS", "100")
 	os.Setenv("QUEUE_THRESHOLD", "10")
@@ -20,7 +19,6 @@ func TestLoadConfig(t *testing.T) {
 		os.Unsetenv("ENVIRONMENT")
 		os.Unsetenv("LOG_LEVEL")
 		os.Unsetenv("PORT")
-		os.Unsetenv("REDIS_URL")
 		os.Unsetenv("MIN_WORKERS")
 		os.Unsetenv("MAX_WORKERS")
 		os.Unsetenv("QUEUE_THRESHOLD")
@@ -43,10 +41,6 @@ func TestLoadConfig(t *testing.T) {
 		t.Errorf("Expected port '9090', got '%s'", cfg.Port)
 	}
 
-	if cfg.RedisURL != "redis://test:6379" {
-		t.Errorf("Expected Redis URL 'redis://test:6379', got '%s'", cfg.RedisURL)
-	}
-
 	if cfg.MinWorkers != 2 {
 		t.Errorf("Expected MinWorkers 2, got %d", cfg.MinWorkers)
 	}
@@ -62,10 +56,6 @@ func TestLoadConfig(t *testing.T) {
 
 // TestLoadConfigDefaults tests default values
 func TestLoadConfigDefaults(t *testing.T) {
-	// Only set required config
-	os.Setenv("REDIS_URL", "redis://localhost:6379")
-	defer os.Unsetenv("REDIS_URL")
-
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
@@ -89,16 +79,5 @@ func TestLoadConfigDefaults(t *testing.T) {
 
 	if cfg.MaxWorkers != 50 {
 		t.Errorf("Expected default MaxWorkers 50, got %d", cfg.MaxWorkers)
-	}
-}
-
-// TestLoadConfigMissingRequired tests missing required configuration
-func TestLoadConfigMissingRequired(t *testing.T) {
-	// Clear REDIS_URL to test error case
-	os.Unsetenv("REDIS_URL")
-
-	_, err := LoadConfig()
-	if err == nil {
-		t.Error("Expected error for missing REDIS_URL, got nil")
 	}
 }

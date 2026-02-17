@@ -69,16 +69,16 @@ func getKubeConfig() (*rest.Config, error) {
 	return config, nil
 }
 
-// CreateWorkerJob creates a Kubernetes Job for a worker
-func (c *Client) CreateWorkerJob(job *models.Job, workerImage string) error {
-	jobName := fmt.Sprintf("worker-job-%s", job.ID)
+// CreateWorkerJob creates a Kubernetes Job for a worker to execute a work task
+func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string) error {
+	jobName := fmt.Sprintf("worker-task-%s", task.ID)
 
 	// Parse resource requirements
-	cpuRequest := job.ResourceRequirements.CPU
+	cpuRequest := task.ResourceRequirements.CPU
 	if cpuRequest == "" {
 		cpuRequest = "500m"
 	}
-	memoryRequest := job.ResourceRequirements.Memory
+	memoryRequest := task.ResourceRequirements.Memory
 	if memoryRequest == "" {
 		memoryRequest = "1Gi"
 	}
@@ -89,18 +89,9 @@ func (c *Client) CreateWorkerJob(job *models.Job, workerImage string) error {
 
 	// Build environment variables
 	envVars := []corev1.EnvVar{
-		{Name: "JOB_ID", Value: job.ID},
-		{Name: "JOB_TYPE", Value: string(job.Type)},
+		{Name: "WORKTASK_ID", Value: task.ID},
+		{Name: "WORKTASK_TYPE", Value: string(task.Type)},
 		{Name: "ORCHESTRATOR_URL", Value: "http://orchestrator:8080"},
-		{
-			Name: "REDIS_URL",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "redis-secret"},
-					Key:                  "url",
-				},
-			},
-		},
 	}
 
 	// Create Job specification
@@ -109,9 +100,9 @@ func (c *Client) CreateWorkerJob(job *models.Job, workerImage string) error {
 			Name:      jobName,
 			Namespace: c.namespace,
 			Labels: map[string]string{
-				"app":      "mimir-worker",
-				"job-type": string(job.Type),
-				"job-id":   job.ID,
+				"app":           "mimir-worker",
+				"worktask-type": string(task.Type),
+				"worktask-id":   task.ID,
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -119,18 +110,19 @@ func (c *Client) CreateWorkerJob(job *models.Job, workerImage string) error {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app":      "mimir-worker",
-						"job-type": string(job.Type),
-						"job-id":   job.ID,
+						"app":           "mimir-worker",
+						"worktask-type": string(task.Type),
+						"worktask-id":   task.ID,
 					},
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: "worker-service-account",
 					Containers: []corev1.Container{
 						{
-							Name:  "worker",
-							Image: workerImage,
-							Env:   envVars,
+							Name:            "worker",
+							Image:           workerImage,
+							ImagePullPolicy: corev1.PullNever,
+							Env:             envVars,
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
 									corev1.ResourceCPU:    parseQuantity(cpuRequest),
@@ -157,9 +149,7 @@ func (c *Client) CreateWorkerJob(job *models.Job, workerImage string) error {
 						{
 							Name: "model-cache",
 							VolumeSource: corev1.VolumeSource{
-								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: "model-cache-pvc",
-								},
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
 							},
 						},
 					},

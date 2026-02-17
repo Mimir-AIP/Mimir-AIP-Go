@@ -39,11 +39,13 @@ func (h *PluginHandler) HandlePlugin(w http.ResponseWriter, r *http.Request) {
 	// Extract plugin name from path
 	pluginName := strings.TrimPrefix(r.URL.Path, "/api/plugins/")
 	if idx := strings.Index(pluginName, "/"); idx != -1 {
-		// Check for /reload endpoint
+		// Check for special endpoints
 		parts := strings.Split(pluginName, "/")
-		if len(parts) == 2 && parts[1] == "reload" {
-			if r.Method == http.MethodPost {
-				h.handleReload(w, r, parts[0])
+		if len(parts) == 2 {
+			switch parts[1] {
+			case "reload":
+				// Deprecated - orchestrator no longer loads plugins
+				http.Error(w, "Plugin reload not supported - workers compile from source", http.StatusBadRequest)
 				return
 			}
 		}
@@ -154,17 +156,4 @@ func (h *PluginHandler) handleUninstall(w http.ResponseWriter, r *http.Request, 
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleReload reloads a plugin into the registry
-func (h *PluginHandler) handleReload(w http.ResponseWriter, r *http.Request, pluginName string) {
-	if err := h.service.LoadPlugin(pluginName); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to reload plugin: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": fmt.Sprintf("Plugin %s reloaded successfully", pluginName),
-	})
 }

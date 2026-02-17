@@ -21,8 +21,8 @@ spec:
       serviceAccountName: orchestrator-service-account
       containers:
       - name: orchestrator
-        image: mimir-aip/orchestrator:latest
-        imagePullPolicy: Never
+        image: localhost:5001/mimir-orchestrator:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: http
@@ -46,11 +46,11 @@ spec:
           mountPath: /app/data
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
+            memory: "1Gi"
             cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
         livenessProbe:
           httpGet:
             path: /health

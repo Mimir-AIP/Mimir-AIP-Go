@@ -2,12 +2,10 @@ package plugins
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"plugin"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,68 +13,30 @@ import (
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
-	pipelinepkg "github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
 )
 
-// Service provides plugin management operations
+// Service provides plugin metadata management
+// Note: Plugins are compiled by workers, not the orchestrator
 type Service struct {
-	store     metadatastore.MetadataStore
-	registry  map[string]pipelinepkg.Plugin
-	pluginDir string // Directory to store compiled plugins
-	tempDir   string // Directory for temporary Git clones
+	store   metadatastore.MetadataStore
+	tempDir string // Directory for temporary Git clones
 }
 
 // NewService creates a new plugin service
-func NewService(store metadatastore.MetadataStore, pluginDir, tempDir string) (*Service, error) {
-	// Create directories if they don't exist
-	if err := os.MkdirAll(pluginDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create plugin directory: %w", err)
-	}
+func NewService(store metadatastore.MetadataStore, tempDir string) (*Service, error) {
+	// Create temp directory if it doesn't exist
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	s := &Service{
-		store:     store,
-		registry:  make(map[string]pipelinepkg.Plugin),
-		pluginDir: pluginDir,
-		tempDir:   tempDir,
-	}
-
-	// Register default plugins
-	s.registry["default"] = pipelinepkg.NewDefaultPlugin()
-	s.registry["builtin"] = pipelinepkg.NewDefaultPlugin()
-
-	return s, nil
+	return &Service{
+		store:   store,
+		tempDir: tempDir,
+	}, nil
 }
 
-// LoadPersistedPlugins loads all active plugins from the database into the registry
-func (s *Service) LoadPersistedPlugins() error {
-	plugins, err := s.store.ListPlugins()
-	if err != nil {
-		return fmt.Errorf("failed to list plugins: %w", err)
-	}
-
-	for _, pluginMeta := range plugins {
-		if pluginMeta.Status != models.PluginStatusActive {
-			log.Printf("Skipping plugin %s with status %s", pluginMeta.Name, pluginMeta.Status)
-			continue
-		}
-
-		if err := s.LoadPlugin(pluginMeta.Name); err != nil {
-			log.Printf("Warning: Failed to load plugin %s: %v", pluginMeta.Name, err)
-			// Mark as error but continue
-			s.store.UpdatePluginStatus(pluginMeta.Name, models.PluginStatusError)
-			continue
-		}
-
-		log.Printf("Loaded plugin: %s (version %s)", pluginMeta.Name, pluginMeta.Version)
-	}
-
-	return nil
-}
-
-// InstallPlugin installs a plugin from a Git repository
+// InstallPlugin installs a plugin by storing its metadata
+// Workers will compile the plugin from source when needed
 func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugin, error) {
 	// Create unique temp directory for this installation
 	installID := uuid.New().String()
@@ -120,14 +80,7 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 		commitHash = ""
 	}
 
-	// Build the plugin
-	log.Printf("Building plugin %s version %s", pluginDef.Name, pluginDef.Version)
-	binaryData, err := s.buildPlugin(repoDir, pluginDef.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build plugin: %w", err)
-	}
-
-	// Create plugin metadata
+	// Create plugin metadata (no binary - workers will compile from source)
 	now := time.Now()
 	pluginID := uuid.New().String()
 
@@ -160,81 +113,13 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 		plugin.Actions = append(plugin.Actions, action)
 	}
 
-	// Save to database
-	if err := s.store.SavePlugin(plugin, binaryData); err != nil {
+	// Save metadata to database (no binary)
+	if err := s.store.SavePlugin(plugin, nil); err != nil {
 		return nil, fmt.Errorf("failed to save plugin: %w", err)
 	}
 
-	// Load into registry
-	if err := s.LoadPlugin(plugin.Name); err != nil {
-		log.Printf("Warning: Failed to load plugin into registry: %v", err)
-		s.store.UpdatePluginStatus(plugin.Name, models.PluginStatusError)
-		return plugin, fmt.Errorf("plugin saved but failed to load: %w", err)
-	}
-
-	log.Printf("Successfully installed plugin %s version %s", plugin.Name, plugin.Version)
+	log.Printf("Successfully installed plugin %s version %s (workers will compile from source)", plugin.Name, plugin.Version)
 	return plugin, nil
-}
-
-// LoadPlugin loads a plugin from the database into the registry
-func (s *Service) LoadPlugin(name string) error {
-	// Get plugin metadata
-	pluginMeta, err := s.store.GetPlugin(name)
-	if err != nil {
-		return fmt.Errorf("failed to get plugin metadata: %w", err)
-	}
-
-	// Get plugin binary
-	binaryData, err := s.store.GetPluginBinary(name)
-	if err != nil {
-		return fmt.Errorf("failed to get plugin binary: %w", err)
-	}
-
-	// Write binary to disk
-	pluginPath := filepath.Join(s.pluginDir, fmt.Sprintf("%s.so", name))
-	if err := os.WriteFile(pluginPath, binaryData, 0755); err != nil {
-		return fmt.Errorf("failed to write plugin binary: %w", err)
-	}
-
-	// Open the plugin
-	p, err := plugin.Open(pluginPath)
-	if err != nil {
-		return fmt.Errorf("failed to open plugin: %w", err)
-	}
-
-	// Look for the Plugin symbol (must be exported)
-	symPlugin, err := p.Lookup("Plugin")
-	if err != nil {
-		return fmt.Errorf("plugin does not export 'Plugin' symbol: %w", err)
-	}
-
-	// Assert that it implements the pipeline.Plugin interface
-	pluginInstance, ok := symPlugin.(pipelinepkg.Plugin)
-	if !ok {
-		return fmt.Errorf("plugin does not implement pipeline.Plugin interface")
-	}
-
-	// Register in registry
-	s.registry[name] = pluginInstance
-
-	// Update last loaded timestamp
-	now := time.Now()
-	pluginMeta.LastLoadedAt = &now
-	pluginMeta.Status = models.PluginStatusActive
-	pluginMeta.UpdatedAt = now
-
-	// Re-save to update timestamp (use existing binary)
-	if err := s.store.SavePlugin(pluginMeta, binaryData); err != nil {
-		log.Printf("Warning: Failed to update plugin metadata: %v", err)
-	}
-
-	return nil
-}
-
-// GetPlugin retrieves a plugin from the registry (implements pipeline.PluginRegistry interface)
-func (s *Service) GetPlugin(name string) (pipelinepkg.Plugin, bool) {
-	p, ok := s.registry[name]
-	return p, ok
 }
 
 // ListPlugins lists all installed plugins
@@ -249,13 +134,6 @@ func (s *Service) GetPluginMetadata(name string) (*models.Plugin, error) {
 
 // UninstallPlugin removes a plugin
 func (s *Service) UninstallPlugin(name string) error {
-	// Remove from registry
-	delete(s.registry, name)
-
-	// Remove plugin file
-	pluginPath := filepath.Join(s.pluginDir, fmt.Sprintf("%s.so", name))
-	os.Remove(pluginPath) // Ignore error if file doesn't exist
-
 	// Remove from database
 	return s.store.DeletePlugin(name)
 }
@@ -267,9 +145,6 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 	if err != nil {
 		return nil, fmt.Errorf("plugin not found: %w", err)
 	}
-
-	// Uninstall current version (but keep metadata for reinstall on failure)
-	delete(s.registry, name)
 
 	// Create temp directory
 	installID := uuid.New().String()
@@ -305,14 +180,7 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 	// Get commit hash
 	commitHash, _ := s.getCommitHash(repoDir)
 
-	// Build plugin
-	log.Printf("Building updated plugin %s version %s", pluginDef.Name, pluginDef.Version)
-	binaryData, err := s.buildPlugin(repoDir, pluginDef.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build plugin: %w", err)
-	}
-
-	// Update metadata
+	// Update metadata (no binary - workers will compile from source)
 	now := time.Now()
 	existing.Version = pluginDef.Version
 	existing.Description = pluginDef.Description
@@ -337,19 +205,12 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 		existing.Actions = append(existing.Actions, action)
 	}
 
-	// Save to database
-	if err := s.store.SavePlugin(existing, binaryData); err != nil {
+	// Save to database (no binary)
+	if err := s.store.SavePlugin(existing, nil); err != nil {
 		return nil, fmt.Errorf("failed to save updated plugin: %w", err)
 	}
 
-	// Load into registry
-	if err := s.LoadPlugin(name); err != nil {
-		log.Printf("Warning: Failed to load updated plugin: %v", err)
-		s.store.UpdatePluginStatus(name, models.PluginStatusError)
-		return existing, fmt.Errorf("plugin updated but failed to load: %w", err)
-	}
-
-	log.Printf("Successfully updated plugin %s to version %s", name, existing.Version)
+	log.Printf("Successfully updated plugin %s to version %s (workers will compile from source)", name, existing.Version)
 	return existing, nil
 }
 
@@ -414,34 +275,4 @@ func (s *Service) validatePluginDefinition(def *models.PluginDefinition) error {
 	}
 
 	return nil
-}
-
-// buildPlugin builds the plugin as a Go plugin (.so file)
-func (s *Service) buildPlugin(repoDir, pluginName string) ([]byte, error) {
-	outputPath := filepath.Join(s.tempDir, fmt.Sprintf("%s.so", pluginName))
-
-	// Build command: go build -buildmode=plugin -o output.so
-	cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", outputPath)
-	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=1") // Required for plugin mode
-
-	// Capture output for debugging
-	var stdout, stderr io.Writer
-	stdout = os.Stdout
-	stderr = os.Stderr
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-
-	log.Printf("Building plugin in %s", repoDir)
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("go build failed: %w", err)
-	}
-
-	// Read the compiled binary
-	binaryData, err := os.ReadFile(outputPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read compiled plugin: %w", err)
-	}
-
-	return binaryData, nil
 }

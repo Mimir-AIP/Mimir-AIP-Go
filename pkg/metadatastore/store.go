@@ -33,4 +33,18 @@ type MetadataStore interface {
 	ListPlugins() ([]*models.Plugin, error)
 	DeletePlugin(name string) error
 	UpdatePluginStatus(name string, status models.PluginStatus) error
+
+	// Storage operations
+	SaveStorageConfig(config *models.StorageConfig) error
+	GetStorageConfig(id string) (*models.StorageConfig, error)
+	ListStorageConfigs() ([]*models.StorageConfig, error)
+	ListStorageConfigsByProject(projectID string) ([]*models.StorageConfig, error)
+	DeleteStorageConfig(id string) error
+
+	// Ontology operations
+	SaveOntology(ontology *models.Ontology) error
+	GetOntology(id string) (*models.Ontology, error)
+	ListOntologies() ([]*models.Ontology, error)
+	ListOntologiesByProject(projectID string) ([]*models.Ontology, error)
+	DeleteOntology(id string) error
 }

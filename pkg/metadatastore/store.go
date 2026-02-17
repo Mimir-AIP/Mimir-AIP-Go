@@ -47,4 +47,11 @@ type MetadataStore interface {
 	ListOntologies() ([]*models.Ontology, error)
 	ListOntologiesByProject(projectID string) ([]*models.Ontology, error)
 	DeleteOntology(id string) error
+
+	// ML Model operations
+	SaveMLModel(model *models.MLModel) error
+	GetMLModel(id string) (*models.MLModel, error)
+	ListMLModels() ([]*models.MLModel, error)
+	ListMLModelsByProject(projectID string) ([]*models.MLModel, error)
+	DeleteMLModel(id string) error
 }

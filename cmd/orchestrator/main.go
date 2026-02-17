@@ -12,6 +12,7 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/extraction"
 	"github.com/mimir-aip/mimir-aip-go/pkg/k8s"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
+	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
 	"github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
@@ -93,7 +94,10 @@ func main() {
 	ontologyService := ontology.NewService(store)
 	extractionService := extraction.NewService(storageService)
 
-	log.Println("Initialized project, pipeline, scheduler, storage, ontology, and extraction services")
+	// Initialize ML model service
+	mlmodelService := mlmodel.NewService(store, ontologyService, storageService)
+
+	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, and ML model services")
 
 	// Start scheduler
 	schedulerService.Start()
@@ -144,6 +148,13 @@ func main() {
 	// Register extraction handler
 	extractionHandler := api.NewExtractionHandler(extractionService, ontologyService)
 	server.RegisterHandler("/api/extraction/generate-ontology", extractionHandler.HandleExtractAndGenerate)
+
+	// Register ML model handlers
+	mlmodelHandler := api.NewMLModelHandler(mlmodelService)
+	server.RegisterHandler("/api/ml-models", mlmodelHandler.HandleMLModels)
+	server.RegisterHandler("/api/ml-models/", mlmodelHandler.HandleMLModel)
+	server.RegisterHandler("/api/ml-models/recommend", mlmodelHandler.HandleMLModelRecommendation)
+	server.RegisterHandler("/api/ml-models/train", mlmodelHandler.HandleMLModelTraining)
 
 	log.Println("Registered API handlers")
 

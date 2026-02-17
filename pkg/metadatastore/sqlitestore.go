@@ -197,6 +197,29 @@ func (s *SQLiteStore) initSchema() error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_ontologies_project_id ON ontologies(project_id);
+
+	CREATE TABLE IF NOT EXISTS ml_models (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		ontology_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT,
+		type TEXT NOT NULL,
+		status TEXT NOT NULL,
+		version TEXT NOT NULL,
+		is_recommended INTEGER NOT NULL DEFAULT 0,
+		recommendation_score INTEGER NOT NULL DEFAULT 0,
+		model_artifact_path TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		trained_at TEXT,
+		data TEXT NOT NULL,
+		FOREIGN KEY (project_id) REFERENCES projects(id),
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_ml_models_project_id ON ml_models(project_id);
+	CREATE INDEX IF NOT EXISTS idx_ml_models_ontology_id ON ml_models(ontology_id);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -834,8 +857,6 @@ func (s *SQLiteStore) UpdatePluginStatus(name string, status models.PluginStatus
 	return nil
 }
 
-
-
 // SaveStorageConfig saves a storage configuration to the database
 func (s *SQLiteStore) SaveStorageConfig(config *models.StorageConfig) error {
 	configJSON, err := json.Marshal(config.Config)
@@ -1175,3 +1196,142 @@ func (s *SQLiteStore) DeleteOntology(id string) error {
 	return nil
 }
 
+// SaveMLModel saves an ML model to the database
+func (s *SQLiteStore) SaveMLModel(model *models.MLModel) error {
+	data, err := json.Marshal(model)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ML model: %w", err)
+	}
+
+	trainedAtStr := ""
+	if model.TrainedAt != nil {
+		trainedAtStr = model.TrainedAt.Format(time.RFC3339)
+	}
+
+	query := `
+		INSERT OR REPLACE INTO ml_models (
+			id, project_id, ontology_id, name, description, type, status, version,
+			is_recommended, recommendation_score, model_artifact_path,
+			created_at, updated_at, trained_at, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = s.db.Exec(query,
+		model.ID,
+		model.ProjectID,
+		model.OntologyID,
+		model.Name,
+		model.Description,
+		model.Type,
+		model.Status,
+		model.Version,
+		model.IsRecommended,
+		model.RecommendationScore,
+		model.ModelArtifactPath,
+		model.CreatedAt.Format(time.RFC3339),
+		model.UpdatedAt.Format(time.RFC3339),
+		trainedAtStr,
+		data,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to save ML model: %w", err)
+	}
+
+	return nil
+}
+
+// GetMLModel retrieves an ML model by ID
+func (s *SQLiteStore) GetMLModel(id string) (*models.MLModel, error) {
+	query := `SELECT data FROM ml_models WHERE id = ?`
+
+	var data []byte
+	err := s.db.QueryRow(query, id).Scan(&data)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("ML model not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get ML model: %w", err)
+	}
+
+	var model models.MLModel
+	if err := json.Unmarshal(data, &model); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ML model: %w", err)
+	}
+
+	return &model, nil
+}
+
+// ListMLModels lists all ML models
+func (s *SQLiteStore) ListMLModels() ([]*models.MLModel, error) {
+	query := `SELECT data FROM ml_models ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ML models: %w", err)
+	}
+	defer rows.Close()
+
+	var mlModels []*models.MLModel
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan ML model: %w", err)
+		}
+
+		var model models.MLModel
+		if err := json.Unmarshal(data, &model); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal ML model: %w", err)
+		}
+
+		mlModels = append(mlModels, &model)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating ML models: %w", err)
+	}
+
+	return mlModels, nil
+}
+
+// ListMLModelsByProject lists all ML models for a specific project
+func (s *SQLiteStore) ListMLModelsByProject(projectID string) ([]*models.MLModel, error) {
+	query := `SELECT data FROM ml_models WHERE project_id = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ML models: %w", err)
+	}
+	defer rows.Close()
+
+	var mlModels []*models.MLModel
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan ML model: %w", err)
+		}
+
+		var model models.MLModel
+		if err := json.Unmarshal(data, &model); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal ML model: %w", err)
+		}
+
+		mlModels = append(mlModels, &model)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating ML models: %w", err)
+	}
+
+	return mlModels, nil
+}
+
+// DeleteMLModel deletes an ML model
+func (s *SQLiteStore) DeleteMLModel(id string) error {
+	query := `DELETE FROM ml_models WHERE id = ?`
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete ML model: %w", err)
+	}
+	return nil
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
+	"github.com/mimir-aip/mimir-aip-go/pkg/queue"
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
@@ -16,6 +17,7 @@ type Service struct {
 	store                metadatastore.MetadataStore
 	ontologyService      *ontology.Service
 	storageService       *storage.Service
+	queue                *queue.Queue
 	recommendationEngine *RecommendationEngine
 }
 
@@ -24,11 +26,13 @@ func NewService(
 	store metadatastore.MetadataStore,
 	ontologyService *ontology.Service,
 	storageService *storage.Service,
+	q *queue.Queue,
 ) *Service {
 	return &Service{
 		store:                store,
 		ontologyService:      ontologyService,
 		storageService:       storageService,
+		queue:                q,
 		recommendationEngine: NewRecommendationEngine(),
 	}
 }
@@ -207,9 +211,7 @@ func (s *Service) analyzeData(storageConfigs []*models.StorageConfig) *models.Da
 	}
 }
 
-// StartTraining initiates model training
-// In a real implementation, this would submit a training job to the worker queue
-// For now, we'll update the model status to indicate training has started
+// StartTraining initiates model training by submitting a job to the worker queue
 func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLModel, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -249,9 +251,41 @@ func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLMod
 		return nil, fmt.Errorf("failed to update model: %w", err)
 	}
 
-	// TODO: Submit training job to worker queue
-	// This would create a WorkTask with type "model_training" and necessary parameters
-	// The worker would then execute Python-based ML training code
+	// Submit training job to worker queue
+	workTask := &models.WorkTask{
+		ID:          uuid.New().String(),
+		Type:        models.WorkTaskTypeMLTraining,
+		ProjectID:   model.ProjectID,
+		Priority:    5, // Medium priority
+		Status:      models.WorkTaskStatusQueued,
+		SubmittedAt: time.Now().UTC(),
+		TaskSpec: models.TaskSpec{
+			ModelID:   model.ID,
+			ProjectID: model.ProjectID,
+			Parameters: map[string]interface{}{
+				"model_id":    model.ID,
+				"ontology_id": model.OntologyID,
+				"storage_ids": req.StorageIDs,
+				"config":      model.TrainingConfig,
+			},
+		},
+		ResourceRequirements: models.ResourceRequirements{
+			CPU:    "1000m", // 1 CPU core
+			Memory: "2Gi",   // 2GB RAM
+			GPU:    false,
+		},
+		DataAccess: models.DataAccess{
+			InputDatasets: req.StorageIDs,
+		},
+	}
+
+	// Enqueue the training task
+	if err := s.queue.Enqueue(workTask); err != nil {
+		// Rollback model status on queue failure
+		model.Status = models.ModelStatusDraft
+		s.store.SaveMLModel(model)
+		return nil, fmt.Errorf("failed to enqueue training task: %w", err)
+	}
 
 	return model, nil
 }

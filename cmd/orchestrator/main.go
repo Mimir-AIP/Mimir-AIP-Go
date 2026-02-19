@@ -95,7 +95,7 @@ func main() {
 	extractionService := extraction.NewService(storageService)
 
 	// Initialize ML model service
-	mlmodelService := mlmodel.NewService(store, ontologyService, storageService)
+	mlmodelService := mlmodel.NewService(store, ontologyService, storageService, q)
 
 	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, and ML model services")
 

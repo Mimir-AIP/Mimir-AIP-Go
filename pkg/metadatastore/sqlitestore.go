@@ -220,6 +220,81 @@ func (s *SQLiteStore) initSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_ml_models_project_id ON ml_models(project_id);
 	CREATE INDEX IF NOT EXISTS idx_ml_models_ontology_id ON ml_models(ontology_id);
+
+	CREATE TABLE IF NOT EXISTS digital_twins (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT,
+		ontology_id TEXT NOT NULL,
+		status TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		last_synced_at TEXT,
+		data TEXT NOT NULL,
+		FOREIGN KEY (project_id) REFERENCES projects(id),
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_digital_twins_project_id ON digital_twins(project_id);
+	CREATE INDEX IF NOT EXISTS idx_digital_twins_ontology_id ON digital_twins(ontology_id);
+
+	CREATE TABLE IF NOT EXISTS dt_entities (
+		id TEXT PRIMARY KEY,
+		twin_id TEXT NOT NULL,
+		entity_type TEXT NOT NULL,
+		source_data_id TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		data TEXT NOT NULL,
+		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_dt_entities_twin_id ON dt_entities(twin_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_entities_type ON dt_entities(entity_type);
+
+	CREATE TABLE IF NOT EXISTS dt_scenarios (
+		id TEXT PRIMARY KEY,
+		twin_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT,
+		base_state TEXT NOT NULL,
+		status TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		data TEXT NOT NULL,
+		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_dt_scenarios_twin_id ON dt_scenarios(twin_id);
+
+	CREATE TABLE IF NOT EXISTS dt_actions (
+		id TEXT PRIMARY KEY,
+		twin_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		enabled INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		data TEXT NOT NULL,
+		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_dt_actions_twin_id ON dt_actions(twin_id);
+
+	CREATE TABLE IF NOT EXISTS dt_predictions (
+		id TEXT PRIMARY KEY,
+		twin_id TEXT NOT NULL,
+		entity_id TEXT NOT NULL,
+		model_id TEXT NOT NULL,
+		cached_until TEXT,
+		created_at TEXT NOT NULL,
+		data TEXT NOT NULL,
+		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE,
+		FOREIGN KEY (entity_id) REFERENCES dt_entities(id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_dt_predictions_twin_id ON dt_predictions(twin_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_predictions_entity_id ON dt_predictions(entity_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_predictions_cached_until ON dt_predictions(cached_until);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -1332,6 +1407,561 @@ func (s *SQLiteStore) DeleteMLModel(id string) error {
 	_, err := s.db.Exec(query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete ML model: %w", err)
+	}
+	return nil
+}
+
+// SaveDigitalTwin saves a digital twin to the database
+func (s *SQLiteStore) SaveDigitalTwin(twin *models.DigitalTwin) error {
+	data, err := json.Marshal(twin)
+	if err != nil {
+		return fmt.Errorf("failed to marshal digital twin: %w", err)
+	}
+
+	lastSyncAt := ""
+	if twin.LastSyncAt != nil {
+		lastSyncAt = twin.LastSyncAt.Format(time.RFC3339)
+	}
+
+	query := `
+		INSERT OR REPLACE INTO digital_twins (
+			id, project_id, name, description, ontology_id, status,
+			created_at, updated_at, last_synced_at, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = s.db.Exec(query,
+		twin.ID,
+		twin.ProjectID,
+		twin.Name,
+		twin.Description,
+		twin.OntologyID,
+		twin.Status,
+		twin.CreatedAt.Format(time.RFC3339),
+		twin.UpdatedAt.Format(time.RFC3339),
+		lastSyncAt,
+		data,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to save digital twin: %w", err)
+	}
+
+	return nil
+}
+
+// GetDigitalTwin retrieves a digital twin by ID
+func (s *SQLiteStore) GetDigitalTwin(id string) (*models.DigitalTwin, error) {
+	query := `SELECT data FROM digital_twins WHERE id = ?`
+
+	var data []byte
+	err := s.db.QueryRow(query, id).Scan(&data)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("digital twin not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get digital twin: %w", err)
+	}
+
+	var twin models.DigitalTwin
+	if err := json.Unmarshal(data, &twin); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal digital twin: %w", err)
+	}
+
+	return &twin, nil
+}
+
+// ListDigitalTwins lists all digital twins
+func (s *SQLiteStore) ListDigitalTwins() ([]*models.DigitalTwin, error) {
+	query := `SELECT data FROM digital_twins ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list digital twins: %w", err)
+	}
+	defer rows.Close()
+
+	var twins []*models.DigitalTwin
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan digital twin: %w", err)
+		}
+
+		var twin models.DigitalTwin
+		if err := json.Unmarshal(data, &twin); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal digital twin: %w", err)
+		}
+
+		twins = append(twins, &twin)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating digital twins: %w", err)
+	}
+
+	return twins, nil
+}
+
+// ListDigitalTwinsByProject lists all digital twins for a specific project
+func (s *SQLiteStore) ListDigitalTwinsByProject(projectID string) ([]*models.DigitalTwin, error) {
+	query := `SELECT data FROM digital_twins WHERE project_id = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list digital twins: %w", err)
+	}
+	defer rows.Close()
+
+	var twins []*models.DigitalTwin
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan digital twin: %w", err)
+		}
+
+		var twin models.DigitalTwin
+		if err := json.Unmarshal(data, &twin); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal digital twin: %w", err)
+		}
+
+		twins = append(twins, &twin)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating digital twins: %w", err)
+	}
+
+	return twins, nil
+}
+
+// DeleteDigitalTwin deletes a digital twin
+func (s *SQLiteStore) DeleteDigitalTwin(id string) error {
+	query := `DELETE FROM digital_twins WHERE id = ?`
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete digital twin: %w", err)
+	}
+	return nil
+}
+
+// SaveEntity saves an entity to the database
+func (s *SQLiteStore) SaveEntity(entity *models.Entity) error {
+	data, err := json.Marshal(entity)
+	if err != nil {
+		return fmt.Errorf("failed to marshal entity: %w", err)
+	}
+
+	query := `
+		INSERT OR REPLACE INTO dt_entities (
+			id, twin_id, entity_type, source_data_id,
+			created_at, updated_at, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = s.db.Exec(query,
+		entity.ID,
+		entity.DigitalTwinID,
+		entity.Type,
+		entity.SourceDataID,
+		entity.CreatedAt.Format(time.RFC3339),
+		entity.UpdatedAt.Format(time.RFC3339),
+		data,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to save entity: %w", err)
+	}
+
+	return nil
+}
+
+// GetEntity retrieves an entity by ID
+func (s *SQLiteStore) GetEntity(id string) (*models.Entity, error) {
+	query := `SELECT data FROM dt_entities WHERE id = ?`
+
+	var data []byte
+	err := s.db.QueryRow(query, id).Scan(&data)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("entity not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get entity: %w", err)
+	}
+
+	var entity models.Entity
+	if err := json.Unmarshal(data, &entity); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal entity: %w", err)
+	}
+
+	return &entity, nil
+}
+
+// ListEntitiesByDigitalTwin lists all entities for a specific digital twin
+func (s *SQLiteStore) ListEntitiesByDigitalTwin(twinID string) ([]*models.Entity, error) {
+	query := `SELECT data FROM dt_entities WHERE twin_id = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, twinID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list entities: %w", err)
+	}
+	defer rows.Close()
+
+	var entities []*models.Entity
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan entity: %w", err)
+		}
+
+		var entity models.Entity
+		if err := json.Unmarshal(data, &entity); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal entity: %w", err)
+		}
+
+		entities = append(entities, &entity)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating entities: %w", err)
+	}
+
+	return entities, nil
+}
+
+// DeleteEntity deletes an entity
+func (s *SQLiteStore) DeleteEntity(id string) error {
+	query := `DELETE FROM dt_entities WHERE id = ?`
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete entity: %w", err)
+	}
+	return nil
+}
+
+// SaveScenario saves a scenario to the database
+func (s *SQLiteStore) SaveScenario(scenario *models.Scenario) error {
+	data, err := json.Marshal(scenario)
+	if err != nil {
+		return fmt.Errorf("failed to marshal scenario: %w", err)
+	}
+
+	query := `
+		INSERT OR REPLACE INTO dt_scenarios (
+			id, twin_id, name, description, base_state, status, created_at, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = s.db.Exec(query,
+		scenario.ID,
+		scenario.DigitalTwinID,
+		scenario.Name,
+		scenario.Description,
+		scenario.BaseState,
+		scenario.Status,
+		scenario.CreatedAt.Format(time.RFC3339),
+		data,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to save scenario: %w", err)
+	}
+
+	return nil
+}
+
+// GetScenario retrieves a scenario by ID
+func (s *SQLiteStore) GetScenario(id string) (*models.Scenario, error) {
+	query := `SELECT data FROM dt_scenarios WHERE id = ?`
+
+	var data []byte
+	err := s.db.QueryRow(query, id).Scan(&data)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("scenario not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get scenario: %w", err)
+	}
+
+	var scenario models.Scenario
+	if err := json.Unmarshal(data, &scenario); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal scenario: %w", err)
+	}
+
+	return &scenario, nil
+}
+
+// ListScenariosByDigitalTwin lists all scenarios for a specific digital twin
+func (s *SQLiteStore) ListScenariosByDigitalTwin(twinID string) ([]*models.Scenario, error) {
+	query := `SELECT data FROM dt_scenarios WHERE twin_id = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, twinID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list scenarios: %w", err)
+	}
+	defer rows.Close()
+
+	var scenarios []*models.Scenario
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan scenario: %w", err)
+		}
+
+		var scenario models.Scenario
+		if err := json.Unmarshal(data, &scenario); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal scenario: %w", err)
+		}
+
+		scenarios = append(scenarios, &scenario)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating scenarios: %w", err)
+	}
+
+	return scenarios, nil
+}
+
+// DeleteScenario deletes a scenario
+func (s *SQLiteStore) DeleteScenario(id string) error {
+	query := `DELETE FROM dt_scenarios WHERE id = ?`
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete scenario: %w", err)
+	}
+	return nil
+}
+
+// SaveAction saves an action to the database
+func (s *SQLiteStore) SaveAction(action *models.Action) error {
+	data, err := json.Marshal(action)
+	if err != nil {
+		return fmt.Errorf("failed to marshal action: %w", err)
+	}
+
+	enabled := 0
+	if action.Enabled {
+		enabled = 1
+	}
+
+	query := `
+		INSERT OR REPLACE INTO dt_actions (
+			id, twin_id, name, enabled, created_at, updated_at, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = s.db.Exec(query,
+		action.ID,
+		action.DigitalTwinID,
+		action.Name,
+		enabled,
+		action.CreatedAt.Format(time.RFC3339),
+		action.UpdatedAt.Format(time.RFC3339),
+		data,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to save action: %w", err)
+	}
+
+	return nil
+}
+
+// GetAction retrieves an action by ID
+func (s *SQLiteStore) GetAction(id string) (*models.Action, error) {
+	query := `SELECT data FROM dt_actions WHERE id = ?`
+
+	var data []byte
+	err := s.db.QueryRow(query, id).Scan(&data)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("action not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get action: %w", err)
+	}
+
+	var action models.Action
+	if err := json.Unmarshal(data, &action); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal action: %w", err)
+	}
+
+	return &action, nil
+}
+
+// ListActionsByDigitalTwin lists all actions for a specific digital twin
+func (s *SQLiteStore) ListActionsByDigitalTwin(twinID string) ([]*models.Action, error) {
+	query := `SELECT data FROM dt_actions WHERE twin_id = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, twinID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list actions: %w", err)
+	}
+	defer rows.Close()
+
+	var actions []*models.Action
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan action: %w", err)
+		}
+
+		var action models.Action
+		if err := json.Unmarshal(data, &action); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal action: %w", err)
+		}
+
+		actions = append(actions, &action)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating actions: %w", err)
+	}
+
+	return actions, nil
+}
+
+// DeleteAction deletes an action
+func (s *SQLiteStore) DeleteAction(id string) error {
+	query := `DELETE FROM dt_actions WHERE id = ?`
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete action: %w", err)
+	}
+	return nil
+}
+
+// SavePrediction saves a prediction to the database
+func (s *SQLiteStore) SavePrediction(prediction *models.Prediction) error {
+	data, err := json.Marshal(prediction)
+	if err != nil {
+		return fmt.Errorf("failed to marshal prediction: %w", err)
+	}
+
+	query := `
+		INSERT OR REPLACE INTO dt_predictions (
+			id, twin_id, entity_id, model_id, cached_until, created_at, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = s.db.Exec(query,
+		prediction.ID,
+		prediction.DigitalTwinID,
+		prediction.EntityID,
+		prediction.ModelID,
+		prediction.ExpiresAt.Format(time.RFC3339),
+		prediction.CachedAt.Format(time.RFC3339),
+		data,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to save prediction: %w", err)
+	}
+
+	return nil
+}
+
+// GetPrediction retrieves a prediction by ID
+func (s *SQLiteStore) GetPrediction(id string) (*models.Prediction, error) {
+	query := `SELECT data FROM dt_predictions WHERE id = ?`
+
+	var data []byte
+	err := s.db.QueryRow(query, id).Scan(&data)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("prediction not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get prediction: %w", err)
+	}
+
+	var prediction models.Prediction
+	if err := json.Unmarshal(data, &prediction); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal prediction: %w", err)
+	}
+
+	return &prediction, nil
+}
+
+// ListPredictionsByEntity lists all predictions for a specific entity
+func (s *SQLiteStore) ListPredictionsByEntity(entityID string) ([]*models.Prediction, error) {
+	query := `SELECT data FROM dt_predictions WHERE entity_id = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list predictions: %w", err)
+	}
+	defer rows.Close()
+
+	var predictions []*models.Prediction
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan prediction: %w", err)
+		}
+
+		var prediction models.Prediction
+		if err := json.Unmarshal(data, &prediction); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal prediction: %w", err)
+		}
+
+		predictions = append(predictions, &prediction)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating predictions: %w", err)
+	}
+
+	return predictions, nil
+}
+
+// ListPredictionsByDigitalTwin lists all predictions for a specific digital twin
+func (s *SQLiteStore) ListPredictionsByDigitalTwin(twinID string) ([]*models.Prediction, error) {
+	query := `SELECT data FROM dt_predictions WHERE twin_id = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, twinID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list predictions: %w", err)
+	}
+	defer rows.Close()
+
+	var predictions []*models.Prediction
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan prediction: %w", err)
+		}
+
+		var prediction models.Prediction
+		if err := json.Unmarshal(data, &prediction); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal prediction: %w", err)
+		}
+
+		predictions = append(predictions, &prediction)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating predictions: %w", err)
+	}
+
+	return predictions, nil
+}
+
+// DeletePrediction deletes a prediction
+func (s *SQLiteStore) DeletePrediction(id string) error {
+	query := `DELETE FROM dt_predictions WHERE id = ?`
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete prediction: %w", err)
+	}
+	return nil
+}
+
+// DeleteExpiredPredictions deletes all expired predictions for a digital twin
+func (s *SQLiteStore) DeleteExpiredPredictions(twinID string) error {
+	query := `DELETE FROM dt_predictions WHERE twin_id = ? AND cached_until < ?`
+	_, err := s.db.Exec(query, twinID, time.Now().Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("failed to delete expired predictions: %w", err)
 	}
 	return nil
 }

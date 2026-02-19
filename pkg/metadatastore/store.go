@@ -54,4 +54,37 @@ type MetadataStore interface {
 	ListMLModels() ([]*models.MLModel, error)
 	ListMLModelsByProject(projectID string) ([]*models.MLModel, error)
 	DeleteMLModel(id string) error
+
+	// Digital Twin operations
+	SaveDigitalTwin(twin *models.DigitalTwin) error
+	GetDigitalTwin(id string) (*models.DigitalTwin, error)
+	ListDigitalTwins() ([]*models.DigitalTwin, error)
+	ListDigitalTwinsByProject(projectID string) ([]*models.DigitalTwin, error)
+	DeleteDigitalTwin(id string) error
+
+	// Digital Twin Entity operations
+	SaveEntity(entity *models.Entity) error
+	GetEntity(id string) (*models.Entity, error)
+	ListEntitiesByDigitalTwin(twinID string) ([]*models.Entity, error)
+	DeleteEntity(id string) error
+
+	// Digital Twin Scenario operations
+	SaveScenario(scenario *models.Scenario) error
+	GetScenario(id string) (*models.Scenario, error)
+	ListScenariosByDigitalTwin(twinID string) ([]*models.Scenario, error)
+	DeleteScenario(id string) error
+
+	// Digital Twin Action operations
+	SaveAction(action *models.Action) error
+	GetAction(id string) (*models.Action, error)
+	ListActionsByDigitalTwin(twinID string) ([]*models.Action, error)
+	DeleteAction(id string) error
+
+	// Digital Twin Prediction operations
+	SavePrediction(prediction *models.Prediction) error
+	GetPrediction(id string) (*models.Prediction, error)
+	ListPredictionsByEntity(entityID string) ([]*models.Prediction, error)
+	ListPredictionsByDigitalTwin(twinID string) ([]*models.Prediction, error)
+	DeletePrediction(id string) error
+	DeleteExpiredPredictions(twinID string) error
 }

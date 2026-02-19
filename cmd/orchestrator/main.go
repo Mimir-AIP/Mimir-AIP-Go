@@ -9,6 +9,7 @@ import (
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/api"
 	"github.com/mimir-aip/mimir-aip-go/pkg/config"
+	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/extraction"
 	"github.com/mimir-aip/mimir-aip-go/pkg/k8s"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
@@ -97,7 +98,10 @@ func main() {
 	// Initialize ML model service
 	mlmodelService := mlmodel.NewService(store, ontologyService, storageService, q)
 
-	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, and ML model services")
+	// Initialize digital twin service
+	dtService := digitaltwin.NewService(store, ontologyService, storageService, mlmodelService, q)
+
+	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, ML model, and digital twin services")
 
 	// Start scheduler
 	schedulerService.Start()
@@ -155,6 +159,11 @@ func main() {
 	server.RegisterHandler("/api/ml-models/", mlmodelHandler.HandleMLModel)
 	server.RegisterHandler("/api/ml-models/recommend", mlmodelHandler.HandleMLModelRecommendation)
 	server.RegisterHandler("/api/ml-models/train", mlmodelHandler.HandleMLModelTraining)
+
+	// Register digital twin handlers
+	dtHandler := api.NewDigitalTwinHandler(dtService)
+	server.RegisterHandler("/api/digital-twins", dtHandler.HandleDigitalTwins)
+	server.RegisterHandler("/api/digital-twins/", dtHandler.HandleDigitalTwin)
 
 	log.Println("Registered API handlers")
 

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# run-integration-tests.sh - Run integration tests against deployed system
+# run-e2e-tests.sh - Run E2E tests against deployed system
 set -e
 
-echo "Running integration tests against deployed Mimir AIP..."
+echo "Running E2E tests against deployed Mimir AIP..."
 
 # Port forward orchestrator for testing
 echo "Setting up port forwarding..."
@@ -20,9 +20,9 @@ trap cleanup EXIT
 # Wait for port forward to be ready
 sleep 5
 
-# Run integration tests
-echo "Running tests..."
-ORCHESTRATOR_URL=http://localhost:8080 go test ./tests/integration/... -v
+# Run E2E tests
+echo "Running E2E tests..."
+ORCHESTRATOR_URL=http://localhost:8080 go test -v ./tests/integration -run "TestE2E.*" -timeout 5m
 
 echo ""
-echo "Integration tests complete!"
+echo "E2E tests complete!"

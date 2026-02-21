@@ -50,6 +50,20 @@ func (h *MLModelHandler) HandleMLModel(w http.ResponseWriter, r *http.Request) {
 	}
 	modelID := parts[0]
 
+	// Check for training sub-resources
+	if len(parts) >= 2 && parts[1] == "training" {
+		if len(parts) >= 3 {
+			switch parts[2] {
+			case "complete":
+				h.handleTrainingComplete(w, r, modelID)
+				return
+			case "fail":
+				h.handleTrainingFail(w, r, modelID)
+				return
+			}
+		}
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		h.handleGetMLModel(w, r, modelID)
@@ -217,4 +231,65 @@ func (h *MLModelHandler) handleDeleteMLModel(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleTrainingComplete handles POST /api/ml-models/{id}/training/complete
+func (h *MLModelHandler) handleTrainingComplete(w http.ResponseWriter, r *http.Request, modelID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ModelArtifactPath  string                     `json:"model_artifact_path"`
+		PerformanceMetrics *models.PerformanceMetrics `json:"performance_metrics"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.ModelArtifactPath == "" || req.PerformanceMetrics == nil {
+		http.Error(w, "model_artifact_path and performance_metrics are required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.CompleteTraining(modelID, req.ModelArtifactPath, req.PerformanceMetrics); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to complete training: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "training completed"})
+}
+
+// handleTrainingFail handles POST /api/ml-models/{id}/training/fail
+func (h *MLModelHandler) handleTrainingFail(w http.ResponseWriter, r *http.Request, modelID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Reason string `json:"reason"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if req.Reason == "" {
+		http.Error(w, "reason is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.FailTraining(modelID, req.Reason); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to mark training as failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "training failed"})
 }

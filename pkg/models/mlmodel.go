@@ -207,8 +207,6 @@ func (r *ModelTrainingRequest) Validate() error {
 	if r.ModelID == "" {
 		return fmt.Errorf("model_id is required")
 	}
-	if len(r.StorageIDs) == 0 {
-		return fmt.Errorf("at least one storage_id is required")
-	}
+	// StorageIDs is optional - if empty, worker will generate synthetic data for demo purposes
 	return nil
 }

@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!README.md
+docs/
+Plan/
+
+# Tests
+*_test.go
+testdata/
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependencies (will be downloaded in build)
+vendor/
+
+# Kubernetes and deployment
+k8s/
+docker-compose.yaml
+Makefile
+DEPLOYMENT.md

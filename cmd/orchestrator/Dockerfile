@@ -1,9 +1,5 @@
-# Single stage - use same Go environment for building and running
-# This ensures orchestrator binary and plugins are compiled with identical toolchain
-FROM golang:1.25
-
-# Install runtime dependencies (git for cloning plugins)
-RUN apt-get update && apt-get install -y ca-certificates git && rm -rf /var/lib/apt/lists/*
+# Build stage
+FROM golang:1.25 AS builder
 
 WORKDIR /app
 
@@ -11,12 +7,30 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code (needed for plugin compilation)
+# Copy source code
 COPY . .
 
 # Build the orchestrator binary with CGO enabled (required for Go plugins)
 # Use -trimpath to ensure reproducible builds for plugin compatibility
-RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -o /app/orchestrator ./cmd/orchestrator
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/orchestrator ./cmd/orchestrator
+
+# Runtime stage - smaller base image with just what we need
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates git && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy built binary from builder
+COPY --from=builder /app/orchestrator .
+
+# Copy source code (needed for potential plugin compilation at runtime)
+COPY --from=builder /app/go.mod /app/go.sum ./
+COPY --from=builder /app/pkg ./pkg
+COPY --from=builder /app/cmd ./cmd
 
 # Expose port
 EXPOSE 8080

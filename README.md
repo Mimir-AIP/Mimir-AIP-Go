@@ -16,7 +16,7 @@ The Mimir AIP infrastructure consists of three main components deployed as Kuber
 - **Frontend**: Static HTML/CSS/JavaScript
 - **Queue**: Redis
 - **Container Orchestration**: Kubernetes
-- **Local Development**: Rancher Desktop
+- **Development**: Rancher Desktop (local) or K3s on Intel NUC server
 
 ## Project Structure
 
@@ -70,7 +70,43 @@ The Mimir AIP infrastructure consists of three main components deployed as Kuber
    brew install kubectl
    ```
 
+### For NUC Server Deployment
+
+1. **Install Go 1.21+** (for building)
+   ```bash
+   brew install go
+   ```
+
+2. **Install kubectl**
+   ```bash
+   brew install kubectl
+   ```
+
+3. **Set up NUC server access**
+   - SSH key authentication to NUC server should be configured
+   - Kubeconfig file should be at `~/.kube/config-nuc`
+   - Add kubectl alias to `~/.zshrc`:
+     ```bash
+     alias knuc='KUBECONFIG=~/.kube/config-nuc kubectl'
+     ```
+   - Reload shell: `source ~/.zshrc`
+
 ## Quick Start
+
+See [scripts/README.md](scripts/README.md) for detailed deployment instructions.
+
+### Deploy to NUC Server
+
+```bash
+# Full deployment to NUC server
+./scripts/full-deploy.sh --nuc
+
+# Access the frontend
+knuc port-forward -n mimir-aip svc/frontend 8081:80
+# Then open http://localhost:8081
+```
+
+### Deploy Locally (Rancher Desktop)
 
 ### 1. Build Docker Images
 

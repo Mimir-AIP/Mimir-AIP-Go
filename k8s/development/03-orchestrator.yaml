@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: mimir-aip
+  labels:
+    app: mimir-aip
+    component: orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mimir-aip
+      component: orchestrator
+  template:
+    metadata:
+      labels:
+        app: mimir-aip
+        component: orchestrator
+    spec:
+      serviceAccountName: orchestrator-service-account
+      containers:
+      - name: orchestrator
+        image: mimir-aip/orchestrator:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: ENVIRONMENT
+          value: "development"
+        - name: LOG_LEVEL
+          value: "debug"
+        - name: PORT
+          value: "8080"
+        - name: STORAGE_DIR
+          value: "/app/data"
+        - name: MIN_WORKERS
+          value: "1"
+        - name: MAX_WORKERS
+          value: "10"
+        - name: QUEUE_THRESHOLD
+          value: "5"
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: orchestrator-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+  namespace: mimir-aip
+  labels:
+    app: mimir-aip
+    component: orchestrator
+spec:
+  selector:
+    app: mimir-aip
+    component: orchestrator
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

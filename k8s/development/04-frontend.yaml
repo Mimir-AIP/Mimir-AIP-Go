@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: mimir-aip
+  labels:
+    app: mimir-aip
+    component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mimir-aip
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: mimir-aip
+        component: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: mimir-aip/frontend:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: PORT
+          value: "3000"
+        - name: API_URL
+          value: "http://orchestrator:8080"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: mimir-aip
+  labels:
+    app: mimir-aip
+    component: frontend
+spec:
+  selector:
+    app: mimir-aip
+    component: frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3000
+  type: LoadBalancer

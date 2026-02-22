@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: cmd/orchestrator/Dockerfile
+    image: mimir-aip/orchestrator:latest
+    container_name: mimir-orchestrator
+    ports:
+      - "8080:8080"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+      - PORT=8080
+      - STORAGE_DIR=/app/data
+      - MIN_WORKERS=1
+      - MAX_WORKERS=10
+      - QUEUE_THRESHOLD=5
+    volumes:
+      - orchestrator-data:/app/data
+      - ./plugins:/app/plugins
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mimir-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: mimir-aip/frontend:latest
+    container_name: mimir-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - API_URL=http://orchestrator:8080
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - mimir-network
+
+volumes:
+  orchestrator-data:
+    driver: local
+
+networks:
+  mimir-network:
+    driver: bridge

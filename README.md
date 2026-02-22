@@ -1,696 +1,366 @@
-# Mimir AIP: High-Performance Plugin-Driven Automation Platform
+# Mimir AIP - Infrastructure & Scaling
 
-## Abstract
+This directory contains the complete infrastructure and scaling implementation for the Mimir AIP platform.
 
-Mimir AIP is a high-performance, plugin-driven automation platform implemented in Go, designed for scalable data processing pipeline execution with advanced concurrency management and extensible architecture. The system provides significant performance improvements over traditional implementations through optimized memory management, efficient algorithmic implementations, and robust resource lifecycle management.
+## Overview
 
-## Table of Contents
+The Mimir AIP infrastructure consists of three main components deployed as Kubernetes containers:
 
-1. [System Architecture](#system-architecture)
-2. [Core Components](#core-components)
-3. [Installation & Deployment](#installation--deployment)
-4. [Configuration Management](#configuration-management)
-5. [Plugin Development Framework](#plugin-development-framework)
-6. [API Reference](#api-reference)
-7. [Performance Characteristics](#performance-characteristics)
-8. [Monitoring & Observability](#monitoring--observability)
-9. [Security Model](#security-model)
-10. [Development Guidelines](#development-guidelines)
+1. **Orchestrator** - Central coordination service managing projects, scheduling jobs, and coordinating workers
+2. **Worker** - Scalable job execution containers that spawn on-demand based on queue depth
+3. **Frontend** - Static web interface for system monitoring and job submission
 
-## System Architecture
+## Technology Stack
 
-### High-Level Architecture
+- **Backend**: Go 1.21
+- **Frontend**: Static HTML/CSS/JavaScript
+- **Queue**: Redis
+- **Container Orchestration**: Kubernetes
+- **Development**: Rancher Desktop (local) or K3s on Intel NUC server
+
+## Project Structure
 
 ```
-+-------------------+    +-------------------+    +-------------------+
-|   REST API      |    |   MCP Server    |    |   Scheduler     |
-|   Server        |    |                 |    |                 |
-|                 |    |                 |    |                 |
-| . Pipeline      |    | . Tool Discovery|    | . Cron Jobs     |
-|   Execution     |    | . LLM Integration|    | . Job Management|
-| . Plugin        |    | . Context       |    | . Timezone      |
-|   Management    |    |   Protocol      |    |   Support       |
-+-------------------+    +-------------------+    +-------------------+
-          |                       |                       |
-          +-----------------------+-----------------------+
-                                   |
-                      +-------------------+
-                      |   Plugin        |
-                      |   System        |
-                      |                 |
-                      | . Input         |
-                      |   Plugins       |
-                      | . Data          |
-                      |   Processing    |
-                      | . AI Models     |
-                      | . Output        |
-                      |   Plugins       |
-                      +-------------------+
-                               |
-                      +-------------------+
-                      |   Core Engine   |
-                      |                 |
-                      | . Pipeline      |
-                      |   Execution     |
-                      | . Context       |
-                      |   Management    |
-                      | . Error         |
-                      | . Handling      |
-                      | . Logging       |
-                      +-------------------+
+.
+├── cmd/
+│   ├── orchestrator/    # Orchestrator server main application
+│   │   ├── main.go
+│   │   └── Dockerfile
+│   └── worker/          # Worker main application
+│       ├── main.go
+│       └── Dockerfile
+├── pkg/
+│   ├── api/            # REST API server
+│   ├── config/         # Configuration management
+│   ├── k8s/            # Kubernetes client
+│   ├── models/         # Data models
+│   └── queue/          # Redis job queue
+├── frontend/           # Static web interface
+│   ├── index.html
+│   ├── styles.css
+│   ├── app.js
+│   ├── server.go
+│   └── Dockerfile
+├── k8s/
+│   ├── development/    # Kubernetes manifests for local dev
+│   └── production/     # Kubernetes manifests for production
+├── scripts/            # Deployment and testing scripts
+├── tests/
+│   ├── unit/          # Unit tests
+│   └── integration/   # Integration tests
+└── Plan/              # Architecture and planning documents
 ```
 
-### Component Interaction Model
+## Prerequisites
 
-The system operates through a layered architecture where each component maintains specific responsibilities while communicating through well-defined interfaces. The core engine orchestrates plugin execution through a context management system that ensures data isolation and efficient resource utilization.
+### For Local Development (Rancher Desktop)
 
-## Core Components
+1. **Install Rancher Desktop**
+   - Download from https://rancherdesktop.io/
+   - Enable Kubernetes
+   - Select dockerd (moby) as the container runtime
 
-### 1. Pipeline Execution Engine
+2. **Install Go 1.21+**
+   ```bash
+   brew install go
+   ```
 
-**Primary Responsibilities:**
-- Plugin lifecycle management and orchestration
-- Context propagation with copy-on-write semantics
-- Error handling and recovery mechanisms
-- Concurrent execution with goroutine management
+3. **Install kubectl**
+   ```bash
+   brew install kubectl
+   ```
 
-**Technical Implementation:**
-```go
-type OptimizedPluginContext struct {
-    base    *PluginContext
-    version  uint64
-    modified bool
-    mutex    sync.RWMutex
-}
-```
+### For NUC Server Deployment
 
-### 2. Plugin System
+1. **Install Go 1.21+** (for building)
+   ```bash
+   brew install go
+   ```
 
-**Plugin Categories:**
-- **Input Plugins**: Data acquisition from external sources (HTTP APIs, file systems, message queues)
-- **Data Processing Plugins**: Transformation, validation, enrichment operations
-- **AI Model Plugins**: Integration with machine learning and AI services
-- **Output Plugins**: Data persistence and export functionality
+2. **Install kubectl**
+   ```bash
+   brew install kubectl
+   ```
 
-**Plugin Interface:**
-```go
-type Plugin interface {
-    ExecuteStep(ctx context.Context, stepConfig StepConfig, globalContext PluginContext) (PluginContext, error)
-    GetPluginType() string
-    GetPluginName() string
-    ValidateConfig(config map[string]interface{}) error
-}
-```
+3. **Set up NUC server access**
+   - SSH key authentication to NUC server should be configured
+   - Kubeconfig file should be at `~/.kube/config-nuc`
+   - Add kubectl alias to `~/.zshrc`:
+     ```bash
+     alias knuc='KUBECONFIG=~/.kube/config-nuc kubectl'
+     ```
+   - Reload shell: `source ~/.zshrc`
 
-### 3. REST API Server
+## Quick Start
 
-**Endpoint Categories:**
-- Pipeline Management: `/api/v1/pipelines/*`
-- Plugin Management: `/api/v1/plugins/*`
-- Job Scheduling: `/api/v1/scheduler/*`
-- System Monitoring: `/api/v1/monitoring/*`
-- Configuration: `/api/v1/config/*`
+See [scripts/README.md](scripts/README.md) for detailed deployment instructions.
 
-### 4. Model Context Protocol (MCP) Server
-
-**Protocol Implementation:**
-- Tool discovery and registration
-- LLM integration for agentic workflows
-- Context management for AI tool execution
-- Real-time communication protocols
-
-### 5. Job Scheduling System
-
-**Scheduling Features:**
-- Cron expression parsing and validation
-- Timezone-aware execution
-- Job lifecycle management with proper cleanup
-- Concurrent job execution with resource limits
-
-### 6. Monitoring & Observability Framework
-
-**Metrics Collection:**
-- Real-time performance metrics
-- Resource utilization monitoring
-- Job execution tracking
-- System health assessment
-
-## Installation & Deployment
-
-### Prerequisites
-
-- **Go Runtime**: Version 1.23 or later
-- **Docker**: Docker Engine 20.10+ (for containerized deployment)
-- **Operating System**: Linux, macOS, or Windows
-- **Memory**: Minimum 512MB RAM, recommended 2GB+
-- **Storage**: Minimum 100MB available disk space
-
-### Installation Methods
-
-#### Source Installation
+### Deploy to NUC Server
 
 ```bash
-# Repository cloning
-git clone https://github.com/Mimir-AIP/Mimir-AIP-Go.git
-cd Mimir-AIP-Go
+# Full deployment to NUC server
+./scripts/full-deploy.sh --nuc
 
-# Dependency resolution
-go mod download
-
-# Application compilation
-go build -o mimir-aip-server .
-
-# Binary execution
-./mimir-aip-server --server
+# Access the frontend
+knuc port-forward -n mimir-aip svc/frontend 8081:80
+# Then open http://localhost:8081
 ```
 
-#### Docker Deployment (Recommended)
+### Deploy Locally (Rancher Desktop)
 
-**Quick Start:**
-```bash
-# Build and run with Docker Compose
-cd docker
-docker compose up -d
+### 1. Build Docker Images
 
-# Or run single container
-docker run -d --name mimir-aip -p 8080:8080 mimir-aip:latest
-```
-
-**Production Deployment:**
-```bash
-# Using optimized build script
-./docker/scripts/build.sh
-
-# Production Docker Compose
-cd docker
-docker compose -f docker-compose.yml up -d
-
-# With persistent storage
-docker run -d \
-  --name mimir-aip-prod \
-  --restart unless-stopped \
-  -p 8080:8080 \
-  -v mimir_data:/app/data \
-  -v mimir_logs:/app/logs \
-  -v mimir_config:/app/config \
-  -e MIMIR_LOG_LEVEL=INFO \
-  mimir-aip:latest
-```
-
-**Implementation Features:**
-- Optimized Image: 9.34MB multi-stage build
-- Security Hardened: Non-root user, distroless base
-- Health Monitoring: Built-in health checks
-- Multi-Platform: AMD64 and ARM64 support
-- Production Ready: Volume management, environment variables
-
-**Docker Compose Options:**
-- `docker-compose.yml` - Production deployment with Redis
-- `docker-compose.dev.yml` - Development with hot reload
-
-**Health Check:**
-```bash
-# Verify deployment
-curl http://localhost:8080/health
-
-# Using health check script
-./docker/scripts/health-check.sh
-```
-
-**For detailed deployment guide, see:** [DOCKER_DEPLOYMENT_GUIDE.md](docs/DOCKER_DEPLOYMENT_GUIDE.md)
-
-## Configuration Management
-
-### Configuration Schema
-
-The system utilizes a hierarchical configuration model supporting file-based and environment variable configuration:
-
-```yaml
-# config.yaml
-server:
-  host: "0.0.0.0"
-  port: 8080
-  api_key: "${MIMIR_API_KEY}"
-  read_timeout: 30s
-  write_timeout: 30s
-
-plugins:
-  directories:
-    - "./plugins"
-    - "/opt/mimir/plugins"
-  auto_discovery: true
-  timeout: 60s
-  max_concurrent: 10
-
-scheduler:
-  enabled: true
-  timezone: "UTC"
-  max_jobs: 1000
-  job_timeout: 3600s
-
-monitoring:
-  enabled: true
-  metrics_interval: 30s
-  health_check_interval: 10s
-  retention_days: 30
-
-logging:
-  level: "info"
-  format: "json"
-  file: "./logs/mimir.log"
-  max_size: "100MB"
-  max_backups: 5
-```
-
-### Environment Variables
+Build all Docker images for local deployment:
 
 ```bash
-# Core server configuration
-MIMIR_SERVER_HOST=0.0.0.0
-MIMIR_SERVER_PORT=8080
-MIMIR_API_KEY=secure-api-key
-
-# Plugin system configuration
-MIMIR_PLUGINS_DIRECTORIES=./plugins:/opt/mimir/plugins
-MIMIR_PLUGINS_TIMEOUT=60s
-MIMIR_PLUGINS_MAX_CONCURRENT=10
-
-# Scheduler configuration
-MIMIR_SCHEDULER_ENABLED=true
-MIMIR_SCHEDULER_TIMEZONE=UTC
-MIMIR_SCHEDULER_MAX_JOBS=1000
-
-# Monitoring configuration
-MIMIR_MONITORING_ENABLED=true
-MIMIR_MONITORING_METRICS_INTERVAL=30s
+./scripts/build-images.sh
 ```
 
-## Plugin Development Framework
+This will build:
+- `mimir-aip/orchestrator:latest`
+- `mimir-aip/worker:latest`
+- `mimir-aip/frontend:latest`
 
-### Plugin Architecture
+### 2. Deploy to Kubernetes
 
-Plugins implement a standardized interface that enables seamless integration with the pipeline execution engine:
+Deploy the entire stack to your local Rancher Desktop cluster:
 
-```go
-package main
-
-import (
-    "context"
-    "github.com/Mimir-AIP/Mimir-AIP-Go/pipelines"
-)
-
-type DataTransformPlugin struct {
-    name    string
-    version string
-}
-
-func (p *DataTransformPlugin) ExecuteStep(
-    ctx context.Context,
-    stepConfig pipelines.StepConfig,
-    globalContext pipelines.PluginContext,
-) (pipelines.PluginContext, error) {
-    
-    // Input data retrieval
-    inputData, exists := globalContext.Get(stepConfig.Input)
-    if !exists {
-        return pipelines.NewPluginContext(), fmt.Errorf("input data not found")
-    }
-    
-    // Plugin-specific processing logic
-    processedData, err := p.transformData(inputData)
-    if err != nil {
-        return pipelines.NewPluginContext(), err
-    }
-    
-    // Result context creation
-    result := pipelines.NewPluginContext()
-    result.Set(stepConfig.Output, processedData)
-    
-    return result, nil
-}
-
-func (p *DataTransformPlugin) GetPluginType() string {
-    return "Data_Processing"
-}
-
-func (p *DataTransformPlugin) GetPluginName() string {
-    return "data_transform"
-}
-
-func (p *DataTransformPlugin) ValidateConfig(config map[string]interface{}) error {
-    // Configuration validation logic
-    return nil
-}
+```bash
+./scripts/deploy-local.sh
 ```
 
-### Data Model Integration
+This will:
+- Create the `mimir-aip` namespace
+- Deploy Redis
+- Deploy the Orchestrator
+- Deploy the Frontend
+- Create necessary ConfigMaps and Secrets
 
-The system provides an enhanced data model supporting multiple data types with type safety and performance optimizations:
+### 3. Access the System
 
-```go
-// Typed data operations
-ctx := pipelines.NewPluginContext()
+**Frontend (Web UI):**
+```bash
+kubectl port-forward -n mimir-aip svc/frontend 8081:80
+```
+Then open http://localhost:8081 in your browser
 
-// JSON data with validation
-userData := pipelines.NewJSONData(map[string]interface{}{
-    "user_id": 12345,
-    "preferences": map[string]interface{}{
-        "theme": "dark",
-        "notifications": true,
+**Orchestrator API:**
+```bash
+kubectl port-forward -n mimir-aip svc/orchestrator 8080:8080
+```
+API available at http://localhost:8080
+
+### 4. Run Tests
+
+**Unit Tests:**
+```bash
+go test ./pkg/... -v
+```
+
+**Integration Tests:**
+```bash
+./scripts/run-integration-tests.sh
+```
+
+### Full Deployment Pipeline
+
+Run the complete deployment and testing pipeline:
+
+```bash
+./scripts/full-deploy.sh
+```
+
+This will:
+1. Build all Docker images
+2. Deploy to Kubernetes
+3. Wait for services to stabilize
+4. Run integration tests
+
+## API Endpoints
+
+### Orchestrator API
+
+#### Health & Status
+- `GET /health` - Health check
+- `GET /ready` - Readiness check
+
+#### Job Management
+- `POST /api/jobs` - Submit a new job
+- `GET /api/jobs` - Get queue status
+- `GET /api/jobs/{id}` - Get job details
+- `POST /api/jobs/{id}` - Update job status
+
+### Job Submission Example
+
+```bash
+curl -X POST http://localhost:8080/api/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "pipeline_execution",
+    "priority": 1,
+    "project_id": "my-project",
+    "task_spec": {
+      "pipeline_id": "data-pipeline",
+      "parameters": {}
     },
-})
-ctx.SetTyped("user", userData)
-
-// Binary data for files/images
-imageData := pipelines.NewImageData(fileBytes, "image/jpeg", "jpeg", 1920, 1080)
-ctx.SetTyped("avatar", imageData)
-
-// Time series data for metrics
-metrics := pipelines.NewTimeSeriesData()
-metrics.AddPoint(time.Now(), 42.5, map[string]string{
-    "sensor": "temperature",
-    "unit": "celsius",
-})
-ctx.SetTyped("metrics", metrics)
-```
-
-## API Reference
-
-### Pipeline Execution API
-
-#### Execute Pipeline
-
-```http
-POST /api/v1/pipelines/execute
-Content-Type: application/json
-Authorization: Bearer <api-key>
-```
-
-**Request Schema:**
-```json
-{
-    "pipeline_name": "Data Processing Pipeline",
-    "pipeline_file": "path/to/pipeline.yaml",
-    "context": {
-        "input_data": "raw_input",
-        "parameters": {
-            "batch_size": 1000
-        }
+    "resource_requirements": {
+      "cpu": "500m",
+      "memory": "1Gi",
+      "gpu": false
+    },
+    "data_access": {
+      "input_datasets": [],
+      "output_location": "s3://bucket/results/"
     }
-}
+  }'
 ```
 
-**Response Schema:**
-```json
-{
-    "success": true,
-    "context": {
-        "processed_data": "transformed_output",
-        "metadata": {
-            "execution_time": "2024-01-15T10:30:00Z",
-            "plugin_version": "1.2.0"
-        }
-    },
-    "executed_at": "2024-01-15T10:30:05Z"
-}
+## Monitoring & Debugging
+
+### View Logs
+
+**Orchestrator logs:**
+```bash
+kubectl logs -n mimir-aip -l component=orchestrator -f
 ```
 
-#### Pipeline Status Monitoring
-
-```http
-GET /api/v1/pipelines/{id}/status
+**Worker logs:**
+```bash
+kubectl logs -n mimir-aip -l app=mimir-worker -f
 ```
 
-**Response Schema:**
-```json
-{
-    "pipeline_id": "data-processing-001",
-    "status": "running",
-    "progress": 0.65,
-    "current_step": "Data Transformation",
-    "started_at": "2024-01-15T10:25:00Z",
-    "estimated_completion": "2024-01-15T10:35:00Z"
-}
+**Redis logs:**
+```bash
+kubectl logs -n mimir-aip -l component=redis -f
 ```
 
-### Plugin Management API
-
-#### List Available Plugins
-
-```http
-GET /api/v1/plugins
-```
-
-**Response Schema:**
-```json
-{
-    "plugins": [
-        {
-            "type": "Data_Processing",
-            "name": "data_transform",
-            "version": "1.2.0",
-            "description": "Transforms input data according to specified rules",
-            "config_schema": {
-                "type": "object",
-                "properties": {
-                    "operation": {
-                        "type": "string",
-                        "enum": ["uppercase", "lowercase", "normalize"]
-                    }
-                }
-            }
-        }
-    ]
-}
-```
-
-### Job Scheduling API
-
-#### Create Scheduled Job
-
-```http
-POST /api/v1/scheduler/jobs
-```
-
-**Request Schema:**
-```json
-{
-    "id": "daily-data-processing",
-    "name": "Daily Data Processing Job",
-    "pipeline": "data-processing-pipeline",
-    "cron_expr": "0 2 * * *",
-    "timezone": "America/New_York",
-    "enabled": true
-}
-```
-
-## Performance Characteristics
-
-### Benchmark Results
-
-Comparative performance analysis against reference implementation:
-
-| Operation | Reference | Mimir AIP (Go) | Improvement Factor |
-|-----------|------------|-------------------|------------------|
-| Pipeline Execution | 2.5s | 0.3s | 8.3x faster |
-| Memory Usage | 150MB | 25MB | 6.0x reduction |
-| Concurrent Requests | 50 | 500 | 10.0x increase |
-| Plugin Load Time | 500ms | 50ms | 10.0x faster |
-| API Response Time | 200ms | 15ms | 13.3x faster |
-
-### Performance Optimizations
-
-#### Memory Management
-- **Copy-on-Write Context**: Reduces memory allocations by 70-90%
-- **Object Pooling**: Reuses frequently allocated objects
-- **Efficient Serialization**: Optimized JSON encoding/decoding
-- **Garbage Collection**: Reduced pressure through efficient data structures
-
-#### Algorithmic Improvements
-- **Sorting Optimization**: O(n²) bubble sort → O(n log n) sort.Slice
-- **Concurrent Processing**: Goroutine-based parallelism
-- **Cache Implementation**: LRU caching for frequently accessed data
-- **Atomic Operations**: Lock-free data structures where applicable
-
-#### Resource Management
-- **Goroutine Lifecycle**: Proper cleanup prevents leaks
-- **Context Cancellation**: Graceful shutdown handling
-- **Resource Limits**: Configurable concurrency and memory limits
-- **Health Monitoring**: Proactive resource management
-
-## Monitoring & Observability
-
-### Metrics Collection
-
-The system provides comprehensive monitoring through multiple channels:
-
-#### Performance Metrics
-```json
-{
-    "total_requests": 10000,
-    "average_latency": "45ms",
-    "p95_latency": "120ms",
-    "p99_latency": "250ms",
-    "requests_per_second": 125.5,
-    "error_rate": 0.002,
-    "memory_usage": 45000000,
-    "active_goroutines": 25
-}
-```
-
-#### System Health
-```json
-{
-    "status": "healthy",
-    "uptime": "72h30m15s",
-    "version": "1.2.0",
-    "components": {
-        "database": "healthy",
-        "scheduler": "healthy",
-        "plugin_system": "healthy",
-        "api_server": "healthy"
-    },
-    "last_check": "2024-01-15T10:30:00Z"
-}
-```
-
-### Visualization Interface
-
-ASCII-based system visualization for terminal environments:
+### Check Pod Status
 
 ```bash
-# System overview
-curl http://localhost:8080/api/v1/visualize/system
-
-# Pipeline visualization
-curl http://localhost:8080/api/v1/visualize/pipeline/data-processing-001
-
-# Scheduler status
-curl http://localhost:8080/api/v1/visualize/scheduler
+kubectl get pods -n mimir-aip
 ```
 
-## Security Model
+### Check Services
 
-### Authentication Framework
-
-#### API Key Authentication
-```http
-Authorization: Bearer <secure-api-key>
-```
-
-#### Request Validation
-- Input sanitization and validation
-- SQL injection prevention
-- Cross-site scripting (XSS) protection
-- Request size limitations
-
-#### Rate Limiting
-```yaml
-rate_limiting:
-  enabled: true
-  requests_per_minute: 100
-  burst_size: 20
-  cleanup_interval: 60s
-```
-
-### Data Protection
-
-#### Encryption
-- TLS 1.3 for all HTTP communications
-- Encrypted configuration storage
-- Secure credential management
-
-#### Access Control
-```yaml
-authorization:
-  roles:
-    - admin: ["*"]
-    - operator: ["pipelines:read", "pipelines:execute", "plugins:read"]
-    - viewer: ["pipelines:read", "monitoring:read"]
-  
-  plugin_permissions:
-    - type: "Input"
-      required_role: "operator"
-    - type: "AI_Model"
-      required_role: "admin"
-```
-
-## Development Guidelines
-
-### Code Quality Standards
-
-#### Testing Requirements
 ```bash
-# Unit test execution
-go test ./...
-
-# Test coverage analysis
-go test -cover ./...
-
-# Benchmark execution
-go test -bench=. ./...
-
-# Race condition detection
-go test -race ./...
+kubectl get svc -n mimir-aip
 ```
 
-#### Performance Profiling
+### View Worker Jobs
+
 ```bash
-# CPU profiling
-go test -bench=. -cpuprofile=cpu.prof ./...
-go tool pprof cpu.prof
-
-# Memory profiling
-go test -bench=. -memprofile=mem.prof ./...
-go tool pprof mem.prof
-
-# Trace analysis
-go test -trace=trace.out ./...
-go tool trace trace.out
+kubectl get jobs -n mimir-aip
 ```
 
-#### Code Organization
-- **Modular Architecture**: Single responsibility per package
-- **Interface Design**: Dependency injection and testability
-- **Error Handling**: Structured error propagation
-- **Documentation**: Comprehensive godoc comments
+### Access Kubernetes Dashboard
 
-### Contribution Protocol
-
-1. **Development Environment Setup**
+If you have the Kubernetes dashboard enabled in Rancher Desktop:
 ```bash
-git clone https://github.com/Mimir-AIP/Mimir-AIP-Go.git
-cd Mimir-AIP-Go
-go mod download
+kubectl proxy
+```
+Then access http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
+
+## Scaling Configuration
+
+The orchestrator manages worker scaling based on queue depth. Configuration is set via environment variables in the deployment manifest:
+
+- `MIN_WORKERS`: Minimum number of workers to maintain (default: 1)
+- `MAX_WORKERS`: Maximum number of workers allowed (default: 10)
+- `QUEUE_THRESHOLD`: Queue length that triggers scaling (default: 5)
+
+To modify these, edit `k8s/development/03-orchestrator.yaml` and redeploy.
+
+## Worker Job Types
+
+The system supports four job types:
+
+1. **pipeline_execution** - Data ingestion and processing pipelines
+2. **ml_training** - Machine learning model training
+3. **ml_inference** - Model inference and predictions
+4. **digital_twin_update** - Digital twin state updates
+
+Each job type can have different resource requirements specified in the job submission request.
+
+## Troubleshooting
+
+### Images not found
+
+If you see "ImagePullBackOff" errors, ensure you built the images:
+```bash
+./scripts/build-images.sh
 ```
 
-2. **Code Quality Assurance**
-- Unit test coverage >80%
-- Integration test validation
-- Performance benchmarking
-- Security audit compliance
+And that `imagePullPolicy: Never` is set in the deployment manifests.
 
-3. **Submission Requirements**
-- Pull request with detailed description
-- Associated test cases
-- Performance impact analysis
-- Documentation updates
+### Redis connection errors
 
-## Licensing & Attribution
-
-This project is licensed under the MIT License, permitting commercial and non-commercial use with attribution requirements. See the [LICENSE](LICENSE) file for complete terms and conditions.
-
-## Citation
-
-For academic and research purposes, please cite this project as:
-
-```
-Mimir AIP: High-Performance Plugin-Driven Automation Platform.
-Version 1.2.0. GitHub Repository: https://github.com/Mimir-AIP/Mimir-AIP-Go
+Check if Redis is running:
+```bash
+kubectl get pods -n mimir-aip -l component=redis
 ```
 
----
+View Redis logs:
+```bash
+kubectl logs -n mimir-aip -l component=redis
+```
 
-**Project Repository**: https://github.com/Mimir-AIP/Mimir-AIP-Go
-**Documentation**: https://mimir-aip.github.io/wiki/
-**Issues & Support**: https://github.com/Mimir-AIP/Mimir-AIP-Go/issues
+### Workers not spawning
+
+Check orchestrator logs for errors:
+```bash
+kubectl logs -n mimir-aip -l component=orchestrator -f
+```
+
+Verify the orchestrator has proper RBAC permissions:
+```bash
+kubectl get rolebinding -n mimir-aip
+```
+
+### Port forwarding issues
+
+Make sure no other processes are using the ports:
+```bash
+lsof -i :8080
+lsof -i :8081
+```
+
+## Cleanup
+
+To remove the entire deployment:
+
+```bash
+./scripts/undeploy-local.sh
+```
+
+To also remove the namespace:
+```bash
+kubectl delete namespace mimir-aip
+```
+
+## Development Workflow
+
+1. Make changes to source code
+2. Run unit tests: `go test ./pkg/... -v`
+3. Build images: `./scripts/build-images.sh`
+4. Deploy: `./scripts/deploy-local.sh`
+5. Run integration tests: `./scripts/run-integration-tests.sh`
+6. Monitor logs and verify functionality
+
+## Next Steps
+
+This infrastructure provides the foundation for:
+- Storage system integration
+- Project management
+- Pipeline execution
+- Ontology management
+- ML model training/inference
+- Digital twin creation and management
+
+See the respective plan files in the `Plan/` directory for details on each component.
+
+## Architecture Diagrams
+
+For detailed architecture information, see:
+- `Plan/Infrastructure/InfrastructurePlan.md` - Complete infrastructure specification
+- `Plan/Scaling/ScalingPlan.md` - Worker scaling architecture
+- `Plan/MimirAIPOverallPlan.md` - Overall system architecture

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orchestrator-config
+  namespace: mimir-aip
+data:
+  config.yaml: |
+    environment: development
+    log_level: debug
+    job_timeout: 3600

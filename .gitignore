@@ -32,10 +32,10 @@ vendor/
 **/.DS_Store
 Thumbs.db
 
-# Build artifacts
-orchestrator
-worker
-frontend-server
+# Build artifacts (root-level compiled binaries only; /cmd/* source dirs are NOT ignored)
+/orchestrator
+/worker
+/frontend-server
 
 # Kubernetes secrets (if generated locally)
 *-secret.yaml

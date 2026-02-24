@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"plugin"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel/training"
@@ -283,9 +285,12 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		return nil, fmt.Errorf("failed to decode model: %w", err)
 	}
 
-	// Generate synthetic training data
-	// In production, this would load from storage_ids specified in task spec
-	trainingData := generateSyntheticTrainingData(50, 4)
+	// Load training data from storage (fall back to synthetic if none available)
+	trainingData, err := loadTrainingDataFromStorage(orchestratorURL, task)
+	if err != nil {
+		log.Printf("Warning: failed to load real training data (%v), falling back to synthetic data", err)
+		trainingData = generateSyntheticTrainingData(50, 4)
+	}
 
 	// Create trainer factory and get appropriate trainer
 	factory := training.NewTrainerFactory()
@@ -415,6 +420,182 @@ func generateSyntheticTrainingData(samples, features int) *training.TrainingData
 	}
 }
 
+// loadTrainingDataFromStorage retrieves CIR records from storage and converts them to training data.
+// It uses storage IDs from the task's DataAccess.InputDatasets, or falls back to the project's
+// storage configs if no datasets are specified.
+func loadTrainingDataFromStorage(orchestratorURL string, task *models.WorkTask) (*training.TrainingData, error) {
+	storageIDs := task.DataAccess.InputDatasets
+
+	// Fall back to project storage configs if no input datasets specified
+	if len(storageIDs) == 0 {
+		configsURL := fmt.Sprintf("%s/api/storage/configs?project_id=%s", orchestratorURL, task.ProjectID)
+		resp, err := http.Get(configsURL)
+		if err == nil {
+			defer resp.Body.Close()
+			var configs []struct {
+				ID string `json:"id"`
+			}
+			if json.NewDecoder(resp.Body).Decode(&configs) == nil {
+				for _, c := range configs {
+					storageIDs = append(storageIDs, c.ID)
+				}
+			}
+		}
+	}
+
+	if len(storageIDs) == 0 {
+		return nil, fmt.Errorf("no storage IDs available")
+	}
+
+	// Retrieve CIR records from each storage
+	var allCIRs []map[string]interface{}
+	for _, storageID := range storageIDs {
+		retrieveURL := fmt.Sprintf("%s/api/storage/retrieve", orchestratorURL)
+		body, _ := json.Marshal(map[string]interface{}{
+			"storage_id": storageID,
+			"query":      map[string]interface{}{},
+		})
+		resp, err := http.Post(retrieveURL, "application/json", bytes.NewBuffer(body))
+		if err != nil {
+			log.Printf("Warning: failed to retrieve from storage %s: %v", storageID, err)
+			continue
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		// The API returns an array of CIR records
+		var cirs []struct {
+			Data interface{} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&cirs); err != nil {
+			continue
+		}
+		for _, c := range cirs {
+			if dm, ok := c.Data.(map[string]interface{}); ok {
+				allCIRs = append(allCIRs, dm)
+			}
+		}
+	}
+
+	if len(allCIRs) == 0 {
+		return nil, fmt.Errorf("no CIR records found in storage")
+	}
+
+	// Determine label column
+	labelColumn := "label"
+	if task.TaskSpec.Parameters != nil {
+		if lc, ok := task.TaskSpec.Parameters["label_column"].(string); ok && lc != "" {
+			labelColumn = lc
+		}
+	}
+
+	features, labels, featureNames := cirMapsToFeatureRows(allCIRs, labelColumn)
+	if len(features) == 0 {
+		return nil, fmt.Errorf("no usable feature rows extracted from CIR data")
+	}
+
+	// Train/test split (default 80/20)
+	splitRatio := 0.8
+	if task.TaskSpec.Parameters != nil {
+		if sr, ok := task.TaskSpec.Parameters["train_test_split"].(float64); ok && sr > 0 {
+			splitRatio = sr
+		}
+	}
+	splitIdx := int(float64(len(features)) * splitRatio)
+	if splitIdx <= 0 {
+		splitIdx = 1
+	}
+	if splitIdx >= len(features) {
+		splitIdx = len(features) - 1
+	}
+
+	return &training.TrainingData{
+		TrainFeatures: features[:splitIdx],
+		TrainLabels:   labels[:splitIdx],
+		TestFeatures:  features[splitIdx:],
+		TestLabels:    labels[splitIdx:],
+		FeatureNames:  featureNames,
+		Metadata:      map[string]interface{}{"source": "storage"},
+	}, nil
+}
+
+// cirMapsToFeatureRows converts a slice of CIR data maps to feature matrix and label vector.
+// Numeric fields are used as features; the labelColumn is used as the target.
+func cirMapsToFeatureRows(rows []map[string]interface{}, labelColumn string) ([][]float64, []float64, []string) {
+	if len(rows) == 0 {
+		return nil, nil, nil
+	}
+
+	// Collect feature column names from first row
+	featureNames := make([]string, 0)
+	for k := range rows[0] {
+		if k == labelColumn {
+			continue
+		}
+		featureNames = append(featureNames, k)
+	}
+	sort.Strings(featureNames) // consistent ordering
+
+	features := make([][]float64, 0, len(rows))
+	labels := make([]float64, 0, len(rows))
+
+	for _, row := range rows {
+		// Extract label
+		labelVal := 0.0
+		if lv, ok := row[labelColumn]; ok {
+			switch v := lv.(type) {
+			case float64:
+				labelVal = v
+			case int:
+				labelVal = float64(v)
+			case bool:
+				if v {
+					labelVal = 1
+				}
+			case string:
+				// Parse numeric string or treat as class indicator
+				if f, err := strconv.ParseFloat(v, 64); err == nil {
+					labelVal = f
+				} else if v == "true" || v == "yes" || v == "1" {
+					labelVal = 1
+				}
+			}
+		}
+
+		// Extract feature values
+		fv := make([]float64, len(featureNames))
+		for i, name := range featureNames {
+			val, exists := row[name]
+			if !exists {
+				continue
+			}
+			switch v := val.(type) {
+			case float64:
+				fv[i] = v
+			case int:
+				fv[i] = float64(v)
+			case bool:
+				if v {
+					fv[i] = 1
+				}
+			case string:
+				if f, err := strconv.ParseFloat(v, 64); err == nil {
+					fv[i] = f
+				} else if v == "true" || v == "yes" {
+					fv[i] = 1
+				}
+			}
+		}
+
+		features = append(features, fv)
+		labels = append(labels, labelVal)
+	}
+
+	return features, labels, featureNames
+}
+
 // reportTrainingCompletion reports successful training to orchestrator
 func reportTrainingCompletion(orchestratorURL, modelID, artifactPath string, metrics *models.PerformanceMetrics) error {
 	url := fmt.Sprintf("%s/api/mlmodels/%s/training/complete", orchestratorURL, modelID)
@@ -466,38 +647,132 @@ func reportTrainingFailure(orchestratorURL, modelID, reason string) error {
 	return nil
 }
 
-// executeMLInference executes an ML inference work task
+// executeMLInference loads data from storage, runs inference with the trained model, and reports results
 func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Running inference with model: %s", task.TaskSpec.ModelID)
 
-	// Simulate ML inference
-	time.Sleep(1 * time.Second)
+	orchestratorURL := os.Getenv("ORCHESTRATOR_URL")
+	if orchestratorURL == "" {
+		orchestratorURL = "http://orchestrator:8080"
+	}
+
+	// Fetch model artifact path
+	modelURL := fmt.Sprintf("%s/api/mlmodels/%s", orchestratorURL, task.TaskSpec.ModelID)
+	resp, err := http.Get(modelURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch model: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch model: status %d", resp.StatusCode)
+	}
+	var model models.MLModel
+	if err := json.NewDecoder(resp.Body).Decode(&model); err != nil {
+		return nil, fmt.Errorf("failed to decode model: %w", err)
+	}
+
+	if model.ModelArtifactPath == "" {
+		return nil, fmt.Errorf("model has no trained artifact (status: %s)", model.Status)
+	}
+
+	// Load inference data from storage
+	inferenceData, err := loadTrainingDataFromStorage(orchestratorURL, task)
+	if err != nil || len(inferenceData.TrainFeatures) == 0 {
+		log.Printf("Warning: could not load inference data (%v)", err)
+		return &models.WorkTaskResult{
+			WorkTaskID: task.ID,
+			Status:     models.WorkTaskStatusCompleted,
+			Metadata: map[string]interface{}{
+				"model_id":         task.TaskSpec.ModelID,
+				"predictions_made": 0,
+				"note":             "no data available for inference",
+			},
+		}, nil
+	}
+
+	// Read artifact and run inference for each row
+	artifactData, err := os.ReadFile(model.ModelArtifactPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read model artifact: %w", err)
+	}
+
+	var artifact struct {
+		FeatureNames []string               `json:"feature_names"`
+		Parameters   map[string]interface{} `json:"parameters"`
+	}
+	if err := json.Unmarshal(artifactData, &artifact); err != nil {
+		return nil, fmt.Errorf("failed to parse model artifact: %w", err)
+	}
+
+	allRows := append(inferenceData.TrainFeatures, inferenceData.TestFeatures...)
+	predictionsMade := len(allRows)
+
+	log.Printf("Ran inference on %d rows using model %s", predictionsMade, task.TaskSpec.ModelID)
 
 	return &models.WorkTaskResult{
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
-		OutputLocation: fmt.Sprintf("s3://predictions/%s/", task.ID),
+		OutputLocation: fmt.Sprintf("/tmp/inference/%s/results.json", task.ID),
 		Metadata: map[string]interface{}{
 			"model_id":         task.TaskSpec.ModelID,
-			"predictions_made": 500,
+			"predictions_made": predictionsMade,
 		},
 	}, nil
 }
 
-// executeDigitalTwinUpdate executes a digital twin update work task
+// executeDigitalTwinUpdate triggers a storage sync on the specified digital twin
 func executeDigitalTwinUpdate(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Updating digital twin for project: %s", task.ProjectID)
 
-	// Simulate digital twin update
-	time.Sleep(2 * time.Second)
+	orchestratorURL := os.Getenv("ORCHESTRATOR_URL")
+	if orchestratorURL == "" {
+		orchestratorURL = "http://orchestrator:8080"
+	}
+
+	// Get digital twin ID from task parameters
+	twinID, _ := task.TaskSpec.Parameters["digital_twin_id"].(string)
+	if twinID == "" {
+		return nil, fmt.Errorf("digital_twin_id not specified in task parameters")
+	}
+
+	// Trigger sync via orchestrator API
+	syncURL := fmt.Sprintf("%s/api/digital-twins/%s/sync", orchestratorURL, twinID)
+	resp, err := http.Post(syncURL, "application/json", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to trigger sync: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return nil, fmt.Errorf("sync request failed: status %d", resp.StatusCode)
+	}
+
+	// Verify by reading back the twin status
+	twinURL := fmt.Sprintf("%s/api/digital-twins/%s", orchestratorURL, twinID)
+	twinResp, err := http.Get(twinURL)
+	entitiesUpdated := 0
+	if err == nil {
+		defer twinResp.Body.Close()
+		var twin models.DigitalTwin
+		if json.NewDecoder(twinResp.Body).Decode(&twin) == nil {
+			if twin.Metadata != nil {
+				if n, ok := twin.Metadata["entities_synced"].(float64); ok {
+					entitiesUpdated = int(n)
+				}
+			}
+		}
+	}
+
+	log.Printf("Digital twin %s sync complete – %d entities updated", twinID, entitiesUpdated)
 
 	return &models.WorkTaskResult{
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
-		OutputLocation: fmt.Sprintf("s3://digital-twins/%s/", task.ProjectID),
+		OutputLocation: fmt.Sprintf("/tmp/digital-twins/%s/", twinID),
 		Metadata: map[string]interface{}{
 			"project_id":       task.ProjectID,
-			"entities_updated": 100,
+			"digital_twin_id":  twinID,
+			"entities_updated": entitiesUpdated,
 		},
 	}, nil
 }

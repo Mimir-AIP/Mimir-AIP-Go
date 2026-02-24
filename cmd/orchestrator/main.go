@@ -87,9 +87,14 @@ func main() {
 	// Initialize storage service
 	storageService := storage.NewService(store)
 
-	// Register filesystem storage plugin
-	filesystemPlugin := storageplugins.NewFilesystemPlugin()
-	storageService.RegisterPlugin("filesystem", filesystemPlugin)
+	// Register all storage plugins
+	storageService.RegisterPlugin("filesystem", storageplugins.NewFilesystemPlugin())
+	storageService.RegisterPlugin("postgresql", storageplugins.NewPostgresPlugin())
+	storageService.RegisterPlugin("mysql", storageplugins.NewMySQLPlugin())
+	storageService.RegisterPlugin("mongodb", storageplugins.NewMongoDBPlugin())
+	storageService.RegisterPlugin("s3", storageplugins.NewS3Plugin())
+	storageService.RegisterPlugin("redis", storageplugins.NewRedisPlugin())
+	storageService.RegisterPlugin("elasticsearch", storageplugins.NewElasticsearchPlugin())
 
 	// Initialize ontology and extraction services
 	ontologyService := ontology.NewService(store)

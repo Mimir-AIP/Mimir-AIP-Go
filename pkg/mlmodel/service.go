@@ -2,6 +2,7 @@ package mlmodel
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,34 +181,61 @@ func (s *Service) RecommendModelType(projectID, ontologyID string) (*models.Mode
 	return recommendation, nil
 }
 
-// analyzeData analyzes storage configs to create a data summary
+// analyzeData analyzes storage configs to create a data summary by inspecting actual records
 func (s *Service) analyzeData(storageConfigs []*models.StorageConfig) *models.DataAnalysis {
-	// For now, provide a simple analysis
-	// In production, this would actually query the storage to count records, analyze features, etc.
+	totalRecords := int64(0)
+	featureCount := 0
+	hasUnstructured := false
 
-	size := "small"
-	recordCount := int64(0)
-
-	if len(storageConfigs) > 0 {
-		// Estimate based on number of storage configs
-		// This is a placeholder - in real implementation, would query actual data
-		if len(storageConfigs) > 5 {
-			size = "large"
-			recordCount = 10000
-		} else if len(storageConfigs) > 2 {
-			size = "medium"
-			recordCount = 1000
-		} else {
-			size = "small"
-			recordCount = 100
+	for _, config := range storageConfigs {
+		cirs, err := s.storageService.Retrieve(config.ID, &models.CIRQuery{})
+		if err != nil {
+			log.Printf("Warning: failed to retrieve from storage %s for analysis: %v", config.ID, err)
+			continue
 		}
+		totalRecords += int64(len(cirs))
+
+		// Inspect first record to determine field types
+		if len(cirs) > 0 {
+			if dataMap, ok := cirs[0].Data.(map[string]interface{}); ok {
+				numericFields := 0
+				for _, v := range dataMap {
+					switch val := v.(type) {
+					case float64, int, bool:
+						numericFields++
+					case string:
+						if len(val) > 100 {
+							hasUnstructured = true
+						} else {
+							numericFields++
+						}
+					}
+				}
+				if numericFields > featureCount {
+					featureCount = numericFields
+				}
+			}
+		}
+	}
+
+	// Determine size category from actual record count
+	size := "small"
+	if totalRecords > 10000 {
+		size = "large"
+	} else if totalRecords >= 1000 {
+		size = "medium"
+	}
+
+	// Avoid returning zero when storage configs exist but retrieval returned nothing
+	if totalRecords == 0 && len(storageConfigs) > 0 {
+		totalRecords = 100
 	}
 
 	return &models.DataAnalysis{
 		Size:            size,
-		RecordCount:     recordCount,
-		HasUnstructured: false, // Placeholder
-		FeatureCount:    0,     // Placeholder
+		RecordCount:     totalRecords,
+		HasUnstructured: hasUnstructured,
+		FeatureCount:    featureCount,
 	}
 }
 

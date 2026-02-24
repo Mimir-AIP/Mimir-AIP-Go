@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -243,10 +244,27 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	executionTime := time.Since(startTime)
 	log.Printf("Pipeline execution completed: %d steps executed in %v", stepsExecuted, executionTime)
 
+	// Write pipeline execution context to disk
+	outputDir := fmt.Sprintf("/tmp/pipeline/%s", task.ID)
+	outputPath := fmt.Sprintf("%s/context.json", outputDir)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.Printf("Warning: failed to create pipeline output dir: %v", err)
+		outputPath = ""
+	} else {
+		contextJSON, err := json.Marshal(context.Steps)
+		if err != nil {
+			log.Printf("Warning: failed to marshal pipeline context: %v", err)
+			outputPath = ""
+		} else if err := os.WriteFile(outputPath, contextJSON, 0644); err != nil {
+			log.Printf("Warning: failed to write pipeline context: %v", err)
+			outputPath = ""
+		}
+	}
+
 	return &models.WorkTaskResult{
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
-		OutputLocation: fmt.Sprintf("s3://results/%s/", task.ID),
+		OutputLocation: outputPath,
 		Metadata: map[string]interface{}{
 			"pipeline_id":       task.TaskSpec.PipelineID,
 			"pipeline_name":     pipeline.Name,
@@ -269,7 +287,7 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	}
 
 	// Get model details from orchestrator
-	modelURL := fmt.Sprintf("%s/api/mlmodels/%s", orchestratorURL, task.TaskSpec.ModelID)
+	modelURL := fmt.Sprintf("%s/api/ml-models/%s", orchestratorURL, task.TaskSpec.ModelID)
 	resp, err := http.Get(modelURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch model: %w", err)
@@ -598,7 +616,7 @@ func cirMapsToFeatureRows(rows []map[string]interface{}, labelColumn string) ([]
 
 // reportTrainingCompletion reports successful training to orchestrator
 func reportTrainingCompletion(orchestratorURL, modelID, artifactPath string, metrics *models.PerformanceMetrics) error {
-	url := fmt.Sprintf("%s/api/mlmodels/%s/training/complete", orchestratorURL, modelID)
+	url := fmt.Sprintf("%s/api/ml-models/%s/training/complete", orchestratorURL, modelID)
 	payload := map[string]interface{}{
 		"model_artifact_path": artifactPath,
 		"performance_metrics": metrics,
@@ -624,7 +642,7 @@ func reportTrainingCompletion(orchestratorURL, modelID, artifactPath string, met
 
 // reportTrainingFailure reports training failure to orchestrator
 func reportTrainingFailure(orchestratorURL, modelID, reason string) error {
-	url := fmt.Sprintf("%s/api/mlmodels/%s/training/fail", orchestratorURL, modelID)
+	url := fmt.Sprintf("%s/api/ml-models/%s/training/fail", orchestratorURL, modelID)
 	payload := map[string]interface{}{
 		"reason": reason,
 	}
@@ -657,7 +675,7 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	}
 
 	// Fetch model artifact path
-	modelURL := fmt.Sprintf("%s/api/mlmodels/%s", orchestratorURL, task.TaskSpec.ModelID)
+	modelURL := fmt.Sprintf("%s/api/ml-models/%s", orchestratorURL, task.TaskSpec.ModelID)
 	resp, err := http.Get(modelURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch model: %w", err)
@@ -697,6 +715,7 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	}
 
 	var artifact struct {
+		ModelType    string                 `json:"model_type"`
 		FeatureNames []string               `json:"feature_names"`
 		Parameters   map[string]interface{} `json:"parameters"`
 	}
@@ -705,19 +724,183 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	}
 
 	allRows := append(inferenceData.TrainFeatures, inferenceData.TestFeatures...)
-	predictionsMade := len(allRows)
+	results := make([]map[string]interface{}, 0, len(allRows))
 
-	log.Printf("Ran inference on %d rows using model %s", predictionsMade, task.TaskSpec.ModelID)
+	for _, row := range allRows {
+		// Build feature vector in artifact's feature name ordering (positional match)
+		features := make([]float64, len(artifact.FeatureNames))
+		for i := range artifact.FeatureNames {
+			if i < len(row) {
+				features[i] = row[i]
+			}
+		}
+
+		pred, err := workerRunInference(artifact.ModelType, artifact.Parameters, features)
+		if err != nil {
+			log.Printf("Warning: inference failed for row: %v", err)
+			pred = 0.0
+		}
+		results = append(results, map[string]interface{}{
+			"input":      row,
+			"prediction": pred,
+		})
+	}
+
+	// Write results to disk
+	outputDir := fmt.Sprintf("/tmp/inference/%s", task.ID)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create inference output dir: %w", err)
+	}
+	outputPath := fmt.Sprintf("%s/results.json", outputDir)
+	resultsJSON, err := json.Marshal(results)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal predictions: %w", err)
+	}
+	if err := os.WriteFile(outputPath, resultsJSON, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write inference results: %w", err)
+	}
+
+	log.Printf("Ran inference on %d rows using model %s", len(results), task.TaskSpec.ModelID)
 
 	return &models.WorkTaskResult{
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
-		OutputLocation: fmt.Sprintf("/tmp/inference/%s/results.json", task.ID),
+		OutputLocation: outputPath,
 		Metadata: map[string]interface{}{
 			"model_id":         task.TaskSpec.ModelID,
-			"predictions_made": predictionsMade,
+			"predictions_made": len(results),
 		},
 	}, nil
+}
+
+// workerRunInference executes inference for a single feature vector using the given model type and parameters.
+// This mirrors the dispatch logic in pkg/digitaltwin/inference.go.
+func workerRunInference(modelType string, parameters map[string]interface{}, features []float64) (float64, error) {
+	switch modelType {
+	case "decision_tree":
+		modelDataRaw, ok := parameters["model_data"]
+		if !ok {
+			return 0.0, nil
+		}
+		modelJSON, err := json.Marshal(modelDataRaw)
+		if err != nil {
+			return 0.0, fmt.Errorf("failed to marshal tree data: %w", err)
+		}
+		var node training.DecisionTreeModel
+		if err := json.Unmarshal(modelJSON, &node); err != nil {
+			return 0.0, fmt.Errorf("failed to unmarshal decision tree: %w", err)
+		}
+		return training.TraverseTree(&node, features), nil
+
+	case "random_forest":
+		modelDataRaw, ok := parameters["model_data"]
+		if !ok {
+			return 0.0, nil
+		}
+		modelJSON, err := json.Marshal(modelDataRaw)
+		if err != nil {
+			return 0.0, fmt.Errorf("failed to marshal RF data: %w", err)
+		}
+		var rf training.RandomForestArtifact
+		if err := json.Unmarshal(modelJSON, &rf); err != nil {
+			return 0.0, fmt.Errorf("failed to unmarshal random forest: %w", err)
+		}
+		votes := make(map[float64]int)
+		for _, tree := range rf.Trees {
+			pred := math.Round(training.TraverseTree(tree, features))
+			votes[pred]++
+		}
+		bestCount := 0
+		bestClass := 0.0
+		for class, count := range votes {
+			if count > bestCount {
+				bestCount = count
+				bestClass = class
+			}
+		}
+		return bestClass, nil
+
+	case "regression":
+		weightsRaw, ok := parameters["weights"]
+		if !ok {
+			return 0.0, nil
+		}
+		weightsSlice, ok := weightsRaw.([]interface{})
+		if !ok {
+			return 0.0, nil
+		}
+		intercept := 0.0
+		if b, ok := parameters["intercept"]; ok {
+			if bFloat, ok := b.(float64); ok {
+				intercept = bFloat
+			}
+		}
+		pred := intercept
+		for i, w := range weightsSlice {
+			if i < len(features) {
+				if wFloat, ok := w.(float64); ok {
+					pred += wFloat * features[i]
+				}
+			}
+		}
+		return pred, nil
+
+	case "neural_network":
+		weightsRaw, ok := parameters["weights"]
+		if !ok {
+			return 0.0, nil
+		}
+		biasesRaw, ok := parameters["biases"]
+		if !ok {
+			return 0.0, nil
+		}
+		weightsJSON, err := json.Marshal(weightsRaw)
+		if err != nil {
+			return 0.0, fmt.Errorf("failed to marshal NN weights: %w", err)
+		}
+		biasesJSON, err := json.Marshal(biasesRaw)
+		if err != nil {
+			return 0.0, fmt.Errorf("failed to marshal NN biases: %w", err)
+		}
+		var weights [][][]float64
+		var biases [][]float64
+		if err := json.Unmarshal(weightsJSON, &weights); err != nil {
+			return 0.0, fmt.Errorf("failed to unmarshal NN weights: %w", err)
+		}
+		if err := json.Unmarshal(biasesJSON, &biases); err != nil {
+			return 0.0, fmt.Errorf("failed to unmarshal NN biases: %w", err)
+		}
+		a := make([]float64, len(features))
+		copy(a, features)
+		for l, w := range weights {
+			outSize := len(w)
+			z := make([]float64, outSize)
+			for j := 0; j < outSize; j++ {
+				z[j] = biases[l][j]
+				for k, ak := range a {
+					if k < len(w[j]) {
+						z[j] += w[j][k] * ak
+					}
+				}
+			}
+			a = make([]float64, outSize)
+			isOutput := l == len(weights)-1
+			for j := range z {
+				if isOutput {
+					a[j] = 1.0 / (1.0 + math.Exp(-z[j]))
+				} else if z[j] > 0 {
+					a[j] = z[j]
+				}
+			}
+		}
+		if len(a) > 0 {
+			return a[0], nil
+		}
+		return 0.0, nil
+
+	default:
+		return 0.0, fmt.Errorf("unsupported model type: %s", modelType)
+	}
 }
 
 // executeDigitalTwinUpdate triggers a storage sync on the specified digital twin

@@ -3,7 +3,6 @@ package training
 import (
 	"fmt"
 	"math"
-	"math/rand"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"gonum.org/v1/gonum/mat"
@@ -67,7 +66,7 @@ func (t *DecisionTreeTrainer) Train(data *TrainingData, config *models.TrainingC
 		ModelData:          t.treeModel,
 		TrainingMetrics:    trainingMetrics,
 		PerformanceMetrics: perfMetrics,
-		FeatureImportance:  calculateFeatureImportance(len(data.FeatureNames)),
+		FeatureImportance:  calculateFeatureImportance(t.treeModel, data.FeatureNames),
 	}, nil
 }
 
@@ -330,13 +329,35 @@ func calculateRegressionMetrics(predictions, actual []float64) *models.Performan
 	}
 }
 
-func calculateFeatureImportance(numFeatures int) map[string]float64 {
-	// Placeholder: In production, would calculate actual feature importance
-	importance := make(map[string]float64)
-	for i := 0; i < numFeatures; i++ {
-		importance[fmt.Sprintf("feature_%d", i)] = rand.Float64()
+// countFeatureSplits counts how many times each feature index appears as a split in the tree
+func countFeatureSplits(node *DecisionTreeModel, counts []float64) {
+	if node == nil || node.IsLeaf {
+		return
 	}
-	return importance
+	if node.Feature >= 0 && node.Feature < len(counts) {
+		counts[node.Feature]++
+	}
+	countFeatureSplits(node.Left, counts)
+	countFeatureSplits(node.Right, counts)
+}
+
+// calculateFeatureImportance computes normalized split-count importance from the trained tree
+func calculateFeatureImportance(root *DecisionTreeModel, featureNames []string) map[string]float64 {
+	counts := make([]float64, len(featureNames))
+	countFeatureSplits(root, counts)
+	total := 0.0
+	for _, v := range counts {
+		total += v
+	}
+	m := make(map[string]float64, len(featureNames))
+	for i, name := range featureNames {
+		if total > 0 {
+			m[name] = counts[i] / total
+		} else {
+			m[name] = 0
+		}
+	}
+	return m
 }
 
 // buildTreeWithFeatureSubset builds a decision tree considering only a subset of features at each split

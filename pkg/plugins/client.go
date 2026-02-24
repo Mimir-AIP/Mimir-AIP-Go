@@ -201,15 +201,6 @@ func (c *Client) storeCacheMetadata(path, version, commit, updated string) {
 	os.WriteFile(metaPath, []byte(data), 0644)
 }
 
-// LoadPluginFromCache loads a plugin from the local cache
-func (c *Client) LoadPluginFromCache(name string) (string, error) {
-	cachePath := filepath.Join(c.cacheDir, fmt.Sprintf("%s.so", name))
-	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
-		return "", fmt.Errorf("plugin %s not in cache", name)
-	}
-	return cachePath, nil
-}
-
 // FetchPluginMetadata fetches plugin metadata from the registry
 func (c *Client) FetchPluginMetadata(name string) (*models.Plugin, error) {
 	url := fmt.Sprintf("%s/api/plugins/%s", c.baseURL, name)

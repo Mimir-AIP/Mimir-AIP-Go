@@ -442,5 +442,3 @@ func (r *RedisPlugin) evaluateCondition(value interface{}, operator string, expe
 	}
 }
 
-// ensure uuid import is used
-var _ = uuid.New

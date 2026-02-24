@@ -168,25 +168,41 @@ func (e *InferenceEngine) runInference(model *models.MLModel, input map[string]i
 		if err != nil {
 			return nil, 0, err
 		}
-		return prediction, 0.85, nil
+		confidence := 0.85
+		if model.PerformanceMetrics != nil && model.PerformanceMetrics.Accuracy > 0 {
+			confidence = model.PerformanceMetrics.Accuracy
+		}
+		return prediction, confidence, nil
 
 	case "random_forest":
 		prediction, err := e.predictRandomForest(&artifact, features)
 		if err != nil {
 			return nil, 0, err
 		}
-		return prediction, 0.90, nil
+		confidence := 0.90
+		if model.PerformanceMetrics != nil && model.PerformanceMetrics.Accuracy > 0 {
+			confidence = model.PerformanceMetrics.Accuracy
+		}
+		return prediction, confidence, nil
 
 	case "regression":
 		prediction := e.predictRegression(&artifact, features)
-		return prediction, 1.0, nil
+		confidence := 1.0
+		if model.PerformanceMetrics != nil && model.PerformanceMetrics.R2Score > 0 {
+			confidence = math.Max(0, model.PerformanceMetrics.R2Score)
+		}
+		return prediction, confidence, nil
 
 	case "neural_network":
 		prediction, err := e.predictNeuralNetwork(&artifact, features)
 		if err != nil {
 			return nil, 0, err
 		}
-		return prediction, 0.88, nil
+		confidence := 0.88
+		if model.PerformanceMetrics != nil && model.PerformanceMetrics.Accuracy > 0 {
+			confidence = model.PerformanceMetrics.Accuracy
+		}
+		return prediction, confidence, nil
 
 	default:
 		return nil, 0, fmt.Errorf("unsupported model type: %s", artifact.ModelType)

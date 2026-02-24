@@ -2,7 +2,6 @@ package digitaltwin
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -913,5 +912,3 @@ func compareVals(a, b interface{}) int {
 	return strings.Compare(as, bs)
 }
 
-// _ ensures math is used (for future numeric ops in filter)
-var _ = math.Abs

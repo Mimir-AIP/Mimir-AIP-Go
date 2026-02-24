@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
@@ -408,6 +406,3 @@ func toFloat(v interface{}) float64 {
 	return 0
 }
 
-// ensure unused imports are satisfied
-var _ = time.Now
-var _ = uuid.New

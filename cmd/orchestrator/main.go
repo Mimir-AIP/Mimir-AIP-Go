@@ -43,7 +43,13 @@ func main() {
 	log.Println("Initialized in-memory job queue")
 
 	// Initialize Kubernetes client
-	k8sClient, err := k8s.NewClient("mimir-aip")
+	k8sClient, err := k8s.NewClient(k8s.ClientConfig{
+		Namespace:          cfg.WorkerNamespace,
+		OrchestratorURL:    cfg.OrchestratorURL,
+		ServiceAccountName: cfg.WorkerServiceAccount,
+		CPULimit:           cfg.WorkerCPULimit,
+		MemoryLimit:        cfg.WorkerMemoryLimit,
+	})
 	if err != nil {
 		log.Fatalf("Failed to initialize Kubernetes client: %v", err)
 	}
@@ -264,8 +270,7 @@ func (ws *WorkerSpawner) processQueue() {
 	}
 
 	// Create worker job
-	workerImage := "mimir-aip/worker:latest"
-	if err := ws.k8sClient.CreateWorkerJob(task, workerImage); err != nil {
+	if err := ws.k8sClient.CreateWorkerJob(task, ws.config.WorkerImage); err != nil {
 		log.Printf("Error creating worker job: %v", err)
 		// Update task status to failed
 		ws.queue.UpdateWorkTaskStatus(task.ID, models.WorkTaskStatusFailed, err.Error())

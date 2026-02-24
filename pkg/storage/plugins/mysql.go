@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/go-sql-driver/mysql"
@@ -376,6 +375,3 @@ func (m *MySQLPlugin) inferEntityType(cir *models.CIR) string {
 	return "default"
 }
 
-// ensure unused imports are satisfied
-var _ = time.Now
-var _ = uuid.New

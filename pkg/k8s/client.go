@@ -17,15 +17,28 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
+// ClientConfig holds configuration for the Kubernetes client
+type ClientConfig struct {
+	Namespace          string
+	OrchestratorURL    string
+	ServiceAccountName string
+	CPULimit           string
+	MemoryLimit        string
+}
+
 // Client provides Kubernetes API operations
 type Client struct {
-	clientset *kubernetes.Clientset
-	namespace string
-	ctx       context.Context
+	clientset          *kubernetes.Clientset
+	namespace          string
+	orchestratorURL    string
+	serviceAccountName string
+	cpuLimit           string
+	memoryLimit        string
+	ctx                context.Context
 }
 
 // NewClient creates a new Kubernetes client
-func NewClient(namespace string) (*Client, error) {
+func NewClient(cfg ClientConfig) (*Client, error) {
 	config, err := getKubeConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get kubernetes config: %w", err)
@@ -36,14 +49,30 @@ func NewClient(namespace string) (*Client, error) {
 		return nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
 
-	if namespace == "" {
-		namespace = "default"
+	if cfg.Namespace == "" {
+		cfg.Namespace = "default"
+	}
+	if cfg.OrchestratorURL == "" {
+		cfg.OrchestratorURL = "http://orchestrator:8080"
+	}
+	if cfg.ServiceAccountName == "" {
+		cfg.ServiceAccountName = "worker-service-account"
+	}
+	if cfg.CPULimit == "" {
+		cfg.CPULimit = "2000m"
+	}
+	if cfg.MemoryLimit == "" {
+		cfg.MemoryLimit = "4Gi"
 	}
 
 	return &Client{
-		clientset: clientset,
-		namespace: namespace,
-		ctx:       context.Background(),
+		clientset:          clientset,
+		namespace:          cfg.Namespace,
+		orchestratorURL:    cfg.OrchestratorURL,
+		serviceAccountName: cfg.ServiceAccountName,
+		cpuLimit:           cfg.CPULimit,
+		memoryLimit:        cfg.MemoryLimit,
+		ctx:                context.Background(),
 	}, nil
 }
 
@@ -83,15 +112,15 @@ func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string) erro
 		memoryRequest = "1Gi"
 	}
 
-	// Calculate limits (2x requests)
-	cpuLimit := "2000m"
-	memoryLimit := "4Gi"
+	// Calculate limits from client config
+	cpuLimit := c.cpuLimit
+	memoryLimit := c.memoryLimit
 
 	// Build environment variables
 	envVars := []corev1.EnvVar{
 		{Name: "WORKTASK_ID", Value: task.ID},
 		{Name: "WORKTASK_TYPE", Value: string(task.Type)},
-		{Name: "ORCHESTRATOR_URL", Value: "http://orchestrator:8080"},
+		{Name: "ORCHESTRATOR_URL", Value: c.orchestratorURL},
 	}
 
 	// Create Job specification
@@ -116,7 +145,7 @@ func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string) erro
 					},
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: "worker-service-account",
+					ServiceAccountName: c.serviceAccountName,
 					Containers: []corev1.Container{
 						{
 							Name:            "worker",

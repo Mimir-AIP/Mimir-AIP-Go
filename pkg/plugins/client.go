@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -198,7 +199,9 @@ func (c *Client) isCached(path, version, commit, updated string) bool {
 func (c *Client) storeCacheMetadata(path, version, commit, updated string) {
 	metaPath := path + ".meta"
 	data := fmt.Sprintf("%s:%s:%s", version, commit, updated)
-	os.WriteFile(metaPath, []byte(data), 0644)
+	if err := os.WriteFile(metaPath, []byte(data), 0644); err != nil {
+		log.Printf("Warning: failed to write plugin cache metadata %s: %v", metaPath, err)
+	}
 }
 
 // FetchPluginMetadata fetches plugin metadata from the registry

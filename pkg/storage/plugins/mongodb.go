@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -401,5 +400,3 @@ func (m *MongoDBPlugin) inferEntityType(cir *models.CIR) string {
 	return "default"
 }
 
-// ensure unused import is satisfied
-var _ = strings.Contains

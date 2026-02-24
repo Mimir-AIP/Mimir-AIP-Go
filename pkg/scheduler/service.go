@@ -97,7 +97,8 @@ func (s *Service) Create(req *models.ScheduleCreateRequest) (*models.Schedule, e
 	// Schedule job if enabled
 	if job.Enabled {
 		if err := s.scheduleJob(job); err != nil {
-			log.Printf("Warning: Failed to schedule job %s: %v", job.Name, err)
+			s.store.DeleteSchedule(job.ID)
+			return nil, fmt.Errorf("failed to schedule job: %w", err)
 		}
 	}
 
@@ -173,7 +174,7 @@ func (s *Service) Update(id string, req *models.ScheduleUpdateRequest) (*models.
 	// Reschedule if enabled
 	if job.Enabled {
 		if err := s.scheduleJob(job); err != nil {
-			log.Printf("Warning: Failed to schedule job %s: %v", job.Name, err)
+			return nil, fmt.Errorf("failed to schedule job: %w", err)
 		}
 	}
 

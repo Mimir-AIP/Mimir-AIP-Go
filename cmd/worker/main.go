@@ -20,6 +20,13 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/plugins"
 )
 
+func getOrchestratorURL() string {
+	if url := os.Getenv("ORCHESTRATOR_URL"); url != "" {
+		return url
+	}
+	return "http://orchestrator:8080"
+}
+
 func main() {
 	// Get work task information from environment
 	taskID := os.Getenv("WORKTASK_ID")
@@ -32,10 +39,7 @@ func main() {
 	log.Printf("Worker starting for task %s (type: %s)", taskID, taskType)
 
 	// Get orchestrator URL
-	orchestratorURL := os.Getenv("ORCHESTRATOR_URL")
-	if orchestratorURL == "" {
-		orchestratorURL = "http://orchestrator:8080"
-	}
+	orchestratorURL := getOrchestratorURL()
 
 	// Get work task details from orchestrator API
 	task, err := getWorkTaskFromAPI(orchestratorURL, taskID)
@@ -85,10 +89,7 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Executing pipeline: %s", task.TaskSpec.PipelineID)
 
 	// Get orchestrator URL
-	orchestratorURL := os.Getenv("ORCHESTRATOR_URL")
-	if orchestratorURL == "" {
-		orchestratorURL = "http://orchestrator:8080"
-	}
+	orchestratorURL := getOrchestratorURL()
 
 	// Fetch pipeline definition from orchestrator
 	pipelineURL := fmt.Sprintf("%s/api/pipelines/%s", orchestratorURL, task.TaskSpec.PipelineID)
@@ -281,10 +282,7 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Training ML model: %s", task.TaskSpec.ModelID)
 
 	// Get orchestrator URL
-	orchestratorURL := os.Getenv("ORCHESTRATOR_URL")
-	if orchestratorURL == "" {
-		orchestratorURL = "http://orchestrator:8080"
-	}
+	orchestratorURL := getOrchestratorURL()
 
 	// Get model details from orchestrator
 	modelURL := fmt.Sprintf("%s/api/ml-models/%s", orchestratorURL, task.TaskSpec.ModelID)
@@ -669,10 +667,7 @@ func reportTrainingFailure(orchestratorURL, modelID, reason string) error {
 func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Running inference with model: %s", task.TaskSpec.ModelID)
 
-	orchestratorURL := os.Getenv("ORCHESTRATOR_URL")
-	if orchestratorURL == "" {
-		orchestratorURL = "http://orchestrator:8080"
-	}
+	orchestratorURL := getOrchestratorURL()
 
 	// Fetch model artifact path
 	modelURL := fmt.Sprintf("%s/api/ml-models/%s", orchestratorURL, task.TaskSpec.ModelID)
@@ -907,10 +902,7 @@ func workerRunInference(modelType string, parameters map[string]interface{}, fea
 func executeDigitalTwinUpdate(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Updating digital twin for project: %s", task.ProjectID)
 
-	orchestratorURL := os.Getenv("ORCHESTRATOR_URL")
-	if orchestratorURL == "" {
-		orchestratorURL = "http://orchestrator:8080"
-	}
+	orchestratorURL := getOrchestratorURL()
 
 	// Get digital twin ID from task parameters
 	twinID, _ := task.TaskSpec.Parameters["digital_twin_id"].(string)

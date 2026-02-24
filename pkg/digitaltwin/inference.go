@@ -3,12 +3,14 @@ package digitaltwin
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
+	mltraining "github.com/mimir-aip/mimir-aip-go/pkg/mlmodel/training"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
@@ -28,7 +30,6 @@ func NewInferenceEngine(mlService *mlmodel.Service, store metadatastore.Metadata
 
 // Predict runs a single prediction
 func (e *InferenceEngine) Predict(twin *models.DigitalTwin, req *models.PredictionRequest) (*models.Prediction, error) {
-	// Check cache if enabled
 	if req.UseCache {
 		cached, err := e.getCachedPrediction(twin.ID, req.ModelID, req.EntityID)
 		if err == nil && cached != nil {
@@ -36,26 +37,22 @@ func (e *InferenceEngine) Predict(twin *models.DigitalTwin, req *models.Predicti
 		}
 	}
 
-	// Get the ML model
 	model, err := e.mlService.GetModel(req.ModelID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get model: %w", err)
 	}
 
-	// Verify model is trained
 	if model.Status != models.ModelStatusTrained {
 		return nil, fmt.Errorf("model is not trained (status: %s)", model.Status)
 	}
 
-	// Run inference
 	output, confidence, err := e.runInference(model, req.Input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run inference: %w", err)
 	}
 
-	// Create prediction
 	now := time.Now().UTC()
-	cacheTTL := 1800 // 30 minutes default
+	cacheTTL := 1800
 	if twin.Config != nil && twin.Config.PredictionCacheTTL > 0 {
 		cacheTTL = twin.Config.PredictionCacheTTL
 	}
@@ -80,7 +77,6 @@ func (e *InferenceEngine) Predict(twin *models.DigitalTwin, req *models.Predicti
 
 // BatchPredict runs batch predictions
 func (e *InferenceEngine) BatchPredict(twin *models.DigitalTwin, req *models.BatchPredictionRequest) ([]*models.Prediction, error) {
-	// Get the ML model
 	model, err := e.mlService.GetModel(req.ModelID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get model: %w", err)
@@ -100,12 +96,11 @@ func (e *InferenceEngine) BatchPredict(twin *models.DigitalTwin, req *models.Bat
 	for _, input := range req.Inputs {
 		output, confidence, err := e.runInference(model, input)
 		if err != nil {
-			// Log error but continue with other predictions
 			fmt.Printf("Warning: failed to run inference: %v\n", err)
 			continue
 		}
 
-		prediction := &models.Prediction{
+		predictions = append(predictions, &models.Prediction{
 			ID:             uuid.New().String(),
 			DigitalTwinID:  twin.ID,
 			ModelID:        req.ModelID,
@@ -116,15 +111,13 @@ func (e *InferenceEngine) BatchPredict(twin *models.DigitalTwin, req *models.Bat
 			CachedAt:       now,
 			ExpiresAt:      now.Add(time.Duration(cacheTTL) * time.Second),
 			Metadata:       make(map[string]interface{}),
-		}
-
-		predictions = append(predictions, prediction)
+		})
 	}
 
 	return predictions, nil
 }
 
-// ModelArtifact represents a trained model artifact
+// ModelArtifact represents a trained model artifact stored on disk
 type ModelArtifact struct {
 	ModelType    string                 `json:"model_type"`
 	FeatureNames []string               `json:"feature_names"`
@@ -132,14 +125,12 @@ type ModelArtifact struct {
 	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// runInference executes the actual inference using the trained model
+// runInference executes the actual inference using the trained model artifact
 func (e *InferenceEngine) runInference(model *models.MLModel, input map[string]interface{}) (interface{}, float64, error) {
-	// Load the trained model artifact
 	if model.ModelArtifactPath == "" {
 		return nil, 0, fmt.Errorf("model artifact path is empty")
 	}
 
-	// Read model artifact
 	artifactData, err := os.ReadFile(model.ModelArtifactPath)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to read model artifact: %w", err)
@@ -150,11 +141,10 @@ func (e *InferenceEngine) runInference(model *models.MLModel, input map[string]i
 		return nil, 0, fmt.Errorf("failed to unmarshal artifact: %w", err)
 	}
 
-	// Convert input map to feature vector
+	// Build feature vector from artifact's feature name ordering
 	features := make([]float64, len(artifact.FeatureNames))
 	for i, featureName := range artifact.FeatureNames {
 		if val, ok := input[featureName]; ok {
-			// Convert to float64
 			switch v := val.(type) {
 			case float64:
 				features[i] = v
@@ -162,73 +152,108 @@ func (e *InferenceEngine) runInference(model *models.MLModel, input map[string]i
 				features[i] = float64(v)
 			case int64:
 				features[i] = float64(v)
+			case bool:
+				if v {
+					features[i] = 1
+				}
 			default:
-				return nil, 0, fmt.Errorf("unsupported feature type for %s: %T", featureName, v)
+				features[i] = 0
 			}
-		} else {
-			// Missing feature - use 0 as default
-			features[i] = 0
 		}
 	}
 
-	// Run prediction based on model type
 	switch artifact.ModelType {
 	case "decision_tree":
-		prediction := e.predictDecisionTree(&artifact, features)
-		confidence := 0.85 // Simplified - would calculate from tree depth/purity
-		return prediction, confidence, nil
+		prediction, err := e.predictDecisionTree(&artifact, features)
+		if err != nil {
+			return nil, 0, err
+		}
+		return prediction, 0.85, nil
 
 	case "random_forest":
-		prediction := e.predictRandomForest(&artifact, features)
-		confidence := 0.90
-		return prediction, confidence, nil
+		prediction, err := e.predictRandomForest(&artifact, features)
+		if err != nil {
+			return nil, 0, err
+		}
+		return prediction, 0.90, nil
 
 	case "regression":
 		prediction := e.predictRegression(&artifact, features)
-		confidence := 1.0 // Regression always returns deterministic output
-		return prediction, confidence, nil
+		return prediction, 1.0, nil
 
 	case "neural_network":
-		prediction := e.predictNeuralNetwork(&artifact, features)
-		confidence := 0.88
-		return prediction, confidence, nil
+		prediction, err := e.predictNeuralNetwork(&artifact, features)
+		if err != nil {
+			return nil, 0, err
+		}
+		return prediction, 0.88, nil
 
 	default:
 		return nil, 0, fmt.Errorf("unsupported model type: %s", artifact.ModelType)
 	}
 }
 
-// predictDecisionTree runs decision tree prediction
-func (e *InferenceEngine) predictDecisionTree(artifact *ModelArtifact, features []float64) interface{} {
-	// Simplified implementation - would traverse the actual tree structure
-	// For now, return a placeholder
-	if len(artifact.Parameters) > 0 {
-		if pred, ok := artifact.Parameters["default_prediction"]; ok {
-			return pred
-		}
+// predictDecisionTree traverses the decision tree stored in the artifact
+func (e *InferenceEngine) predictDecisionTree(artifact *ModelArtifact, features []float64) (interface{}, error) {
+	modelDataRaw, ok := artifact.Parameters["model_data"]
+	if !ok {
+		return 0.0, nil
 	}
-	return 0.0
+
+	modelJSON, err := json.Marshal(modelDataRaw)
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to marshal tree data: %w", err)
+	}
+
+	var node mltraining.DecisionTreeModel
+	if err := json.Unmarshal(modelJSON, &node); err != nil {
+		return 0.0, fmt.Errorf("failed to unmarshal decision tree: %w", err)
+	}
+
+	return mltraining.TraverseTree(&node, features), nil
 }
 
-// predictRandomForest runs random forest prediction
-func (e *InferenceEngine) predictRandomForest(artifact *ModelArtifact, features []float64) interface{} {
-	// Simplified - would average predictions from multiple trees
-	if len(artifact.Parameters) > 0 {
-		if pred, ok := artifact.Parameters["default_prediction"]; ok {
-			return pred
+// predictRandomForest runs ensemble prediction with majority vote
+func (e *InferenceEngine) predictRandomForest(artifact *ModelArtifact, features []float64) (interface{}, error) {
+	modelDataRaw, ok := artifact.Parameters["model_data"]
+	if !ok {
+		return 0.0, nil
+	}
+
+	modelJSON, err := json.Marshal(modelDataRaw)
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to marshal RF data: %w", err)
+	}
+
+	var rf mltraining.RandomForestArtifact
+	if err := json.Unmarshal(modelJSON, &rf); err != nil {
+		return 0.0, fmt.Errorf("failed to unmarshal random forest: %w", err)
+	}
+
+	// Majority vote across trees
+	votes := make(map[float64]int)
+	for _, tree := range rf.Trees {
+		pred := math.Round(mltraining.TraverseTree(tree, features))
+		votes[pred]++
+	}
+
+	bestCount := 0
+	bestClass := 0.0
+	for class, count := range votes {
+		if count > bestCount {
+			bestCount = count
+			bestClass = class
 		}
 	}
-	return 0.0
+	return bestClass, nil
 }
 
-// predictRegression runs linear regression prediction
+// predictRegression runs linear regression: y = w·x + b
 func (e *InferenceEngine) predictRegression(artifact *ModelArtifact, features []float64) interface{} {
-	// y = w1*x1 + w2*x2 + ... + b
 	weights, ok := artifact.Parameters["weights"]
 	if !ok {
 		return 0.0
 	}
-
 	weightsSlice, ok := weights.([]interface{})
 	if !ok {
 		return 0.0
@@ -249,22 +274,79 @@ func (e *InferenceEngine) predictRegression(artifact *ModelArtifact, features []
 			}
 		}
 	}
-
 	return prediction
 }
 
-// predictNeuralNetwork runs neural network prediction
-func (e *InferenceEngine) predictNeuralNetwork(artifact *ModelArtifact, features []float64) interface{} {
-	// Simplified - would perform forward pass through network layers
-	if len(artifact.Parameters) > 0 {
-		if pred, ok := artifact.Parameters["default_prediction"]; ok {
-			return pred
+// predictNeuralNetwork runs a forward pass through the stored network weights
+func (e *InferenceEngine) predictNeuralNetwork(artifact *ModelArtifact, features []float64) (interface{}, error) {
+	weightsRaw, ok := artifact.Parameters["weights"]
+	if !ok {
+		return 0.0, nil
+	}
+	biasesRaw, ok := artifact.Parameters["biases"]
+	if !ok {
+		return 0.0, nil
+	}
+
+	weightsJSON, err := json.Marshal(weightsRaw)
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to marshal NN weights: %w", err)
+	}
+	biasesJSON, err := json.Marshal(biasesRaw)
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to marshal NN biases: %w", err)
+	}
+
+	var weights [][][]float64
+	var biases [][]float64
+	if err := json.Unmarshal(weightsJSON, &weights); err != nil {
+		return 0.0, fmt.Errorf("failed to unmarshal NN weights: %w", err)
+	}
+	if err := json.Unmarshal(biasesJSON, &biases); err != nil {
+		return 0.0, fmt.Errorf("failed to unmarshal NN biases: %w", err)
+	}
+
+	// Forward pass
+	a := make([]float64, len(features))
+	copy(a, features)
+
+	for l, w := range weights {
+		outSize := len(w)
+		z := make([]float64, outSize)
+		for j := 0; j < outSize; j++ {
+			z[j] = biases[l][j]
+			for k, ak := range a {
+				if k < len(w[j]) {
+					z[j] += w[j][k] * ak
+				}
+			}
+		}
+		a = make([]float64, outSize)
+		isOutput := l == len(weights)-1
+		for j := range z {
+			if isOutput {
+				a[j] = inferSigmoid(z[j])
+			} else {
+				a[j] = inferRelu(z[j])
+			}
 		}
 	}
-	return 0.0
+
+	if len(a) > 0 {
+		return a[0], nil
+	}
+	return 0.0, nil
 }
 
-// getCachedPrediction retrieves a cached prediction if valid
+func inferSigmoid(x float64) float64 { return 1.0 / (1.0 + math.Exp(-x)) }
+func inferRelu(x float64) float64 {
+	if x > 0 {
+		return x
+	}
+	return 0
+}
+
+// getCachedPrediction retrieves a cached prediction if still valid
 func (e *InferenceEngine) getCachedPrediction(twinID, modelID, entityID string) (*models.Prediction, error) {
 	predictions, err := e.store.ListPredictionsByDigitalTwin(twinID)
 	if err != nil {
@@ -274,12 +356,10 @@ func (e *InferenceEngine) getCachedPrediction(twinID, modelID, entityID string) 
 	now := time.Now().UTC()
 	for _, pred := range predictions {
 		if pred.ModelID == modelID && pred.EntityID == entityID {
-			// Check if cache is still valid
 			if pred.ExpiresAt.After(now) {
 				return pred, nil
 			}
 		}
 	}
-
 	return nil, nil
 }

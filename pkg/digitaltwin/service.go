@@ -2,6 +2,7 @@ package digitaltwin
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -461,55 +462,306 @@ func (s *Service) DeleteAction(id string) error {
 
 // Helper functions
 
-// initializeFromOntology populates digital twin structure from ontology blueprint
-func (s *Service) initializeFromOntology(twin *models.DigitalTwin, ont *models.Ontology) error {
-	// Parse ontology to extract entity types
-	// For now, this is a simplified version
-	// In a full implementation, we would parse the OWL/Turtle content
-	// and create entity templates based on class definitions
-
-	// This will be expanded when we implement the SPARQL engine
-	// which will need to understand the ontology structure
-
-	return nil
+// ontologyClass holds parsed class information from an OWL/Turtle ontology
+type ontologyClass struct {
+	Name       string
+	Label      string
+	Properties []string
 }
 
-// syncFromStorage syncs entities from a storage source
-func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology, storageID string) error {
-	// Get storage config
-	_, err := s.storageService.GetStorageConfig(storageID)
-	if err != nil {
-		return fmt.Errorf("failed to get storage config: %w", err)
+// initializeFromOntology parses the OWL Turtle content and records entity type metadata
+func (s *Service) initializeFromOntology(twin *models.DigitalTwin, ont *models.Ontology) error {
+	if ont.Content == "" {
+		return nil
 	}
 
-	// List CIR data from storage
-	// Note: storage.Service doesn't have ListData method
-	// In a full implementation, we would:
-	// 1. Use storage plugin to retrieve all CIR data
-	// 2. Parse entity types from CIR context
-	// 3. Create/update entities with source references
+	classes := parseOntologyClasses(ont.Content)
+	if len(classes) == 0 {
+		return nil
+	}
 
-	// For now, this is a placeholder for the sync logic
-	// The actual implementation would require extending the storage service
-	// with a method to list all data from a storage config
+	if twin.Metadata == nil {
+		twin.Metadata = make(map[string]interface{})
+	}
+
+	entityTypes := make(map[string]interface{}, len(classes))
+	for _, cls := range classes {
+		entityTypes[cls.Name] = map[string]interface{}{
+			"label":      cls.Label,
+			"properties": cls.Properties,
+		}
+	}
+	twin.Metadata["entity_types"] = entityTypes
+
+	return s.store.SaveDigitalTwin(twin)
+}
+
+// parseOntologyClasses extracts class and property definitions from Turtle content
+func parseOntologyClasses(turtleContent string) []ontologyClass {
+	var classes []ontologyClass
+	lines := strings.Split(turtleContent, "\n")
+
+	classMap := make(map[string]*ontologyClass)
+	domainMap := make(map[string]string) // property → class name
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Detect owl:Class declarations: ":ClassName a owl:Class" or ":ClassName rdf:type owl:Class"
+		if (strings.Contains(line, "owl:Class") || strings.Contains(line, "owl:class")) &&
+			(strings.Contains(line, " a ") || strings.Contains(line, "rdf:type")) {
+			name := extractTurtleSubject(line)
+			if name != "" && classMap[name] == nil {
+				cls := &ontologyClass{Name: name, Label: name}
+				classMap[name] = cls
+			}
+		}
+
+		// Detect rdfs:label: ":ClassName rdfs:label "Label""
+		if strings.Contains(line, "rdfs:label") {
+			subject := extractTurtleSubject(line)
+			label := extractStringLiteral(line)
+			if subject != "" && label != "" {
+				if cls, ok := classMap[subject]; ok {
+					cls.Label = label
+				}
+			}
+		}
+
+		// Detect owl:DatatypeProperty declarations with rdfs:domain
+		if strings.Contains(line, "owl:DatatypeProperty") || strings.Contains(line, "owl:ObjectProperty") {
+			name := extractTurtleSubject(line)
+			if name != "" {
+				domainMap[name] = "" // register property, domain resolved later
+			}
+		}
+
+		// Detect rdfs:domain: ":property rdfs:domain :ClassName"
+		if strings.Contains(line, "rdfs:domain") {
+			subject := extractTurtleSubject(line)
+			domain := extractTurtleObject(line)
+			if subject != "" && domain != "" {
+				domainMap[subject] = domain
+				if cls, ok := classMap[domain]; ok {
+					if !containsString(cls.Properties, subject) {
+						cls.Properties = append(cls.Properties, subject)
+					}
+				}
+			}
+		}
+	}
+
+	// Post-process: assign any unresolved properties to classes
+	for prop, domain := range domainMap {
+		if domain == "" {
+			continue
+		}
+		if cls, ok := classMap[domain]; ok {
+			if !containsString(cls.Properties, prop) {
+				cls.Properties = append(cls.Properties, prop)
+			}
+		}
+	}
+
+	for _, cls := range classMap {
+		classes = append(classes, *cls)
+	}
+	return classes
+}
+
+func extractTurtleSubject(line string) string {
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return ""
+	}
+	s := parts[0]
+	// Strip leading colon if present
+	s = strings.TrimPrefix(s, ":")
+	// Strip trailing colon if prefix:local format
+	if idx := strings.LastIndex(s, ":"); idx >= 0 {
+		s = s[idx+1:]
+	}
+	return strings.Trim(s, "<>.,;")
+}
+
+func extractTurtleObject(line string) string {
+	parts := strings.Fields(line)
+	if len(parts) < 3 {
+		return ""
+	}
+	s := parts[len(parts)-1]
+	s = strings.TrimPrefix(s, ":")
+	if idx := strings.LastIndex(s, ":"); idx >= 0 {
+		s = s[idx+1:]
+	}
+	return strings.Trim(s, "<>.,;")
+}
+
+func extractStringLiteral(line string) string {
+	start := strings.Index(line, `"`)
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(line[start+1:], `"`)
+	if end < 0 {
+		return ""
+	}
+	return line[start+1 : start+1+end]
+}
+
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// syncFromStorage retrieves CIR data from a storage source and creates/updates entities
+func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology, storageID string) error {
+	cirs, err := s.storageService.Retrieve(storageID, &models.CIRQuery{})
+	if err != nil {
+		return fmt.Errorf("failed to retrieve CIR data from storage %s: %w", storageID, err)
+	}
+
+	// Build ontology class names for entity type inference
+	var classNames []string
+	if entityTypes, ok := twin.Metadata["entity_types"]; ok {
+		if etMap, ok := entityTypes.(map[string]interface{}); ok {
+			for name := range etMap {
+				classNames = append(classNames, name)
+			}
+		}
+	}
+
+	for _, cir := range cirs {
+		dataMap, err := cir.GetDataAsMap()
+		if err != nil {
+			continue
+		}
+
+		entityType := inferEntityTypeFromCIR(cir, classNames)
+		sourceID := cir.Source.URI
+
+		// Convert CIR data map to entity attributes (keep all keys)
+		attrs := make(map[string]interface{}, len(dataMap))
+		for k, v := range dataMap {
+			attrs[k] = v
+		}
+
+		now := time.Now().UTC()
+		entity := &models.Entity{
+			ID:             uuid.New().String(),
+			DigitalTwinID:  twin.ID,
+			Type:           entityType,
+			Attributes:     attrs,
+			SourceDataID:   &sourceID,
+			IsModified:     false,
+			Modifications:  make(map[string]interface{}),
+			ComputedValues: map[string]interface{}{"storage_id": storageID},
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}
+
+		if err := s.store.SaveEntity(entity); err != nil {
+			fmt.Printf("Warning: failed to save entity from CIR: %v\n", err)
+		}
+	}
 
 	return nil
 }
 
-// populateEntityFromSource populates entity attributes from source CIR data
+// inferEntityTypeFromCIR tries to infer the entity type from a CIR record
+func inferEntityTypeFromCIR(cir *models.CIR, ontologyClasses []string) string {
+	// Check CIR parameter first
+	if v, ok := cir.GetParameter("entity_type"); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+	}
+
+	// Match data keys against ontology class property names
+	dataMap, err := cir.GetDataAsMap()
+	if err != nil {
+		return "unknown"
+	}
+
+	keys := make([]string, 0, len(dataMap))
+	for k := range dataMap {
+		keys = append(keys, strings.ToLower(k))
+	}
+
+	// Simple heuristic: look for class name hints in data keys
+	for _, className := range ontologyClasses {
+		lc := strings.ToLower(className)
+		for _, k := range keys {
+			if k == lc || k == "type" || k == "entity_type" {
+				if v, ok := dataMap[k]; ok {
+					if s, ok := v.(string); ok && strings.EqualFold(s, className) {
+						return className
+					}
+				}
+			}
+		}
+	}
+
+	// Fall back to URI last path segment
+	uri := cir.Source.URI
+	if uri != "" {
+		parts := strings.Split(strings.TrimRight(uri, "/"), "/")
+		if len(parts) > 0 {
+			last := parts[len(parts)-1]
+			if last != "" {
+				return last
+			}
+		}
+	}
+
+	return "default"
+}
+
+// populateEntityFromSource merges source CIR data with entity modifications
 func (s *Service) populateEntityFromSource(entity *models.Entity) error {
 	if entity.SourceDataID == nil {
 		return nil
 	}
 
-	// Get CIR data from storage
-	// We need to find which storage config has this data
-	// For now, we'll skip this and rely on synced data
-	// In a full implementation, we would:
-	// 1. Track which storage config each entity came from
-	// 2. Retrieve the CIR data
-	// 3. Merge with modifications
+	// Determine which storage holds this entity
+	storageID := ""
+	if entity.ComputedValues != nil {
+		if sid, ok := entity.ComputedValues["storage_id"].(string); ok {
+			storageID = sid
+		}
+	}
+	if storageID == "" {
+		return nil
+	}
 
+	// Retrieve all CIRs and find the matching one by URI
+	cirs, err := s.storageService.Retrieve(storageID, &models.CIRQuery{})
+	if err != nil {
+		return nil // non-fatal
+	}
+
+	for _, cir := range cirs {
+		if cir.Source.URI == *entity.SourceDataID {
+			sourceData, err := cir.GetDataAsMap()
+			if err != nil {
+				continue
+			}
+			// Build merged view: source + delta modifications
+			merged := make(map[string]interface{}, len(sourceData))
+			for k, v := range sourceData {
+				merged[k] = v
+			}
+			for k, v := range entity.Modifications {
+				merged[k] = v
+			}
+			entity.Attributes = merged
+			return nil
+		}
+	}
 	return nil
 }
 

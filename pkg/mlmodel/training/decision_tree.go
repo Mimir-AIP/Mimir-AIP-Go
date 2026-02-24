@@ -339,6 +339,75 @@ func calculateFeatureImportance(numFeatures int) map[string]float64 {
 	return importance
 }
 
+// buildTreeWithFeatureSubset builds a decision tree considering only a subset of features at each split
+func (t *DecisionTreeTrainer) buildTreeWithFeatureSubset(features [][]float64, labels []float64, depth int, featureSubset []int) *DecisionTreeModel {
+	if depth >= t.maxDepth || len(labels) < t.minSamples || isHomogeneous(labels) {
+		return &DecisionTreeModel{IsLeaf: true, Value: mean(labels)}
+	}
+
+	bestFeature, bestThreshold, bestGain := t.findBestSplitOnSubset(features, labels, featureSubset)
+	if bestGain <= 0 {
+		return &DecisionTreeModel{IsLeaf: true, Value: mean(labels)}
+	}
+
+	leftFeatures, leftLabels, rightFeatures, rightLabels := splitData(features, labels, bestFeature, bestThreshold)
+	return &DecisionTreeModel{
+		Feature:   bestFeature,
+		Threshold: bestThreshold,
+		Left:      t.buildTreeWithFeatureSubset(leftFeatures, leftLabels, depth+1, featureSubset),
+		Right:     t.buildTreeWithFeatureSubset(rightFeatures, rightLabels, depth+1, featureSubset),
+		IsLeaf:    false,
+	}
+}
+
+// findBestSplitOnSubset finds the best split considering only the provided feature indices
+func (t *DecisionTreeTrainer) findBestSplitOnSubset(features [][]float64, labels []float64, featureSubset []int) (int, float64, float64) {
+	if len(features) == 0 {
+		return 0, 0, 0
+	}
+
+	bestFeature := 0
+	bestThreshold := 0.0
+	bestGain := 0.0
+	parentImpurity := giniImpurity(labels)
+
+	for _, feature := range featureSubset {
+		values := make([]float64, len(features))
+		for i, row := range features {
+			values[i] = row[feature]
+		}
+		threshold := median(values)
+		_, leftLabels, _, rightLabels := splitData(features, labels, feature, threshold)
+		if len(leftLabels) == 0 || len(rightLabels) == 0 {
+			continue
+		}
+		leftWeight := float64(len(leftLabels)) / float64(len(labels))
+		rightWeight := float64(len(rightLabels)) / float64(len(labels))
+		gain := parentImpurity - (leftWeight*giniImpurity(leftLabels) + rightWeight*giniImpurity(rightLabels))
+		if gain > bestGain {
+			bestGain = gain
+			bestFeature = feature
+			bestThreshold = threshold
+		}
+	}
+	return bestFeature, bestThreshold, bestGain
+}
+
+// TraverseTree traverses a decision tree node and returns the leaf prediction for the given features.
+// Exported so inference engines in other packages can reuse the traversal logic.
+func TraverseTree(node *DecisionTreeModel, features []float64) float64 {
+	if node == nil {
+		return 0.0
+	}
+	if node.IsLeaf {
+		return node.Value
+	}
+	if node.Feature < len(features) && features[node.Feature] <= node.Threshold {
+		return TraverseTree(node.Left, features)
+	}
+	return TraverseTree(node.Right, features)
+}
+
 // Matrix helpers using gonum
 func toMatrix(data [][]float64) *mat.Dense {
 	if len(data) == 0 {

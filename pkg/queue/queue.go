@@ -137,6 +137,18 @@ func (q *Queue) GetHighPriorityWorkTasks(minPriority int) ([]*models.WorkTask, e
 	return highPriorityTasks, nil
 }
 
+// ListWorkTasks returns all known work tasks (all statuses).
+func (q *Queue) ListWorkTasks() ([]*models.WorkTask, error) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	tasks := make([]*models.WorkTask, 0, len(q.workTasks))
+	for _, task := range q.workTasks {
+		tasks = append(tasks, task)
+	}
+	return tasks, nil
+}
+
 // Close closes the queue (no-op for in-memory implementation)
 func (q *Queue) Close() error {
 	return nil

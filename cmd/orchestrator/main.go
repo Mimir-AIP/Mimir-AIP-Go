@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +13,7 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/extraction"
 	"github.com/mimir-aip/mimir-aip-go/pkg/k8s"
+	mcpserver "github.com/mimir-aip/mimir-aip-go/pkg/mcp"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -184,6 +186,15 @@ func main() {
 	server.RegisterHandler("/api/digital-twins/", dtHandler.HandleDigitalTwin)
 
 	log.Println("Registered API handlers")
+
+	// Register MCP server at /mcp/ (SSE transport)
+	// Clients connect via: GET http://localhost:<port>/mcp/sse
+	mcpSrv := mcpserver.New(projectService, pipelineService, mlmodelService, dtService, storageService, ontologyService, extractionService, q)
+	mcpHandler := mcpSrv.SSEHandler("http://localhost:" + cfg.Port)
+	server.RegisterHandler("/mcp/", func(w http.ResponseWriter, r *http.Request) {
+		mcpHandler.ServeHTTP(w, r)
+	})
+	log.Println("Registered MCP SSE handler at /mcp/")
 
 	go func() {
 		if err := server.Start(); err != nil {

@@ -22,6 +22,9 @@ type Config struct {
 	WorkerImage          string
 	WorkerCPULimit       string
 	WorkerMemoryLimit    string
+	// Multi-cluster dispatch
+	ClusterConfigFile string // path to YAML cluster config; empty = single in-cluster behaviour
+	WorkerAuthToken   string // shared Bearer token for /api/worktasks/* paths; empty = disabled
 }
 
 // LoadConfig loads configuration from environment variables
@@ -42,6 +45,8 @@ func LoadConfig() (*Config, error) {
 		WorkerImage:          getEnv("WORKER_IMAGE", "mimir-aip/worker:latest"),
 		WorkerCPULimit:       getEnv("WORKER_CPU_LIMIT", "2000m"),
 		WorkerMemoryLimit:    getEnv("WORKER_MEMORY_LIMIT", "4Gi"),
+		ClusterConfigFile:    getEnv("CLUSTER_CONFIG_FILE", ""),
+		WorkerAuthToken:      getEnv("WORKER_AUTH_TOKEN", ""),
 	}
 
 	return config, nil

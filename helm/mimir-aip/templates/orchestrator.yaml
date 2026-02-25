@@ -33,10 +33,31 @@ spec:
         envFrom:
         - configMapRef:
             name: {{ include "mimir-aip.fullname" . }}-config
-        {{- if .Values.orchestrator.persistence.enabled }}
+        env:
+        {{- if .Values.workerAuthToken }}
+        - name: WORKER_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "mimir-aip.fullname" . }}-worker-auth
+              key: token
+        {{- end }}
+        {{- if .Values.additionalClusters }}
+        - name: CLUSTER_CONFIG_FILE
+          value: /etc/mimir/clusters.yaml
+        {{- end }}
         volumeMounts:
+        {{- if .Values.orchestrator.persistence.enabled }}
         - name: data
           mountPath: {{ .Values.orchestrator.storageDir }}
+        {{- end }}
+        {{- if .Values.additionalClusters }}
+        - name: cluster-config
+          mountPath: /etc/mimir/clusters.yaml
+          subPath: clusters.yaml
+          readOnly: true
+        - name: kubeconfigs
+          mountPath: /etc/mimir/kubeconfigs
+          readOnly: true
         {{- end }}
         resources:
           {{- toYaml .Values.orchestrator.resources | nindent 10 }}
@@ -52,11 +73,19 @@ spec:
             port: http
           initialDelaySeconds: 5
           periodSeconds: 5
-      {{- if .Values.orchestrator.persistence.enabled }}
       volumes:
+      {{- if .Values.orchestrator.persistence.enabled }}
       - name: data
         persistentVolumeClaim:
           claimName: {{ include "mimir-aip.fullname" . }}-data
+      {{- end }}
+      {{- if .Values.additionalClusters }}
+      - name: cluster-config
+        configMap:
+          name: {{ include "mimir-aip.fullname" . }}-clusters
+      - name: kubeconfigs
+        secret:
+          secretName: {{ include "mimir-aip.fullname" . }}-kubeconfigs
       {{- end }}
 ---
 apiVersion: v1

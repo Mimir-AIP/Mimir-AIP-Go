@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/api"
 	"github.com/mimir-aip/mimir-aip-go/pkg/config"
@@ -16,7 +15,6 @@ import (
 	mcpserver "github.com/mimir-aip/mimir-aip-go/pkg/mcp"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
-	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
 	"github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
 	"github.com/mimir-aip/mimir-aip-go/pkg/plugins"
@@ -44,19 +42,33 @@ func main() {
 
 	log.Println("Initialized in-memory job queue")
 
-	// Initialize Kubernetes client
-	k8sClient, err := k8s.NewClient(k8s.ClientConfig{
-		Namespace:          cfg.WorkerNamespace,
-		OrchestratorURL:    cfg.OrchestratorURL,
-		ServiceAccountName: cfg.WorkerServiceAccount,
-		CPULimit:           cfg.WorkerCPULimit,
-		MemoryLimit:        cfg.WorkerMemoryLimit,
-	})
-	if err != nil {
-		log.Fatalf("Failed to initialize Kubernetes client: %v", err)
+	// Initialize Kubernetes cluster pool
+	// When CLUSTER_CONFIG_FILE is set, load multi-cluster config; otherwise use a single
+	// in-cluster pool that preserves the existing single-cluster behaviour exactly.
+	var clusterPool *k8s.ClusterPool
+	if cfg.ClusterConfigFile != "" {
+		clusterPool, err = k8s.LoadClusterPool(cfg.ClusterConfigFile, cfg.WorkerAuthToken)
+		if err != nil {
+			log.Fatalf("Failed to load cluster config from %q: %v", cfg.ClusterConfigFile, err)
+		}
+		log.Printf("Loaded %d cluster(s) from %s", clusterPool.Len(), cfg.ClusterConfigFile)
+	} else {
+		// Single in-cluster (backward-compatible default)
+		clusterPool, err = k8s.NewClusterPool([]k8s.ClusterConfig{
+			{
+				Name:            "primary",
+				Kubeconfig:      "",
+				Namespace:       cfg.WorkerNamespace,
+				OrchestratorURL: cfg.OrchestratorURL,
+				MaxWorkers:      cfg.MaxWorkers,
+				ServiceAccount:  cfg.WorkerServiceAccount,
+			},
+		}, cfg.WorkerAuthToken)
+		if err != nil {
+			log.Fatalf("Failed to initialize Kubernetes client: %v", err)
+		}
+		log.Println("Connected to Kubernetes cluster (single in-cluster mode)")
 	}
-
-	log.Println("Connected to Kubernetes cluster")
 
 	// Initialize storage
 	storageDir := cfg.Environment + "-data"
@@ -129,7 +141,7 @@ func main() {
 	log.Println("Started job scheduler")
 
 	// Start API server in a goroutine
-	server := api.NewServer(q, cfg.Port)
+	server := api.NewServer(q, cfg.Port, cfg.WorkerAuthToken)
 
 	// Register project handlers
 	projectHandler := api.NewProjectHandler(projectService)
@@ -203,7 +215,7 @@ func main() {
 	}()
 
 	// Start worker spawner
-	spawner := NewWorkerSpawner(q, k8sClient, cfg)
+	spawner := NewWorkerSpawner(q, clusterPool, cfg)
 	go spawner.Run()
 
 	log.Println("Orchestrator started successfully")
@@ -216,110 +228,3 @@ func main() {
 	log.Println("Shutting down orchestrator...")
 }
 
-// WorkerSpawner manages worker job creation and monitoring
-type WorkerSpawner struct {
-	queue     *queue.Queue
-	k8sClient *k8s.Client
-	config    *config.Config
-}
-
-// NewWorkerSpawner creates a new worker spawner
-func NewWorkerSpawner(q *queue.Queue, k8sClient *k8s.Client, cfg *config.Config) *WorkerSpawner {
-	return &WorkerSpawner{
-		queue:     q,
-		k8sClient: k8sClient,
-		config:    cfg,
-	}
-}
-
-// Run starts the worker spawning loop
-func (ws *WorkerSpawner) Run() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		ws.processQueue()
-	}
-}
-
-// processQueue checks the queue and spawns workers as needed
-func (ws *WorkerSpawner) processQueue() {
-	queueLength, err := ws.queue.QueueLength()
-	if err != nil {
-		log.Printf("Error getting queue length: %v", err)
-		return
-	}
-
-	if queueLength == 0 {
-		return
-	}
-
-	activeWorkers, err := ws.k8sClient.GetActiveWorkerCount()
-	if err != nil {
-		log.Printf("Error getting active worker count: %v", err)
-		return
-	}
-
-	// Check if we should spawn a worker
-	if !ws.shouldSpawnWorker(queueLength, int64(activeWorkers)) {
-		log.Printf("Scaling decision: queue=%d, active=%d, min=%d, max=%d, threshold=%d - NOT spawning (limit reached or queue too small)",
-			queueLength, activeWorkers, ws.config.MinWorkers, ws.config.MaxWorkers, ws.config.QueueThreshold)
-		return
-	}
-
-	log.Printf("Scaling decision: queue=%d, active=%d, min=%d, max=%d, threshold=%d - SPAWNING worker",
-		queueLength, activeWorkers, ws.config.MinWorkers, ws.config.MaxWorkers, ws.config.QueueThreshold)
-
-	// Dequeue a work task
-	task, err := ws.queue.Dequeue()
-	if err != nil {
-		log.Printf("Error dequeuing work task: %v", err)
-		return
-	}
-
-	if task == nil {
-		return // No tasks available
-	}
-
-	// Update task status to scheduled
-	if err := ws.queue.UpdateWorkTaskStatus(task.ID, models.WorkTaskStatusScheduled, ""); err != nil {
-		log.Printf("Error updating work task status: %v", err)
-		return
-	}
-
-	// Create worker job
-	if err := ws.k8sClient.CreateWorkerJob(task, ws.config.WorkerImage); err != nil {
-		log.Printf("Error creating worker job: %v", err)
-		// Update task status to failed
-		ws.queue.UpdateWorkTaskStatus(task.ID, models.WorkTaskStatusFailed, err.Error())
-		return
-	}
-
-	log.Printf("Spawned worker for task %s (type: %s)", task.ID, task.Type)
-
-	// Update task status to spawned
-	task.KubernetesJobName = "worker-task-" + task.ID
-	if err := ws.queue.UpdateWorkTaskStatus(task.ID, models.WorkTaskStatusSpawned, ""); err != nil {
-		log.Printf("Error updating work task status: %v", err)
-	}
-}
-
-// shouldSpawnWorker determines if a new worker should be spawned
-func (ws *WorkerSpawner) shouldSpawnWorker(queueLength, activeWorkers int64) bool {
-	// Always maintain minimum workers
-	if activeWorkers < int64(ws.config.MinWorkers) && queueLength > 0 {
-		return true
-	}
-
-	// Don't exceed max workers
-	if activeWorkers >= int64(ws.config.MaxWorkers) {
-		return false
-	}
-
-	// Scale based on queue depth
-	if queueLength > int64(ws.config.QueueThreshold) {
-		return true
-	}
-
-	return false
-}

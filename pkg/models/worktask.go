@@ -42,10 +42,11 @@ type DataAccess struct {
 
 // TaskSpec contains work task-specific parameters
 type TaskSpec struct {
-	PipelineID string                 `json:"pipeline_id,omitempty"`
-	ModelID    string                 `json:"model_id,omitempty"`
-	ProjectID  string                 `json:"project_id,omitempty"`
-	Parameters map[string]interface{} `json:"parameters"`
+	PipelineID       string                 `json:"pipeline_id,omitempty"`
+	ModelID          string                 `json:"model_id,omitempty"`
+	ProjectID        string                 `json:"project_id,omitempty"`
+	Parameters       map[string]interface{} `json:"parameters"`
+	PreferredCluster string                 `json:"preferred_cluster,omitempty"` // optional cluster affinity; empty = auto
 }
 
 // WorkTask represents an infrastructure work unit to be executed by a worker
@@ -63,6 +64,7 @@ type WorkTask struct {
 	DataAccess           DataAccess           `json:"data_access"`
 	ErrorMessage         string               `json:"error_message,omitempty"`
 	KubernetesJobName    string               `json:"kubernetes_job_name,omitempty"`
+	ClusterName          string               `json:"cluster_name,omitempty"` // cluster this task was dispatched to
 }
 
 // WorkTaskSubmissionRequest represents a request to submit a new work task

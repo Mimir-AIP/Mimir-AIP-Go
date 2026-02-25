@@ -63,3 +63,26 @@ networkPolicy:
 rbac:
   # Set to true to create ServiceAccounts, ClusterRole, and ClusterRoleBinding
   create: true
+
+# -- Worker auth token
+# When set, workers must present this value as "Authorization: Bearer <token>"
+# when calling back to the orchestrator on /api/worktasks/* paths.
+# Leave empty to disable authentication on those paths (default).
+workerAuthToken: ""
+
+# -- Additional remote Kubernetes clusters for worker dispatch.
+# The primary in-cluster cluster is always implicit and does not need to be listed here.
+# Workers overflow to these clusters in declaration order once the primary is at capacity.
+#
+# Example:
+# additionalClusters:
+#   - name: site-b
+#     orchestratorURL: http://192.168.10.5:8080   # orchestrator IP as seen from site-b nodes
+#     maxWorkers: 50
+#     namespace: mimir-aip
+#     serviceAccount: mimir-worker
+#     kubeconfig: |
+#       apiVersion: v1
+#       kind: Config
+#       ...
+additionalClusters: []

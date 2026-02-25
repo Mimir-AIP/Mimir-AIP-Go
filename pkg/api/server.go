@@ -14,29 +14,49 @@ import (
 
 // Server provides HTTP API endpoints
 type Server struct {
-	queue *queue.Queue
-	port  string
-	mux   *http.ServeMux
+	queue           *queue.Queue
+	port            string
+	mux             *http.ServeMux
+	workerAuthToken string // if non-empty, required as Bearer token on /api/worktasks/* paths
 }
 
-// NewServer creates a new API server
-func NewServer(q *queue.Queue, port string) *Server {
+// NewServer creates a new API server.
+// workerAuthToken gates the worker-facing /api/worktasks/* paths when non-empty.
+func NewServer(q *queue.Queue, port string, workerAuthToken string) *Server {
 	s := &Server{
-		queue: q,
-		port:  port,
-		mux:   http.NewServeMux(),
+		queue:           q,
+		port:            port,
+		mux:             http.NewServeMux(),
+		workerAuthToken: workerAuthToken,
 	}
 
 	s.registerRoutes()
 	return s
 }
 
+// workerAuthMiddleware returns an http.HandlerFunc that validates the Authorization: Bearer
+// header when a workerAuthToken is configured. Requests without a valid token receive 401.
+func (s *Server) workerAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	if s.workerAuthToken == "" {
+		return next
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		const prefix = "Bearer "
+		auth := r.Header.Get("Authorization")
+		if len(auth) <= len(prefix) || auth[:len(prefix)] != prefix || auth[len(prefix):] != s.workerAuthToken {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
 // registerRoutes sets up the HTTP routes
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.HandleFunc("/ready", s.handleReady)
-	s.mux.HandleFunc("/api/worktasks", s.handleWorkTasks)
-	s.mux.HandleFunc("/api/worktasks/", s.handleWorkTaskByID)
+	s.mux.HandleFunc("/api/worktasks", s.workerAuthMiddleware(s.handleWorkTasks))
+	s.mux.HandleFunc("/api/worktasks/", s.workerAuthMiddleware(s.handleWorkTaskByID))
 }
 
 // RegisterHandler adds a custom handler to the server

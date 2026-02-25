@@ -24,6 +24,7 @@ type ClientConfig struct {
 	ServiceAccountName string
 	CPULimit           string
 	MemoryLimit        string
+	WorkerAuthToken    string // injected as WORKER_AUTH_TOKEN env var in spawned Jobs; empty = disabled
 }
 
 // Client provides Kubernetes API operations
@@ -34,17 +35,24 @@ type Client struct {
 	serviceAccountName string
 	cpuLimit           string
 	memoryLimit        string
+	workerAuthToken    string
 	ctx                context.Context
 }
 
-// NewClient creates a new Kubernetes client
+// NewClient creates a new Kubernetes client using in-cluster config or the default kubeconfig.
 func NewClient(cfg ClientConfig) (*Client, error) {
-	config, err := getKubeConfig()
+	return NewClientWithKubeconfig(cfg, "")
+}
+
+// NewClientWithKubeconfig creates a new Kubernetes client with an explicit kubeconfig path.
+// Pass an empty kubeconfigPath to use in-cluster config (falling back to ~/.kube/config).
+func NewClientWithKubeconfig(cfg ClientConfig, kubeconfigPath string) (*Client, error) {
+	restCfg, err := getKubeConfig(kubeconfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get kubernetes config: %w", err)
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(restCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
@@ -72,12 +80,23 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		serviceAccountName: cfg.ServiceAccountName,
 		cpuLimit:           cfg.CPULimit,
 		memoryLimit:        cfg.MemoryLimit,
+		workerAuthToken:    cfg.WorkerAuthToken,
 		ctx:                context.Background(),
 	}, nil
 }
 
-// getKubeConfig returns the Kubernetes configuration
-func getKubeConfig() (*rest.Config, error) {
+// getKubeConfig returns the Kubernetes REST configuration.
+// If kubeconfigPath is non-empty it is used directly; otherwise in-cluster config is tried
+// first, then the default ~/.kube/config.
+func getKubeConfig(kubeconfigPath string) (*rest.Config, error) {
+	if kubeconfigPath != "" {
+		cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+		if err != nil {
+			return nil, fmt.Errorf("build config from %q: %w", kubeconfigPath, err)
+		}
+		return cfg, nil
+	}
+
 	// Try in-cluster config first
 	config, err := rest.InClusterConfig()
 	if err == nil {
@@ -98,9 +117,15 @@ func getKubeConfig() (*rest.Config, error) {
 	return config, nil
 }
 
-// CreateWorkerJob creates a Kubernetes Job for a worker to execute a work task
-func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string) error {
+// CreateWorkerJob creates a Kubernetes Job for a worker to execute a work task.
+// orchestratorURL is the URL the worker will use to call back to the orchestrator;
+// it overrides the URL stored in the client, allowing per-cluster callback addresses.
+func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string, orchestratorURL string) error {
 	jobName := fmt.Sprintf("worker-task-%s", task.ID)
+
+	if orchestratorURL == "" {
+		orchestratorURL = c.orchestratorURL
+	}
 
 	// Parse resource requirements
 	cpuRequest := task.ResourceRequirements.CPU
@@ -126,7 +151,15 @@ func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string) erro
 	envVars := []corev1.EnvVar{
 		{Name: "WORKTASK_ID", Value: task.ID},
 		{Name: "WORKTASK_TYPE", Value: string(task.Type)},
-		{Name: "ORCHESTRATOR_URL", Value: c.orchestratorURL},
+		{Name: "ORCHESTRATOR_URL", Value: orchestratorURL},
+	}
+
+	// Inject worker auth token if configured
+	if c.workerAuthToken != "" {
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "WORKER_AUTH_TOKEN",
+			Value: c.workerAuthToken,
+		})
 	}
 
 	// Create Job specification

@@ -1,0 +1,58 @@
+{{- if .Values.workerAuthToken }}
+---
+# Secret: shared bearer token for worker→orchestrator authentication.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-worker-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  token: {{ .Values.workerAuthToken | quote }}
+{{- end }}
+{{- if .Values.additionalClusters }}
+---
+# ConfigMap: cluster pool configuration file consumed by the orchestrator.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-clusters
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+data:
+  clusters.yaml: |
+    clusters:
+      # Primary in-cluster cluster (always first)
+      - name: primary
+        kubeconfig: ""
+        namespace: {{ include "mimir-aip.workerNamespace" . }}
+        orchestratorURL: http://{{ include "mimir-aip.fullname" . }}-orchestrator:{{ .Values.orchestrator.port }}
+        maxWorkers: {{ .Values.orchestrator.maxWorkers }}
+        serviceAccount: {{ .Values.orchestrator.workerServiceAccount }}
+      {{- range .Values.additionalClusters }}
+      - name: {{ .name | quote }}
+        kubeconfig: {{ printf "/etc/mimir/kubeconfigs/%s.yaml" .name | quote }}
+        namespace: {{ .namespace | quote }}
+        orchestratorURL: {{ .orchestratorURL | quote }}
+        maxWorkers: {{ .maxWorkers }}
+        serviceAccount: {{ .serviceAccount | quote }}
+      {{- end }}
+---
+# Secret: remote kubeconfig files, one per additional cluster.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-kubeconfigs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{- range .Values.additionalClusters }}
+  {{ printf "%s.yaml" .name }}: |
+    {{- .kubeconfig | nindent 4 }}
+  {{- end }}
+{{- end }}

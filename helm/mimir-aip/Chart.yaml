@@ -1,0 +1,21 @@
+apiVersion: v2
+name: mimir-aip
+description: >
+  Mimir AIP — an ontology-driven AI platform providing data ingestion pipelines,
+  machine learning model training and inference, digital twin management, and
+  MCP tool exposure for AI agent integration.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - ai
+  - machine-learning
+  - digital-twin
+  - ontology
+  - mcp
+  - kubernetes
+home: https://github.com/mimir-aip/mimir-aip-go
+sources:
+  - https://github.com/mimir-aip/mimir-aip-go
+maintainers:
+  - name: Mimir AIP Contributors

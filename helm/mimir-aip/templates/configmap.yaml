@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+data:
+  ENVIRONMENT: {{ .Values.orchestrator.environment | quote }}
+  LOG_LEVEL: {{ .Values.orchestrator.logLevel | quote }}
+  PORT: {{ .Values.orchestrator.port | toString | quote }}
+  STORAGE_DIR: {{ .Values.orchestrator.storageDir | quote }}
+  MIN_WORKERS: {{ .Values.orchestrator.minWorkers | toString | quote }}
+  MAX_WORKERS: {{ .Values.orchestrator.maxWorkers | toString | quote }}
+  QUEUE_THRESHOLD: {{ .Values.orchestrator.queueThreshold | toString | quote }}
+  WORKER_NAMESPACE: {{ include "mimir-aip.workerNamespace" . | quote }}
+  WORKER_SERVICE_ACCOUNT: {{ .Values.orchestrator.workerServiceAccount | quote }}

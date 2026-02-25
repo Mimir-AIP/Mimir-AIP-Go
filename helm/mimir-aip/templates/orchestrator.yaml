@@ -1,0 +1,79 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-orchestrator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+spec:
+  replicas: {{ .Values.orchestrator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "mimir-aip.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: orchestrator
+  template:
+    metadata:
+      labels:
+        {{- include "mimir-aip.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: orchestrator
+    spec:
+      {{- if .Values.rbac.create }}
+      serviceAccountName: mimir-orchestrator
+      {{- end }}
+      containers:
+      - name: orchestrator
+        image: "{{ .Values.image.registry }}/orchestrator:{{ include "mimir-aip.imageTag" . }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.orchestrator.port }}
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: {{ include "mimir-aip.fullname" . }}-config
+        {{- if .Values.orchestrator.persistence.enabled }}
+        volumeMounts:
+        - name: data
+          mountPath: {{ .Values.orchestrator.storageDir }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.orchestrator.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      {{- if .Values.orchestrator.persistence.enabled }}
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "mimir-aip.fullname" . }}-data
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-orchestrator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mimir-aip.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+  ports:
+  - name: http
+    port: {{ .Values.orchestrator.port }}
+    targetPort: http
+    protocol: TCP

@@ -1,0 +1,65 @@
+# Default values for mimir-aip.
+# Override these in a custom values file: helm install mimir-aip ./helm/mimir-aip -f my-values.yaml
+
+# -- Container image settings
+image:
+  # Registry prefix. Set to your registry, e.g. "ghcr.io/your-org" or "docker.io/your-org"
+  registry: ghcr.io/mimir-aip
+  # Image pull policy. Use "Always" when pushing to a remote registry; "IfNotPresent" otherwise.
+  pullPolicy: IfNotPresent
+  # Optionally override the image tag (defaults to Chart.appVersion)
+  tag: ""
+
+# -- Orchestrator configuration
+orchestrator:
+  # Number of orchestrator replicas (recommend 1; the SQLite store is not shared)
+  replicas: 1
+  environment: production
+  logLevel: info
+  port: 8080
+  storageDir: /app/data
+  # Worker pool settings
+  minWorkers: 1
+  maxWorkers: 10
+  queueThreshold: 5
+  # Kubernetes namespace workers are spawned into (must match .Release.Namespace)
+  workerNamespace: ""   # defaults to the release namespace when empty
+  workerServiceAccount: mimir-worker
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  # Persistent storage for the SQLite database and uploaded data
+  persistence:
+    enabled: true
+    size: 10Gi
+    # storageClass: ""   # leave empty to use the cluster default
+    accessMode: ReadWriteOnce
+
+# -- Frontend configuration
+frontend:
+  enabled: true
+  replicas: 1
+  port: 3000
+  # How the frontend service is exposed. Options: ClusterIP, LoadBalancer, NodePort
+  serviceType: LoadBalancer
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+
+# -- NetworkPolicy settings
+networkPolicy:
+  # Set to true to deploy NetworkPolicy resources restricting inter-pod traffic
+  enabled: true
+
+# -- RBAC settings
+rbac:
+  # Set to true to create ServiceAccounts, ClusterRole, and ClusterRoleBinding
+  create: true

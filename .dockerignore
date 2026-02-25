@@ -1,101 +1,47 @@
-# .dockerignore - Optimize Docker build context
-
 # Git
 .git
 .gitignore
 .gitattributes
 
-# Documentation
-README.md
-*.md
-docs/
-agent-docs/
-LICENSE
-CODE_OF_CONDUCT.md
-
-# Dependencies
-vendor/
-
-# IDE files
-.vscode/
-.idea/
+# IDE
+.vscode
+.idea
 *.swp
 *.swo
 *~
 
-# OS files
-.DS_Store
-Thumbs.db
+# Documentation
+*.md
+!README.md
+docs/
+Plan/
 
-# Logs and data
-*.log
-logs/
-data/
-./pipelines/*.yaml
-./pipelines/*.yml
-
-# Test files
+# Tests
 *_test.go
-tests/
-test-results/
-coverage.out
-test_pipelines/
-test_pipeline.yaml
-benchmarks/
-
-# Frontend test files
-mimir-aip-frontend/**/*.test.ts
-mimir-aip-frontend/**/*.test.tsx
-mimir-aip-frontend/**/*.spec.ts
-mimir-aip-frontend/**/*.spec.tsx
-mimir-aip-frontend/coverage/
-mimir-aip-frontend/src/test/
+testdata/
 
 # Build artifacts
+bin/
+dist/
 *.exe
 *.dll
 *.so
 *.dylib
-mimir-aip
-mimir-aip-server
-utils.test
 
 # Temporary files
 tmp/
 temp/
 *.tmp
 
-# Node modules
-node_modules/
-npm-debug.log*
-mimir-aip-frontend/node_modules/
-mimir-aip-frontend/.next/
-mimir-aip-frontend/out/
-mimir-aip-frontend/.turbo/
+# OS files
+.DS_Store
+Thumbs.db
 
-# Environment files
-.env
-.env.local
-.env.*.local
-mimir-aip-frontend/.env*.local
+# Dependencies (will be downloaded in build)
+vendor/
 
-# Docker files
-Dockerfile
-Dockerfile.*
-docker-compose*.yml
-docker/
-
-# CI/CD
-.github/
-.gitlab-ci.yml
-
-# Backup files
-*.bak
-*.backup
-
-# Examples and CLI
-examples/
-mimir-aip-cli/
-
-# Config examples (keep main config.yaml)
-config_*.yaml
+# Kubernetes and deployment
+k8s/
+docker-compose.yaml
+Makefile
+DEPLOYMENT.md

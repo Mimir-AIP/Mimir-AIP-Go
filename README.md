@@ -55,7 +55,7 @@ Mimir AIP consists of two binaries and an optional web frontend:
 
 **Orchestrator** — the long-running HTTP server. Manages all persistent metadata (projects, pipelines, ontologies, ML models, digital twins, storage configurations, schedules) in SQLite. Exposes a REST API and an MCP SSE endpoint. Spawns **Workers** as Kubernetes Jobs when pipeline execution, ML training, ML inference, or digital twin synchronisation is required.
 
-**Worker** — a short-lived binary run as a Kubernetes Job. Reads its task type and parameters from environment variables, calls the orchestrator API to fetch configuration, executes the work, and reports results back. Designed with scalability in mind, allowing multiple workers to run concurrently (currently workers run on the same cluster as the orchestrator, however in future releases we plan to support remote workers running in different clusters or on cloud compute services)
+**Worker** — a short-lived binary run as a Kubernetes Job. Reads its task type and parameters from environment variables, calls the orchestrator API to fetch configuration, executes the work, and reports results back. Designed with scalability in mind, supporting concurrent workers across multiple Kubernetes clusters — the orchestrator dispatches jobs to a configurable cluster pool, spilling over from the primary cluster to remote or cloud clusters when capacity is reached.
 
 **Frontend** — a lightweight React/TypeScript single-page application served by a small Go HTTP server. Communicates exclusively with the orchestrator REST API.
 
@@ -112,23 +112,23 @@ For a full deployment including worker job execution.
 
 **Prerequisites:** A running Kubernetes cluster (1.25+), `kubectl` configured, and [Helm 3](https://helm.sh/docs/intro/install/).
 
-#### 1. Build and push images
+Images are published to the GitHub Container Registry and are public — no registry credentials or image build step required.
+
+#### 1. Install the Helm chart
 
 ```bash
-# Replace with your registry, e.g. ghcr.io/your-org
-export REGISTRY=ghcr.io/your-org
-
-make build-all REGISTRY=$REGISTRY
-make push-all  REGISTRY=$REGISTRY
+helm install mimir-aip ./helm/mimir-aip \
+  --namespace mimir-aip \
+  --create-namespace
 ```
 
-#### 2. Install the Helm chart
+The chart defaults to `ghcr.io/mimir-aip` and the latest published images. To pin a specific version:
 
 ```bash
 helm install mimir-aip ./helm/mimir-aip \
   --namespace mimir-aip \
   --create-namespace \
-  --set image.registry=$REGISTRY
+  --set image.tag=0.1.1
 ```
 
 The chart uses your cluster's default storage class for the orchestrator PVC. To override:
@@ -137,11 +137,10 @@ The chart uses your cluster's default storage class for the orchestrator PVC. To
 helm install mimir-aip ./helm/mimir-aip \
   --namespace mimir-aip \
   --create-namespace \
-  --set image.registry=$REGISTRY \
   --set orchestrator.persistence.storageClass=standard
 ```
 
-#### 3. Access the services
+#### 2. Access the services
 
 ```bash
 # Orchestrator API
@@ -151,11 +150,11 @@ kubectl port-forward -n mimir-aip svc/mimir-aip-orchestrator 8080:8080
 kubectl port-forward -n mimir-aip svc/mimir-aip-frontend 3000:80
 ```
 
-#### 4. Upgrade and uninstall
+#### 3. Upgrade and uninstall
 
 ```bash
-# Upgrade after pushing new images
-helm upgrade mimir-aip ./helm/mimir-aip --namespace mimir-aip --set image.registry=$REGISTRY
+# Upgrade to a new release
+helm upgrade mimir-aip ./helm/mimir-aip --namespace mimir-aip --set image.tag=0.2.0
 
 # Uninstall (PVC is retained by default)
 helm uninstall mimir-aip --namespace mimir-aip
@@ -167,8 +166,7 @@ Create a `my-values.yaml` to override defaults without modifying the chart:
 
 ```yaml
 image:
-  registry: ghcr.io/your-org
-  tag: v1.2.0
+  tag: 0.1.1          # pin to a specific release
 
 orchestrator:
   logLevel: debug
@@ -178,11 +176,27 @@ orchestrator:
     storageClass: fast-ssd
 
 frontend:
-  serviceType: ClusterIP   # Use ClusterIP + Ingress instead of LoadBalancer
+  serviceType: ClusterIP   # use ClusterIP + Ingress instead of LoadBalancer
 ```
 
 ```bash
 helm install mimir-aip ./helm/mimir-aip --namespace mimir-aip --create-namespace -f my-values.yaml
+```
+
+#### Building custom images
+
+If you need to modify the source and publish your own images:
+
+```bash
+export REGISTRY=ghcr.io/your-org
+
+make build-all REGISTRY=$REGISTRY
+make push-all  REGISTRY=$REGISTRY
+
+helm install mimir-aip ./helm/mimir-aip \
+  --namespace mimir-aip \
+  --create-namespace \
+  --set image.registry=$REGISTRY
 ```
 
 ---

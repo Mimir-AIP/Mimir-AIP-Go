@@ -211,6 +211,70 @@ func registerMLModelTools(s *server.MCPServer, m *MimirMCPServer) {
 		},
 	)
 
+	// update_ml_model
+	s.AddTool(
+		mcp.NewTool("update_ml_model",
+			mcp.WithDescription("Update an existing ML model's metadata or status"),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("ML model ID"),
+			),
+			mcp.WithString("name",
+				mcp.Description("New model name"),
+			),
+			mcp.WithString("description",
+				mcp.Description("New description"),
+			),
+			mcp.WithString("status",
+				mcp.Description("New status: created, training, trained, failed, or deprecated"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id := req.GetString("id", "")
+			if id == "" {
+				return mcp.NewToolResultError("id is required"), nil
+			}
+			updateReq := &models.ModelUpdateRequest{}
+			if name := req.GetString("name", ""); name != "" {
+				updateReq.Name = &name
+			}
+			if desc := req.GetString("description", ""); desc != "" {
+				updateReq.Description = &desc
+			}
+			if st := req.GetString("status", ""); st != "" {
+				ms := models.ModelStatus(st)
+				updateReq.Status = &ms
+			}
+			model, err := m.mlSvc.UpdateModel(id, updateReq)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(model)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// delete_ml_model
+	s.AddTool(
+		mcp.NewTool("delete_ml_model",
+			mcp.WithDescription("Delete an ML model by ID"),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("ML model ID"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id := req.GetString("id", "")
+			if id == "" {
+				return mcp.NewToolResultError("id is required"), nil
+			}
+			if err := m.mlSvc.DeleteModel(id); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(`{"success":true}`), nil
+		},
+	)
+
 	// recommend_model
 	s.AddTool(
 		mcp.NewTool("recommend_model",

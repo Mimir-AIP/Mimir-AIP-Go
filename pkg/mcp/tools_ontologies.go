@@ -112,6 +112,81 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 		},
 	)
 
+	// update_ontology
+	s.AddTool(
+		mcp.NewTool("update_ontology",
+			mcp.WithDescription("Update an existing ontology's metadata or content"),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("Ontology ID"),
+			),
+			mcp.WithString("name",
+				mcp.Description("New name"),
+			),
+			mcp.WithString("description",
+				mcp.Description("New description"),
+			),
+			mcp.WithString("version",
+				mcp.Description("New version string e.g. 2.0.0"),
+			),
+			mcp.WithString("content",
+				mcp.Description("Replacement OWL/Turtle content"),
+			),
+			mcp.WithString("status",
+				mcp.Description("New status: active or deprecated"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id := req.GetString("id", "")
+			if id == "" {
+				return mcp.NewToolResultError("id is required"), nil
+			}
+			updateReq := &models.OntologyUpdateRequest{}
+			if name := req.GetString("name", ""); name != "" {
+				updateReq.Name = &name
+			}
+			if desc := req.GetString("description", ""); desc != "" {
+				updateReq.Description = &desc
+			}
+			if ver := req.GetString("version", ""); ver != "" {
+				updateReq.Version = &ver
+			}
+			if content := req.GetString("content", ""); content != "" {
+				updateReq.Content = &content
+			}
+			if st := req.GetString("status", ""); st != "" {
+				updateReq.Status = &st
+			}
+			ontology, err := m.ontologySvc.UpdateOntology(id, updateReq)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(ontology)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// delete_ontology
+	s.AddTool(
+		mcp.NewTool("delete_ontology",
+			mcp.WithDescription("Delete an ontology by ID"),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("Ontology ID"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id := req.GetString("id", "")
+			if id == "" {
+				return mcp.NewToolResultError("id is required"), nil
+			}
+			if err := m.ontologySvc.DeleteOntology(id); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(`{"success":true}`), nil
+		},
+	)
+
 	// generate_ontology_from_text
 	s.AddTool(
 		mcp.NewTool("generate_ontology_from_text",
@@ -152,6 +227,43 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 					"relationships_count": len(extractionResult.Relationships),
 				},
 			})
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// extract_from_storage
+	s.AddTool(
+		mcp.NewTool("extract_from_storage",
+			mcp.WithDescription("Extract entities and relationships from one or more storage backends"),
+			mcp.WithString("project_id",
+				mcp.Required(),
+				mcp.Description("Project ID"),
+			),
+			mcp.WithString("storage_ids",
+				mcp.Required(),
+				mcp.Description("Comma-separated list of storage config IDs to extract from"),
+			),
+			mcp.WithString("include_structured",
+				mcp.Description("Include structured data extraction (default true)"),
+			),
+			mcp.WithString("include_unstructured",
+				mcp.Description("Include unstructured/text extraction (default true)"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
+			storageIDsStr := req.GetString("storage_ids", "")
+			if projectID == "" || storageIDsStr == "" {
+				return mcp.NewToolResultError("project_id and storage_ids are required"), nil
+			}
+			storageIDs := splitCSV(storageIDsStr)
+			includeStructured := req.GetString("include_structured", "true") != "false"
+			includeUnstructured := req.GetString("include_unstructured", "true") != "false"
+			result, err := m.extractionSvc.ExtractFromStorage(projectID, storageIDs, includeStructured, includeUnstructured)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(result)
 			return mcp.NewToolResultText(string(data)), nil
 		},
 	)

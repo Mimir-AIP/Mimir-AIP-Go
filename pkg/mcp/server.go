@@ -12,6 +12,7 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
 	"github.com/mimir-aip/mimir-aip-go/pkg/project"
 	"github.com/mimir-aip/mimir-aip-go/pkg/queue"
+	"github.com/mimir-aip/mimir-aip-go/pkg/scheduler"
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
@@ -24,6 +25,7 @@ type MimirMCPServer struct {
 	storageSvc    *storage.Service
 	ontologySvc   *ontology.Service
 	extractionSvc *extraction.Service
+	schedulerSvc  *scheduler.Service
 	queue         *queue.Queue
 }
 
@@ -36,6 +38,7 @@ func New(
 	storageSvc *storage.Service,
 	ontologySvc *ontology.Service,
 	extractionSvc *extraction.Service,
+	schedulerSvc *scheduler.Service,
 	q *queue.Queue,
 ) *MimirMCPServer {
 	return &MimirMCPServer{
@@ -46,6 +49,7 @@ func New(
 		storageSvc:    storageSvc,
 		ontologySvc:   ontologySvc,
 		extractionSvc: extractionSvc,
+		schedulerSvc:  schedulerSvc,
 		queue:         q,
 	}
 }
@@ -64,6 +68,7 @@ func (m *MimirMCPServer) SSEHandler(baseURL string) http.Handler {
 	registerOntologyTools(s, m)
 	registerStorageTools(s, m)
 	registerTaskTools(s, m)
+	registerScheduleTools(s, m)
 
 	// WithBaseURL tells the SSE server its canonical base so it advertises the
 	// correct message endpoint to clients.  We append "/mcp" so the advertised

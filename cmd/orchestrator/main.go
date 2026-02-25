@@ -189,7 +189,7 @@ func main() {
 
 	// Register MCP server at /mcp/ (SSE transport)
 	// Clients connect via: GET http://localhost:<port>/mcp/sse
-	mcpSrv := mcpserver.New(projectService, pipelineService, mlmodelService, dtService, storageService, ontologyService, extractionService, q)
+	mcpSrv := mcpserver.New(projectService, pipelineService, mlmodelService, dtService, storageService, ontologyService, extractionService, schedulerService, q)
 	mcpHandler := mcpSrv.SSEHandler("http://localhost:" + cfg.Port)
 	server.RegisterHandler("/mcp/", func(w http.ResponseWriter, r *http.Request) {
 		mcpHandler.ServeHTTP(w, r)

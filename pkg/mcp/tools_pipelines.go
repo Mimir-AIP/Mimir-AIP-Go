@@ -154,6 +154,53 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 		},
 	)
 
+	// update_pipeline
+	s.AddTool(
+		mcp.NewTool("update_pipeline",
+			mcp.WithDescription("Update an existing pipeline's metadata or steps"),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("Pipeline ID"),
+			),
+			mcp.WithString("description",
+				mcp.Description("New description"),
+			),
+			mcp.WithString("steps",
+				mcp.Description(`Replacement JSON array of pipeline steps`),
+			),
+			mcp.WithString("status",
+				mcp.Description("New status: active, inactive, or archived"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id := req.GetString("id", "")
+			if id == "" {
+				return mcp.NewToolResultError("id is required"), nil
+			}
+			updateReq := &models.PipelineUpdateRequest{}
+			if desc := req.GetString("description", ""); desc != "" {
+				updateReq.Description = &desc
+			}
+			if stepsJSON := req.GetString("steps", ""); stepsJSON != "" {
+				var steps []models.PipelineStep
+				if err := json.Unmarshal([]byte(stepsJSON), &steps); err != nil {
+					return mcp.NewToolResultError("steps must be a valid JSON array: " + err.Error()), nil
+				}
+				updateReq.Steps = &steps
+			}
+			if st := req.GetString("status", ""); st != "" {
+				ps := models.PipelineStatus(st)
+				updateReq.Status = &ps
+			}
+			pipeline, err := m.pipelineSvc.Update(id, updateReq)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(pipeline)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
 	// delete_pipeline
 	s.AddTool(
 		mcp.NewTool("delete_pipeline",

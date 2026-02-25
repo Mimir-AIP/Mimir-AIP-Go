@@ -104,6 +104,69 @@ func registerDigitalTwinTools(s *server.MCPServer, m *MimirMCPServer) {
 		},
 	)
 
+	// update_digital_twin
+	s.AddTool(
+		mcp.NewTool("update_digital_twin",
+			mcp.WithDescription("Update an existing digital twin's metadata or status"),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("Digital twin ID"),
+			),
+			mcp.WithString("name",
+				mcp.Description("New name"),
+			),
+			mcp.WithString("description",
+				mcp.Description("New description"),
+			),
+			mcp.WithString("status",
+				mcp.Description("New status: active, inactive, or archived"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id := req.GetString("id", "")
+			if id == "" {
+				return mcp.NewToolResultError("id is required"), nil
+			}
+			updateReq := &models.DigitalTwinUpdateRequest{}
+			if name := req.GetString("name", ""); name != "" {
+				updateReq.Name = &name
+			}
+			if desc := req.GetString("description", ""); desc != "" {
+				updateReq.Description = &desc
+			}
+			if st := req.GetString("status", ""); st != "" {
+				updateReq.Status = &st
+			}
+			twin, err := m.dtSvc.UpdateDigitalTwin(id, updateReq)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(twin)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// delete_digital_twin
+	s.AddTool(
+		mcp.NewTool("delete_digital_twin",
+			mcp.WithDescription("Delete a digital twin by ID"),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("Digital twin ID"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id := req.GetString("id", "")
+			if id == "" {
+				return mcp.NewToolResultError("id is required"), nil
+			}
+			if err := m.dtSvc.DeleteDigitalTwin(id); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(`{"success":true}`), nil
+		},
+	)
+
 	// sync_digital_twin
 	s.AddTool(
 		mcp.NewTool("sync_digital_twin",

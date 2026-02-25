@@ -156,7 +156,7 @@ func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string) erro
 						{
 							Name:            "worker",
 							Image:           workerImage,
-							ImagePullPolicy: corev1.PullNever,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Env:             envVars,
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{

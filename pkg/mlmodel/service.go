@@ -1,12 +1,16 @@
 package mlmodel
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"math"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
+	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel/training"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
 	"github.com/mimir-aip/mimir-aip-go/pkg/queue"
@@ -298,8 +302,8 @@ func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLMod
 			},
 		},
 		ResourceRequirements: models.ResourceRequirements{
-			CPU:    "1000m", // 1 CPU core
-			Memory: "2Gi",   // 2GB RAM
+			CPU:    "2000m", // 2 CPU cores
+			Memory: "4Gi",   // 4GB RAM
 			GPU:    false,
 		},
 		DataAccess: models.DataAccess{
@@ -355,6 +359,221 @@ func (s *Service) CompleteTraining(modelID, modelArtifactPath string, performanc
 	}
 
 	return nil
+}
+
+// ValidateModel runs the trained model artifact against the provided data and returns performance metrics.
+// It deserializes the artifact, runs inference on each test row, and computes classification or regression metrics.
+func (s *Service) ValidateModel(modelID string, data *training.TrainingData) (*models.PerformanceMetrics, error) {
+	model, err := s.store.GetMLModel(modelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get model: %w", err)
+	}
+
+	if model.ModelArtifactPath == "" {
+		return nil, fmt.Errorf("model %s has no trained artifact (status: %s)", modelID, model.Status)
+	}
+
+	artifactBytes, err := os.ReadFile(model.ModelArtifactPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read model artifact: %w", err)
+	}
+
+	var artifact struct {
+		ModelType  string                 `json:"model_type"`
+		Parameters map[string]interface{} `json:"parameters"`
+	}
+	if err := json.Unmarshal(artifactBytes, &artifact); err != nil {
+		return nil, fmt.Errorf("failed to parse artifact: %w", err)
+	}
+
+	predictions := make([]float64, len(data.TestFeatures))
+	for i, features := range data.TestFeatures {
+		pred, err := inferFromArtifact(artifact.ModelType, artifact.Parameters, features)
+		if err != nil {
+			log.Printf("Warning: inference failed for row %d during validation: %v", i, err)
+		}
+		predictions[i] = pred
+	}
+
+	return computePerformanceMetrics(model.Type, predictions, data.TestLabels), nil
+}
+
+// inferFromArtifact runs inference for a single feature vector using deserialized artifact parameters.
+func inferFromArtifact(modelType string, parameters map[string]interface{}, features []float64) (float64, error) {
+	switch modelType {
+	case "decision_tree":
+		modelDataRaw, ok := parameters["model_data"]
+		if !ok {
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for decision_tree")
+		}
+		modelJSON, err := json.Marshal(modelDataRaw)
+		if err != nil {
+			return 0.0, fmt.Errorf("failed to marshal tree data: %w", err)
+		}
+		var node training.DecisionTreeModel
+		if err := json.Unmarshal(modelJSON, &node); err != nil {
+			return 0.0, fmt.Errorf("failed to unmarshal decision tree: %w", err)
+		}
+		return training.TraverseTree(&node, features), nil
+
+	case "random_forest":
+		modelDataRaw, ok := parameters["model_data"]
+		if !ok {
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for random_forest")
+		}
+		modelJSON, err := json.Marshal(modelDataRaw)
+		if err != nil {
+			return 0.0, fmt.Errorf("failed to marshal RF data: %w", err)
+		}
+		var rf training.RandomForestArtifact
+		if err := json.Unmarshal(modelJSON, &rf); err != nil {
+			return 0.0, fmt.Errorf("failed to unmarshal random forest: %w", err)
+		}
+		votes := make(map[float64]int)
+		for _, tree := range rf.Trees {
+			pred := math.Round(training.TraverseTree(tree, features))
+			votes[pred]++
+		}
+		bestCount, bestClass := 0, 0.0
+		for class, count := range votes {
+			if count > bestCount {
+				bestCount = count
+				bestClass = class
+			}
+		}
+		return bestClass, nil
+
+	case "regression":
+		modelDataRaw, ok := parameters["model_data"]
+		if !ok {
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for regression")
+		}
+		mdMap, ok := modelDataRaw.(map[string]interface{})
+		if !ok {
+			return 0.0, fmt.Errorf("invalid model_data format for regression")
+		}
+		intercept := 0.0
+		if b, ok := mdMap["intercept"].(float64); ok {
+			intercept = b
+		}
+		pred := intercept
+		if coeffsRaw, ok := mdMap["coefficients"].([]interface{}); ok {
+			for i, c := range coeffsRaw {
+				if i < len(features) {
+					if cf, ok := c.(float64); ok {
+						pred += cf * features[i]
+					}
+				}
+			}
+		}
+		return pred, nil
+
+	case "neural_network":
+		modelDataRaw, ok := parameters["model_data"]
+		if !ok {
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for neural_network")
+		}
+		mdMap, ok := modelDataRaw.(map[string]interface{})
+		if !ok {
+			return 0.0, fmt.Errorf("invalid model_data format for neural_network")
+		}
+		weightsJSON, err := json.Marshal(mdMap["weights"])
+		if err != nil {
+			return 0.0, fmt.Errorf("failed to marshal NN weights: %w", err)
+		}
+		biasesJSON, err := json.Marshal(mdMap["biases"])
+		if err != nil {
+			return 0.0, fmt.Errorf("failed to marshal NN biases: %w", err)
+		}
+		var weights [][][]float64
+		var biases [][]float64
+		if err := json.Unmarshal(weightsJSON, &weights); err != nil {
+			return 0.0, fmt.Errorf("failed to unmarshal NN weights: %w", err)
+		}
+		if err := json.Unmarshal(biasesJSON, &biases); err != nil {
+			return 0.0, fmt.Errorf("failed to unmarshal NN biases: %w", err)
+		}
+		a := make([]float64, len(features))
+		copy(a, features)
+		for l, w := range weights {
+			outSize := len(w)
+			z := make([]float64, outSize)
+			for j := 0; j < outSize; j++ {
+				z[j] = biases[l][j]
+				for k, ak := range a {
+					if k < len(w[j]) {
+						z[j] += w[j][k] * ak
+					}
+				}
+			}
+			a = make([]float64, outSize)
+			isOutput := l == len(weights)-1
+			for j := range z {
+				if isOutput {
+					a[j] = 1.0 / (1.0 + math.Exp(-z[j]))
+				} else if z[j] > 0 {
+					a[j] = z[j]
+				}
+			}
+		}
+		if len(a) > 0 {
+			return a[0], nil
+		}
+		return 0.0, nil
+
+	default:
+		return 0.0, fmt.Errorf("unsupported model type: %s", modelType)
+	}
+}
+
+// computePerformanceMetrics calculates performance metrics for predictions vs actual labels
+func computePerformanceMetrics(modelType models.ModelType, predictions, actual []float64) *models.PerformanceMetrics {
+	if len(predictions) == 0 || len(predictions) != len(actual) {
+		return &models.PerformanceMetrics{}
+	}
+
+	switch modelType {
+	case models.ModelTypeRegression:
+		sumSq, sumAbs := 0.0, 0.0
+		meanActual := 0.0
+		for _, v := range actual {
+			meanActual += v
+		}
+		meanActual /= float64(len(actual))
+		ssTot, ssRes := 0.0, 0.0
+		for i := range predictions {
+			diff := predictions[i] - actual[i]
+			sumSq += diff * diff
+			sumAbs += math.Abs(diff)
+			ssRes += diff * diff
+			ssTot += math.Pow(actual[i]-meanActual, 2)
+		}
+		rmse := math.Sqrt(sumSq / float64(len(predictions)))
+		mae := sumAbs / float64(len(predictions))
+		r2 := 0.0
+		if ssTot > 0 {
+			r2 = 1.0 - (ssRes / ssTot)
+		}
+		return &models.PerformanceMetrics{RMSE: rmse, MAE: mae, R2Score: r2}
+	default:
+		correct := 0
+		for i := range predictions {
+			if math.Round(predictions[i]) == math.Round(actual[i]) {
+				correct++
+			}
+		}
+		accuracy := float64(correct) / float64(len(predictions))
+		f1 := 0.0
+		if accuracy > 0 {
+			f1 = 2 * (accuracy * accuracy) / (accuracy + accuracy)
+		}
+		return &models.PerformanceMetrics{
+			Accuracy:  accuracy,
+			Precision: accuracy,
+			Recall:    accuracy,
+			F1Score:   f1,
+		}
+	}
 }
 
 // FailTraining marks training as failed

@@ -34,13 +34,22 @@ func (h *ProjectHandler) HandleProjects(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// HandleProject handles individual project operations
+// HandleProject handles individual project operations and component associations.
+// Routes:
+//   - GET/PUT/DELETE /api/projects/{id}
+//   - POST/DELETE    /api/projects/{id}/{componentType}/{componentId}
 func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
-	// Extract project ID from path
-	projectID := strings.TrimPrefix(r.URL.Path, "/api/projects/")
-	if idx := strings.Index(projectID, "/"); idx != -1 {
-		projectID = projectID[:idx]
+	// Parse path segments after /api/projects/
+	trimmed := strings.TrimPrefix(r.URL.Path, "/api/projects/")
+	parts := strings.SplitN(trimmed, "/", 3)
+
+	// Three segments means component association route
+	if len(parts) >= 3 && parts[2] != "" {
+		h.HandleProjectComponent(w, r)
+		return
 	}
+
+	projectID := parts[0]
 
 	switch r.Method {
 	case http.MethodGet:
@@ -157,6 +166,68 @@ func (h *ProjectHandler) handleUpdate(w http.ResponseWriter, r *http.Request, pr
 func (h *ProjectHandler) handleDelete(w http.ResponseWriter, r *http.Request, projectID string) {
 	if err := h.service.Delete(projectID); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete project: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleProjectComponent handles POST/DELETE for project component associations.
+// Path format: /api/projects/{id}/{componentType}/{componentId}
+// Supported componentTypes: pipelines, ontologies, mlmodels, digitaltwins, storage
+func (h *ProjectHandler) HandleProjectComponent(w http.ResponseWriter, r *http.Request) {
+	// Parse path: /api/projects/{id}/{componentType}/{componentId}
+	trimmed := strings.TrimPrefix(r.URL.Path, "/api/projects/")
+	parts := strings.SplitN(trimmed, "/", 3)
+	if len(parts) < 3 {
+		http.Error(w, "Invalid path: expected /api/projects/{id}/{componentType}/{componentId}", http.StatusBadRequest)
+		return
+	}
+	projectID := parts[0]
+	componentType := parts[1]
+	componentID := parts[2]
+
+	var err error
+	switch r.Method {
+	case http.MethodPost:
+		switch componentType {
+		case "pipelines":
+			err = h.service.AddPipeline(projectID, componentID)
+		case "ontologies":
+			err = h.service.AddOntology(projectID, componentID)
+		case "mlmodels":
+			err = h.service.AddMLModel(projectID, componentID)
+		case "digitaltwins":
+			err = h.service.AddDigitalTwin(projectID, componentID)
+		case "storage":
+			err = h.service.AddStorage(projectID, componentID)
+		default:
+			http.Error(w, fmt.Sprintf("Unknown component type: %s", componentType), http.StatusBadRequest)
+			return
+		}
+	case http.MethodDelete:
+		switch componentType {
+		case "pipelines":
+			err = h.service.RemovePipeline(projectID, componentID)
+		case "ontologies":
+			err = h.service.RemoveOntology(projectID, componentID)
+		case "mlmodels":
+			err = h.service.RemoveMLModel(projectID, componentID)
+		case "digitaltwins":
+			err = h.service.RemoveDigitalTwin(projectID, componentID)
+		case "storage":
+			err = h.service.RemoveStorage(projectID, componentID)
+		default:
+			http.Error(w, fmt.Sprintf("Unknown component type: %s", componentType), http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update project component: %v", err), http.StatusInternalServerError)
 		return
 	}
 

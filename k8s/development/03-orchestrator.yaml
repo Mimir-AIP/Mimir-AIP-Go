@@ -18,7 +18,7 @@ spec:
         app: mimir-aip
         component: orchestrator
     spec:
-      serviceAccountName: orchestrator-service-account
+      serviceAccountName: mimir-orchestrator
       containers:
       - name: orchestrator
         image: mimir-aip/orchestrator:latest

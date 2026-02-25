@@ -112,9 +112,15 @@ func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string) erro
 		memoryRequest = "1Gi"
 	}
 
-	// Calculate limits from client config
+	// Use task resource requirements for limits if specified, otherwise use config defaults
 	cpuLimit := c.cpuLimit
 	memoryLimit := c.memoryLimit
+	if task.ResourceRequirements.CPU != "" {
+		cpuLimit = task.ResourceRequirements.CPU
+	}
+	if task.ResourceRequirements.Memory != "" {
+		memoryLimit = task.ResourceRequirements.Memory
+	}
 
 	// Build environment variables
 	envVars := []corev1.EnvVar{
@@ -157,10 +163,7 @@ func (c *Client) CreateWorkerJob(task *models.WorkTask, workerImage string) erro
 									corev1.ResourceCPU:    parseQuantity(cpuRequest),
 									corev1.ResourceMemory: parseQuantity(memoryRequest),
 								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    parseQuantity(cpuLimit),
-									corev1.ResourceMemory: parseQuantity(memoryLimit),
-								},
+								Limits: buildResourceLimits(cpuLimit, memoryLimit, task.ResourceRequirements.GPU),
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "job-data", MountPath: "/app/data"},
@@ -251,6 +254,18 @@ func (c *Client) GetActiveWorkerCount() (int, error) {
 // Helper functions
 func int32Ptr(i int32) *int32 {
 	return &i
+}
+
+// buildResourceLimits builds a ResourceList with CPU, memory, and optionally a GPU limit
+func buildResourceLimits(cpuLimit, memoryLimit string, gpu bool) corev1.ResourceList {
+	limits := corev1.ResourceList{
+		corev1.ResourceCPU:    parseQuantity(cpuLimit),
+		corev1.ResourceMemory: parseQuantity(memoryLimit),
+	}
+	if gpu {
+		limits[corev1.ResourceName("nvidia.com/gpu")] = parseQuantity("1")
+	}
+	return limits
 }
 
 func parseQuantity(s string) resource.Quantity {

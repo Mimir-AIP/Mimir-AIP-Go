@@ -1,0 +1,152 @@
+---
+# Orchestrator: allow ingress from frontend and workers on 8080; allow required egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mimir-orchestrator-netpol
+  namespace: mimir-aip
+  labels:
+    app: mimir-aip
+    component: orchestrator
+spec:
+  podSelector:
+    matchLabels:
+      app: mimir-aip
+      component: orchestrator
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Accept traffic from frontend pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mimir-aip
+          component: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+  # Accept traffic from worker pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app: mimir-worker
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  # Allow DNS resolution
+  - ports:
+    - protocol: UDP
+      port: 53
+  # Allow access to the Kubernetes API server
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+  # Allow access to storage backends (postgres, mysql, mongo, redis, elasticsearch, neo4j)
+  - ports:
+    - protocol: TCP
+      port: 5432   # PostgreSQL
+    - protocol: TCP
+      port: 3306   # MySQL
+    - protocol: TCP
+      port: 27017  # MongoDB
+    - protocol: TCP
+      port: 6379   # Redis
+    - protocol: TCP
+      port: 9200   # Elasticsearch
+    - protocol: TCP
+      port: 7687   # Neo4j bolt
+    - protocol: TCP
+      port: 443    # S3 / HTTPS
+---
+# Workers: allow egress to orchestrator and storage backends; deny all other ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mimir-worker-netpol
+  namespace: mimir-aip
+  labels:
+    app: mimir-aip
+    component: worker
+spec:
+  podSelector:
+    matchLabels:
+      app: mimir-worker
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Workers do not accept inbound connections
+  - {}
+  egress:
+  # Allow DNS resolution
+  - ports:
+    - protocol: UDP
+      port: 53
+  # Allow calling the orchestrator API
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mimir-aip
+          component: orchestrator
+    ports:
+    - protocol: TCP
+      port: 8080
+  # Allow access to storage backends
+  - ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 3306
+    - protocol: TCP
+      port: 27017
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 9200
+    - protocol: TCP
+      port: 7687
+    - protocol: TCP
+      port: 443
+---
+# Frontend: allow ingress on 80/443; egress only to orchestrator
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mimir-frontend-netpol
+  namespace: mimir-aip
+  labels:
+    app: mimir-aip
+    component: frontend
+spec:
+  podSelector:
+    matchLabels:
+      app: mimir-aip
+      component: frontend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Accept external traffic on HTTP and HTTPS
+  - ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+  egress:
+  # Allow DNS resolution
+  - ports:
+    - protocol: UDP
+      port: 53
+  # Allow calling the orchestrator API only
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mimir-aip
+          component: orchestrator
+    ports:
+    - protocol: TCP
+      port: 8080

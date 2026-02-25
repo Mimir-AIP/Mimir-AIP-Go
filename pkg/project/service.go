@@ -279,6 +279,162 @@ func (s *Service) RemovePipeline(projectID, pipelineID string) error {
 	return s.store.SaveProject(project)
 }
 
+// AddOntology associates an ontology with a project
+func (s *Service) AddOntology(projectID, ontologyID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	for _, id := range project.Components.Ontologies {
+		if id == ontologyID {
+			return nil
+		}
+	}
+
+	project.Components.Ontologies = append(project.Components.Ontologies, ontologyID)
+	project.Metadata.UpdatedAt = time.Now()
+
+	return s.store.SaveProject(project)
+}
+
+// RemoveOntology removes an ontology association from a project
+func (s *Service) RemoveOntology(projectID, ontologyID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	filtered := make([]string, 0)
+	for _, id := range project.Components.Ontologies {
+		if id != ontologyID {
+			filtered = append(filtered, id)
+		}
+	}
+
+	project.Components.Ontologies = filtered
+	project.Metadata.UpdatedAt = time.Now()
+
+	return s.store.SaveProject(project)
+}
+
+// AddMLModel associates an ML model with a project
+func (s *Service) AddMLModel(projectID, modelID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	for _, id := range project.Components.MLModels {
+		if id == modelID {
+			return nil
+		}
+	}
+
+	project.Components.MLModels = append(project.Components.MLModels, modelID)
+	project.Metadata.UpdatedAt = time.Now()
+
+	return s.store.SaveProject(project)
+}
+
+// RemoveMLModel removes an ML model association from a project
+func (s *Service) RemoveMLModel(projectID, modelID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	filtered := make([]string, 0)
+	for _, id := range project.Components.MLModels {
+		if id != modelID {
+			filtered = append(filtered, id)
+		}
+	}
+
+	project.Components.MLModels = filtered
+	project.Metadata.UpdatedAt = time.Now()
+
+	return s.store.SaveProject(project)
+}
+
+// AddDigitalTwin associates a digital twin with a project
+func (s *Service) AddDigitalTwin(projectID, twinID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	for _, id := range project.Components.DigitalTwins {
+		if id == twinID {
+			return nil
+		}
+	}
+
+	project.Components.DigitalTwins = append(project.Components.DigitalTwins, twinID)
+	project.Metadata.UpdatedAt = time.Now()
+
+	return s.store.SaveProject(project)
+}
+
+// RemoveDigitalTwin removes a digital twin association from a project
+func (s *Service) RemoveDigitalTwin(projectID, twinID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	filtered := make([]string, 0)
+	for _, id := range project.Components.DigitalTwins {
+		if id != twinID {
+			filtered = append(filtered, id)
+		}
+	}
+
+	project.Components.DigitalTwins = filtered
+	project.Metadata.UpdatedAt = time.Now()
+
+	return s.store.SaveProject(project)
+}
+
+// AddStorage associates a storage config with a project
+func (s *Service) AddStorage(projectID, storageID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	for _, id := range project.Components.StorageConfigs {
+		if id == storageID {
+			return nil
+		}
+	}
+
+	project.Components.StorageConfigs = append(project.Components.StorageConfigs, storageID)
+	project.Metadata.UpdatedAt = time.Now()
+
+	return s.store.SaveProject(project)
+}
+
+// RemoveStorage removes a storage config association from a project
+func (s *Service) RemoveStorage(projectID, storageID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return err
+	}
+
+	filtered := make([]string, 0)
+	for _, id := range project.Components.StorageConfigs {
+		if id != storageID {
+			filtered = append(filtered, id)
+		}
+	}
+
+	project.Components.StorageConfigs = filtered
+	project.Metadata.UpdatedAt = time.Now()
+
+	return s.store.SaveProject(project)
+}
+
 // validateCreateRequest validates a project creation request
 func (s *Service) validateCreateRequest(req *models.ProjectCreateRequest) error {
 	// Validate name

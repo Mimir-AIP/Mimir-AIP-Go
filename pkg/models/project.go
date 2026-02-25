@@ -32,10 +32,11 @@ type ProjectMetadata struct {
 
 // ProjectComponents references associated resources
 type ProjectComponents struct {
-	Pipelines    []string `json:"pipelines" yaml:"pipelines"`
-	Ontologies   []string `json:"ontologies" yaml:"ontologies"`
-	MLModels     []string `json:"ml_models" yaml:"ml_models"`
-	DigitalTwins []string `json:"digital_twins" yaml:"digital_twins"`
+	Pipelines      []string `json:"pipelines" yaml:"pipelines"`
+	Ontologies     []string `json:"ontologies" yaml:"ontologies"`
+	MLModels       []string `json:"ml_models" yaml:"ml_models"`
+	DigitalTwins   []string `json:"digital_twins" yaml:"digital_twins"`
+	StorageConfigs []string `json:"storage_configs" yaml:"storage_configs"`
 }
 
 // ProjectSettings contains project configuration

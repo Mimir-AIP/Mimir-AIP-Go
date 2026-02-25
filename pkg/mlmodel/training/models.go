@@ -22,7 +22,9 @@ type RandomForestArtifact struct {
 }
 
 // RandomForestTrainer trains an ensemble of decision trees
-type RandomForestTrainer struct{}
+type RandomForestTrainer struct {
+	lastArtifact *RandomForestArtifact
+}
 
 // NewRandomForestTrainer creates a new random forest trainer
 func NewRandomForestTrainer() *RandomForestTrainer {
@@ -86,23 +88,44 @@ func (t *RandomForestTrainer) Train(data *TrainingData, config *models.TrainingC
 		ValidationAccuracy: perfMetrics.Accuracy,
 	}
 
+	artifact := &RandomForestArtifact{
+		Type:     "random_forest",
+		NumTrees: numTrees,
+		Trees:    trees,
+	}
+	t.lastArtifact = artifact
+
 	return &TrainingResult{
-		ModelData: &RandomForestArtifact{
-			Type:     "random_forest",
-			NumTrees: numTrees,
-			Trees:    trees,
-		},
+		ModelData:          artifact,
 		TrainingMetrics:    trainingMetrics,
 		PerformanceMetrics: perfMetrics,
 		FeatureImportance:  featureImportanceMap,
 	}, nil
 }
 
-// Validate validates the trained model (uses the last trained state via re-predicting on test data)
+// Validate validates the trained model using the cached forest artifact
 func (t *RandomForestTrainer) Validate(data *TrainingData) (*ValidationResult, error) {
+	if t.lastArtifact == nil {
+		return nil, fmt.Errorf("model not trained")
+	}
+
+	testPredictions := make([]float64, len(data.TestLabels))
+	for i, features := range data.TestFeatures {
+		testPredictions[i] = rfMajorityVote(t.lastArtifact.Trees, features)
+	}
+
+	perfMetrics := calculateClassificationMetrics(testPredictions, data.TestLabels)
+	rmse := calculateRMSE(testPredictions, data.TestLabels)
+
 	return &ValidationResult{
-		Accuracy: 0,
-		Metrics:  map[string]float64{"accuracy": 0},
+		Accuracy: perfMetrics.Accuracy,
+		Metrics: map[string]float64{
+			"accuracy":  perfMetrics.Accuracy,
+			"precision": perfMetrics.Precision,
+			"recall":    perfMetrics.Recall,
+			"f1_score":  perfMetrics.F1Score,
+			"rmse":      rmse,
+		},
 	}, nil
 }
 

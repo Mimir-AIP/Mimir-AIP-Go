@@ -23,7 +23,8 @@ const (
 	ModelStatusTraining   ModelStatus = "training"   // Model is currently training
 	ModelStatusTrained    ModelStatus = "trained"    // Model training completed successfully
 	ModelStatusFailed     ModelStatus = "failed"     // Model training failed
-	ModelStatusDeprecated ModelStatus = "deprecated" // Model performance degraded
+	ModelStatusDegraded   ModelStatus = "degraded"   // Model performance degraded below threshold
+	ModelStatusDeprecated ModelStatus = "deprecated" // Model manually deprecated
 	ModelStatusArchived   ModelStatus = "archived"   // Model archived
 )
 
@@ -82,16 +83,18 @@ type LearningCurvePoint struct {
 
 // PerformanceMetrics holds model performance metrics
 type PerformanceMetrics struct {
-	Accuracy          float64                `json:"accuracy,omitempty"`
-	Precision         float64                `json:"precision,omitempty"`
-	Recall            float64                `json:"recall,omitempty"`
-	F1Score           float64                `json:"f1_score,omitempty"`
-	RMSE              float64                `json:"rmse,omitempty"` // For regression
-	MAE               float64                `json:"mae,omitempty"`  // For regression
-	R2Score           float64                `json:"r2_score,omitempty"`
-	ConfusionMatrix   [][]int                `json:"confusion_matrix,omitempty"`
-	FeatureImportance map[string]float64     `json:"feature_importance,omitempty"`
-	AdditionalMetrics map[string]interface{} `json:"additional_metrics,omitempty"`
+	Accuracy            float64                `json:"accuracy,omitempty"`
+	Precision           float64                `json:"precision,omitempty"`
+	Recall              float64                `json:"recall,omitempty"`
+	F1Score             float64                `json:"f1_score,omitempty"`
+	RMSE                float64                `json:"rmse,omitempty"` // For regression
+	MAE                 float64                `json:"mae,omitempty"`  // For regression
+	R2Score             float64                `json:"r2_score,omitempty"`
+	ConfusionMatrix     [][]int                `json:"confusion_matrix,omitempty"`
+	FeatureImportance   map[string]float64     `json:"feature_importance,omitempty"`
+	AdditionalMetrics   map[string]interface{} `json:"additional_metrics,omitempty"`
+	LastMonitoredAt     time.Time              `json:"last_monitored_at,omitempty"`
+	DegradationDetected bool                   `json:"degradation_detected,omitempty"`
 }
 
 // ModelRecommendation represents a model type recommendation

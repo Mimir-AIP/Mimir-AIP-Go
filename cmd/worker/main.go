@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
 	"net/http"
 	"os"
 	"plugin"
@@ -301,11 +300,11 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		return nil, fmt.Errorf("failed to decode model: %w", err)
 	}
 
-	// Load training data from storage (fall back to synthetic if none available)
+	// Load training data from storage
 	trainingData, err := loadTrainingDataFromStorage(orchestratorURL, task)
 	if err != nil {
-		log.Printf("Warning: failed to load real training data (%v), falling back to synthetic data", err)
-		trainingData = generateSyntheticTrainingData(50, 4)
+		reportTrainingFailure(orchestratorURL, task.TaskSpec.ModelID, err.Error())
+		return nil, fmt.Errorf("failed to load training data: %w", err)
 	}
 
 	// Create trainer factory and get appropriate trainer
@@ -378,62 +377,6 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 			"validation_accuracy": result.TrainingMetrics.ValidationAccuracy,
 		},
 	}, nil
-}
-
-// generateSyntheticTrainingData creates synthetic data for demonstration
-func generateSyntheticTrainingData(samples, features int) *training.TrainingData {
-	// 70/30 train/test split
-	trainSamples := int(float64(samples) * 0.7)
-	testSamples := samples - trainSamples
-
-	trainFeatures := make([][]float64, trainSamples)
-	trainLabels := make([]float64, trainSamples)
-	testFeatures := make([][]float64, testSamples)
-	testLabels := make([]float64, testSamples)
-
-	// Generate random data with some pattern
-	for i := 0; i < trainSamples; i++ {
-		trainFeatures[i] = make([]float64, features)
-		sum := 0.0
-		for j := 0; j < features; j++ {
-			trainFeatures[i][j] = rand.Float64() * 10
-			sum += trainFeatures[i][j]
-		}
-		// Simple decision boundary: label 1 if sum > threshold, else 0
-		if sum > float64(features)*5 {
-			trainLabels[i] = 1
-		} else {
-			trainLabels[i] = 0
-		}
-	}
-
-	for i := 0; i < testSamples; i++ {
-		testFeatures[i] = make([]float64, features)
-		sum := 0.0
-		for j := 0; j < features; j++ {
-			testFeatures[i][j] = rand.Float64() * 10
-			sum += testFeatures[i][j]
-		}
-		if sum > float64(features)*5 {
-			testLabels[i] = 1
-		} else {
-			testLabels[i] = 0
-		}
-	}
-
-	featureNames := make([]string, features)
-	for i := 0; i < features; i++ {
-		featureNames[i] = fmt.Sprintf("feature_%d", i)
-	}
-
-	return &training.TrainingData{
-		TrainFeatures: trainFeatures,
-		TrainLabels:   trainLabels,
-		TestFeatures:  testFeatures,
-		TestLabels:    testLabels,
-		FeatureNames:  featureNames,
-		Metadata:      make(map[string]interface{}),
-	}
 }
 
 // loadTrainingDataFromStorage retrieves CIR records from storage and converts them to training data.
@@ -690,17 +633,11 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 
 	// Load inference data from storage
 	inferenceData, err := loadTrainingDataFromStorage(orchestratorURL, task)
-	if err != nil || len(inferenceData.TrainFeatures) == 0 {
-		log.Printf("Warning: could not load inference data (%v)", err)
-		return &models.WorkTaskResult{
-			WorkTaskID: task.ID,
-			Status:     models.WorkTaskStatusCompleted,
-			Metadata: map[string]interface{}{
-				"model_id":         task.TaskSpec.ModelID,
-				"predictions_made": 0,
-				"note":             "no data available for inference",
-			},
-		}, nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to load inference data: %w", err)
+	}
+	if len(inferenceData.TrainFeatures) == 0 && len(inferenceData.TestFeatures) == 0 {
+		return nil, fmt.Errorf("no data available for inference with model %s", task.TaskSpec.ModelID)
 	}
 
 	// Read artifact and run inference for each row
@@ -775,7 +712,7 @@ func workerRunInference(modelType string, parameters map[string]interface{}, fea
 	case "decision_tree":
 		modelDataRaw, ok := parameters["model_data"]
 		if !ok {
-			return 0.0, nil
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
 		}
 		modelJSON, err := json.Marshal(modelDataRaw)
 		if err != nil {
@@ -790,7 +727,7 @@ func workerRunInference(modelType string, parameters map[string]interface{}, fea
 	case "random_forest":
 		modelDataRaw, ok := parameters["model_data"]
 		if !ok {
-			return 0.0, nil
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
 		}
 		modelJSON, err := json.Marshal(modelDataRaw)
 		if err != nil {
@@ -818,11 +755,11 @@ func workerRunInference(modelType string, parameters map[string]interface{}, fea
 	case "regression":
 		weightsRaw, ok := parameters["weights"]
 		if !ok {
-			return 0.0, nil
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
 		}
 		weightsSlice, ok := weightsRaw.([]interface{})
 		if !ok {
-			return 0.0, nil
+			return 0.0, fmt.Errorf("invalid weights format in artifact parameters for %s", modelType)
 		}
 		intercept := 0.0
 		if b, ok := parameters["intercept"]; ok {
@@ -843,11 +780,11 @@ func workerRunInference(modelType string, parameters map[string]interface{}, fea
 	case "neural_network":
 		weightsRaw, ok := parameters["weights"]
 		if !ok {
-			return 0.0, nil
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
 		}
 		biasesRaw, ok := parameters["biases"]
 		if !ok {
-			return 0.0, nil
+			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
 		}
 		weightsJSON, err := json.Marshal(weightsRaw)
 		if err != nil {

@@ -101,6 +101,7 @@ func main() {
 	storageService.RegisterPlugin("s3", storageplugins.NewS3Plugin())
 	storageService.RegisterPlugin("redis", storageplugins.NewRedisPlugin())
 	storageService.RegisterPlugin("elasticsearch", storageplugins.NewElasticsearchPlugin())
+	storageService.RegisterPlugin("neo4j", storageplugins.NewNeo4jPlugin())
 
 	// Initialize ontology and extraction services
 	ontologyService := ontology.NewService(store)
@@ -118,6 +119,11 @@ func main() {
 	schedulerService.Start()
 	defer schedulerService.Stop()
 
+	// Start model monitoring service
+	monitoringService := mlmodel.NewMonitoringService(store, mlmodelService, storageService)
+	monitoringService.Start()
+	defer monitoringService.Stop()
+
 	log.Println("Started job scheduler")
 
 	// Start API server in a goroutine
@@ -128,6 +134,7 @@ func main() {
 	server.RegisterHandler("/api/projects", projectHandler.HandleProjects)
 	server.RegisterHandler("/api/projects/", projectHandler.HandleProject)
 	server.RegisterHandler("/api/projects/clone", projectHandler.HandleProjectClone)
+
 
 	// Register pipeline handlers
 	pipelineHandler := api.NewPipelineHandler(pipelineService, q)

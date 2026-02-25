@@ -1,0 +1,56 @@
+{{- if .Values.rbac.create }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mimir-orchestrator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mimir-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+---
+# ClusterRole grants the orchestrator permission to create and manage worker Jobs/Pods
+# cluster-scoped so workers can be spawned in any configured namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-orchestrator
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-orchestrator
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+subjects:
+- kind: ServiceAccount
+  name: mimir-orchestrator
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "mimir-aip.fullname" . }}-orchestrator
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

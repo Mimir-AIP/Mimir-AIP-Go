@@ -1,51 +1,48 @@
+{{- if .Values.networkPolicy.enabled }}
 ---
-# Orchestrator: allow ingress from frontend and workers on 8080; allow required egress
+# Orchestrator: accept ingress from frontend and workers; egress to Kubernetes API and storage backends
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: mimir-orchestrator-netpol
-  namespace: mimir-aip
+  name: {{ include "mimir-aip.fullname" . }}-orchestrator
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: mimir-aip
-    component: orchestrator
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
 spec:
   podSelector:
     matchLabels:
-      app: mimir-aip
-      component: orchestrator
+      {{- include "mimir-aip.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: orchestrator
   policyTypes:
   - Ingress
   - Egress
   ingress:
-  # Accept traffic from frontend pods
   - from:
     - podSelector:
         matchLabels:
-          app: mimir-aip
-          component: frontend
+          {{- include "mimir-aip.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: frontend
     ports:
     - protocol: TCP
-      port: 8080
-  # Accept traffic from worker pods
+      port: {{ .Values.orchestrator.port }}
   - from:
     - podSelector:
         matchLabels:
           app: mimir-worker
     ports:
     - protocol: TCP
-      port: 8080
+      port: {{ .Values.orchestrator.port }}
   egress:
-  # Allow DNS resolution
   - ports:
     - protocol: UDP
       port: 53
-  # Allow access to the Kubernetes API server
   - ports:
     - protocol: TCP
       port: 443
     - protocol: TCP
       port: 6443
-  # Allow access to storage backends (postgres, mysql, mongo, redis, elasticsearch, neo4j)
+  # Storage backends
   - ports:
     - protocol: TCP
       port: 5432   # PostgreSQL
@@ -58,19 +55,17 @@ spec:
     - protocol: TCP
       port: 9200   # Elasticsearch
     - protocol: TCP
-      port: 7687   # Neo4j bolt
-    - protocol: TCP
-      port: 443    # S3 / HTTPS
+      port: 7687   # Neo4j Bolt
 ---
-# Workers: allow egress to orchestrator and storage backends; deny all other ingress
+# Workers: egress to orchestrator and storage backends only
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: mimir-worker-netpol
-  namespace: mimir-aip
+  name: {{ include "mimir-aip.fullname" . }}-worker
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: mimir-aip
-    component: worker
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
 spec:
   podSelector:
     matchLabels:
@@ -78,24 +73,19 @@ spec:
   policyTypes:
   - Ingress
   - Egress
-  ingress:
-  # Workers do not accept inbound connections
-  - {}
+  ingress: []
   egress:
-  # Allow DNS resolution
   - ports:
     - protocol: UDP
       port: 53
-  # Allow calling the orchestrator API
   - to:
     - podSelector:
         matchLabels:
-          app: mimir-aip
-          component: orchestrator
+          {{- include "mimir-aip.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: orchestrator
     ports:
     - protocol: TCP
-      port: 8080
-  # Allow access to storage backends
+      port: {{ .Values.orchestrator.port }}
   - ports:
     - protocol: TCP
       port: 5432
@@ -111,42 +101,42 @@ spec:
       port: 7687
     - protocol: TCP
       port: 443
+{{- if .Values.frontend.enabled }}
 ---
-# Frontend: allow ingress on 80/443; egress only to orchestrator
+# Frontend: accept external HTTP/HTTPS; egress to orchestrator only
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: mimir-frontend-netpol
-  namespace: mimir-aip
+  name: {{ include "mimir-aip.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: mimir-aip
-    component: frontend
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
 spec:
   podSelector:
     matchLabels:
-      app: mimir-aip
-      component: frontend
+      {{- include "mimir-aip.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
   policyTypes:
   - Ingress
   - Egress
   ingress:
-  # Accept external traffic on HTTP and HTTPS
   - ports:
     - protocol: TCP
       port: 80
     - protocol: TCP
       port: 443
   egress:
-  # Allow DNS resolution
   - ports:
     - protocol: UDP
       port: 53
-  # Allow calling the orchestrator API only
   - to:
     - podSelector:
         matchLabels:
-          app: mimir-aip
-          component: orchestrator
+          {{- include "mimir-aip.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: orchestrator
     ports:
     - protocol: TCP
-      port: 8080
+      port: {{ .Values.orchestrator.port }}
+{{- end }}
+{{- end }}

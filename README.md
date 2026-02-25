@@ -1,366 +1,262 @@
-# Mimir AIP - Infrastructure & Scaling
+# Mimir AIP
 
-This directory contains the complete infrastructure and scaling implementation for the Mimir AIP platform.
+Mimir AIP is an ontology-driven platform for data aggregation, processing and analysis. It aims to provide a unified runtime for data ingestion pipelines, machine learning model training and inference, and digital twin management — all backed by a persistent metadata store and exposed as [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tools for direct use by AI agents and LLM-based workflows, you are free to use the platform directly or via your favourite agent tooling. Mimir AIP is built in Go for performance and ease of deployment, with a React/TypeScript frontend for user-friendly management. It runs on Kubernetes and supports a wide range of storage backends, additionally it is an extensible system, making it easy to design and build custom plugins for new data sources, ML model types, or processing steps. Mimir AIP aims to offer an accessible yet powerful solution targetting small and medium sized enterprises looking to leverage their data and derive insights without the overhead of building a custom platform from scratch, or relying on locked-in SaaS solutions. 
 
-## Overview
+---
 
-The Mimir AIP infrastructure consists of three main components deployed as Kubernetes containers:
+## Contents
 
-1. **Orchestrator** - Central coordination service managing projects, scheduling jobs, and coordinating workers
-2. **Worker** - Scalable job execution containers that spawn on-demand based on queue depth
-3. **Frontend** - Static web interface for system monitoring and job submission
+- [Architecture](#architecture)
+- [Terminology](#terminology)
+- [Quick Start](#quick-start)
+  - [Docker Compose](#docker-compose)
+  - [Kubernetes with Helm](#kubernetes-with-helm)
+- [MCP Integration](#mcp-integration)
+- [Configuration Reference](#configuration-reference)
+- [Building from Source](#building-from-source)
 
-## Technology Stack
+---
 
-- **Backend**: Go 1.21
-- **Frontend**: Static HTML/CSS/JavaScript
-- **Queue**: Redis
-- **Container Orchestration**: Kubernetes
-- **Development**: Rancher Desktop (local) or K3s on Intel NUC server
+## Architecture
 
-## Project Structure
+Mimir AIP consists of two binaries and an optional web frontend:
 
 ```
-.
-├── cmd/
-│   ├── orchestrator/    # Orchestrator server main application
-│   │   ├── main.go
-│   │   └── Dockerfile
-│   └── worker/          # Worker main application
-│       ├── main.go
-│       └── Dockerfile
-├── pkg/
-│   ├── api/            # REST API server
-│   ├── config/         # Configuration management
-│   ├── k8s/            # Kubernetes client
-│   ├── models/         # Data models
-│   └── queue/          # Redis job queue
-├── frontend/           # Static web interface
-│   ├── index.html
-│   ├── styles.css
-│   ├── app.js
-│   ├── server.go
-│   └── Dockerfile
-├── k8s/
-│   ├── development/    # Kubernetes manifests for local dev
-│   └── production/     # Kubernetes manifests for production
-├── scripts/            # Deployment and testing scripts
-├── tests/
-│   ├── unit/          # Unit tests
-│   └── integration/   # Integration tests
-└── Plan/              # Architecture and planning documents
+┌──────────────────────────────────────────────────────┐
+│                      Client Layer                    │
+│   Web Frontend (port 3000)   │   MCP Client / Agent  │
+└──────────────┬───────────────┴──────────┬────────────┘
+               │  REST API                │  SSE (MCP)
+               ▼                          ▼
+┌─────────────────────────────────────────────────────┐
+│                    Orchestrator                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│  │ Projects │  │Pipelines │  │   ML Models      │  │
+│  │ Ontology │  │Schedules │  │   Digital Twins  │  │
+│  │ Storage  │  │  Queue   │  │   MCP Server     │  │
+│  └──────────┘  └────┬─────┘  └──────────────────┘  │
+│          SQLite     │                               │
+└─────────────────────┼───────────────────────────────┘
+                      │  Kubernetes Jobs
+                      ▼
+           ┌─────────────────────┐
+           │       Workers       │
+           │  (pipeline, train,  │
+           │   infer, DT sync)   │
+           └──────────┬──────────┘
+                      │
+          ┌───────────▼───────────┐
+          │   Storage Backends    │
+          │  Filesystem · Postgres│
+          │  MySQL · MongoDB · S3 │
+          │  Redis · ES · Neo4j   │
+          └───────────────────────┘
 ```
 
-## Prerequisites
+**Orchestrator** — the long-running HTTP server. Manages all persistent metadata (projects, pipelines, ontologies, ML models, digital twins, storage configurations, schedules) in SQLite. Exposes a REST API and an MCP SSE endpoint. Spawns **Workers** as Kubernetes Jobs when pipeline execution, ML training, ML inference, or digital twin synchronisation is required.
 
-### For Local Development (Rancher Desktop)
+**Worker** — a short-lived binary run as a Kubernetes Job. Reads its task type and parameters from environment variables, calls the orchestrator API to fetch configuration, executes the work, and reports results back. Designed with scalability in mind, allowing multiple workers to run concurrently (currently workers run on the same cluster as the orchestrator, however in future releases we plan to support remote workers running in different clusters or on cloud compute services)
 
-1. **Install Rancher Desktop**
-   - Download from https://rancherdesktop.io/
-   - Enable Kubernetes
-   - Select dockerd (moby) as the container runtime
+**Frontend** — a lightweight React/TypeScript single-page application served by a small Go HTTP server. Communicates exclusively with the orchestrator REST API.
 
-2. **Install Go 1.21+**
-   ```bash
-   brew install go
-   ```
+---
 
-3. **Install kubectl**
-   ```bash
-   brew install kubectl
-   ```
+## Terminology
 
-### For NUC Server Deployment
+| Term | Description |
+|------|-------------|
+| **Project** | Top-level organisational unit. Groups pipelines, ontologies, ML models, digital twins, and storage configurations. |
+| **Pipeline** | A named, ordered sequence of processing steps (ingestion → processing → output). Pipelines are executed asynchronously by workers. |
+| **Schedule** | A cron-based trigger that enqueues one or more pipelines on a recurring basis. |
+| **Ontology** | An OWL/Turtle vocabulary that defines the entity types, properties, and relationships for a project domain. Used to structure storage and constrain ML model training. |
+| **Storage Config** | A connection definition for a storage backend (filesystem, PostgreSQL, MySQL, MongoDB, S3, Redis, Elasticsearch, or Neo4j). Data is stored and retrieved using the **CIR** (Common Internal Representation) format. |
+| **CIR** | Common Internal Representation — the normalised record format used across all storage backends. Each CIR contains a `source` block (provenance), a `data` block (the payload), and a `metadata` block. |
+| **ML Model** | A model definition (type: decision tree, random forest, regression, or neural network) linked to an ontology. Training and inference are executed by workers. |
+| **Digital Twin** | A live in-memory graph of entities and their attributes, initialised from an ontology and synchronised from storage. Queryable via a built-in SPARQL engine. |
+| **MCP** | [Model Context Protocol](https://modelcontextprotocol.io) — an open standard for exposing tools to AI agents. Mimir exposes 55 tools covering all platform resources, allowing users to interact with the system within the enviroment of their favourite tools and leverage natural language to configure and operate Mimir AIP. |
 
-1. **Install Go 1.21+** (for building)
-   ```bash
-   brew install go
-   ```
-
-2. **Install kubectl**
-   ```bash
-   brew install kubectl
-   ```
-
-3. **Set up NUC server access**
-   - SSH key authentication to NUC server should be configured
-   - Kubeconfig file should be at `~/.kube/config-nuc`
-   - Add kubectl alias to `~/.zshrc`:
-     ```bash
-     alias knuc='KUBECONFIG=~/.kube/config-nuc kubectl'
-     ```
-   - Reload shell: `source ~/.zshrc`
+---
 
 ## Quick Start
 
-See [scripts/README.md](scripts/README.md) for detailed deployment instructions.
+### Docker Compose
 
-### Deploy to NUC Server
+The simplest way to run Mimir AIP locally. Docker Compose starts the orchestrator and frontend; worker jobs are not available without Kubernetes.
+
+**Prerequisites:** Docker and Docker Compose.
 
 ```bash
-# Full deployment to NUC server
-./scripts/full-deploy.sh --nuc
+git clone https://github.com/mimir-aip/mimir-aip-go
+cd mimir-aip-go
 
-# Access the frontend
-knuc port-forward -n mimir-aip svc/frontend 8081:80
-# Then open http://localhost:8081
+docker compose up --build
 ```
 
-### Deploy Locally (Rancher Desktop)
+| Service | URL |
+|---------|-----|
+| Orchestrator API | http://localhost:8080 |
+| Web Frontend | http://localhost:3000 |
+| MCP SSE endpoint | http://localhost:8080/mcp/sse |
 
-### 1. Build Docker Images
-
-Build all Docker images for local deployment:
+To stop:
 
 ```bash
-./scripts/build-images.sh
+docker compose down
 ```
 
-This will build:
-- `mimir-aip/orchestrator:latest`
-- `mimir-aip/worker:latest`
-- `mimir-aip/frontend:latest`
+---
 
-### 2. Deploy to Kubernetes
+### Kubernetes with Helm
 
-Deploy the entire stack to your local Rancher Desktop cluster:
+For a full deployment including worker job execution.
+
+**Prerequisites:** A running Kubernetes cluster (1.25+), `kubectl` configured, and [Helm 3](https://helm.sh/docs/intro/install/).
+
+#### 1. Build and push images
 
 ```bash
-./scripts/deploy-local.sh
+# Replace with your registry, e.g. ghcr.io/your-org
+export REGISTRY=ghcr.io/your-org
+
+make build-all REGISTRY=$REGISTRY
+make push-all  REGISTRY=$REGISTRY
 ```
 
-This will:
-- Create the `mimir-aip` namespace
-- Deploy Redis
-- Deploy the Orchestrator
-- Deploy the Frontend
-- Create necessary ConfigMaps and Secrets
+#### 2. Install the Helm chart
 
-### 3. Access the System
-
-**Frontend (Web UI):**
 ```bash
-kubectl port-forward -n mimir-aip svc/frontend 8081:80
-```
-Then open http://localhost:8081 in your browser
-
-**Orchestrator API:**
-```bash
-kubectl port-forward -n mimir-aip svc/orchestrator 8080:8080
-```
-API available at http://localhost:8080
-
-### 4. Run Tests
-
-**Unit Tests:**
-```bash
-go test ./pkg/... -v
+helm install mimir-aip ./helm/mimir-aip \
+  --namespace mimir-aip \
+  --create-namespace \
+  --set image.registry=$REGISTRY
 ```
 
-**Integration Tests:**
+The chart uses your cluster's default storage class for the orchestrator PVC. To override:
+
 ```bash
-./scripts/run-integration-tests.sh
+helm install mimir-aip ./helm/mimir-aip \
+  --namespace mimir-aip \
+  --create-namespace \
+  --set image.registry=$REGISTRY \
+  --set orchestrator.persistence.storageClass=standard
 ```
 
-### Full Deployment Pipeline
-
-Run the complete deployment and testing pipeline:
+#### 3. Access the services
 
 ```bash
-./scripts/full-deploy.sh
+# Orchestrator API
+kubectl port-forward -n mimir-aip svc/mimir-aip-orchestrator 8080:8080
+
+# Web Frontend
+kubectl port-forward -n mimir-aip svc/mimir-aip-frontend 3000:80
 ```
 
-This will:
-1. Build all Docker images
-2. Deploy to Kubernetes
-3. Wait for services to stabilize
-4. Run integration tests
-
-## API Endpoints
-
-### Orchestrator API
-
-#### Health & Status
-- `GET /health` - Health check
-- `GET /ready` - Readiness check
-
-#### Job Management
-- `POST /api/jobs` - Submit a new job
-- `GET /api/jobs` - Get queue status
-- `GET /api/jobs/{id}` - Get job details
-- `POST /api/jobs/{id}` - Update job status
-
-### Job Submission Example
+#### 4. Upgrade and uninstall
 
 ```bash
-curl -X POST http://localhost:8080/api/jobs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "pipeline_execution",
-    "priority": 1,
-    "project_id": "my-project",
-    "task_spec": {
-      "pipeline_id": "data-pipeline",
-      "parameters": {}
-    },
-    "resource_requirements": {
-      "cpu": "500m",
-      "memory": "1Gi",
-      "gpu": false
-    },
-    "data_access": {
-      "input_datasets": [],
-      "output_location": "s3://bucket/results/"
+# Upgrade after pushing new images
+helm upgrade mimir-aip ./helm/mimir-aip --namespace mimir-aip --set image.registry=$REGISTRY
+
+# Uninstall (PVC is retained by default)
+helm uninstall mimir-aip --namespace mimir-aip
+```
+
+#### Custom values
+
+Create a `my-values.yaml` to override defaults without modifying the chart:
+
+```yaml
+image:
+  registry: ghcr.io/your-org
+  tag: v1.2.0
+
+orchestrator:
+  logLevel: debug
+  maxWorkers: 20
+  persistence:
+    size: 50Gi
+    storageClass: fast-ssd
+
+frontend:
+  serviceType: ClusterIP   # Use ClusterIP + Ingress instead of LoadBalancer
+```
+
+```bash
+helm install mimir-aip ./helm/mimir-aip --namespace mimir-aip --create-namespace -f my-values.yaml
+```
+
+---
+
+## MCP Integration
+
+Mimir AIP exposes 55 MCP tools over a Server-Sent Events (SSE) transport at `/mcp/sse`. Any MCP-compatible client can connect.
+
+### Claude Code
+
+Add the following to your Claude Code MCP configuration (`~/.claude/mcp_servers.json` or via `claude mcp add`):
+
+```json
+{
+  "mcpServers": {
+    "mimir": {
+      "type": "sse",
+      "url": "http://localhost:8080/mcp/sse"
     }
-  }'
+  }
+}
 ```
 
-## Monitoring & Debugging
+Then start a Claude Code session — the full Mimir toolset will be available automatically.
 
-### View Logs
+### Tool categories
 
-**Orchestrator logs:**
-```bash
-kubectl logs -n mimir-aip -l component=orchestrator -f
-```
+| Category | Tools | Description |
+|----------|-------|-------------|
+| Projects | 8 | CRUD, clone, component associations |
+| Pipelines | 6 | CRUD, execute |
+| Schedules | 5 | CRUD |
+| ML Models | 7 | CRUD, train, infer, recommend |
+| Digital Twins | 7 | CRUD, sync, SPARQL query |
+| Ontologies | 6 | CRUD, generate from text, extract from storage |
+| Storage | 8 | Config CRUD, store/retrieve/update/delete data, health check |
+| Tasks | 3 | List, get, cancel work tasks |
+| System | 1 | Platform health |
 
-**Worker logs:**
-```bash
-kubectl logs -n mimir-aip -l app=mimir-worker -f
-```
+---
 
-**Redis logs:**
-```bash
-kubectl logs -n mimir-aip -l component=redis -f
-```
+## Configuration Reference
 
-### Check Pod Status
+All orchestrator configuration is supplied via environment variables (set in `docker-compose.yaml` or the Helm ConfigMap).
 
-```bash
-kubectl get pods -n mimir-aip
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENVIRONMENT` | `production` | Runtime label (`production` or `development`) |
+| `LOG_LEVEL` | `info` | Log verbosity (`debug`, `info`, `warn`, `error`) |
+| `PORT` | `8080` | Orchestrator HTTP port |
+| `STORAGE_DIR` | `/app/data` | Directory for the SQLite database and file storage |
+| `MIN_WORKERS` | `1` | Minimum concurrent worker jobs |
+| `MAX_WORKERS` | `10` | Maximum concurrent worker jobs |
+| `QUEUE_THRESHOLD` | `5` | Queued tasks before spinning up an additional worker |
+| `WORKER_NAMESPACE` | _(release namespace)_ | Kubernetes namespace workers are spawned into |
+| `WORKER_SERVICE_ACCOUNT` | `mimir-worker` | Service account assigned to worker jobs |
 
-### Check Services
+---
 
-```bash
-kubectl get svc -n mimir-aip
-```
+## Building from Source
 
-### View Worker Jobs
-
-```bash
-kubectl get jobs -n mimir-aip
-```
-
-### Access Kubernetes Dashboard
-
-If you have the Kubernetes dashboard enabled in Rancher Desktop:
-```bash
-kubectl proxy
-```
-Then access http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
-
-## Scaling Configuration
-
-The orchestrator manages worker scaling based on queue depth. Configuration is set via environment variables in the deployment manifest:
-
-- `MIN_WORKERS`: Minimum number of workers to maintain (default: 1)
-- `MAX_WORKERS`: Maximum number of workers allowed (default: 10)
-- `QUEUE_THRESHOLD`: Queue length that triggers scaling (default: 5)
-
-To modify these, edit `k8s/development/03-orchestrator.yaml` and redeploy.
-
-## Worker Job Types
-
-The system supports four job types:
-
-1. **pipeline_execution** - Data ingestion and processing pipelines
-2. **ml_training** - Machine learning model training
-3. **ml_inference** - Model inference and predictions
-4. **digital_twin_update** - Digital twin state updates
-
-Each job type can have different resource requirements specified in the job submission request.
-
-## Troubleshooting
-
-### Images not found
-
-If you see "ImagePullBackOff" errors, ensure you built the images:
-```bash
-./scripts/build-images.sh
-```
-
-And that `imagePullPolicy: Never` is set in the deployment manifests.
-
-### Redis connection errors
-
-Check if Redis is running:
-```bash
-kubectl get pods -n mimir-aip -l component=redis
-```
-
-View Redis logs:
-```bash
-kubectl logs -n mimir-aip -l component=redis
-```
-
-### Workers not spawning
-
-Check orchestrator logs for errors:
-```bash
-kubectl logs -n mimir-aip -l component=orchestrator -f
-```
-
-Verify the orchestrator has proper RBAC permissions:
-```bash
-kubectl get rolebinding -n mimir-aip
-```
-
-### Port forwarding issues
-
-Make sure no other processes are using the ports:
-```bash
-lsof -i :8080
-lsof -i :8081
-```
-
-## Cleanup
-
-To remove the entire deployment:
+**Prerequisites:** Go 1.21+, Docker (for container builds).
 
 ```bash
-./scripts/undeploy-local.sh
+# Run unit tests
+make test
+
+# Build all binaries (native, no Docker)
+go build ./cmd/orchestrator
+go build ./cmd/worker
+
+# Build Docker images
+make build-all
+
+# Run the orchestrator locally against a local SQLite database
+make dev-orchestrator
 ```
-
-To also remove the namespace:
-```bash
-kubectl delete namespace mimir-aip
-```
-
-## Development Workflow
-
-1. Make changes to source code
-2. Run unit tests: `go test ./pkg/... -v`
-3. Build images: `./scripts/build-images.sh`
-4. Deploy: `./scripts/deploy-local.sh`
-5. Run integration tests: `./scripts/run-integration-tests.sh`
-6. Monitor logs and verify functionality
-
-## Next Steps
-
-This infrastructure provides the foundation for:
-- Storage system integration
-- Project management
-- Pipeline execution
-- Ontology management
-- ML model training/inference
-- Digital twin creation and management
-
-See the respective plan files in the `Plan/` directory for details on each component.
-
-## Architecture Diagrams
-
-For detailed architecture information, see:
-- `Plan/Infrastructure/InfrastructurePlan.md` - Complete infrastructure specification
-- `Plan/Scaling/ScalingPlan.md` - Worker scaling architecture
-- `Plan/MimirAIPOverallPlan.md` - Overall system architecture

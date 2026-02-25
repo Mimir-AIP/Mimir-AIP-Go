@@ -1,0 +1,19 @@
+{{- if .Values.orchestrator.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mimir-aip.fullname" . }}-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mimir-aip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+spec:
+  accessModes:
+    - {{ .Values.orchestrator.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.orchestrator.persistence.size }}
+  {{- if .Values.orchestrator.persistence.storageClass }}
+  storageClassName: {{ .Values.orchestrator.persistence.storageClass }}
+  {{- end }}
+{{- end }}

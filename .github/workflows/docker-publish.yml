@@ -32,7 +32,7 @@ jobs:
             context: .
             dockerfile: cmd/worker/Dockerfile
           - name: frontend
-            context: frontend
+            context: .
             dockerfile: frontend/Dockerfile
 
     steps:

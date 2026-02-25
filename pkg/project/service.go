@@ -3,6 +3,7 @@ package project
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -245,11 +246,8 @@ func (s *Service) AddPipeline(projectID, pipelineID string) error {
 		return err
 	}
 
-	// Check if already associated
-	for _, id := range project.Components.Pipelines {
-		if id == pipelineID {
-			return nil // Already associated
-		}
+	if slices.Contains(project.Components.Pipelines, pipelineID) {
+		return nil
 	}
 
 	project.Components.Pipelines = append(project.Components.Pipelines, pipelineID)
@@ -286,10 +284,8 @@ func (s *Service) AddOntology(projectID, ontologyID string) error {
 		return err
 	}
 
-	for _, id := range project.Components.Ontologies {
-		if id == ontologyID {
-			return nil
-		}
+	if slices.Contains(project.Components.Ontologies, ontologyID) {
+		return nil
 	}
 
 	project.Components.Ontologies = append(project.Components.Ontologies, ontologyID)
@@ -325,10 +321,8 @@ func (s *Service) AddMLModel(projectID, modelID string) error {
 		return err
 	}
 
-	for _, id := range project.Components.MLModels {
-		if id == modelID {
-			return nil
-		}
+	if slices.Contains(project.Components.MLModels, modelID) {
+		return nil
 	}
 
 	project.Components.MLModels = append(project.Components.MLModels, modelID)
@@ -364,10 +358,8 @@ func (s *Service) AddDigitalTwin(projectID, twinID string) error {
 		return err
 	}
 
-	for _, id := range project.Components.DigitalTwins {
-		if id == twinID {
-			return nil
-		}
+	if slices.Contains(project.Components.DigitalTwins, twinID) {
+		return nil
 	}
 
 	project.Components.DigitalTwins = append(project.Components.DigitalTwins, twinID)
@@ -403,10 +395,8 @@ func (s *Service) AddStorage(projectID, storageID string) error {
 		return err
 	}
 
-	for _, id := range project.Components.StorageConfigs {
-		if id == storageID {
-			return nil
-		}
+	if slices.Contains(project.Components.StorageConfigs, storageID) {
+		return nil
 	}
 
 	project.Components.StorageConfigs = append(project.Components.StorageConfigs, storageID)

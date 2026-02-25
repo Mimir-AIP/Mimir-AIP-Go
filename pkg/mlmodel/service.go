@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"os"
 	"time"
@@ -122,11 +123,9 @@ func (s *Service) UpdateModel(id string, req *models.ModelUpdateRequest) (*model
 	}
 	if req.Metadata != nil {
 		if model.Metadata == nil {
-			model.Metadata = make(map[string]interface{})
+			model.Metadata = make(map[string]any)
 		}
-		for k, v := range req.Metadata {
-			model.Metadata[k] = v
-		}
+		maps.Copy(model.Metadata, req.Metadata)
 	}
 
 	model.UpdatedAt = time.Now().UTC()
@@ -201,7 +200,7 @@ func (s *Service) analyzeData(storageConfigs []*models.StorageConfig) *models.Da
 
 		// Inspect first record to determine field types
 		if len(cirs) > 0 {
-			if dataMap, ok := cirs[0].Data.(map[string]interface{}); ok {
+			if dataMap, ok := cirs[0].Data.(map[string]any); ok {
 				numericFields := 0
 				for _, v := range dataMap {
 					switch val := v.(type) {
@@ -294,7 +293,7 @@ func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLMod
 		TaskSpec: models.TaskSpec{
 			ModelID:   model.ID,
 			ProjectID: model.ProjectID,
-			Parameters: map[string]interface{}{
+			Parameters: map[string]any{
 				"model_id":    model.ID,
 				"ontology_id": model.OntologyID,
 				"storage_ids": req.StorageIDs,
@@ -380,7 +379,7 @@ func (s *Service) ValidateModel(modelID string, data *training.TrainingData) (*m
 
 	var artifact struct {
 		ModelType  string                 `json:"model_type"`
-		Parameters map[string]interface{} `json:"parameters"`
+		Parameters map[string]any `json:"parameters"`
 	}
 	if err := json.Unmarshal(artifactBytes, &artifact); err != nil {
 		return nil, fmt.Errorf("failed to parse artifact: %w", err)
@@ -399,7 +398,7 @@ func (s *Service) ValidateModel(modelID string, data *training.TrainingData) (*m
 }
 
 // inferFromArtifact runs inference for a single feature vector using deserialized artifact parameters.
-func inferFromArtifact(modelType string, parameters map[string]interface{}, features []float64) (float64, error) {
+func inferFromArtifact(modelType string, parameters map[string]any, features []float64) (float64, error) {
 	switch modelType {
 	case "decision_tree":
 		modelDataRaw, ok := parameters["model_data"]
@@ -448,7 +447,7 @@ func inferFromArtifact(modelType string, parameters map[string]interface{}, feat
 		if !ok {
 			return 0.0, fmt.Errorf("model_data missing from artifact parameters for regression")
 		}
-		mdMap, ok := modelDataRaw.(map[string]interface{})
+		mdMap, ok := modelDataRaw.(map[string]any)
 		if !ok {
 			return 0.0, fmt.Errorf("invalid model_data format for regression")
 		}
@@ -457,7 +456,7 @@ func inferFromArtifact(modelType string, parameters map[string]interface{}, feat
 			intercept = b
 		}
 		pred := intercept
-		if coeffsRaw, ok := mdMap["coefficients"].([]interface{}); ok {
+		if coeffsRaw, ok := mdMap["coefficients"].([]any); ok {
 			for i, c := range coeffsRaw {
 				if i < len(features) {
 					if cf, ok := c.(float64); ok {
@@ -473,7 +472,7 @@ func inferFromArtifact(modelType string, parameters map[string]interface{}, feat
 		if !ok {
 			return 0.0, fmt.Errorf("model_data missing from artifact parameters for neural_network")
 		}
-		mdMap, ok := modelDataRaw.(map[string]interface{})
+		mdMap, ok := modelDataRaw.(map[string]any)
 		if !ok {
 			return 0.0, fmt.Errorf("invalid model_data format for neural_network")
 		}
@@ -498,7 +497,7 @@ func inferFromArtifact(modelType string, parameters map[string]interface{}, feat
 		for l, w := range weights {
 			outSize := len(w)
 			z := make([]float64, outSize)
-			for j := 0; j < outSize; j++ {
+			for j := range outSize {
 				z[j] = biases[l][j]
 				for k, ak := range a {
 					if k < len(w[j]) {
@@ -587,7 +586,7 @@ func (s *Service) FailTraining(modelID, reason string) error {
 	model.UpdatedAt = time.Now().UTC()
 
 	if model.Metadata == nil {
-		model.Metadata = make(map[string]interface{})
+		model.Metadata = make(map[string]any)
 	}
 	model.Metadata["failure_reason"] = reason
 

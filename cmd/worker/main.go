@@ -265,7 +265,7 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
 		OutputLocation: outputPath,
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"pipeline_id":       task.TaskSpec.PipelineID,
 			"pipeline_name":     pipeline.Name,
 			"steps_executed":    len(pipeline.Steps),
@@ -335,14 +335,14 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		return nil, fmt.Errorf("failed to create model directory: %w", err)
 	}
 
-	artifactData, err := json.Marshal(map[string]interface{}{
+	artifactData, err := json.Marshal(map[string]any{
 		"model_type":    string(model.Type),
 		"feature_names": trainingData.FeatureNames,
-		"parameters": map[string]interface{}{
+		"parameters": map[string]any{
 			"model_data":         result.ModelData,
 			"feature_importance": result.FeatureImportance,
 		},
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"trained_at": time.Now().UTC().Format(time.RFC3339),
 		},
 	})
@@ -363,7 +363,7 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
 		OutputLocation: artifactPath,
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"model_id":            task.TaskSpec.ModelID,
 			"model_type":          string(model.Type),
 			"accuracy":            result.PerformanceMetrics.Accuracy,
@@ -407,12 +407,12 @@ func loadTrainingDataFromStorage(orchestratorURL string, task *models.WorkTask) 
 	}
 
 	// Retrieve CIR records from each storage
-	var allCIRs []map[string]interface{}
+	var allCIRs []map[string]any
 	for _, storageID := range storageIDs {
 		retrieveURL := fmt.Sprintf("%s/api/storage/retrieve", orchestratorURL)
-		body, _ := json.Marshal(map[string]interface{}{
+		body, _ := json.Marshal(map[string]any{
 			"storage_id": storageID,
-			"query":      map[string]interface{}{},
+			"query":      map[string]any{},
 		})
 		resp, err := http.Post(retrieveURL, "application/json", bytes.NewBuffer(body))
 		if err != nil {
@@ -426,13 +426,13 @@ func loadTrainingDataFromStorage(orchestratorURL string, task *models.WorkTask) 
 
 		// The API returns an array of CIR records
 		var cirs []struct {
-			Data interface{} `json:"data"`
+			Data any `json:"data"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&cirs); err != nil {
 			continue
 		}
 		for _, c := range cirs {
-			if dm, ok := c.Data.(map[string]interface{}); ok {
+			if dm, ok := c.Data.(map[string]any); ok {
 				allCIRs = append(allCIRs, dm)
 			}
 		}
@@ -476,13 +476,13 @@ func loadTrainingDataFromStorage(orchestratorURL string, task *models.WorkTask) 
 		TestFeatures:  features[splitIdx:],
 		TestLabels:    labels[splitIdx:],
 		FeatureNames:  featureNames,
-		Metadata:      map[string]interface{}{"source": "storage"},
+		Metadata:      map[string]any{"source": "storage"},
 	}, nil
 }
 
 // cirMapsToFeatureRows converts a slice of CIR data maps to feature matrix and label vector.
 // Numeric fields are used as features; the labelColumn is used as the target.
-func cirMapsToFeatureRows(rows []map[string]interface{}, labelColumn string) ([][]float64, []float64, []string) {
+func cirMapsToFeatureRows(rows []map[string]any, labelColumn string) ([][]float64, []float64, []string) {
 	if len(rows) == 0 {
 		return nil, nil, nil
 	}
@@ -558,7 +558,7 @@ func cirMapsToFeatureRows(rows []map[string]interface{}, labelColumn string) ([]
 // reportTrainingCompletion reports successful training to orchestrator
 func reportTrainingCompletion(orchestratorURL, modelID, artifactPath string, metrics *models.PerformanceMetrics) error {
 	url := fmt.Sprintf("%s/api/ml-models/%s/training/complete", orchestratorURL, modelID)
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"model_artifact_path": artifactPath,
 		"performance_metrics": metrics,
 	}
@@ -584,7 +584,7 @@ func reportTrainingCompletion(orchestratorURL, modelID, artifactPath string, met
 // reportTrainingFailure reports training failure to orchestrator
 func reportTrainingFailure(orchestratorURL, modelID, reason string) error {
 	url := fmt.Sprintf("%s/api/ml-models/%s/training/fail", orchestratorURL, modelID)
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"reason": reason,
 	}
 
@@ -649,14 +649,14 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	var artifact struct {
 		ModelType    string                 `json:"model_type"`
 		FeatureNames []string               `json:"feature_names"`
-		Parameters   map[string]interface{} `json:"parameters"`
+		Parameters   map[string]any `json:"parameters"`
 	}
 	if err := json.Unmarshal(artifactData, &artifact); err != nil {
 		return nil, fmt.Errorf("failed to parse model artifact: %w", err)
 	}
 
 	allRows := append(inferenceData.TrainFeatures, inferenceData.TestFeatures...)
-	results := make([]map[string]interface{}, 0, len(allRows))
+	results := make([]map[string]any, 0, len(allRows))
 
 	for _, row := range allRows {
 		// Build feature vector in artifact's feature name ordering (positional match)
@@ -672,7 +672,7 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 			log.Printf("Warning: inference failed for row: %v", err)
 			pred = 0.0
 		}
-		results = append(results, map[string]interface{}{
+		results = append(results, map[string]any{
 			"input":      row,
 			"prediction": pred,
 		})
@@ -698,7 +698,7 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
 		OutputLocation: outputPath,
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"model_id":         task.TaskSpec.ModelID,
 			"predictions_made": len(results),
 		},
@@ -707,7 +707,7 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 
 // workerRunInference executes inference for a single feature vector using the given model type and parameters.
 // This mirrors the dispatch logic in pkg/digitaltwin/inference.go.
-func workerRunInference(modelType string, parameters map[string]interface{}, features []float64) (float64, error) {
+func workerRunInference(modelType string, parameters map[string]any, features []float64) (float64, error) {
 	switch modelType {
 	case "decision_tree":
 		modelDataRaw, ok := parameters["model_data"]
@@ -757,7 +757,7 @@ func workerRunInference(modelType string, parameters map[string]interface{}, fea
 		if !ok {
 			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
 		}
-		weightsSlice, ok := weightsRaw.([]interface{})
+		weightsSlice, ok := weightsRaw.([]any)
 		if !ok {
 			return 0.0, fmt.Errorf("invalid weights format in artifact parameters for %s", modelType)
 		}
@@ -807,7 +807,7 @@ func workerRunInference(modelType string, parameters map[string]interface{}, fea
 		for l, w := range weights {
 			outSize := len(w)
 			z := make([]float64, outSize)
-			for j := 0; j < outSize; j++ {
+			for j := range outSize {
 				z[j] = biases[l][j]
 				for k, ak := range a {
 					if k < len(w[j]) {
@@ -881,7 +881,7 @@ func executeDigitalTwinUpdate(task *models.WorkTask) (*models.WorkTaskResult, er
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
 		OutputLocation: fmt.Sprintf("/tmp/digital-twins/%s/", twinID),
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"project_id":       task.ProjectID,
 			"digital_twin_id":  twinID,
 			"entities_updated": entitiesUpdated,

@@ -43,10 +43,7 @@ func (t *RandomForestTrainer) Train(data *TrainingData, config *models.TrainingC
 	}
 
 	numFeatures := len(data.TrainFeatures[0])
-	numFeatureSubset := int(math.Sqrt(float64(numFeatures)))
-	if numFeatureSubset < 1 {
-		numFeatureSubset = 1
-	}
+	numFeatureSubset := max(int(math.Sqrt(float64(numFeatures))), 1)
 
 	n := len(data.TrainFeatures)
 	trees := make([]*DecisionTreeModel, numTrees)
@@ -58,7 +55,7 @@ func (t *RandomForestTrainer) Train(data *TrainingData, config *models.TrainingC
 		// Bootstrap sample with replacement
 		bootstrapFeatures := make([][]float64, n)
 		bootstrapLabels := make([]float64, n)
-		for j := 0; j < n; j++ {
+		for j := range n {
 			idx := rand.Intn(n)
 			bootstrapFeatures[j] = data.TrainFeatures[idx]
 			bootstrapLabels[j] = data.TrainLabels[idx]
@@ -251,7 +248,7 @@ func (t *RegressionTrainer) Train(data *TrainingData, config *models.TrainingCon
 	} else {
 		t.intercept = w.AtVec(0)
 		t.coefficients = make([]float64, p)
-		for i := 0; i < p; i++ {
+		for i := range p {
 			t.coefficients[i] = w.AtVec(i + 1)
 		}
 	}
@@ -273,7 +270,7 @@ func (t *RegressionTrainer) Train(data *TrainingData, config *models.TrainingCon
 	}
 
 	return &TrainingResult{
-		ModelData: map[string]interface{}{
+		ModelData: map[string]any{
 			"coefficients": t.coefficients,
 			"intercept":    t.intercept,
 		},
@@ -364,9 +361,9 @@ func (t *NeuralNetworkTrainer) Train(data *TrainingData, config *models.Training
 		scale := math.Sqrt(2.0 / float64(inSize))
 		t.weights[l] = make([][]float64, outSize)
 		t.biases[l] = make([]float64, outSize)
-		for j := 0; j < outSize; j++ {
+		for j := range outSize {
 			t.weights[l][j] = make([]float64, inSize)
-			for k := 0; k < inSize; k++ {
+			for k := range inSize {
 				t.weights[l][j][k] = rand.NormFloat64() * scale
 			}
 		}
@@ -449,7 +446,7 @@ func (t *NeuralNetworkTrainer) Train(data *TrainingData, config *models.Training
 	}
 
 	return &TrainingResult{
-		ModelData: map[string]interface{}{
+		ModelData: map[string]any{
 			"type":    "neural_network",
 			"layers":  t.layerSizes,
 			"weights": t.weights,
@@ -471,7 +468,7 @@ func (t *NeuralNetworkTrainer) forwardPass(x []float64) ([][]float64, [][]float6
 		outSize := t.layerSizes[l+1]
 		z := make([]float64, outSize)
 		a := make([]float64, outSize)
-		for j := 0; j < outSize; j++ {
+		for j := range outSize {
 			z[j] = t.biases[l][j]
 			for k, xk := range activations[l] {
 				z[j] += t.weights[l][j][k] * xk
@@ -505,9 +502,9 @@ func (t *NeuralNetworkTrainer) backwardPass(activations [][]float64, zVals [][]f
 		outSizeNext := t.layerSizes[l+2]
 		outSizeCurr := t.layerSizes[l+1]
 		deltas[l] = make([]float64, outSizeCurr)
-		for k := 0; k < outSizeCurr; k++ {
+		for k := range outSizeCurr {
 			sum := 0.0
-			for j := 0; j < outSizeNext; j++ {
+			for j := range outSizeNext {
 				sum += t.weights[l+1][j][k] * deltas[l+1][j]
 			}
 			deltas[l][k] = sum * nnReluDeriv(zVals[l][k])

@@ -260,3 +260,23 @@ make build-all
 # Run the orchestrator locally against a local SQLite database
 make dev-orchestrator
 ```
+
+## Citation
+If you use Mimir AIP in your research, please consider citing:
+
+```
+@software{mimir-aip,
+  author = {Ciaran McAleer},
+  title = {Mimir AIP: An Ontology-Driven Platform for Data Aggregation, Processing, and Analysis},
+  year = {2026},
+  GitHub repository: \url{"https://github.com/Mimir-AIP/Mimir-AIP-Go"}
+}
+```
+
+---
+
+**Project Repository**: https://github.com/Mimir-AIP/Mimir-AIP-Go
+
+**Documentation**: https://mimir-aip.github.io/wiki/
+
+**Issues & Support**: https://github.com/Mimir-AIP/Mimir-AIP-Go/issues

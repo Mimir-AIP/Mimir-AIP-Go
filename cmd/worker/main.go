@@ -261,6 +261,11 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		}
 	}
 
+	// Auto-trigger extraction for ingestion pipelines
+	if pipelineType, ok := task.TaskSpec.Parameters["pipeline_type"].(string); ok && pipelineType == "ingestion" {
+		triggerExtractionForIngestion(orchestratorURL, task.TaskSpec.ProjectID, task.TaskSpec.PipelineID)
+	}
+
 	return &models.WorkTaskResult{
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
@@ -274,6 +279,37 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 			"triggered_by":      task.TaskSpec.Parameters["triggered_by"],
 		},
 	}, nil
+}
+
+// triggerExtractionForIngestion calls POST /api/extraction/generate-ontology for an ingestion pipeline.
+// This is best-effort: failures are logged but do not fail the pipeline task.
+func triggerExtractionForIngestion(orchestratorURL, projectID, pipelineID string) {
+	payload := map[string]interface{}{
+		"project_id":           projectID,
+		"storage_ids":          []string{},
+		"ontology_name":        "auto-" + pipelineID,
+		"include_structured":   true,
+		"include_unstructured": true,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("auto-extraction: failed to marshal request: %v", err)
+		return
+	}
+
+	url := fmt.Sprintf("%s/api/extraction/generate-ontology", orchestratorURL)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		log.Printf("auto-extraction: HTTP call failed: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		log.Printf("auto-extraction: triggered for project %s (pipeline %s)", projectID, pipelineID)
+	} else {
+		log.Printf("auto-extraction: unexpected status %d for project %s", resp.StatusCode, projectID)
+	}
 }
 
 // executeMLTraining executes an ML training work task

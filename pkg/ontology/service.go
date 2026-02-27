@@ -83,7 +83,7 @@ func (s *Service) UpdateOntology(ontologyID string, req *models.OntologyUpdateRe
 		ontology.Content = *req.Content
 	}
 	if req.Status != nil {
-		if *req.Status != "draft" && *req.Status != "active" && *req.Status != "archived" {
+		if *req.Status != "draft" && *req.Status != "active" && *req.Status != "archived" && *req.Status != "needs_review" {
 			return nil, fmt.Errorf("invalid status: %s", *req.Status)
 		}
 		ontology.Status = *req.Status
@@ -109,6 +109,94 @@ func (s *Service) DeleteOntology(ontologyID string) error {
 	log.Printf("Deleted ontology %s", ontologyID)
 
 	return nil
+}
+
+// OntologyDiff describes the differences between two ontologies.
+type OntologyDiff struct {
+	AddedClasses      []string `json:"added_classes"`
+	RemovedClasses    []string `json:"removed_classes"`
+	AddedProperties   []string `json:"added_properties"`
+	RemovedProperties []string `json:"removed_properties"`
+	HasChanges        bool     `json:"has_changes"`
+}
+
+// DiffOntologies computes the symmetric difference in class and property declarations
+// between two Turtle ontology strings.
+func (s *Service) DiffOntologies(oldContent, newContent string) OntologyDiff {
+	oldClasses, oldProps := parseTurtleDeclarations(oldContent)
+	newClasses, newProps := parseTurtleDeclarations(newContent)
+
+	diff := OntologyDiff{
+		AddedClasses:      setDiff(newClasses, oldClasses),
+		RemovedClasses:    setDiff(oldClasses, newClasses),
+		AddedProperties:   setDiff(newProps, oldProps),
+		RemovedProperties: setDiff(oldProps, newProps),
+	}
+	diff.HasChanges = len(diff.AddedClasses) > 0 || len(diff.RemovedClasses) > 0 ||
+		len(diff.AddedProperties) > 0 || len(diff.RemovedProperties) > 0
+	return diff
+}
+
+// FlagForReview sets an ontology's status to "needs_review".
+// The diff is returned in the API response by the caller and is not persisted separately.
+func (s *Service) FlagForReview(ontologyID string, diff OntologyDiff) error {
+	ont, err := s.store.GetOntology(ontologyID)
+	if err != nil {
+		return fmt.Errorf("ontology not found: %w", err)
+	}
+
+	ont.Status = "needs_review"
+	ont.UpdatedAt = time.Now()
+
+	return s.store.SaveOntology(ont)
+}
+
+// parseTurtleDeclarations extracts class and property names from Turtle content.
+func parseTurtleDeclarations(content string) (classes map[string]bool, properties map[string]bool) {
+	classes = make(map[string]bool)
+	properties = make(map[string]bool)
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if (strings.Contains(line, "owl:Class") || strings.Contains(line, "owl:class")) &&
+			(strings.Contains(line, " a ") || strings.Contains(line, "rdf:type")) {
+			name := extractTurtleSubjectOntology(line)
+			if name != "" {
+				classes[name] = true
+			}
+		}
+		if strings.Contains(line, "owl:DatatypeProperty") || strings.Contains(line, "owl:ObjectProperty") {
+			name := extractTurtleSubjectOntology(line)
+			if name != "" {
+				properties[name] = true
+			}
+		}
+	}
+	return
+}
+
+// extractTurtleSubjectOntology extracts the local name from the first token of a Turtle triple.
+func extractTurtleSubjectOntology(line string) string {
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return ""
+	}
+	s := parts[0]
+	s = strings.TrimPrefix(s, ":")
+	if idx := strings.LastIndex(s, ":"); idx >= 0 {
+		s = s[idx+1:]
+	}
+	return strings.Trim(s, "<>.,;")
+}
+
+// setDiff returns elements in a that are not in b.
+func setDiff(a, b map[string]bool) []string {
+	var result []string
+	for k := range a {
+		if !b[k] {
+			result = append(result, k)
+		}
+	}
+	return result
 }
 
 // GenerateFromExtraction generates a Turtle ontology from extraction results

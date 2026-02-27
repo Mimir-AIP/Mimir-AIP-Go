@@ -1,7 +1,9 @@
 package digitaltwin
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -763,6 +765,55 @@ func (s *Service) populateEntityFromSource(entity *models.Entity) error {
 		}
 	}
 	return nil
+}
+
+// StartCacheEviction runs a background goroutine that periodically deletes expired predictions.
+// Call this once after creating the service: go svc.StartCacheEviction(ctx)
+func (s *Service) StartCacheEviction(ctx context.Context) {
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			twins, err := s.store.ListDigitalTwins()
+			if err != nil {
+				log.Printf("cache eviction: failed to list digital twins: %v", err)
+				continue
+			}
+			for _, twin := range twins {
+				if err := s.store.DeleteExpiredPredictions(twin.ID); err != nil {
+					log.Printf("cache eviction: error for twin %s: %v", twin.ID, err)
+				}
+			}
+			log.Printf("cache eviction: completed tick for %d digital twins", len(twins))
+		}
+	}
+}
+
+// GetRelatedEntities returns entities related to the given entity via the specified relationship type.
+// If relationshipType is empty, all relationships are traversed.
+func (s *Service) GetRelatedEntities(twinID, entityID, relationshipType string) ([]*models.Entity, error) {
+	source, err := s.store.GetEntity(entityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source entity: %w", err)
+	}
+
+	var results []*models.Entity
+	for _, rel := range source.Relationships {
+		if relationshipType != "" && rel.Type != relationshipType {
+			continue
+		}
+		target, err := s.store.GetEntity(rel.TargetID)
+		if err != nil {
+			// Log but continue
+			log.Printf("GetRelatedEntities: failed to get entity %s: %v", rel.TargetID, err)
+			continue
+		}
+		results = append(results, target)
+	}
+	return results, nil
 }
 
 // invalidatePredictionsForEntity removes cached predictions for an entity

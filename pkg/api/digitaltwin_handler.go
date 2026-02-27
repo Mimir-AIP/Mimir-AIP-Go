@@ -58,6 +58,8 @@ func (h *DigitalTwinHandler) HandleDigitalTwin(w http.ResponseWriter, r *http.Re
 		case "entities":
 			if len(parts) == 2 {
 				h.handleDigitalTwinEntities(w, r, twinID)
+			} else if len(parts) >= 4 && parts[3] == "related" {
+				h.handleDigitalTwinEntityRelated(w, r, twinID, parts[2])
 			} else {
 				h.handleDigitalTwinEntity(w, r, twinID, parts[2])
 			}
@@ -252,6 +254,25 @@ func (h *DigitalTwinHandler) handleDigitalTwinEntity(w http.ResponseWriter, r *h
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleDigitalTwinEntityRelated handles GET /api/digital-twins/{twinID}/entities/{entityID}/related
+func (h *DigitalTwinHandler) handleDigitalTwinEntityRelated(w http.ResponseWriter, r *http.Request, twinID, entityID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	relationshipType := r.URL.Query().Get("relationship")
+
+	entities, err := h.service.GetRelatedEntities(twinID, entityID, relationshipType)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get related entities: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entities)
 }
 
 // handleDigitalTwinQuery handles POST /api/digital-twins/{id}/query

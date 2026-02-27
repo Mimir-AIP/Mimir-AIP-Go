@@ -11,10 +11,11 @@ import (
 
 // Queue provides in-memory work task queue operations with priority support
 type Queue struct {
-	mu        sync.RWMutex
-	pq        *PriorityQueue
-	workTasks map[string]*models.WorkTask
-	taskIndex map[string]int // Maps task ID to index in priority queue
+	mu             sync.RWMutex
+	pq             *PriorityQueue
+	workTasks      map[string]*models.WorkTask
+	taskIndex      map[string]int // Maps task ID to index in priority queue
+	OnStatusChange func(task *models.WorkTask)
 }
 
 // NewQueue creates a new in-memory queue instance
@@ -90,11 +91,13 @@ func (q *Queue) GetWorkTask(taskID string) (*models.WorkTask, error) {
 
 // UpdateWorkTaskStatus updates the status of a work task
 func (q *Queue) UpdateWorkTaskStatus(taskID string, status models.WorkTaskStatus, errorMsg string) error {
-	q.mu.Lock()
-	defer q.mu.Unlock()
+	var cb func(*models.WorkTask)
+	var taskSnapshot models.WorkTask
 
+	q.mu.Lock()
 	task, ok := q.workTasks[taskID]
 	if !ok {
+		q.mu.Unlock()
 		return fmt.Errorf("work task not found: %s", taskID)
 	}
 
@@ -111,6 +114,16 @@ func (q *Queue) UpdateWorkTaskStatus(taskID string, status models.WorkTaskStatus
 		task.CompletedAt = &now
 	}
 
+	if q.OnStatusChange != nil {
+		cb = q.OnStatusChange
+		taskSnapshot = *task
+	}
+	q.mu.Unlock()
+
+	// Fire callback outside the lock to avoid deadlocks
+	if cb != nil {
+		cb(&taskSnapshot)
+	}
 	return nil
 }
 
@@ -147,6 +160,75 @@ func (q *Queue) ListWorkTasks() ([]*models.WorkTask, error) {
 		tasks = append(tasks, task)
 	}
 	return tasks, nil
+}
+
+// CountActiveByType returns the number of tasks with status spawned or executing for a given type.
+func (q *Queue) CountActiveByType(taskType models.WorkTaskType) (int64, error) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	var count int64
+	for _, task := range q.workTasks {
+		if task.Type == taskType &&
+			(task.Status == models.WorkTaskStatusSpawned || task.Status == models.WorkTaskStatusExecuting) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// PeekNext returns the highest-priority queued task without removing it from the queue.
+// Returns nil if no queued tasks exist.
+func (q *Queue) PeekNext() (*models.WorkTask, error) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	if q.pq.Len() == 0 {
+		return nil, nil
+	}
+
+	// The heap root is the minimum (highest priority)
+	item := (*q.pq)[0]
+	task, ok := q.workTasks[item.TaskID]
+	if !ok {
+		return nil, fmt.Errorf("work task data not found: %s", item.TaskID)
+	}
+	return task, nil
+}
+
+// RequeueWithRetry re-queues a failed task if it has remaining retries, otherwise marks it failed.
+func (q *Queue) RequeueWithRetry(taskID string, reason string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	task, ok := q.workTasks[taskID]
+	if !ok {
+		return fmt.Errorf("work task not found: %s", taskID)
+	}
+
+	if task.RetryCount < task.MaxRetries {
+		task.RetryCount++
+		task.RetryReason = reason
+		task.Status = models.WorkTaskStatusQueued
+		task.KubernetesJobName = ""
+		task.ErrorMessage = ""
+
+		// Re-add to priority queue with slightly lower priority to deprioritise retries
+		score := float64(time.Now().Unix())/float64(task.Priority+1) + float64(task.RetryCount)*60
+		item := &PriorityQueueItem{
+			TaskID:   task.ID,
+			Priority: score,
+		}
+		heap.Push(q.pq, item)
+		return nil
+	}
+
+	// Exhausted retries — mark permanently failed
+	now := time.Now()
+	task.Status = models.WorkTaskStatusFailed
+	task.CompletedAt = &now
+	task.ErrorMessage = fmt.Sprintf("failed after %d retries: %s", task.RetryCount, reason)
+	return nil
 }
 
 // Close closes the queue (no-op for in-memory implementation)

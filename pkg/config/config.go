@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"strconv"
 )
@@ -25,6 +26,8 @@ type Config struct {
 	// Multi-cluster dispatch
 	ClusterConfigFile string // path to YAML cluster config; empty = single in-cluster behaviour
 	WorkerAuthToken   string // shared Bearer token for /api/worktasks/* paths; empty = disabled
+	// Per-type concurrency limits (map of task type → max simultaneous workers)
+	ConcurrencyLimits map[string]int
 }
 
 // LoadConfig loads configuration from environment variables
@@ -47,6 +50,7 @@ func LoadConfig() (*Config, error) {
 		WorkerMemoryLimit:    getEnv("WORKER_MEMORY_LIMIT", "4Gi"),
 		ClusterConfigFile:    getEnv("CLUSTER_CONFIG_FILE", ""),
 		WorkerAuthToken:      getEnv("WORKER_AUTH_TOKEN", ""),
+		ConcurrencyLimits:    getEnvAsConcurrencyLimits("WORKER_CONCURRENCY_LIMITS"),
 	}
 
 	return config, nil
@@ -59,6 +63,30 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+// getEnvAsConcurrencyLimits parses a JSON map from an env var, e.g.
+// '{"ml_training":5,"pipeline_execution":20}'. Falls back to safe defaults.
+func getEnvAsConcurrencyLimits(key string) map[string]int {
+	defaults := map[string]int{
+		"ml_training":        5,
+		"ml_inference":       10,
+		"pipeline_execution": 20,
+		"digital_twin_update": 10,
+	}
+	raw := os.Getenv(key)
+	if raw == "" {
+		return defaults
+	}
+	var parsed map[string]int
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return defaults
+	}
+	// Merge: env values override defaults
+	for k, v := range parsed {
+		defaults[k] = v
+	}
+	return defaults
 }
 
 // getEnvAsInt retrieves an environment variable as an integer or returns a default value

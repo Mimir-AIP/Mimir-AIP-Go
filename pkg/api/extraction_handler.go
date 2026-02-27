@@ -56,20 +56,45 @@ func (h *ExtractionHandler) HandleExtractAndGenerate(w http.ResponseWriter, r *h
 	}
 
 	// Generate ontology from extraction results
-	ontology, err := h.ontologyService.GenerateFromExtraction(req.ProjectID, req.OntologyName, extractionResult)
+	newOntology, err := h.ontologyService.GenerateFromExtraction(req.ProjectID, req.OntologyName, extractionResult)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to generate ontology: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	// Diff against existing active ontologies and flag if changed
+	var ontologyDiff interface{}
+	existingOntologies, err := h.ontologyService.GetProjectOntologies(req.ProjectID)
+	if err == nil {
+		for _, existing := range existingOntologies {
+			if existing.Status == "active" && existing.ID != newOntology.ID {
+				diff := h.ontologyService.DiffOntologies(existing.Content, newOntology.Content)
+				if diff.HasChanges {
+					if flagErr := h.ontologyService.FlagForReview(newOntology.ID, diff); flagErr != nil {
+						// Non-fatal: log and continue
+						fmt.Printf("Warning: failed to flag ontology for review: %v\n", flagErr)
+					}
+					newOntology.Status = "needs_review"
+					ontologyDiff = diff
+				}
+				break
+			}
+		}
+	}
+
 	// Return ontology
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ontology": ontology,
+	resp := map[string]interface{}{
+		"ontology": newOntology,
 		"extraction_summary": map[string]interface{}{
 			"entities_count":      len(extractionResult.Entities),
 			"relationships_count": len(extractionResult.Relationships),
 		},
-	})
+	}
+	if ontologyDiff != nil {
+		resp["ontology_diff"] = ontologyDiff
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
 }

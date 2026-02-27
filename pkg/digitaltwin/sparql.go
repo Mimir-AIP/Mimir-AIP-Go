@@ -775,7 +775,7 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 		return result
 	}
 
-	// Attribute pattern: ?s :attribute ?v  or  ?s :attribute "literal"
+	// Attribute or relationship pattern: ?s :predicate ?v  or  ?s :predicate "literal"
 	if pat.IsVar[0] {
 		for _, b := range bindings {
 			if existingID, bound := b[pat.Subject]; bound {
@@ -785,37 +785,76 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 					continue
 				}
 				attrVal, hasAttr := ent.Attributes[pat.Predicate]
-				if !hasAttr {
-					continue
-				}
-				if pat.IsVar[2] {
-					// Bind the object variable to the attribute value
-					nb := cloneBinding(b)
-					nb[pat.Object] = attrVal
-					result = append(result, nb)
-				} else {
-					// Filter: attribute must equal the literal
-					if fmt.Sprintf("%v", attrVal) == pat.Object {
-						result = append(result, b)
-					}
-				}
-			} else {
-				// Subject unbound – fan out
-				for _, ent := range entities {
-					attrVal, hasAttr := ent.Attributes[pat.Predicate]
-					if !hasAttr {
-						continue
-					}
+				if hasAttr {
 					if pat.IsVar[2] {
 						nb := cloneBinding(b)
-						nb[pat.Subject] = ent.ID
 						nb[pat.Object] = attrVal
 						result = append(result, nb)
 					} else {
 						if fmt.Sprintf("%v", attrVal) == pat.Object {
+							result = append(result, b)
+						}
+					}
+				} else {
+					// Attribute not found – check entity relationships
+					for _, rel := range ent.Relationships {
+						if rel.Type != pat.Predicate {
+							continue
+						}
+						target, targetOK := entityByID[rel.TargetID]
+						if !targetOK {
+							continue
+						}
+						if pat.IsVar[2] {
+							nb := cloneBinding(b)
+							nb[pat.Object] = target.ID
+							result = append(result, nb)
+						} else {
+							if target.ID == pat.Object {
+								result = append(result, b)
+							}
+						}
+					}
+				}
+			} else {
+				// Subject unbound – fan out over all entities
+				for _, ent := range entities {
+					attrVal, hasAttr := ent.Attributes[pat.Predicate]
+					if hasAttr {
+						if pat.IsVar[2] {
 							nb := cloneBinding(b)
 							nb[pat.Subject] = ent.ID
+							nb[pat.Object] = attrVal
 							result = append(result, nb)
+						} else {
+							if fmt.Sprintf("%v", attrVal) == pat.Object {
+								nb := cloneBinding(b)
+								nb[pat.Subject] = ent.ID
+								result = append(result, nb)
+							}
+						}
+					} else {
+						// Check relationships
+						for _, rel := range ent.Relationships {
+							if rel.Type != pat.Predicate {
+								continue
+							}
+							target, targetOK := entityByID[rel.TargetID]
+							if !targetOK {
+								continue
+							}
+							if pat.IsVar[2] {
+								nb := cloneBinding(b)
+								nb[pat.Subject] = ent.ID
+								nb[pat.Object] = target.ID
+								result = append(result, nb)
+							} else {
+								if target.ID == pat.Object {
+									nb := cloneBinding(b)
+									nb[pat.Subject] = ent.ID
+									result = append(result, nb)
+								}
+							}
 						}
 					}
 				}

@@ -106,8 +106,9 @@ func (h *PipelineHandler) HandlePipelineExecute(w http.ResponseWriter, r *http.R
 			PipelineID: pipelineID,
 			ProjectID:  pipeline.ProjectID,
 			Parameters: map[string]interface{}{
-				"trigger_type": req.TriggerType,
-				"triggered_by": req.TriggeredBy,
+				"trigger_type":  req.TriggerType,
+				"triggered_by":  req.TriggeredBy,
+				"pipeline_type": pipeline.Type,
 			},
 		},
 		ResourceRequirements: models.ResourceRequirements{

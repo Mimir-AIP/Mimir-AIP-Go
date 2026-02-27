@@ -365,6 +365,7 @@ function PipelinesPage() {
 		name: '',
 		description: '',
 		project_id: '',
+		type: 'ingestion',
 		steps: '[]',
 	});
 	const [scheduleForm, setScheduleForm] = React.useState({
@@ -535,6 +536,14 @@ function PipelinesPage() {
 							required
 						/>
 					</div>
+					<FormField
+						label="Pipeline Type"
+						type="select"
+						value={pipelineForm.type}
+						onChange={(v) => setPipelineForm({ ...pipelineForm, type: v })}
+						options={['ingestion', 'processing', 'output']}
+						required
+					/>
 					<FormField
 						label="Description"
 						type="textarea"
@@ -771,12 +780,38 @@ function MLModelsPage() {
 	const [models, setModels] = React.useState([]);
 	const [loading, setLoading] = React.useState(true);
 	const [showModal, setShowModal] = React.useState(false);
+	const [showRecommendModal, setShowRecommendModal] = React.useState(false);
+	const [recommendForm, setRecommendForm] = React.useState({
+		project_id: '',
+		data_size: '',
+		has_unstructured: false,
+		num_classes: '',
+	});
+	const [recommendResult, setRecommendResult] = React.useState(null);
 	const [formData, setFormData] = React.useState({
 		name: '',
 		project_id: '',
 		model_type: '',
 		version: '1.0.0',
 		config: '{}',
+	});
+	const [trainingMetrics, setTrainingMetrics] = React.useState({});
+
+	// Subscribe to WS task updates for training progress
+	useTaskWebSocket((task) => {
+		if (task.type !== 'ml_training') return;
+		const modelID = task.task_spec && task.task_spec.model_id;
+		if (!modelID) return;
+		const metrics = task.task_spec && task.task_spec.parameters && task.task_spec.parameters.training_metrics;
+		if (!metrics) return;
+		setTrainingMetrics((prev) => ({
+			...prev,
+			[modelID]: metrics,
+		}));
+		// Reload models when training completes
+		if (task.status === 'completed' || task.status === 'failed') {
+			loadModels();
+		}
 	});
 
 	const loadModels = async () => {
@@ -836,6 +871,22 @@ function MLModelsPage() {
 		}
 	};
 
+	const handleRecommend = async (e) => {
+		e.preventDefault();
+		try {
+			const params = new URLSearchParams({
+				project_id: recommendForm.project_id,
+				data_size: recommendForm.data_size,
+				has_unstructured: recommendForm.has_unstructured ? 'true' : 'false',
+				num_classes: recommendForm.num_classes,
+			});
+			const data = await apiCall(`/api/ml-models/recommend?${params}`);
+			setRecommendResult(data);
+		} catch (error) {
+			alert('Failed to get recommendation: ' + error.message);
+		}
+	};
+
 	const columns = [
 		{ key: 'id', label: 'ID' },
 		{ key: 'name', label: 'Name' },
@@ -854,7 +905,10 @@ function MLModelsPage() {
 		<div className="content-section">
 			<div className="section-header">
 				<h2>ML Models</h2>
-				<Button label="+ New Model" onClick={() => setShowModal(true)} />
+				<div style={{ display: 'flex', gap: '8px' }}>
+					<Button label="Recommend" onClick={() => { setRecommendResult(null); setShowRecommendModal(true); }} variant="secondary" />
+					<Button label="+ New Model" onClick={() => setShowModal(true)} />
+				</div>
 			</div>
 
 			{loading ? (
@@ -871,6 +925,88 @@ function MLModelsPage() {
 					)}
 				/>
 			)}
+
+			{Object.keys(trainingMetrics).length > 0 && (
+				<div style={{ marginTop: '24px' }}>
+					<h3 style={{ color: 'var(--text-primary)', marginBottom: '12px' }}>Training Progress</h3>
+					{Object.entries(trainingMetrics).map(([modelID, metrics]) => {
+						const epochs = metrics.epochs || [];
+						const loss = metrics.loss || [];
+						const accuracy = metrics.accuracy || [];
+						if (epochs.length === 0) return null;
+						const graphData = {
+							labels: epochs,
+							datasets: [
+								{
+									label: 'Loss',
+									data: loss,
+									borderColor: '#ef4444',
+									backgroundColor: 'rgba(239,68,68,0.1)',
+									yAxisID: 'y',
+								},
+								{
+									label: 'Accuracy',
+									data: accuracy,
+									borderColor: '#22c55e',
+									backgroundColor: 'rgba(34,197,94,0.1)',
+									yAxisID: 'y1',
+								},
+							],
+						};
+						const graphOptions = {
+							scales: {
+								y: { type: 'linear', position: 'left', title: { display: true, text: 'Loss' } },
+								y1: { type: 'linear', position: 'right', title: { display: true, text: 'Accuracy' }, grid: { drawOnChartArea: false } },
+							},
+						};
+						return (
+							<div key={modelID} style={{ marginBottom: '16px', padding: '12px', background: 'var(--surface)', borderRadius: '6px' }}>
+								<div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>Model: {modelID}</div>
+								<Graph data={graphData} options={graphOptions} type="line" />
+							</div>
+						);
+					})}
+				</div>
+			)}
+
+			<Modal open={showRecommendModal} onClose={() => setShowRecommendModal(false)} title="Recommend Model Type">
+				<form onSubmit={handleRecommend}>
+					<FormField
+						label="Project ID"
+						value={recommendForm.project_id}
+						onChange={(v) => setRecommendForm({ ...recommendForm, project_id: v })}
+						required
+					/>
+					<div className="form-grid">
+						<FormField
+							label="Data Size (rows)"
+							type="number"
+							value={recommendForm.data_size}
+							onChange={(v) => setRecommendForm({ ...recommendForm, data_size: v })}
+						/>
+						<FormField
+							label="Num Classes"
+							type="number"
+							value={recommendForm.num_classes}
+							onChange={(v) => setRecommendForm({ ...recommendForm, num_classes: v })}
+						/>
+					</div>
+					<FormField
+						label="Has Unstructured Data"
+						type="checkbox"
+						value={recommendForm.has_unstructured}
+						onChange={(v) => setRecommendForm({ ...recommendForm, has_unstructured: v })}
+					/>
+					<Button type="submit" label="Get Recommendation" />
+					{recommendResult && (
+						<div style={{ marginTop: '16px', padding: '12px', background: 'var(--surface)', borderRadius: '6px' }}>
+							<strong>Recommended:</strong> {recommendResult.recommended_type}<br />
+							<strong>Confidence:</strong> {(recommendResult.confidence * 100).toFixed(0)}%<br />
+							<strong>Reason:</strong> {recommendResult.reason}
+						</div>
+					)}
+				</form>
+			</Modal>
 
 			<Modal open={showModal} onClose={() => setShowModal(false)} title="Create New ML Model">
 				<form onSubmit={handleSubmit}>
@@ -1526,6 +1662,45 @@ function PluginsPage() {
 // WORK TASKS PAGE
 // ============================================
 
+function useTaskWebSocket(onTaskUpdate) {
+	React.useEffect(() => {
+		const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+		const wsUrl = `${proto}//${window.location.host}/ws/tasks`;
+		let ws;
+		let reconnectTimer;
+
+		function connect() {
+			try {
+				ws = new WebSocket(wsUrl);
+				ws.onmessage = (event) => {
+					try {
+						const msg = JSON.parse(event.data);
+						if (msg.event === 'task_update' && msg.task) {
+							onTaskUpdate(msg.task);
+						}
+					} catch (e) {
+						// ignore parse errors
+					}
+				};
+				ws.onclose = () => {
+					reconnectTimer = setTimeout(connect, 3000);
+				};
+				ws.onerror = () => {
+					ws.close();
+				};
+			} catch (e) {
+				reconnectTimer = setTimeout(connect, 3000);
+			}
+		}
+
+		connect();
+		return () => {
+			clearTimeout(reconnectTimer);
+			if (ws) ws.close();
+		};
+	}, []);
+}
+
 function WorkTasksPage() {
 	const [tasks, setTasks] = React.useState([]);
 	const [loading, setLoading] = React.useState(true);
@@ -1544,10 +1719,21 @@ function WorkTasksPage() {
 		setLoading(false);
 	};
 
+	// Replace polling with WebSocket for real-time updates
+	useTaskWebSocket((updatedTask) => {
+		setTasks((prev) => {
+			const idx = prev.findIndex((t) => t.worktask_id === updatedTask.worktask_id);
+			if (idx >= 0) {
+				const next = [...prev];
+				next[idx] = updatedTask;
+				return next;
+			}
+			return [updatedTask, ...prev];
+		});
+	});
+
 	React.useEffect(() => {
 		loadTasks();
-		const interval = setInterval(loadTasks, 5000); // Refresh every 5 seconds
-		return () => clearInterval(interval);
 	}, []);
 
 	const columns = [

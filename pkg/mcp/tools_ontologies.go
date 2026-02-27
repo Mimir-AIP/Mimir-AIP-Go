@@ -231,6 +231,9 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 		},
 	)
 
+	// extract_and_generate_ontology
+	init_extractAndGenerateOntology(s, m)
+
 	// extract_from_storage
 	s.AddTool(
 		mcp.NewTool("extract_from_storage",
@@ -264,6 +267,85 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			data, _ := json.Marshal(result)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+}
+
+// extract_and_generate_ontology
+func init_extractAndGenerateOntology(s *server.MCPServer, m *MimirMCPServer) {
+	s.AddTool(
+		mcp.NewTool("extract_and_generate_ontology",
+			mcp.WithDescription("Extract entities from storage backends and generate an OWL ontology; diffs against any existing active ontology and flags for review if changes are detected"),
+			mcp.WithString("project_id",
+				mcp.Required(),
+				mcp.Description("Project ID"),
+			),
+			mcp.WithString("storage_ids",
+				mcp.Required(),
+				mcp.Description("Comma-separated list of storage config IDs to extract from"),
+			),
+			mcp.WithString("ontology_name",
+				mcp.Required(),
+				mcp.Description("Name for the generated ontology"),
+			),
+			mcp.WithString("include_structured",
+				mcp.Description("Include structured data extraction (default true)"),
+			),
+			mcp.WithString("include_unstructured",
+				mcp.Description("Include unstructured/text extraction (default true)"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
+			storageIDsStr := req.GetString("storage_ids", "")
+			ontologyName := req.GetString("ontology_name", "")
+			if projectID == "" || storageIDsStr == "" || ontologyName == "" {
+				return mcp.NewToolResultError("project_id, storage_ids, and ontology_name are required"), nil
+			}
+			storageIDs := splitCSV(storageIDsStr)
+			includeStructured := req.GetString("include_structured", "true") != "false"
+			includeUnstructured := req.GetString("include_unstructured", "true") != "false"
+
+			extractionResult, err := m.extractionSvc.ExtractFromStorage(projectID, storageIDs, includeStructured, includeUnstructured)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			newOntology, err := m.ontologySvc.GenerateFromExtraction(projectID, ontologyName, extractionResult)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			// Diff against existing active ontology
+			var ontologyDiff interface{}
+			existingOntologies, err := m.ontologySvc.GetProjectOntologies(projectID)
+			if err == nil {
+				for _, existing := range existingOntologies {
+					if existing.Status == "active" && existing.ID != newOntology.ID {
+						diff := m.ontologySvc.DiffOntologies(existing.Content, newOntology.Content)
+						if diff.HasChanges {
+							_ = m.ontologySvc.FlagForReview(newOntology.ID, diff)
+							newOntology.Status = "needs_review"
+							ontologyDiff = diff
+						}
+						break
+					}
+				}
+			}
+
+			resp := map[string]interface{}{
+				"ontology": newOntology,
+				"extraction_summary": map[string]int{
+					"entities_count":      len(extractionResult.Entities),
+					"relationships_count": len(extractionResult.Relationships),
+				},
+			}
+			if ontologyDiff != nil {
+				resp["ontology_diff"] = ontologyDiff
+			}
+
+			data, _ := json.Marshal(resp)
 			return mcp.NewToolResultText(string(data)), nil
 		},
 	)

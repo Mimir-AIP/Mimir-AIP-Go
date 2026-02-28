@@ -65,6 +65,9 @@ type WorkTask struct {
 	ErrorMessage         string               `json:"error_message,omitempty"`
 	KubernetesJobName    string               `json:"kubernetes_job_name,omitempty"`
 	ClusterName          string               `json:"cluster_name,omitempty"` // cluster this task was dispatched to
+	RetryCount           int                  `json:"retry_count"`
+	MaxRetries           int                  `json:"max_retries"`
+	RetryReason          string               `json:"retry_reason,omitempty"`
 }
 
 // WorkTaskSubmissionRequest represents a request to submit a new work task

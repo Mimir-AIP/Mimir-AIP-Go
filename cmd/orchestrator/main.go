@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -126,6 +127,9 @@ func main() {
 
 	// Initialize digital twin service
 	dtService := digitaltwin.NewService(store, ontologyService, storageService, mlmodelService, q)
+
+	// Start prediction cache eviction background job
+	go dtService.StartCacheEviction(context.Background())
 
 	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, ML model, and digital twin services")
 

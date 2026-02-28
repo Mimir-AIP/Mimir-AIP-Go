@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/queue"
+	"github.com/mimir-aip/mimir-aip-go/pkg/ws"
 )
 
 // Server provides HTTP API endpoints
@@ -18,16 +20,32 @@ type Server struct {
 	port            string
 	mux             *http.ServeMux
 	workerAuthToken string // if non-empty, required as Bearer token on /api/worktasks/* paths
+	hub             *ws.Hub
 }
 
 // NewServer creates a new API server.
 // workerAuthToken gates the worker-facing /api/worktasks/* paths when non-empty.
 func NewServer(q *queue.Queue, port string, workerAuthToken string) *Server {
+	hub := ws.NewHub()
+	go hub.Run()
+
+	// Wire queue status-change events to the WebSocket hub
+	q.OnStatusChange = func(task *models.WorkTask) {
+		data, err := json.Marshal(map[string]interface{}{
+			"event": "task_update",
+			"task":  task,
+		})
+		if err == nil {
+			hub.Broadcast(data)
+		}
+	}
+
 	s := &Server{
 		queue:           q,
 		port:            port,
 		mux:             http.NewServeMux(),
 		workerAuthToken: workerAuthToken,
+		hub:             hub,
 	}
 
 	s.registerRoutes()
@@ -57,6 +75,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/ready", s.handleReady)
 	s.mux.HandleFunc("/api/worktasks", s.workerAuthMiddleware(s.handleWorkTasks))
 	s.mux.HandleFunc("/api/worktasks/", s.workerAuthMiddleware(s.handleWorkTaskByID))
+	s.mux.HandleFunc("/api/metrics", s.handleMetrics)
+	s.mux.HandleFunc("/ws/tasks", ws.WSHandler(s.hub))
 }
 
 // RegisterHandler adds a custom handler to the server
@@ -139,6 +159,18 @@ func (s *Server) handleWorkTaskSubmission(w http.ResponseWriter, r *http.Request
 		task.Priority = 1
 	}
 
+	// Set default MaxRetries based on task type
+	if task.MaxRetries == 0 {
+		switch task.Type {
+		case models.WorkTaskTypeMLTraining:
+			task.MaxRetries = 2
+		case models.WorkTaskTypePipelineExecution, models.WorkTaskTypeMLInference, models.WorkTaskTypeDigitalTwinUpdate:
+			task.MaxRetries = 3
+		default:
+			task.MaxRetries = 3
+		}
+	}
+
 	// Enqueue work task
 	if err := s.queue.Enqueue(task); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to enqueue work task: %v", err), http.StatusInternalServerError)
@@ -161,6 +193,52 @@ func (s *Server) handleWorkTaskList(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"queue_length": queueLength,
 	})
+}
+
+// MetricsResponse is the JSON shape returned by GET /api/metrics.
+type MetricsResponse struct {
+	Queue         QueueMetrics       `json:"queue"`
+	TasksByStatus map[string]int     `json:"tasks_by_status"`
+	TasksByType   map[string]int     `json:"tasks_by_type"`
+	Timestamp     time.Time          `json:"timestamp"`
+}
+
+// QueueMetrics contains queue depth information.
+type QueueMetrics struct {
+	Length int64 `json:"length"`
+}
+
+// handleMetrics serves GET /api/metrics with task counts aggregated from the queue.
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tasks, err := s.queue.ListWorkTasks()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list tasks: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	byStatus := make(map[string]int)
+	byType := make(map[string]int)
+	for _, t := range tasks {
+		byStatus[string(t.Status)]++
+		byType[string(t.Type)]++
+	}
+
+	qLen, _ := s.queue.QueueLength()
+
+	resp := MetricsResponse{
+		Queue:         QueueMetrics{Length: qLen},
+		TasksByStatus: byStatus,
+		TasksByType:   byType,
+		Timestamp:     time.Now().UTC(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handleWorkTaskByID handles work task-specific requests
@@ -191,12 +269,31 @@ func (s *Server) handleGetWorkTask(w http.ResponseWriter, r *http.Request, taskI
 	json.NewEncoder(w).Encode(task)
 }
 
+// retryableSignals are error strings that indicate transient failures worth retrying.
+var retryableSignals = []string{"OOMKilled", "Evicted", "DeadlineExceeded"}
+
 // handleWorkTaskUpdate handles work task status updates
 func (s *Server) handleWorkTaskUpdate(w http.ResponseWriter, r *http.Request, taskID string) {
 	var result models.WorkTaskResult
 	if err := json.NewDecoder(r.Body).Decode(&result); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	// When a worker reports failure, check if the error is retryable
+	if result.Status == models.WorkTaskStatusFailed && result.ErrorMessage != "" {
+		for _, sig := range retryableSignals {
+			if strings.Contains(result.ErrorMessage, sig) {
+				if err := s.queue.RequeueWithRetry(taskID, result.ErrorMessage); err != nil {
+					log.Printf("Failed to requeue task %s: %v", taskID, err)
+					// Fall through to normal failure handling
+					break
+				}
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]string{"status": "requeued_for_retry"})
+				return
+			}
+		}
 	}
 
 	if err := s.queue.UpdateWorkTaskStatus(taskID, result.Status, result.ErrorMessage); err != nil {

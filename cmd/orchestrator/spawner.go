@@ -59,6 +59,27 @@ func (ws *WorkerSpawner) processQueue() {
 		return
 	}
 
+	// Check per-type concurrency limit before dequeuing
+	nextTask, err := ws.queue.PeekNext()
+	if err != nil {
+		log.Printf("Error peeking at next task: %v", err)
+		return
+	}
+	if nextTask != nil {
+		if limit, ok := ws.config.ConcurrencyLimits[string(nextTask.Type)]; ok && limit > 0 {
+			activeForType, err := ws.queue.CountActiveByType(nextTask.Type)
+			if err != nil {
+				log.Printf("Error counting active tasks by type: %v", err)
+				return
+			}
+			if activeForType >= int64(limit) {
+				log.Printf("Per-type concurrency limit reached for %s (%d/%d), skipping tick",
+					nextTask.Type, activeForType, limit)
+				return
+			}
+		}
+	}
+
 	log.Printf("Scaling decision: queue=%d, active=%d, capacity=%d - SPAWNING worker",
 		queueLength, totalActive, totalCapacity)
 
@@ -91,7 +112,9 @@ func (ws *WorkerSpawner) processQueue() {
 	// Create worker job on the selected cluster
 	if err := entry.Client.CreateWorkerJob(task, ws.config.WorkerImage, entry.Config.OrchestratorURL); err != nil {
 		log.Printf("Error creating worker job on cluster %q: %v", entry.Config.Name, err)
-		ws.queue.UpdateWorkTaskStatus(task.ID, models.WorkTaskStatusFailed, err.Error())
+		if retryErr := ws.queue.RequeueWithRetry(task.ID, "k8s_job_creation_failed"); retryErr != nil {
+			log.Printf("Error requeueing task %s: %v", task.ID, retryErr)
+		}
 		return
 	}
 

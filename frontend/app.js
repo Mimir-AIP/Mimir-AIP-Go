@@ -14,16 +14,7 @@ function Tabs({ tabs, activeTab, onTabChange }) {
 			{tabs.map(tab => (
 				<button
 					key={tab}
-					className="tab"
-					style={{
-						fontWeight: tab === activeTab ? 'bold' : 'normal',
-						background: tab === activeTab ? 'var(--accent)' : 'var(--background)',
-						color: 'var(--text)',
-						fontFamily: 'var(--font-family)',
-						border: tab === activeTab ? 'none' : '1px solid var(--accent)',
-						padding: '8px 16px',
-						cursor: 'pointer',
-					}}
+					className={`tab${tab === activeTab ? ' active' : ''}`}
 					onClick={() => onTabChange(tab)}
 				>
 					{tab}
@@ -1777,8 +1768,14 @@ function WorkTasksPage() {
 
 function App() {
 	const [currentPage, setCurrentPage] = React.useState('Projects');
+	const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
 	const pages = ['Projects', 'Pipelines', 'Ontologies', 'ML Models', 'Digital Twins', 'Storage', 'Plugins', 'Work Queue'];
+
+	const navigate = (page) => {
+		setCurrentPage(page);
+		setSidebarOpen(false);
+	};
 
 	const renderPage = () => {
 		switch (currentPage) {
@@ -1804,18 +1801,46 @@ function App() {
 	};
 
 	return (
-		<div className="app-container">
-			<div className="app-header">
-				<h1>Mimir AIP Orchestrator</h1>
+		<div className="app-shell">
+			<header className="app-topbar">
+				<div className="topbar-brand">
+					<button
+						className="hamburger"
+						onClick={() => setSidebarOpen(o => !o)}
+						aria-label="Toggle navigation"
+					>
+						<span/><span/><span/>
+					</button>
+					<span className="topbar-logo">◆</span>
+					<span className="topbar-name">Mimir AIP</span>
+				</div>
+				<div className="topbar-meta">
+					<span className="topbar-version">v0.1.0</span>
+				</div>
+			</header>
+			<div className="app-body">
+				{sidebarOpen && (
+					<div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+				)}
+				<aside className={`app-sidebar${sidebarOpen ? ' is-open' : ''}`}>
+					<nav className="sidebar-nav">
+						{pages.map(page => (
+							<button
+								key={page}
+								className={`nav-item${currentPage === page ? ' active' : ''}`}
+								onClick={() => navigate(page)}
+							>
+								{page}
+							</button>
+						))}
+					</nav>
+				</aside>
+				<main className="app-main">
+					<div className="app-container">
+						{renderPage()}
+					</div>
+				</main>
 			</div>
-
-			<Tabs
-				tabs={pages}
-				activeTab={currentPage}
-				onTabChange={setCurrentPage}
-			/>
-
-			{renderPage()}
 		</div>
 	);
 }

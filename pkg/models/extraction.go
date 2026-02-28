@@ -33,20 +33,3 @@ type ExtractionResult struct {
 	Source        string                  `json:"source"` // "structured" or "unstructured"
 }
 
-// RelationshipPattern defines patterns for inferring relationships
-type RelationshipPattern struct {
-	Attribute  string  `json:"attribute"`
-	Relation   string  `json:"relation"`
-	Confidence float64 `json:"confidence"`
-}
-
-// DefaultRelationshipPatterns provides common relationship patterns for structured data
-var DefaultRelationshipPatterns = []RelationshipPattern{
-	{Attribute: "manager", Relation: "reports_to", Confidence: 0.85},
-	{Attribute: "supervisor", Relation: "reports_to", Confidence: 0.85},
-	{Attribute: "department", Relation: "belongs_to", Confidence: 0.80},
-	{Attribute: "location", Relation: "located_in", Confidence: 0.80},
-	{Attribute: "team", Relation: "member_of", Confidence: 0.80},
-	{Attribute: "parent", Relation: "child_of", Confidence: 0.90},
-	{Attribute: "category", Relation: "categorized_as", Confidence: 0.75},
-}

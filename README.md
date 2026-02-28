@@ -14,6 +14,7 @@ Mimir AIP is an ontology-driven platform for data aggregation, processing and an
 - [MCP Integration](#mcp-integration)
 - [Configuration Reference](#configuration-reference)
 - [Building from Source](#building-from-source)
+- [Further Documentation](#further-documentation)
 
 ---
 
@@ -66,14 +67,19 @@ Mimir AIP consists of two binaries and an optional web frontend:
 | Term | Description |
 |------|-------------|
 | **Project** | Top-level organisational unit. Groups pipelines, ontologies, ML models, digital twins, and storage configurations. |
-| **Pipeline** | A named, ordered sequence of processing steps (ingestion → processing → output). Pipelines are executed asynchronously by workers. |
+| **Pipeline** | A named, ordered sequence of processing steps (ingestion → processing → output). Three types: `ingestion` (pull data in), `processing` (transform/enrich), `output` (push results out). Executed asynchronously by Workers. |
+| **Pipeline Plugin** | A Git-hosted Go package that adds custom actions to pipeline steps. Workers clone and compile plugins at runtime. See [docs/custom-plugins.md](docs/custom-plugins.md). |
 | **Schedule** | A cron-based trigger that enqueues one or more pipelines on a recurring basis. |
-| **Ontology** | An OWL/Turtle vocabulary that defines the entity types, properties, and relationships for a project domain. Used to structure storage and constrain ML model training. |
-| **Storage Config** | A connection definition for a storage backend (filesystem, PostgreSQL, MySQL, MongoDB, S3, Redis, Elasticsearch, or Neo4j). Data is stored and retrieved using the **CIR** (Common Internal Representation) format. |
-| **CIR** | Common Internal Representation — the normalised record format used across all storage backends. Each CIR contains a `source` block (provenance), a `data` block (the payload), and a `metadata` block. |
-| **ML Model** | A model definition (type: decision tree, random forest, regression, or neural network) linked to an ontology. Training and inference are executed by workers. |
-| **Digital Twin** | A live in-memory graph of entities and their attributes, initialised from an ontology and synchronised from storage. Queryable via a built-in SPARQL engine. |
-| **MCP** | [Model Context Protocol](https://modelcontextprotocol.io) — an open standard for exposing tools to AI agents. Mimir exposes 55 tools covering all platform resources, allowing users to interact with the system within the enviroment of their favourite tools and leverage natural language to configure and operate Mimir AIP. |
+| **Ontology** | An OWL/Turtle vocabulary that defines the entity types, properties, and relationships for a project domain. Used to structure storage, constrain ML model training, and initialise digital twins. |
+| **Storage Config** | A connection definition for a storage backend (filesystem, PostgreSQL, MySQL, MongoDB, S3, Redis, Elasticsearch, or Neo4j). Data is stored and retrieved using the **CIR** format. Custom backends can be added as storage plugins — see [docs/custom-plugins.md](docs/custom-plugins.md). |
+| **CIR** | Common Internal Representation — the normalised record format used across all storage backends. Each CIR record contains a `source` block (provenance), a `data` block (the payload), and a `metadata` block. The `data.entity_type` field is used by digital twin sync to classify entities. |
+| **Worker** | A short-lived Kubernetes Job binary spawned by the orchestrator to execute compute tasks (pipeline runs, ML training, ML inference, digital twin sync). Workers are stateless and report results back to the orchestrator via the API. |
+| **Work Task** | A unit of work submitted to the orchestrator's internal queue. Each task has a type (`pipeline_execution`, `ml_training`, `ml_inference`, `digital_twin_update`), a status (`queued → running → completed/failed`), a priority, and automatic retry logic for transient failures. |
+| **ML Model** | A model definition (type: `decision_tree`, `random_forest`, `regression`, or `neural_network`) linked to an ontology. Training and inference are executed by workers and results stored as serialised artifacts. |
+| **Digital Twin** | A live in-memory graph of **Entities** and their attributes, initialised from an ontology and synchronised from one or more storage backends. Supports what-if scenario analysis and action application without mutating source data. |
+| **Entity** | A node in a digital twin's graph. Each entity has a `type` (from the ontology), a set of `attributes`, `computed_values` (ML inference outputs, sync metadata), and typed `relationships` to other entities. |
+| **SPARQL** | The query language used to interrogate a digital twin's entity graph. Mimir implements a subset of SPARQL SELECT: PREFIX declarations, triple patterns (`?s a :Type`, `?s :attr ?v`, `?s :attr "literal"`), FILTER, ORDER BY, LIMIT, and OFFSET. |
+| **MCP** | [Model Context Protocol](https://modelcontextprotocol.io) — an open standard for exposing tools to AI agents. Mimir exposes 55 tools covering all platform resources, allowing users to interact with the system via their preferred agent environment (Claude Code, OpenCode, etc.) using natural language. |
 
 ---
 
@@ -274,6 +280,15 @@ make build-all
 # Run the orchestrator locally against a local SQLite database
 make dev-orchestrator
 ```
+
+## Further Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/custom-plugins.md](docs/custom-plugins.md) | How to write and install custom pipeline plugins and storage plugins |
+| [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0 specification for the full REST API (auto-generated — do not edit by hand) |
+
+---
 
 ## Citation
 If you use Mimir AIP in your research, please consider citing:

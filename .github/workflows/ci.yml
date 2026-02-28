@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build orchestrator
+        run: go build ./cmd/orchestrator/...
+
+      - name: Build worker
+        run: go build ./cmd/worker/...
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run unit tests
+        run: go test -race -timeout 120s ./pkg/...
+
+  openapi-check:
+    name: OpenAPI spec up to date
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate OpenAPI spec
+        run: go run ./cmd/openapi-gen > docs/openapi.yaml
+
+      - name: Check for diff
+        run: |
+          if ! git diff --exit-code docs/openapi.yaml; then
+            echo ""
+            echo "ERROR: docs/openapi.yaml is out of date."
+            echo "Run 'go run ./cmd/openapi-gen > docs/openapi.yaml' and commit the result."
+            exit 1
+          fi

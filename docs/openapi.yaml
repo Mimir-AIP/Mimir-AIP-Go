@@ -1,0 +1,2642 @@
+components:
+    schemas:
+        ActionRequest:
+            properties:
+                action_type:
+                    description: Type of action to apply
+                    type: string
+                parameters:
+                    additionalProperties: true
+                    type: object
+            required:
+                - action_type
+            type: object
+        ActionResult:
+            properties:
+                action_id:
+                    description: Action ID
+                    type: string
+                applied_at:
+                    description: ISO-8601 timestamp
+                    type: string
+                result:
+                    additionalProperties: true
+                    type: object
+                status:
+                    description: Action status
+                    type: string
+            type: object
+        CIR:
+            description: Common Internal Representation — the normalised record format used across all storage backends.
+            properties:
+                data:
+                    additionalProperties: true
+                    description: Record payload
+                    type: object
+                id:
+                    description: CIR record ID
+                    type: string
+                metadata:
+                    additionalProperties: true
+                    description: Record metadata
+                    type: object
+                source:
+                    additionalProperties: true
+                    description: Provenance information
+                    type: object
+            type: object
+        CIRCondition:
+            properties:
+                attribute:
+                    description: Attribute name to filter on
+                    type: string
+                operator:
+                    description: 'Comparison operator: eq, neq, gt, gte, lt, lte, in, like'
+                    type: string
+                value:
+                    description: Filter value
+            required:
+                - attribute
+                - operator
+                - value
+            type: object
+        CIRQuery:
+            properties:
+                entity_type:
+                    description: Filter by entity type
+                    type: string
+                filters:
+                    items:
+                        $ref: '#/components/schemas/CIRCondition'
+                    type: array
+                limit:
+                    description: Maximum number of results
+                    type: integer
+                offset:
+                    description: Results offset for pagination
+                    type: integer
+                order_by:
+                    items:
+                        $ref: '#/components/schemas/OrderByClause'
+                    type: array
+            type: object
+        DigitalTwin:
+            properties:
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                description:
+                    description: Digital twin description
+                    type: string
+                entity_count:
+                    description: Number of entities in the graph
+                    type: integer
+                id:
+                    description: Digital twin ID (UUID)
+                    type: string
+                metadata:
+                    additionalProperties: true
+                    type: object
+                name:
+                    description: Digital twin name
+                    type: string
+                ontology_id:
+                    description: Linked ontology ID
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                status:
+                    description: Twin status (initialising, active, syncing, error)
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        DigitalTwinCreateRequest:
+            properties:
+                description:
+                    description: Digital twin description
+                    type: string
+                name:
+                    description: Digital twin name
+                    type: string
+                ontology_id:
+                    description: Linked ontology ID
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+            required:
+                - project_id
+                - name
+            type: object
+        DigitalTwinUpdateRequest:
+            properties:
+                description:
+                    description: New description
+                    type: string
+                name:
+                    description: New name
+                    type: string
+                ontology_id:
+                    description: New linked ontology ID
+                    type: string
+            type: object
+        Entity:
+            properties:
+                attributes:
+                    additionalProperties: true
+                    description: Entity attribute values
+                    type: object
+                computed_values:
+                    additionalProperties: true
+                    description: Values derived from ML inference or sync
+                    type: object
+                id:
+                    description: Entity ID (UUID)
+                    type: string
+                last_updated:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+                relationships:
+                    items:
+                        description: Relationship to another entity
+                        type: object
+                    type: array
+                type:
+                    description: Entity type (from ontology)
+                    type: string
+            type: object
+        Error:
+            properties:
+                error:
+                    description: Human-readable error message
+                    type: string
+            type: object
+        ExtractionRequest:
+            properties:
+                ontology_id:
+                    description: Optional existing ontology ID to diff against
+                    type: string
+                project_id:
+                    description: Project ID
+                    type: string
+                storage_id:
+                    description: Storage config ID to extract from
+                    type: string
+            required:
+                - project_id
+                - storage_id
+            type: object
+        ExtractionResult:
+            properties:
+                diff:
+                    description: OntologyDiff — added/removed/modified classes and properties
+                    type: object
+                needs_review:
+                    description: True if the diff was significant enough to flag for review
+                    type: boolean
+                ontology:
+                    $ref: '#/components/schemas/Ontology'
+            type: object
+        MLModel:
+            properties:
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                description:
+                    description: Model description
+                    type: string
+                id:
+                    description: ML model ID (UUID)
+                    type: string
+                is_recommended:
+                    description: True if this model type was recommended by the recommendation engine
+                    type: boolean
+                metadata:
+                    additionalProperties: true
+                    type: object
+                model_artifact_path:
+                    description: Path to the serialised model artifact
+                    type: string
+                name:
+                    description: Model name
+                    type: string
+                ontology_id:
+                    description: Linked ontology ID
+                    type: string
+                performance_metrics:
+                    description: Latest performance metrics
+                    type: object
+                project_id:
+                    description: Owning project ID
+                    type: string
+                recommendation_score:
+                    description: Recommendation engine score
+                    type: integer
+                status:
+                    description: 'Model status: draft, training, trained, failed, degraded, deprecated, archived'
+                    type: string
+                training_config:
+                    description: Training configuration
+                    type: object
+                training_metrics:
+                    description: Metrics recorded during training
+                    type: object
+                type:
+                    description: 'Model type: decision_tree, random_forest, regression, neural_network'
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+                version:
+                    description: Model version string
+                    type: string
+            type: object
+        MLModelCreateRequest:
+            properties:
+                description:
+                    description: Model description
+                    type: string
+                name:
+                    description: Model name
+                    type: string
+                ontology_id:
+                    description: Linked ontology ID
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                training_config:
+                    description: Training configuration
+                    type: object
+                type:
+                    description: Model type
+                    type: string
+            required:
+                - project_id
+                - name
+                - type
+            type: object
+        MLModelRecommendRequest:
+            properties:
+                ontology_id:
+                    description: Ontology to base recommendation on
+                    type: string
+                project_id:
+                    description: Project ID
+                    type: string
+                storage_id:
+                    description: Storage config to sample data from
+                    type: string
+            required:
+                - project_id
+            type: object
+        MLModelRecommendation:
+            properties:
+                alternatives:
+                    items:
+                        description: Alternative model type with score and reason
+                        type: object
+                    type: array
+                reason:
+                    description: Explanation of the recommendation
+                    type: string
+                recommended_type:
+                    description: Recommended model type
+                    type: string
+                score:
+                    description: Confidence score (0-100)
+                    type: integer
+            type: object
+        MLModelUpdateRequest:
+            properties:
+                description:
+                    description: New description
+                    type: string
+                name:
+                    description: New name
+                    type: string
+                status:
+                    description: New status
+                    type: string
+                training_config:
+                    description: Updated training configuration
+                    type: object
+            type: object
+        MLTrainingRequest:
+            properties:
+                model_id:
+                    description: ID of the model to train
+                    type: string
+                storage_id:
+                    description: Storage config to load training data from
+                    type: string
+            required:
+                - model_id
+            type: object
+        MetricsResponse:
+            properties:
+                queue:
+                    properties:
+                        length:
+                            description: Current queue depth
+                            type: integer
+                    type: object
+                tasks_by_status:
+                    additionalProperties:
+                        type: integer
+                    description: Task count keyed by status
+                    type: object
+                tasks_by_type:
+                    additionalProperties:
+                        type: integer
+                    description: Task count keyed by type
+                    type: object
+                timestamp:
+                    description: ISO-8601 UTC timestamp of the snapshot
+                    type: string
+            type: object
+        Ontology:
+            properties:
+                content:
+                    description: OWL/Turtle ontology content
+                    type: string
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                description:
+                    description: Ontology description
+                    type: string
+                id:
+                    description: Ontology ID (UUID)
+                    type: string
+                name:
+                    description: Ontology name
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                status:
+                    description: Ontology status (draft, active, needs_review, deprecated)
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        OntologyCreateRequest:
+            properties:
+                content:
+                    description: Initial OWL/Turtle content
+                    type: string
+                description:
+                    description: Ontology description
+                    type: string
+                name:
+                    description: Ontology name
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+            required:
+                - project_id
+                - name
+            type: object
+        OntologyUpdateRequest:
+            properties:
+                content:
+                    description: Updated OWL/Turtle content
+                    type: string
+                description:
+                    description: New description
+                    type: string
+                name:
+                    description: New name
+                    type: string
+                status:
+                    description: New status
+                    type: string
+            type: object
+        OrderByClause:
+            properties:
+                attribute:
+                    description: Attribute to sort by
+                    type: string
+                direction:
+                    description: asc or desc (default asc)
+                    type: string
+            required:
+                - attribute
+            type: object
+        Pipeline:
+            properties:
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                description:
+                    description: Pipeline description
+                    type: string
+                id:
+                    description: Pipeline ID (UUID)
+                    type: string
+                name:
+                    description: Pipeline name
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                status:
+                    description: Pipeline status
+                    type: string
+                steps:
+                    items:
+                        $ref: '#/components/schemas/PipelineStep'
+                    type: array
+                type:
+                    description: Pipeline type (ingestion, processing, output)
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        PipelineCreateRequest:
+            properties:
+                description:
+                    description: Pipeline description
+                    type: string
+                name:
+                    description: Pipeline name
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                steps:
+                    items:
+                        $ref: '#/components/schemas/PipelineStep'
+                    type: array
+                type:
+                    description: Pipeline type
+                    type: string
+            required:
+                - project_id
+                - name
+                - type
+                - steps
+            type: object
+        PipelineExecutionRequest:
+            properties:
+                parameters:
+                    additionalProperties: true
+                    description: Runtime parameters
+                    type: object
+                pipeline_id:
+                    description: ID of the pipeline to execute
+                    type: string
+                trigger_type:
+                    description: manual, scheduled, or automatic
+                    type: string
+                triggered_by:
+                    description: Identifier of the trigger source
+                    type: string
+            required:
+                - pipeline_id
+            type: object
+        PipelineStep:
+            properties:
+                action:
+                    description: Action name within the plugin
+                    type: string
+                name:
+                    description: Step name (unique within pipeline)
+                    type: string
+                output:
+                    additionalProperties:
+                        type: string
+                    description: Output mapping
+                    type: object
+                parameters:
+                    additionalProperties: true
+                    description: Action parameters
+                    type: object
+                plugin:
+                    description: Plugin name or 'default' for built-in actions
+                    type: string
+            required:
+                - name
+                - plugin
+                - action
+            type: object
+        PipelineUpdateRequest:
+            properties:
+                description:
+                    description: New description
+                    type: string
+                status:
+                    description: New status
+                    type: string
+                steps:
+                    items:
+                        $ref: '#/components/schemas/PipelineStep'
+                    type: array
+            type: object
+        Plugin:
+            properties:
+                actions:
+                    items:
+                        type: string
+                    type: array
+                author:
+                    description: Plugin author
+                    type: string
+                description:
+                    description: Plugin description
+                    type: string
+                installed_at:
+                    description: ISO-8601 installation timestamp
+                    type: string
+                name:
+                    description: Plugin name
+                    type: string
+                repository_url:
+                    description: Git repository URL
+                    type: string
+                version:
+                    description: Plugin version
+                    type: string
+            type: object
+        PluginInstallRequest:
+            properties:
+                git_ref:
+                    description: 'Branch, tag, or commit SHA to install (default: main)'
+                    type: string
+                repository_url:
+                    description: HTTPS Git URL of the plugin repository
+                    type: string
+            required:
+                - repository_url
+            type: object
+        PluginUpdateRequest:
+            properties:
+                git_ref:
+                    description: Branch, tag, or commit SHA to update to
+                    type: string
+            type: object
+        Project:
+            properties:
+                components:
+                    description: Associated component IDs
+                    properties:
+                        digital_twins:
+                            items:
+                                type: string
+                            type: array
+                        ml_models:
+                            items:
+                                type: string
+                            type: array
+                        ontologies:
+                            items:
+                                type: string
+                            type: array
+                        pipelines:
+                            items:
+                                type: string
+                            type: array
+                        storage:
+                            items:
+                                type: string
+                            type: array
+                    type: object
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                description:
+                    description: Project description
+                    type: string
+                id:
+                    description: Project ID (UUID)
+                    type: string
+                name:
+                    description: Project name
+                    type: string
+                status:
+                    description: Project status (active, archived)
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        ProjectCloneRequest:
+            properties:
+                name:
+                    description: Name for the cloned project
+                    type: string
+                project_id:
+                    description: ID of the project to clone
+                    type: string
+            required:
+                - project_id
+                - name
+            type: object
+        ProjectCreateRequest:
+            properties:
+                description:
+                    description: Project description
+                    type: string
+                name:
+                    description: Project name
+                    type: string
+            required:
+                - name
+            type: object
+        ProjectUpdateRequest:
+            properties:
+                description:
+                    description: New description
+                    type: string
+                name:
+                    description: New name
+                    type: string
+                status:
+                    description: New status
+                    type: string
+            type: object
+        ScenarioRequest:
+            properties:
+                modifications:
+                    items:
+                        description: Entity attribute modification
+                        type: object
+                    type: array
+                scenario_id:
+                    description: Optional scenario ID (UUID generated if omitted)
+                    type: string
+            required:
+                - modifications
+            type: object
+        ScenarioResult:
+            properties:
+                created_at:
+                    description: ISO-8601 timestamp
+                    type: string
+                entities:
+                    items:
+                        $ref: '#/components/schemas/Entity'
+                    type: array
+                predictions:
+                    additionalProperties: true
+                    description: ML model predictions under the scenario
+                    type: object
+                scenario_id:
+                    description: Scenario ID
+                    type: string
+            type: object
+        Schedule:
+            properties:
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                cron:
+                    description: Cron expression (e.g. '0 * * * *')
+                    type: string
+                enabled:
+                    description: Whether the schedule is active
+                    type: boolean
+                id:
+                    description: Schedule ID (UUID)
+                    type: string
+                name:
+                    description: Schedule name
+                    type: string
+                pipeline_ids:
+                    items:
+                        type: string
+                    type: array
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        ScheduleCreateRequest:
+            properties:
+                cron:
+                    description: Cron expression
+                    type: string
+                enabled:
+                    description: Start enabled (default true)
+                    type: boolean
+                name:
+                    description: Schedule name
+                    type: string
+                pipeline_ids:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - name
+                - cron
+                - pipeline_ids
+            type: object
+        ScheduleUpdateRequest:
+            properties:
+                cron:
+                    description: New cron expression
+                    type: string
+                enabled:
+                    description: Enable or disable the schedule
+                    type: boolean
+                name:
+                    description: New name
+                    type: string
+                pipeline_ids:
+                    items:
+                        type: string
+                    type: array
+            type: object
+        StorageConfig:
+            properties:
+                active:
+                    description: Whether this config is active
+                    type: boolean
+                config:
+                    additionalProperties: true
+                    description: Backend-specific configuration
+                    type: object
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                id:
+                    description: Storage config ID (UUID)
+                    type: string
+                ontology_id:
+                    description: Optional linked ontology ID
+                    type: string
+                plugin_type:
+                    description: 'Backend type: filesystem, postgresql, mysql, mongodb, s3, redis, elasticsearch, neo4j'
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        StorageConfigCreateRequest:
+            properties:
+                config:
+                    additionalProperties: true
+                    type: object
+                ontology_id:
+                    description: Optional linked ontology ID
+                    type: string
+                plugin_type:
+                    description: Backend type
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+            required:
+                - project_id
+                - plugin_type
+                - config
+            type: object
+        StorageConfigUpdateRequest:
+            properties:
+                active:
+                    description: Active flag
+                    type: boolean
+                config:
+                    additionalProperties: true
+                    type: object
+                ontology_id:
+                    description: Linked ontology ID
+                    type: string
+            type: object
+        StorageDeleteRequest:
+            properties:
+                project_id:
+                    description: Project ID
+                    type: string
+                query:
+                    $ref: '#/components/schemas/CIRQuery'
+                storage_id:
+                    description: Storage config ID
+                    type: string
+            required:
+                - project_id
+                - storage_id
+                - query
+            type: object
+        StorageQueryRequest:
+            properties:
+                project_id:
+                    description: Project ID
+                    type: string
+                query:
+                    $ref: '#/components/schemas/CIRQuery'
+                storage_id:
+                    description: Storage config ID
+                    type: string
+            required:
+                - project_id
+                - storage_id
+            type: object
+        StorageResult:
+            properties:
+                affected_items:
+                    description: Number of records affected
+                    type: integer
+                error:
+                    description: Error message if unsuccessful
+                    type: string
+                success:
+                    description: Whether the operation succeeded
+                    type: boolean
+            type: object
+        StorageStoreRequest:
+            properties:
+                cir_data:
+                    $ref: '#/components/schemas/CIR'
+                project_id:
+                    description: Project ID
+                    type: string
+                storage_id:
+                    description: Storage config ID
+                    type: string
+            required:
+                - project_id
+                - storage_id
+                - cir_data
+            type: object
+        StorageUpdateRequest:
+            properties:
+                project_id:
+                    description: Project ID
+                    type: string
+                query:
+                    $ref: '#/components/schemas/CIRQuery'
+                storage_id:
+                    description: Storage config ID
+                    type: string
+                updates:
+                    properties:
+                        filters:
+                            items:
+                                $ref: '#/components/schemas/CIRCondition'
+                            type: array
+                        updates:
+                            additionalProperties: true
+                            type: object
+                    type: object
+            required:
+                - project_id
+                - storage_id
+                - query
+                - updates
+            type: object
+        WorkTask:
+            properties:
+                completed_at:
+                    description: ISO-8601 completion timestamp
+                    type: string
+                error_message:
+                    description: Error message if task failed
+                    type: string
+                id:
+                    description: Work task ID (UUID)
+                    type: string
+                max_retries:
+                    description: Maximum retry attempts
+                    type: integer
+                priority:
+                    description: Task priority (higher = processed first)
+                    type: integer
+                project_id:
+                    description: Owning project ID
+                    type: string
+                resource_requirements:
+                    description: CPU/memory/GPU resource requests
+                    type: object
+                retry_count:
+                    description: Number of times this task has been retried
+                    type: integer
+                started_at:
+                    description: ISO-8601 start timestamp
+                    type: string
+                status:
+                    description: 'Task status: queued, running, completed, failed'
+                    type: string
+                submitted_at:
+                    description: ISO-8601 submission timestamp
+                    type: string
+                task_spec:
+                    additionalProperties: true
+                    description: Task-type-specific parameters
+                    type: object
+                type:
+                    description: 'Task type: pipeline_execution, ml_training, ml_inference, digital_twin_update'
+                    type: string
+            type: object
+        WorkTaskResult:
+            properties:
+                error_message:
+                    description: Error message if status is failed
+                    type: string
+                result:
+                    additionalProperties: true
+                    description: Task output data
+                    type: object
+                status:
+                    description: 'New task status: completed or failed'
+                    type: string
+            required:
+                - status
+            type: object
+        WorkTaskSubmissionRequest:
+            properties:
+                data_access:
+                    additionalProperties: true
+                    type: object
+                priority:
+                    description: Task priority
+                    type: integer
+                project_id:
+                    description: Owning project ID
+                    type: string
+                resource_requirements:
+                    additionalProperties: true
+                    type: object
+                task_spec:
+                    additionalProperties: true
+                    type: object
+                type:
+                    description: Task type
+                    type: string
+            required:
+                - type
+                - project_id
+            type: object
+info:
+    contact:
+        name: Mimir AIP
+        url: https://github.com/Mimir-AIP/Mimir-AIP-Go
+    description: REST API for the Mimir AIP orchestrator. Covers projects, pipelines, schedules, plugins, storage, ontologies, ML models, digital twins, work tasks, and platform metrics.
+    license:
+        name: See repository
+        url: https://github.com/Mimir-AIP/Mimir-AIP-Go/blob/main/LICENSE
+    title: Mimir AIP REST API
+    version: 0.1.0
+openapi: 3.0.3
+paths:
+    /api/digital-twins:
+        get:
+            description: Returns all digital twins, optionally filtered by project.
+            parameters:
+                - description: Filter by project ID
+                  in: query
+                  name: project_id
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/DigitalTwin'
+                                type: array
+                    description: "200"
+            summary: List digital twins
+            tags:
+                - Digital Twins
+        post:
+            description: Creates a new digital twin.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DigitalTwinCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DigitalTwin'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Create digital twin
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}:
+        delete:
+            description: Deletes a digital twin and all its cached entities.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Not found
+            summary: Delete digital twin
+            tags:
+                - Digital Twins
+        get:
+            description: Returns a single digital twin by ID.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DigitalTwin'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get digital twin
+            tags:
+                - Digital Twins
+        put:
+            description: Updates a digital twin's metadata.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DigitalTwinUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DigitalTwin'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Update digital twin
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/actions:
+        post:
+            description: Triggers an action on a digital twin.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ActionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ActionResult'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Apply action
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/actions/{actionId}:
+        get:
+            description: Returns the result of a previously applied action.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Action ID
+                  in: path
+                  name: actionId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ActionResult'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get action result
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/entities:
+        get:
+            description: Returns all entities in the digital twin's graph.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Entity'
+                                type: array
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: List entities
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/entities/{entityId}:
+        get:
+            description: Returns a single entity by ID.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Entity ID
+                  in: path
+                  name: entityId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Entity'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get entity
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/entities/{entityId}/related:
+        get:
+            description: Returns entities related to the specified entity, optionally filtered by relationship type.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Entity ID
+                  in: path
+                  name: entityId
+                  required: true
+                  schema:
+                    type: string
+                - description: Filter by relationship type
+                  in: query
+                  name: relationship
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Entity'
+                                type: array
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get related entities
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/scenarios:
+        post:
+            description: Applies a set of what-if modifications in memory and returns predicted outcomes without mutating state.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ScenarioRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ScenarioResult'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Apply scenario
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/scenarios/{scenarioId}:
+        get:
+            description: Returns the result of a previously applied scenario.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Scenario ID
+                  in: path
+                  name: scenarioId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ScenarioResult'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get scenario result
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/sparql:
+        post:
+            description: Executes a SPARQL SELECT query against the digital twin's in-memory entity graph.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            properties:
+                                query:
+                                    description: SPARQL SELECT query string
+                                    type: string
+                            required:
+                                - query
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    results:
+                                        items:
+                                            description: Row of bound variables
+                                            type: object
+                                        type: array
+                                type: object
+                    description: "200"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: SPARQL query
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/sync:
+        post:
+            description: Enqueues a work task to synchronise the digital twin's entity graph from its linked storage backends.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkTask'
+                    description: "201"
+                "404":
+                    description: Not found
+            summary: Sync digital twin from storage
+            tags:
+                - Digital Twins
+    /api/extraction/generate-ontology:
+        post:
+            description: Reads data from a storage backend, runs the schema-inductive extraction algorithm, and returns a generated OWL/Turtle ontology along with any diff against the existing ontology.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExtractionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExtractionResult'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "500":
+                    description: Internal server error
+            summary: Extract entities and generate ontology
+            tags:
+                - Extraction
+    /api/metrics:
+        get:
+            description: Returns task counts by status and type, plus current queue depth.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MetricsResponse'
+                    description: "200"
+            summary: Platform metrics
+            tags:
+                - System
+    /api/ml-models:
+        get:
+            description: Returns all ML models, optionally filtered by project.
+            parameters:
+                - description: Filter by project ID
+                  in: query
+                  name: project_id
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/MLModel'
+                                type: array
+                    description: "200"
+            summary: List ML models
+            tags:
+                - ML Models
+        post:
+            description: Registers a new ML model definition.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MLModelCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MLModel'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Create ML model
+            tags:
+                - ML Models
+    /api/ml-models/{id}:
+        delete:
+            description: Deletes an ML model.
+            parameters:
+                - description: ML model ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Not found
+            summary: Delete ML model
+            tags:
+                - ML Models
+        get:
+            description: Returns a single ML model by ID.
+            parameters:
+                - description: ML model ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MLModel'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get ML model
+            tags:
+                - ML Models
+        put:
+            description: Updates an ML model's metadata or configuration.
+            parameters:
+                - description: ML model ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MLModelUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MLModel'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Update ML model
+            tags:
+                - ML Models
+    /api/ml-models/{id}/training/complete:
+        post:
+            description: Called by workers to report successful training completion and upload the model artifact path.
+            parameters:
+                - description: ML model ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            properties:
+                                model_artifact_path:
+                                    description: Path to the trained model artifact
+                                    type: string
+                                performance_metrics:
+                                    description: Performance metrics from training
+                                    type: object
+                            required:
+                                - model_artifact_path
+                                - performance_metrics
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                    description: "200"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Complete training (worker)
+            tags:
+                - ML Models
+                - Tasks
+    /api/ml-models/{id}/training/fail:
+        post:
+            description: Called by workers to report a training failure.
+            parameters:
+                - description: ML model ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            properties:
+                                error_message:
+                                    description: Description of the failure
+                                    type: string
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Fail training (worker)
+            tags:
+                - ML Models
+                - Tasks
+    /api/ml-models/recommend:
+        post:
+            description: Analyses an ontology and storage data to recommend the most suitable model type.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MLModelRecommendRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MLModelRecommendation'
+                    description: "200"
+                "400":
+                    description: Bad request
+            summary: Recommend ML model type
+            tags:
+                - ML Models
+    /api/ml-models/train:
+        post:
+            description: Enqueues a training work task for the specified model.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MLTrainingRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkTask'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Trigger ML training
+            tags:
+                - ML Models
+    /api/ontologies:
+        get:
+            description: Returns all ontologies, optionally filtered by project.
+            parameters:
+                - description: Filter by project ID
+                  in: query
+                  name: project_id
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Ontology'
+                                type: array
+                    description: "200"
+            summary: List ontologies
+            tags:
+                - Ontologies
+        post:
+            description: Creates a new ontology.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OntologyCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Ontology'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Create ontology
+            tags:
+                - Ontologies
+    /api/ontologies/{id}:
+        delete:
+            description: Deletes an ontology.
+            parameters:
+                - description: Ontology ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Not found
+            summary: Delete ontology
+            tags:
+                - Ontologies
+        get:
+            description: Returns a single ontology by ID.
+            parameters:
+                - description: Ontology ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Ontology'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get ontology
+            tags:
+                - Ontologies
+        put:
+            description: Updates an ontology.
+            parameters:
+                - description: Ontology ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OntologyUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Ontology'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Update ontology
+            tags:
+                - Ontologies
+    /api/pipelines:
+        get:
+            description: Returns all pipelines, optionally filtered by project.
+            parameters:
+                - description: Filter by project ID
+                  in: query
+                  name: project_id
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Pipeline'
+                                type: array
+                    description: "200"
+            summary: List pipelines
+            tags:
+                - Pipelines
+        post:
+            description: Creates a new pipeline.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PipelineCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Create pipeline
+            tags:
+                - Pipelines
+    /api/pipelines/{id}:
+        delete:
+            description: Deletes a pipeline.
+            parameters:
+                - description: Pipeline ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Not found
+            summary: Delete pipeline
+            tags:
+                - Pipelines
+        get:
+            description: Returns a single pipeline by ID.
+            parameters:
+                - description: Pipeline ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get pipeline
+            tags:
+                - Pipelines
+        put:
+            description: Updates a pipeline's description, steps, or status.
+            parameters:
+                - description: Pipeline ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PipelineUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Pipeline'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Update pipeline
+            tags:
+                - Pipelines
+    /api/pipelines/execute:
+        post:
+            description: Enqueues a pipeline for asynchronous execution by a worker.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PipelineExecutionRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkTask'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Execute pipeline
+            tags:
+                - Pipelines
+    /api/plugins:
+        get:
+            description: Returns all installed pipeline plugins.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Plugin'
+                                type: array
+                    description: "200"
+            summary: List plugins
+            tags:
+                - Plugins
+        post:
+            description: Installs a pipeline plugin from a Git repository. The worker clones and compiles the plugin at runtime.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PluginInstallRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Plugin'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Install plugin
+            tags:
+                - Plugins
+    /api/plugins/{name}:
+        delete:
+            description: Removes a plugin.
+            parameters:
+                - description: Plugin name
+                  in: path
+                  name: name
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Not found
+            summary: Uninstall plugin
+            tags:
+                - Plugins
+        get:
+            description: Returns metadata for a single installed plugin.
+            parameters:
+                - description: Plugin name
+                  in: path
+                  name: name
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Plugin'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get plugin
+            tags:
+                - Plugins
+        put:
+            description: Pulls the latest version of a plugin from its repository.
+            parameters:
+                - description: Plugin name
+                  in: path
+                  name: name
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PluginUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Plugin'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Update plugin
+            tags:
+                - Plugins
+    /api/projects:
+        get:
+            description: Returns all projects, optionally filtered by status.
+            parameters:
+                - description: Filter by project status
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Project'
+                                type: array
+                    description: "200"
+            summary: List projects
+            tags:
+                - Projects
+        post:
+            description: Creates a new project.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Project'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Create project
+            tags:
+                - Projects
+    /api/projects/{id}:
+        delete:
+            description: Deletes a project and all its components.
+            parameters:
+                - description: Project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Not found
+            summary: Delete project
+            tags:
+                - Projects
+        get:
+            description: Returns a single project by ID.
+            parameters:
+                - description: Project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Project'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get project
+            tags:
+                - Projects
+        put:
+            description: Updates a project's name, description, or status.
+            parameters:
+                - description: Project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Project'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Update project
+            tags:
+                - Projects
+    /api/projects/{id}/{componentType}/{componentId}:
+        delete:
+            description: Removes the association between a component and a project.
+            parameters:
+                - description: Project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: 'One of: pipelines, ontologies, mlmodels, digitaltwins, storage'
+                  in: path
+                  name: componentType
+                  required: true
+                  schema:
+                    type: string
+                - description: ID of the component to disassociate
+                  in: path
+                  name: componentId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Remove component from project
+            tags:
+                - Projects
+        post:
+            description: Associates a pipeline, ontology, ML model, digital twin, or storage config with a project.
+            parameters:
+                - description: Project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: 'One of: pipelines, ontologies, mlmodels, digitaltwins, storage'
+                  in: path
+                  name: componentType
+                  required: true
+                  schema:
+                    type: string
+                - description: ID of the component to associate
+                  in: path
+                  name: componentId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Add component to project
+            tags:
+                - Projects
+    /api/projects/clone:
+        post:
+            description: Deep-clones an existing project including its pipelines, ontologies, ML models, digital twins, and storage configurations.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectCloneRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Project'
+                    description: "201"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Clone project
+            tags:
+                - Projects
+    /api/schedules:
+        get:
+            description: Returns all cron schedules.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Schedule'
+                                type: array
+                    description: "200"
+            summary: List schedules
+            tags:
+                - Schedules
+        post:
+            description: Creates a new cron schedule.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ScheduleCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Schedule'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Create schedule
+            tags:
+                - Schedules
+    /api/schedules/{id}:
+        delete:
+            description: Deletes a schedule.
+            parameters:
+                - description: Schedule ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Not found
+            summary: Delete schedule
+            tags:
+                - Schedules
+        get:
+            description: Returns a single schedule by ID.
+            parameters:
+                - description: Schedule ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Schedule'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get schedule
+            tags:
+                - Schedules
+        put:
+            description: Updates a schedule.
+            parameters:
+                - description: Schedule ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ScheduleUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Schedule'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Update schedule
+            tags:
+                - Schedules
+    /api/storage/configs:
+        get:
+            description: Returns all storage configurations.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/StorageConfig'
+                                type: array
+                    description: "200"
+            summary: List storage configs
+            tags:
+                - Storage
+        post:
+            description: Registers a new storage backend configuration.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StorageConfigCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StorageConfig'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Create storage config
+            tags:
+                - Storage
+    /api/storage/configs/{id}:
+        delete:
+            description: Removes a storage configuration.
+            parameters:
+                - description: Storage config ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Not found
+            summary: Delete storage config
+            tags:
+                - Storage
+        get:
+            description: Returns a single storage configuration.
+            parameters:
+                - description: Storage config ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StorageConfig'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get storage config
+            tags:
+                - Storage
+        put:
+            description: Updates a storage configuration.
+            parameters:
+                - description: Storage config ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StorageConfigUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StorageConfig'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Update storage config
+            tags:
+                - Storage
+    /api/storage/delete:
+        post:
+            description: Deletes CIR records matching a query.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StorageDeleteRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StorageResult'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "500":
+                    description: Internal server error
+            summary: Delete CIR data
+            tags:
+                - Storage
+    /api/storage/health:
+        post:
+            description: Tests the connection to a storage backend.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            properties:
+                                storage_id:
+                                    description: ID of the storage config to check
+                                    type: string
+                            required:
+                                - storage_id
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    error:
+                                        description: Error message if unhealthy
+                                        type: string
+                                    healthy:
+                                        description: True if the backend is reachable
+                                        type: boolean
+                                type: object
+                    description: "200"
+            summary: Storage health check
+            tags:
+                - Storage
+    /api/storage/retrieve:
+        post:
+            description: Queries CIR records from a storage backend.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StorageQueryRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CIR'
+                                type: array
+                    description: "200"
+                "400":
+                    description: Bad request
+                "500":
+                    description: Internal server error
+            summary: Retrieve CIR data
+            tags:
+                - Storage
+    /api/storage/store:
+        post:
+            description: Writes a CIR record to the specified storage backend.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StorageStoreRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StorageResult'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "500":
+                    description: Internal server error
+            summary: Store CIR data
+            tags:
+                - Storage
+    /api/storage/update:
+        post:
+            description: Updates CIR records matching a query.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StorageUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StorageResult'
+                    description: "200"
+                "400":
+                    description: Bad request
+                "500":
+                    description: Internal server error
+            summary: Update CIR data
+            tags:
+                - Storage
+    /api/worktasks:
+        get:
+            description: Returns the current work task queue depth.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    queue_length:
+                                        description: Number of queued tasks
+                                        type: integer
+                                type: object
+                    description: "200"
+            summary: Get queue info
+            tags:
+                - Tasks
+        post:
+            description: Submits a new work task to the queue. Requires the worker auth token.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/WorkTaskSubmissionRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkTask'
+                    description: "201"
+                "400":
+                    description: Bad request
+            summary: Submit work task
+            tags:
+                - Tasks
+    /api/worktasks/{id}:
+        get:
+            description: Returns a work task by ID. Requires the worker auth token.
+            parameters:
+                - description: Work task ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkTask'
+                    description: "200"
+                "404":
+                    description: Not found
+            summary: Get work task
+            tags:
+                - Tasks
+        post:
+            description: Called by workers to report task completion or failure. Requires the worker auth token.
+            parameters:
+                - description: Work task ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/WorkTaskResult'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                    description: "200"
+                "400":
+                    description: Bad request
+                "404":
+                    description: Not found
+            summary: Update work task status
+            tags:
+                - Tasks
+    /health:
+        get:
+            description: Returns 200 when the orchestrator process is running.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    status:
+                                        description: Always 'healthy'
+                                        type: string
+                                type: object
+                    description: "200"
+            summary: Health check
+            tags:
+                - System
+    /ready:
+        get:
+            description: Returns 200 when the queue is accessible and the orchestrator is ready to serve requests.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    status:
+                                        description: '''ready'' or ''not ready'''
+                                        type: string
+                                type: object
+                    description: "200"
+                "500":
+                    description: Internal server error
+            summary: Readiness check
+            tags:
+                - System
+servers:
+    - description: Local development
+      url: http://localhost:8080
+tags:
+    - description: Health, readiness, and platform metrics
+      name: System
+    - description: Top-level organisational units
+      name: Projects
+    - description: Ordered processing step sequences
+      name: Pipelines
+    - description: Cron-based pipeline triggers
+      name: Schedules
+    - description: Pipeline step executor plugins (Git-based)
+      name: Plugins
+    - description: Storage backend configuration and CIR data operations
+      name: Storage
+    - description: OWL/Turtle vocabulary management
+      name: Ontologies
+    - description: Entity extraction and ontology generation
+      name: Extraction
+    - description: ML model lifecycle (train, infer, monitor)
+      name: ML Models
+    - description: Live entity graphs with SPARQL querying
+      name: Digital Twins
+    - description: Work task queue (internal / worker-facing)
+      name: Tasks

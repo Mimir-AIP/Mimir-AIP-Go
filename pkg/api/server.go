@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mimir-aip/mimir-aip-go/pkg/api/doc"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/queue"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ws"
@@ -77,6 +78,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/worktasks/", s.workerAuthMiddleware(s.handleWorkTaskByID))
 	s.mux.HandleFunc("/api/metrics", s.handleMetrics)
 	s.mux.HandleFunc("/ws/tasks", ws.WSHandler(s.hub))
+	s.mux.HandleFunc("/openapi.yaml", s.handleOpenAPISpec)
 }
 
 // RegisterHandler adds a custom handler to the server
@@ -303,4 +305,19 @@ func (s *Server) handleWorkTaskUpdate(w http.ResponseWriter, r *http.Request, ta
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+}
+
+// handleOpenAPISpec serves GET /openapi.yaml — the live, auto-generated spec.
+func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	spec, err := doc.GenerateSpec()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to generate spec: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/yaml")
+	fmt.Fprint(w, spec)
 }

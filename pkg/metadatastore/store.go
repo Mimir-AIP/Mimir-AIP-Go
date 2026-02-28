@@ -34,6 +34,12 @@ type MetadataStore interface {
 	DeletePlugin(name string) error
 	UpdatePluginStatus(name string, status models.PluginStatus) error
 
+	// External storage plugin operations
+	SaveExternalStoragePlugin(plugin *models.ExternalStoragePlugin) error
+	GetExternalStoragePlugin(name string) (*models.ExternalStoragePlugin, error)
+	ListExternalStoragePlugins() ([]*models.ExternalStoragePlugin, error)
+	DeleteExternalStoragePlugin(name string) error
+
 	// Storage operations
 	SaveStorageConfig(config *models.StorageConfig) error
 	GetStorageConfig(id string) (*models.StorageConfig, error)

@@ -108,7 +108,7 @@ func main() {
 	// Initialize storage service
 	storageService := storage.NewService(store)
 
-	// Register all storage plugins
+	// Register all built-in storage plugins
 	storageService.RegisterPlugin("filesystem", storageplugins.NewFilesystemPlugin())
 	storageService.RegisterPlugin("postgresql", storageplugins.NewPostgresPlugin())
 	storageService.RegisterPlugin("mysql", storageplugins.NewMySQLPlugin())
@@ -117,6 +117,23 @@ func main() {
 	storageService.RegisterPlugin("redis", storageplugins.NewRedisPlugin())
 	storageService.RegisterPlugin("elasticsearch", storageplugins.NewElasticsearchPlugin())
 	storageService.RegisterPlugin("neo4j", storageplugins.NewNeo4jPlugin())
+
+	// Initialise dynamic storage plugin loader.
+	// STORAGE_PLUGIN_DIR overrides the default cache location.
+	storagePluginDir := os.Getenv("STORAGE_PLUGIN_DIR")
+	if storagePluginDir == "" {
+		storagePluginDir = "/app/storage-plugins"
+	}
+	pluginLoader, err := storage.NewPluginLoader("/app", storagePluginDir, tempDir)
+	if err != nil {
+		log.Printf("Warning: failed to initialise dynamic storage plugin loader: %v — external storage plugins will not be available", err)
+	} else {
+		storageService.SetPluginLoader(pluginLoader)
+		if loadErr := storageService.LoadInstalledExternalPlugins(); loadErr != nil {
+			log.Printf("Warning: some external storage plugins failed to reload: %v", loadErr)
+		}
+		log.Println("Dynamic storage plugin loader ready")
+	}
 
 	// Initialize ontology and extraction services
 	ontologyService := ontology.NewService(store)
@@ -179,6 +196,11 @@ func main() {
 	server.RegisterHandler("/api/storage/update", storageHandler.HandleStorageUpdate)
 	server.RegisterHandler("/api/storage/delete", storageHandler.HandleStorageDelete)
 	server.RegisterHandler("/api/storage/health", storageHandler.HandleStorageHealth)
+
+	// Register dynamic storage plugin handlers
+	storagePluginHandler := api.NewStoragePluginHandler(storageService)
+	server.RegisterHandler("/api/storage-plugins", storagePluginHandler.HandleStoragePlugins)
+	server.RegisterHandler("/api/storage-plugins/", storagePluginHandler.HandleStoragePlugin)
 
 	// Register ontology handlers
 	ontologyHandler := api.NewOntologyHandler(ontologyService)

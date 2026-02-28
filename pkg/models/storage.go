@@ -1,5 +1,28 @@
 package models
 
+import "time"
+
+// ExternalStoragePlugin records metadata about a dynamically installed storage plugin.
+// The compiled .so is cached on disk; this record tracks its provenance and status.
+type ExternalStoragePlugin struct {
+	Name          string    `json:"name"`
+	Version       string    `json:"version"`
+	Description   string    `json:"description"`
+	Author        string    `json:"author"`
+	RepositoryURL string    `json:"repository_url"`
+	GitCommitHash string    `json:"git_commit_hash"`
+	Status        string    `json:"status"` // "active" | "error"
+	ErrorMessage  string    `json:"error_message,omitempty"`
+	InstalledAt   time.Time `json:"installed_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// ExternalStoragePluginInstallRequest is the body for POST /api/storage-plugins.
+type ExternalStoragePluginInstallRequest struct {
+	RepositoryURL string `json:"repository_url"`
+	GitRef        string `json:"git_ref,omitempty"` // branch / tag / SHA; defaults to "main"
+}
+
 // StoragePlugin defines the interface that all storage plugins must implement
 // It provides bidirectional translation between CIR format and storage-specific formats
 type StoragePlugin interface {

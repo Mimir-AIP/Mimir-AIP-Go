@@ -295,6 +295,19 @@ func (s *SQLiteStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_dt_predictions_twin_id ON dt_predictions(twin_id);
 	CREATE INDEX IF NOT EXISTS idx_dt_predictions_entity_id ON dt_predictions(entity_id);
 	CREATE INDEX IF NOT EXISTS idx_dt_predictions_cached_until ON dt_predictions(cached_until);
+
+	CREATE TABLE IF NOT EXISTS external_storage_plugins (
+		name TEXT PRIMARY KEY,
+		version TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		author TEXT NOT NULL DEFAULT '',
+		repository_url TEXT NOT NULL,
+		git_commit_hash TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'active',
+		error_message TEXT NOT NULL DEFAULT '',
+		installed_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
+	);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -1964,4 +1977,78 @@ func (s *SQLiteStore) DeleteExpiredPredictions(twinID string) error {
 		return fmt.Errorf("failed to delete expired predictions: %w", err)
 	}
 	return nil
+}
+
+// ── External Storage Plugins ─────────────────────────────────────────────────
+
+// SaveExternalStoragePlugin upserts an external storage plugin record.
+func (s *SQLiteStore) SaveExternalStoragePlugin(plugin *models.ExternalStoragePlugin) error {
+	query := `
+		INSERT OR REPLACE INTO external_storage_plugins
+		(name, version, description, author, repository_url, git_commit_hash,
+		 status, error_message, installed_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	return s.retryOnBusy(func() error {
+		_, err := s.db.Exec(query,
+			plugin.Name, plugin.Version, plugin.Description, plugin.Author,
+			plugin.RepositoryURL, plugin.GitCommitHash,
+			plugin.Status, plugin.ErrorMessage,
+			plugin.InstalledAt.UTC(), plugin.UpdatedAt.UTC(),
+		)
+		return err
+	}, 5)
+}
+
+// GetExternalStoragePlugin retrieves a single external storage plugin by name.
+func (s *SQLiteStore) GetExternalStoragePlugin(name string) (*models.ExternalStoragePlugin, error) {
+	query := `
+		SELECT name, version, description, author, repository_url, git_commit_hash,
+		       status, error_message, installed_at, updated_at
+		FROM external_storage_plugins WHERE name = ?`
+	row := s.db.QueryRow(query, name)
+	p := &models.ExternalStoragePlugin{}
+	if err := row.Scan(
+		&p.Name, &p.Version, &p.Description, &p.Author,
+		&p.RepositoryURL, &p.GitCommitHash,
+		&p.Status, &p.ErrorMessage,
+		&p.InstalledAt, &p.UpdatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("external storage plugin not found: %w", err)
+	}
+	return p, nil
+}
+
+// ListExternalStoragePlugins returns all external storage plugin records.
+func (s *SQLiteStore) ListExternalStoragePlugins() ([]*models.ExternalStoragePlugin, error) {
+	query := `
+		SELECT name, version, description, author, repository_url, git_commit_hash,
+		       status, error_message, installed_at, updated_at
+		FROM external_storage_plugins ORDER BY name`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list external storage plugins: %w", err)
+	}
+	defer rows.Close()
+	var plugins []*models.ExternalStoragePlugin
+	for rows.Next() {
+		p := &models.ExternalStoragePlugin{}
+		if err := rows.Scan(
+			&p.Name, &p.Version, &p.Description, &p.Author,
+			&p.RepositoryURL, &p.GitCommitHash,
+			&p.Status, &p.ErrorMessage,
+			&p.InstalledAt, &p.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan external storage plugin: %w", err)
+		}
+		plugins = append(plugins, p)
+	}
+	return plugins, nil
+}
+
+// DeleteExternalStoragePlugin removes an external storage plugin record.
+func (s *SQLiteStore) DeleteExternalStoragePlugin(name string) error {
+	return s.retryOnBusy(func() error {
+		_, err := s.db.Exec(`DELETE FROM external_storage_plugins WHERE name = ?`, name)
+		return err
+	}, 5)
 }

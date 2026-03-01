@@ -1,6 +1,6 @@
 // API Configuration
-const API_URL = window.location.origin.includes('localhost') 
-	? 'http://localhost:8080' 
+const API_URL = window.location.origin.includes('localhost')
+	? 'http://localhost:8080'
 	: '';
 
 // ============================================
@@ -85,7 +85,7 @@ function Table({ columns, data, actions }) {
 						})}
 						{actions && (
 							<td>
-								<div style={{ display: 'flex', gap: '8px' }}>
+								<div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
 									{actions(row)}
 								</div>
 							</td>
@@ -225,6 +225,12 @@ async function apiCall(endpoint, options = {}) {
 }
 
 // ============================================
+// PROJECT CONTEXT
+// ============================================
+
+const ProjectContext = React.createContext({ activeProject: null, projects: [] });
+
+// ============================================
 // PROJECTS PAGE
 // ============================================
 
@@ -283,8 +289,8 @@ function ProjectsPage() {
 		{ key: 'name', label: 'Name' },
 		{ key: 'description', label: 'Description' },
 		{ key: 'owner', label: 'Owner' },
-		{ 
-			key: 'status', 
+		{
+			key: 'status',
 			label: 'Status',
 			render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span>
 		},
@@ -342,16 +348,295 @@ function ProjectsPage() {
 }
 
 // ============================================
+// STEP BUILDER (for Pipelines)
+// ============================================
+
+// Renders typed parameter fields from a plugin action's ParameterSchema array.
+// Falls back to a JSON textarea for complex/unknown types.
+function StepParamFields({ paramSchemas, parameters, onUpdate }) {
+	const safeParams = (typeof parameters === 'object' && parameters !== null && !Array.isArray(parameters))
+		? parameters : {};
+
+	const setParam = (name, val) => onUpdate({ ...safeParams, [name]: val });
+
+	return (
+		<div>
+			{paramSchemas.map(p => {
+				const v = safeParams[p.name] ?? '';
+				const label = `${p.name}${p.required ? ' *' : ''}${p.description ? ` — ${p.description}` : ''}`;
+				if (p.type === 'boolean') {
+					return (
+						<div key={p.name} className="form-group">
+							<label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+								<input type="checkbox" checked={!!v}
+									onChange={e => setParam(p.name, e.target.checked)} />
+								{label}
+							</label>
+						</div>
+					);
+				}
+				if (p.type === 'number' || p.type === 'integer') {
+					return (
+						<div key={p.name} className="form-group">
+							<label>{label}</label>
+							<input type="number" value={v}
+								onChange={e => setParam(p.name, Number(e.target.value))}
+								style={{ width: '100%', padding: '6px 8px', background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px' }}
+							/>
+						</div>
+					);
+				}
+				if (p.type === 'object' || p.type === 'array') {
+					return (
+						<div key={p.name} className="form-group">
+							<label>{label} (JSON)</label>
+							<textarea rows="3"
+								value={typeof v === 'string' ? v : JSON.stringify(v, null, 2)}
+								onChange={e => {
+									try { setParam(p.name, JSON.parse(e.target.value)); }
+									catch { setParam(p.name, e.target.value); }
+								}}
+								style={{ width: '100%', fontFamily: 'monospace', background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 8px' }}
+							/>
+						</div>
+					);
+				}
+				// Default: string
+				return (
+					<div key={p.name} className="form-group">
+						<label>{label}</label>
+						<input type="text" value={v} onChange={e => setParam(p.name, e.target.value)}
+							style={{ width: '100%', padding: '6px 8px', background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px' }}
+						/>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
+function StepBuilder({ value, onChange }) {
+	const [mode, setMode] = React.useState('visual');
+	const [steps, setSteps] = React.useState(() => {
+		try { return JSON.parse(value) || []; } catch { return []; }
+	});
+	const [plugins, setPlugins] = React.useState([]);
+
+	React.useEffect(() => {
+		apiCall('/api/plugins').then(data => setPlugins(data || [])).catch(() => {});
+	}, []);
+
+	// Keep raw JSON in sync when in visual mode
+	React.useEffect(() => {
+		if (mode === 'visual') onChange(JSON.stringify(steps, null, 2));
+	}, [steps, mode]);
+
+	const addStep = () => setSteps(prev => [...prev, { name: '', plugin: 'default', action: '', parameters: {} }]);
+	const removeStep = (i) => setSteps(prev => prev.filter((_, idx) => idx !== i));
+	const updateStep = (i, field, val) => setSteps(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
+
+	const builtinActions = ['http_request', 'parse_json', 'set_context', 'get_context', 'if_else', 'goto'];
+
+	const getActions = (pluginName) => {
+		if (pluginName === 'default' || pluginName === 'builtin') return builtinActions;
+		const plugin = plugins.find(p => p.name === pluginName);
+		return (plugin?.plugin_definition?.actions || []).map(a => a.name || a);
+	};
+
+	// Returns the ParameterSchema array for a given plugin+action, or null if unknown
+	const getParamSchema = (pluginName, actionName) => {
+		if (!actionName) return null;
+		if (pluginName === 'default' || pluginName === 'builtin') return null; // built-ins have no schema
+		const plugin = plugins.find(p => p.name === pluginName);
+		const actionDef = (plugin?.plugin_definition?.actions || []).find(a => (a.name || a) === actionName);
+		return actionDef?.parameters?.length > 0 ? actionDef.parameters : null;
+	};
+
+	return (
+		<div>
+			<div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+				<Button label="Visual Builder" onClick={() => {
+					try { setSteps(JSON.parse(value) || []); } catch {}
+					setMode('visual');
+				}} variant={mode === 'visual' ? 'primary' : 'secondary'} />
+				<Button label="Raw JSON" onClick={() => setMode('raw')} variant={mode === 'raw' ? 'primary' : 'secondary'} />
+			</div>
+
+			{mode === 'raw' ? (
+				<textarea
+					value={value}
+					onChange={e => onChange(e.target.value)}
+					rows="6"
+					style={{
+						width: '100%',
+						fontFamily: 'monospace',
+						background: 'var(--surface)',
+						color: 'var(--text)',
+						border: '1px solid var(--border)',
+						borderRadius: '4px',
+						padding: '8px',
+						boxSizing: 'border-box',
+					}}
+				/>
+			) : (
+				<div>
+					{steps.map((step, i) => {
+						const paramSchema = getParamSchema(step.plugin, step.action);
+						return (
+							<div key={i} style={{
+								background: 'var(--surface)',
+								border: '1px solid var(--border)',
+								borderRadius: '6px',
+								padding: '12px',
+								marginBottom: '8px',
+							}}>
+								<div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+									<strong style={{ color: 'var(--accent)' }}>Step {i + 1}</strong>
+									<Button label="Remove" onClick={() => removeStep(i)} variant="danger" />
+								</div>
+								<div className="form-grid">
+									<FormField
+										label="Step Name"
+										value={step.name}
+										onChange={v => updateStep(i, 'name', v)}
+										placeholder="e.g. fetch-data"
+									/>
+									<FormField
+										label="Plugin"
+										type="select"
+										value={step.plugin}
+										onChange={v => updateStep(i, 'plugin', v)}
+										options={[{ value: 'default', label: 'default (built-in)' }, ...plugins.map(p => ({ value: p.name, label: p.name }))]}
+									/>
+								</div>
+								<FormField
+									label="Action"
+									type="select"
+									value={step.action}
+									onChange={v => updateStep(i, 'action', v)}
+									options={getActions(step.plugin).map(a => ({ value: a, label: a }))}
+								/>
+								{paramSchema ? (
+									<StepParamFields
+										paramSchemas={paramSchema}
+										parameters={step.parameters}
+										onUpdate={v => updateStep(i, 'parameters', v)}
+									/>
+								) : (
+									<FormField
+										label="Parameters (JSON)"
+										type="textarea"
+										value={typeof step.parameters === 'string' ? step.parameters : JSON.stringify(step.parameters, null, 2)}
+										onChange={v => {
+											try { updateStep(i, 'parameters', JSON.parse(v)); }
+											catch { updateStep(i, 'parameters', v); }
+										}}
+										placeholder='{"url": "https://..."}'
+									/>
+								)}
+							</div>
+						);
+					})}
+					<Button label="+ Add Step" onClick={addStep} variant="secondary" />
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ============================================
+// CRON BUILDER (for Schedules)
+// ============================================
+
+const CRON_PRESETS = [
+	{ label: 'Every minute',       cron: '* * * * *'   },
+	{ label: 'Every hour',         cron: '0 * * * *'   },
+	{ label: 'Every day midnight', cron: '0 0 * * *'   },
+	{ label: 'Every Monday',       cron: '0 0 * * 1'   },
+	{ label: 'Every month (1st)',  cron: '0 0 1 * *'   },
+];
+
+function CronBuilder({ value, onChange }) {
+	const [showCustom, setShowCustom] = React.useState(false);
+
+	const applyPreset = (cron) => {
+		onChange(cron);
+		setShowCustom(false);
+	};
+
+	const activePreset = CRON_PRESETS.find(p => p.cron === value);
+
+	return (
+		<div>
+			<div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+				{CRON_PRESETS.map(p => (
+					<button key={p.cron} type="button" onClick={() => applyPreset(p.cron)} style={{
+						padding: '4px 10px',
+						fontSize: '0.8rem',
+						background: value === p.cron ? 'var(--accent)' : 'var(--surface)',
+						color: value === p.cron ? '#000' : 'var(--text)',
+						border: '1px solid var(--border)',
+						borderRadius: '4px',
+						cursor: 'pointer',
+					}}>
+						{p.label}
+					</button>
+				))}
+				<button type="button" onClick={() => setShowCustom(v => !v)} style={{
+					padding: '4px 10px',
+					fontSize: '0.8rem',
+					background: showCustom ? 'var(--accent)' : 'var(--surface)',
+					color: showCustom ? '#000' : 'var(--text)',
+					border: '1px solid var(--border)',
+					borderRadius: '4px',
+					cursor: 'pointer',
+				}}>
+					Custom…
+				</button>
+			</div>
+
+			{showCustom && (
+				<input
+					type="text"
+					value={value}
+					onChange={e => onChange(e.target.value)}
+					placeholder="* * * * *  (min hour day month weekday)"
+					style={{
+						width: '100%',
+						padding: '6px 8px',
+						fontSize: '0.85rem',
+						fontFamily: 'monospace',
+						background: 'var(--surface)',
+						color: 'var(--text)',
+						border: '1px solid var(--border)',
+						borderRadius: '4px',
+						boxSizing: 'border-box',
+						marginBottom: '10px',
+					}}
+				/>
+			)}
+
+			<div style={{ fontFamily: 'monospace', fontSize: '0.85rem', padding: '6px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+				<span style={{ color: 'var(--accent)' }}>{value || '* * * * *'}</span>
+				{activePreset && <span style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>({activePreset.label})</span>}
+			</div>
+		</div>
+	);
+}
+
+// ============================================
 // PIPELINES PAGE
 // ============================================
 
 function PipelinesPage() {
+	const { activeProject, projects } = React.useContext(ProjectContext);
 	const [pipelines, setPipelines] = React.useState([]);
 	const [schedules, setSchedules] = React.useState([]);
 	const [loading, setLoading] = React.useState(true);
 	const [showPipelineModal, setShowPipelineModal] = React.useState(false);
 	const [showScheduleModal, setShowScheduleModal] = React.useState(false);
 	const [selectedTab, setSelectedTab] = React.useState('Pipelines');
+	const [executionStatus, setExecutionStatus] = React.useState({});
 	const [pipelineForm, setPipelineForm] = React.useState({
 		name: '',
 		description: '',
@@ -365,6 +650,23 @@ function PipelinesPage() {
 		project_id: '',
 		cron_expression: '',
 		enabled: true,
+	});
+
+	// Default project_id when activeProject changes
+	React.useEffect(() => {
+		if (activeProject) {
+			setPipelineForm(prev => ({ ...prev, project_id: activeProject.id }));
+			setScheduleForm(prev => ({ ...prev, project_id: activeProject.id }));
+		}
+	}, [activeProject]);
+
+	// Subscribe to WebSocket for pipeline execution status updates
+	useTaskWebSocket((task) => {
+		if (task.type !== 'pipeline_execution') return;
+		const pid = task.task_spec && task.task_spec.pipeline_id;
+		if (!pid) return;
+		if (task.status === 'completed') setExecutionStatus(prev => ({ ...prev, [pid]: 'done' }));
+		if (task.status === 'failed') setExecutionStatus(prev => ({ ...prev, [pid]: 'error' }));
 	});
 
 	const loadData = async () => {
@@ -398,7 +700,7 @@ function PipelinesPage() {
 				body: JSON.stringify(data),
 			});
 			setShowPipelineModal(false);
-			setPipelineForm({ name: '', description: '', project_id: '', steps: '[]' });
+			setPipelineForm({ name: '', description: '', project_id: activeProject?.id || '', type: 'ingestion', steps: '[]' });
 			loadData();
 		} catch (error) {
 			alert('Failed to create pipeline: ' + error.message);
@@ -413,7 +715,7 @@ function PipelinesPage() {
 				body: JSON.stringify(scheduleForm),
 			});
 			setShowScheduleModal(false);
-			setScheduleForm({ name: '', pipeline_id: '', project_id: '', cron_expression: '', enabled: true });
+			setScheduleForm({ name: '', pipeline_id: '', project_id: activeProject?.id || '', cron_expression: '', enabled: true });
 			loadData();
 		} catch (error) {
 			alert('Failed to create schedule: ' + error.message);
@@ -441,13 +743,22 @@ function PipelinesPage() {
 	};
 
 	const handleExecutePipeline = async (id) => {
+		setExecutionStatus(prev => ({ ...prev, [id]: 'running' }));
 		try {
 			await apiCall(`/api/pipelines/${id}/execute`, { method: 'POST', body: JSON.stringify({}) });
-			alert('Pipeline execution started!');
+			setExecutionStatus(prev => ({ ...prev, [id]: 'done' }));
+			setTimeout(() => setExecutionStatus(prev => {
+				const n = { ...prev };
+				delete n[id];
+				return n;
+			}), 5000);
 		} catch (error) {
-			alert('Failed to execute pipeline: ' + error.message);
+			setExecutionStatus(prev => ({ ...prev, [id]: 'error' }));
 		}
 	};
+
+	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
+	const pipelineOptions = pipelines.map(p => ({ value: p.id, label: p.name }));
 
 	const pipelineColumns = [
 		{ key: 'id', label: 'ID' },
@@ -494,7 +805,14 @@ function PipelinesPage() {
 					data={pipelines}
 					actions={(row) => (
 						<>
-							<Button label="Execute" onClick={() => handleExecutePipeline(row.id)} variant="secondary" />
+							{executionStatus[row.id] === 'running'
+								? <span className="status-badge status-pending">Running…</span>
+								: executionStatus[row.id] === 'done'
+								? <span className="status-badge status-active">Done ✓</span>
+								: executionStatus[row.id] === 'error'
+								? <span className="status-badge status-failed">Error</span>
+								: <Button label="Execute" onClick={() => handleExecutePipeline(row.id)} variant="secondary" />
+							}
 							<Button label="Delete" onClick={() => handleDeletePipeline(row.id)} variant="danger" />
 						</>
 					)}
@@ -521,9 +839,11 @@ function PipelinesPage() {
 							required
 						/>
 						<FormField
-							label="Project ID"
+							label="Project"
+							type="select"
 							value={pipelineForm.project_id}
 							onChange={(v) => setPipelineForm({ ...pipelineForm, project_id: v })}
+							options={projectOptions}
 							required
 						/>
 					</div>
@@ -541,14 +861,13 @@ function PipelinesPage() {
 						value={pipelineForm.description}
 						onChange={(v) => setPipelineForm({ ...pipelineForm, description: v })}
 					/>
-					<FormField
-						label="Steps (JSON Array)"
-						type="textarea"
-						value={pipelineForm.steps}
-						onChange={(v) => setPipelineForm({ ...pipelineForm, steps: v })}
-						placeholder='[{"type": "extraction", "config": {}}]'
-						required
-					/>
+					<div className="form-group">
+						<label>Steps</label>
+						<StepBuilder
+							value={pipelineForm.steps}
+							onChange={v => setPipelineForm({ ...pipelineForm, steps: v })}
+						/>
+					</div>
 					<Button type="submit" label="Create Pipeline" />
 				</form>
 			</Modal>
@@ -563,26 +882,30 @@ function PipelinesPage() {
 							required
 						/>
 						<FormField
-							label="Pipeline ID"
+							label="Pipeline"
+							type="select"
 							value={scheduleForm.pipeline_id}
 							onChange={(v) => setScheduleForm({ ...scheduleForm, pipeline_id: v })}
+							options={pipelineOptions}
 							required
 						/>
 					</div>
 					<div className="form-grid">
 						<FormField
-							label="Project ID"
+							label="Project"
+							type="select"
 							value={scheduleForm.project_id}
 							onChange={(v) => setScheduleForm({ ...scheduleForm, project_id: v })}
+							options={projectOptions}
 							required
 						/>
-						<FormField
-							label="Cron Expression"
-							value={scheduleForm.cron_expression}
-							onChange={(v) => setScheduleForm({ ...scheduleForm, cron_expression: v })}
-							placeholder="0 0 * * *"
-							required
-						/>
+						<div className="form-group">
+							<label>Schedule *</label>
+							<CronBuilder
+								value={scheduleForm.cron_expression}
+								onChange={v => setScheduleForm({ ...scheduleForm, cron_expression: v })}
+							/>
+						</div>
 					</div>
 					<Button type="submit" label="Create Schedule" />
 				</form>
@@ -596,10 +919,12 @@ function PipelinesPage() {
 // ============================================
 
 function OntologiesPage() {
+	const { activeProject, projects } = React.useContext(ProjectContext);
 	const [ontologies, setOntologies] = React.useState([]);
 	const [loading, setLoading] = React.useState(true);
 	const [showModal, setShowModal] = React.useState(false);
 	const [showExtractionModal, setShowExtractionModal] = React.useState(false);
+	const [storageConfigs, setStorageConfigs] = React.useState([]);
 	const [formData, setFormData] = React.useState({
 		name: '',
 		project_id: '',
@@ -611,11 +936,19 @@ function OntologiesPage() {
 		ontology_name: '',
 	});
 
+	// Default project_id when activeProject changes
+	React.useEffect(() => {
+		if (activeProject) {
+			setFormData(prev => ({ ...prev, project_id: activeProject.id }));
+			setExtractionForm(prev => ({ ...prev, project_id: activeProject.id }));
+		}
+	}, [activeProject]);
+
 	const loadOntologies = async () => {
 		setLoading(true);
 		try {
-			// Note: API requires project_id parameter, but we'll try to get all
-			const data = await apiCall('/api/ontologies?project_id=');
+			const projectId = activeProject?.id || '';
+			const data = await apiCall(`/api/ontologies?project_id=${projectId}`);
 			setOntologies(data || []);
 		} catch (error) {
 			console.error('Failed to load ontologies:', error);
@@ -626,7 +959,21 @@ function OntologiesPage() {
 
 	React.useEffect(() => {
 		loadOntologies();
-	}, []);
+	}, [activeProject]);
+
+	const openExtractionModal = async () => {
+		if (activeProject?.id) {
+			try {
+				const configs = await apiCall(`/api/storage/configs?project_id=${activeProject.id}`);
+				setStorageConfigs(configs || []);
+			} catch {
+				setStorageConfigs([]);
+			}
+		} else {
+			setStorageConfigs([]);
+		}
+		setShowExtractionModal(true);
+	};
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
@@ -640,7 +987,7 @@ function OntologiesPage() {
 				body: JSON.stringify(data),
 			});
 			setShowModal(false);
-			setFormData({ name: '', project_id: '', schema: '{}' });
+			setFormData({ name: '', project_id: activeProject?.id || '', schema: '{}' });
 			loadOntologies();
 		} catch (error) {
 			alert('Failed to create ontology: ' + error.message);
@@ -657,6 +1004,24 @@ function OntologiesPage() {
 		}
 	};
 
+	const handleApprove = async (id) => {
+		try {
+			await apiCall(`/api/ontologies/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) });
+			loadOntologies();
+		} catch (error) {
+			alert('Failed to approve ontology: ' + error.message);
+		}
+	};
+
+	const handleReject = async (id) => {
+		try {
+			await apiCall(`/api/ontologies/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'draft' }) });
+			loadOntologies();
+		} catch (error) {
+			alert('Failed to reject ontology: ' + error.message);
+		}
+	};
+
 	const handleExtraction = async (e) => {
 		e.preventDefault();
 		try {
@@ -666,18 +1031,26 @@ function OntologiesPage() {
 			});
 			alert('Ontology extraction started!\n' + JSON.stringify(result, null, 2));
 			setShowExtractionModal(false);
-			setExtractionForm({ project_id: '', storage_config_id: '', ontology_name: '' });
+			setExtractionForm({ project_id: activeProject?.id || '', storage_config_id: '', ontology_name: '' });
 			setTimeout(loadOntologies, 2000);
 		} catch (error) {
 			alert('Failed to start extraction: ' + error.message);
 		}
 	};
 
+	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
+	const storageConfigOptions = storageConfigs.map(c => ({ value: c.id, label: c.name }));
+
 	const columns = [
 		{ key: 'id', label: 'ID' },
 		{ key: 'name', label: 'Name' },
 		{ key: 'project_id', label: 'Project ID' },
 		{ key: 'version', label: 'Version' },
+		{
+			key: 'status',
+			label: 'Status',
+			render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span>
+		},
 		{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleDateString() },
 	];
 
@@ -687,7 +1060,7 @@ function OntologiesPage() {
 				<h2>Ontologies</h2>
 				<div style={{ display: 'flex', gap: '8px' }}>
 					<Button label="+ New Ontology" onClick={() => setShowModal(true)} />
-					<Button label="Extract from Storage" onClick={() => setShowExtractionModal(true)} variant="secondary" />
+					<Button label="Extract from Storage" onClick={openExtractionModal} variant="secondary" />
 				</div>
 			</div>
 
@@ -699,6 +1072,9 @@ function OntologiesPage() {
 					data={ontologies}
 					actions={(row) => (
 						<>
+							{row.status === 'needs_review' && <Button label="Approve" onClick={() => handleApprove(row.id)} variant="secondary" />}
+							{row.status === 'needs_review' && <Button label="Reject" onClick={() => handleReject(row.id)} variant="secondary" />}
+							{row.status === 'draft' && <Button label="Promote" onClick={() => handleApprove(row.id)} variant="secondary" />}
 							<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
 						</>
 					)}
@@ -715,9 +1091,11 @@ function OntologiesPage() {
 							required
 						/>
 						<FormField
-							label="Project ID"
+							label="Project"
+							type="select"
 							value={formData.project_id}
 							onChange={(v) => setFormData({ ...formData, project_id: v })}
+							options={projectOptions}
 							required
 						/>
 					</div>
@@ -737,15 +1115,19 @@ function OntologiesPage() {
 				<form onSubmit={handleExtraction}>
 					<div className="form-grid">
 						<FormField
-							label="Project ID"
+							label="Project"
+							type="select"
 							value={extractionForm.project_id}
 							onChange={(v) => setExtractionForm({ ...extractionForm, project_id: v })}
+							options={projectOptions}
 							required
 						/>
 						<FormField
-							label="Storage Config ID"
+							label="Storage Config"
+							type="select"
 							value={extractionForm.storage_config_id}
 							onChange={(v) => setExtractionForm({ ...extractionForm, storage_config_id: v })}
+							options={storageConfigOptions}
 							required
 						/>
 					</div>
@@ -768,16 +1150,20 @@ function OntologiesPage() {
 // ============================================
 
 function MLModelsPage() {
+	const { activeProject, projects } = React.useContext(ProjectContext);
 	const [models, setModels] = React.useState([]);
 	const [loading, setLoading] = React.useState(true);
 	const [showModal, setShowModal] = React.useState(false);
 	const [showRecommendModal, setShowRecommendModal] = React.useState(false);
+	const [showTrainModal, setShowTrainModal] = React.useState(false);
+	const [trainingTarget, setTrainingTarget] = React.useState(null);
+	const [trainStorageIds, setTrainStorageIds] = React.useState([]);
+	const [availableStorageConfigs, setAvailableStorageConfigs] = React.useState([]);
 	const [recommendForm, setRecommendForm] = React.useState({
 		project_id: '',
-		data_size: '',
-		has_unstructured: false,
-		num_classes: '',
+		ontology_id: '',
 	});
+	const [recommendOntologies, setRecommendOntologies] = React.useState([]);
 	const [recommendResult, setRecommendResult] = React.useState(null);
 	const [formData, setFormData] = React.useState({
 		name: '',
@@ -787,6 +1173,17 @@ function MLModelsPage() {
 		config: '{}',
 	});
 	const [trainingMetrics, setTrainingMetrics] = React.useState({});
+
+	// Default project_id when activeProject changes
+	React.useEffect(() => {
+		if (activeProject) {
+			setFormData(prev => ({ ...prev, project_id: activeProject.id }));
+			setRecommendForm(prev => ({ ...prev, project_id: activeProject.id, ontology_id: '' }));
+			apiCall(`/api/ontologies?project_id=${activeProject.id}`)
+				.then(data => setRecommendOntologies(data || []))
+				.catch(() => {});
+		}
+	}, [activeProject]);
 
 	// Subscribe to WS task updates for training progress
 	useTaskWebSocket((task) => {
@@ -808,7 +1205,8 @@ function MLModelsPage() {
 	const loadModels = async () => {
 		setLoading(true);
 		try {
-			const data = await apiCall('/api/ml-models?project_id=');
+			const projectId = activeProject?.id || '';
+			const data = await apiCall(`/api/ml-models?project_id=${projectId}`);
 			setModels(data || []);
 		} catch (error) {
 			console.error('Failed to load ML models:', error);
@@ -819,7 +1217,7 @@ function MLModelsPage() {
 
 	React.useEffect(() => {
 		loadModels();
-	}, []);
+	}, [activeProject]);
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
@@ -833,7 +1231,7 @@ function MLModelsPage() {
 				body: JSON.stringify(data),
 			});
 			setShowModal(false);
-			setFormData({ name: '', project_id: '', model_type: '', version: '1.0.0', config: '{}' });
+			setFormData({ name: '', project_id: activeProject?.id || '', model_type: '', version: '1.0.0', config: '{}' });
 			loadModels();
 		} catch (error) {
 			alert('Failed to create ML model: ' + error.message);
@@ -850,13 +1248,25 @@ function MLModelsPage() {
 		}
 	};
 
-	const handleTrain = async (id) => {
+	const openTrainModal = async (row) => {
+		setTrainingTarget(row);
+		try {
+			const configs = await apiCall(`/api/storage/configs?project_id=${row.project_id}`);
+			setAvailableStorageConfigs(configs || []);
+		} catch {
+			setAvailableStorageConfigs([]);
+		}
+		setTrainStorageIds([]);
+		setShowTrainModal(true);
+	};
+
+	const handleTrain = async () => {
 		try {
 			await apiCall('/api/ml-models/train', {
 				method: 'POST',
-				body: JSON.stringify({ model_id: id }),
+				body: JSON.stringify({ model_id: trainingTarget.id, storage_ids: trainStorageIds }),
 			});
-			alert('Training started!');
+			setShowTrainModal(false);
 		} catch (error) {
 			alert('Failed to start training: ' + error.message);
 		}
@@ -865,18 +1275,34 @@ function MLModelsPage() {
 	const handleRecommend = async (e) => {
 		e.preventDefault();
 		try {
-			const params = new URLSearchParams({
-				project_id: recommendForm.project_id,
-				data_size: recommendForm.data_size,
-				has_unstructured: recommendForm.has_unstructured ? 'true' : 'false',
-				num_classes: recommendForm.num_classes,
+			const data = await apiCall('/api/ml-models/recommend', {
+				method: 'POST',
+				body: JSON.stringify({
+					project_id: recommendForm.project_id,
+					ontology_id: recommendForm.ontology_id,
+				}),
 			});
-			const data = await apiCall(`/api/ml-models/recommend?${params}`);
 			setRecommendResult(data);
 		} catch (error) {
 			alert('Failed to get recommendation: ' + error.message);
 		}
 	};
+
+	// Fetch ontologies for recommend modal when project changes
+	const onRecommendProjectChange = async (projectId) => {
+		setRecommendForm(prev => ({ ...prev, project_id: projectId, ontology_id: '' }));
+		setRecommendOntologies([]);
+		if (projectId) {
+			try {
+				const data = await apiCall(`/api/ontologies?project_id=${projectId}`);
+				setRecommendOntologies(data || []);
+			} catch {
+				setRecommendOntologies([]);
+			}
+		}
+	};
+
+	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
 
 	const columns = [
 		{ key: 'id', label: 'ID' },
@@ -897,7 +1323,7 @@ function MLModelsPage() {
 			<div className="section-header">
 				<h2>ML Models</h2>
 				<div style={{ display: 'flex', gap: '8px' }}>
-					<Button label="Recommend" onClick={() => { setRecommendResult(null); setShowRecommendModal(true); }} variant="secondary" />
+					<Button label="Recommend" onClick={() => { setRecommendResult(null); setRecommendForm({ project_id: activeProject?.id || '', ontology_id: '' }); setRecommendOntologies([]); setShowRecommendModal(true); }} variant="secondary" />
 					<Button label="+ New Model" onClick={() => setShowModal(true)} />
 				</div>
 			</div>
@@ -910,7 +1336,7 @@ function MLModelsPage() {
 					data={models}
 					actions={(row) => (
 						<>
-							<Button label="Train" onClick={() => handleTrain(row.id)} variant="secondary" />
+							<Button label="Train" onClick={() => openTrainModal(row)} variant="secondary" />
 							<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
 						</>
 					)}
@@ -960,40 +1386,67 @@ function MLModelsPage() {
 				</div>
 			)}
 
+			<Modal open={showTrainModal} onClose={() => setShowTrainModal(false)} title={`Train: ${trainingTarget?.name}`}>
+				<p>Select storage configs to train on:</p>
+				{availableStorageConfigs.length === 0 ? (
+					<p style={{ color: 'var(--text-secondary)' }}>No storage configs found for this project.</p>
+				) : (
+					availableStorageConfigs.map(cfg => (
+						<label key={cfg.id} style={{ display: 'block', marginBottom: '8px', cursor: 'pointer' }}>
+							<input
+								type="checkbox"
+								checked={trainStorageIds.includes(cfg.id)}
+								onChange={e => setTrainStorageIds(prev =>
+									e.target.checked ? [...prev, cfg.id] : prev.filter(id => id !== cfg.id)
+								)}
+							/>
+							{' '}{cfg.name} ({cfg.storage_type})
+						</label>
+					))
+				)}
+				<div style={{ marginTop: '16px' }}>
+					<Button label="Start Training" onClick={handleTrain} />
+				</div>
+			</Modal>
+
 			<Modal open={showRecommendModal} onClose={() => setShowRecommendModal(false)} title="Recommend Model Type">
 				<form onSubmit={handleRecommend}>
+					<p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '12px' }}>
+						Select your project and ontology — the backend analyses your data automatically.
+					</p>
 					<FormField
-						label="Project ID"
+						label="Project"
+						type="select"
 						value={recommendForm.project_id}
-						onChange={(v) => setRecommendForm({ ...recommendForm, project_id: v })}
+						onChange={onRecommendProjectChange}
+						options={projectOptions}
 						required
 					/>
-					<div className="form-grid">
-						<FormField
-							label="Data Size (rows)"
-							type="number"
-							value={recommendForm.data_size}
-							onChange={(v) => setRecommendForm({ ...recommendForm, data_size: v })}
-						/>
-						<FormField
-							label="Num Classes"
-							type="number"
-							value={recommendForm.num_classes}
-							onChange={(v) => setRecommendForm({ ...recommendForm, num_classes: v })}
-						/>
-					</div>
 					<FormField
-						label="Has Unstructured Data"
-						type="checkbox"
-						value={recommendForm.has_unstructured}
-						onChange={(v) => setRecommendForm({ ...recommendForm, has_unstructured: v })}
+						label="Ontology"
+						type="select"
+						value={recommendForm.ontology_id}
+						onChange={(v) => setRecommendForm(prev => ({ ...prev, ontology_id: v }))}
+						options={recommendOntologies.map(o => ({ value: o.id, label: o.name }))}
+						required
 					/>
-					<Button type="submit" label="Get Recommendation" />
+					<Button type="submit" label="Get Recommendation" disabled={!recommendForm.project_id || !recommendForm.ontology_id} />
 					{recommendResult && (
 						<div style={{ marginTop: '16px', padding: '12px', background: 'var(--surface)', borderRadius: '6px' }}>
 							<strong>Recommended:</strong> {recommendResult.recommended_type}<br />
 							<strong>Confidence:</strong> {(recommendResult.confidence * 100).toFixed(0)}%<br />
 							<strong>Reason:</strong> {recommendResult.reason}
+							<div style={{ marginTop: '12px' }}>
+								<Button label="Use This" onClick={() => {
+									setFormData(prev => ({
+										...prev,
+										model_type: recommendResult.recommended_type,
+										project_id: recommendForm.project_id,
+									}));
+									setShowRecommendModal(false);
+									setShowModal(true);
+								}} />
+							</div>
 						</div>
 					)}
 				</form>
@@ -1009,9 +1462,11 @@ function MLModelsPage() {
 							required
 						/>
 						<FormField
-							label="Project ID"
+							label="Project"
+							type="select"
 							value={formData.project_id}
 							onChange={(v) => setFormData({ ...formData, project_id: v })}
+							options={projectOptions}
 							required
 						/>
 					</div>
@@ -1050,6 +1505,7 @@ function MLModelsPage() {
 // ============================================
 
 function DigitalTwinsPage() {
+	const { activeProject, projects } = React.useContext(ProjectContext);
 	const [twins, setTwins] = React.useState([]);
 	const [loading, setLoading] = React.useState(true);
 	const [showModal, setShowModal] = React.useState(false);
@@ -1061,6 +1517,8 @@ function DigitalTwinsPage() {
 	const [scenarios, setScenarios] = React.useState([]);
 	const [actions, setActions] = React.useState([]);
 	const [queryResult, setQueryResult] = React.useState(null);
+	const [ontologies, setOntologies] = React.useState([]);
+	const [mlModels, setMlModels] = React.useState([]);
 	const [formData, setFormData] = React.useState({
 		name: '',
 		project_id: '',
@@ -1077,10 +1535,24 @@ function DigitalTwinsPage() {
 		query: '',
 	});
 
+	// Default project_id and fetch related resources when activeProject changes
+	React.useEffect(() => {
+		if (activeProject) {
+			setFormData(prev => ({ ...prev, project_id: activeProject.id }));
+			apiCall(`/api/ontologies?project_id=${activeProject.id}`)
+				.then(data => setOntologies(data || []))
+				.catch(() => setOntologies([]));
+			apiCall(`/api/ml-models?project_id=${activeProject.id}`)
+				.then(data => setMlModels(data || []))
+				.catch(() => setMlModels([]));
+		}
+	}, [activeProject]);
+
 	const loadTwins = async () => {
 		setLoading(true);
 		try {
-			const data = await apiCall('/api/digital-twins?project_id=');
+			const projectId = activeProject?.id || '';
+			const data = await apiCall(`/api/digital-twins?project_id=${projectId}`);
 			setTwins(data || []);
 		} catch (error) {
 			console.error('Failed to load digital twins:', error);
@@ -1106,7 +1578,7 @@ function DigitalTwinsPage() {
 
 	React.useEffect(() => {
 		loadTwins();
-	}, []);
+	}, [activeProject]);
 
 	React.useEffect(() => {
 		if (selectedTwin) {
@@ -1122,7 +1594,7 @@ function DigitalTwinsPage() {
 				body: JSON.stringify(formData),
 			});
 			setShowModal(false);
-			setFormData({ name: '', project_id: '', ontology_id: '', ml_model_id: '', description: '' });
+			setFormData({ name: '', project_id: activeProject?.id || '', ontology_id: '', ml_model_id: '', description: '' });
 			loadTwins();
 		} catch (error) {
 			alert('Failed to create digital twin: ' + error.message);
@@ -1189,6 +1661,10 @@ function DigitalTwinsPage() {
 			alert('Failed to execute query: ' + error.message);
 		}
 	};
+
+	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
+	const ontologyOptions = ontologies.map(o => ({ value: o.id, label: o.name }));
+	const mlModelOptions = mlModels.map(m => ({ value: m.id, label: m.name }));
 
 	const twinColumns = [
 		{ key: 'id', label: 'ID' },
@@ -1257,8 +1733,8 @@ function DigitalTwinsPage() {
 					) : selectedTab === 'Scenarios' ? (
 						<Table columns={scenarioColumns} data={scenarios} />
 					) : (
-						<Table 
-							columns={actionColumns} 
+						<Table
+							columns={actionColumns}
 							data={actions}
 							actions={(row) => (
 								<Button label="Delete" onClick={() => handleDeleteAction(row.id)} variant="danger" />
@@ -1296,23 +1772,29 @@ function DigitalTwinsPage() {
 							required
 						/>
 						<FormField
-							label="Project ID"
+							label="Project"
+							type="select"
 							value={formData.project_id}
 							onChange={(v) => setFormData({ ...formData, project_id: v })}
+							options={projectOptions}
 							required
 						/>
 					</div>
 					<div className="form-grid">
 						<FormField
-							label="Ontology ID"
+							label="Ontology"
+							type="select"
 							value={formData.ontology_id}
 							onChange={(v) => setFormData({ ...formData, ontology_id: v })}
+							options={ontologyOptions}
 							required
 						/>
 						<FormField
-							label="ML Model ID"
+							label="ML Model"
+							type="select"
 							value={formData.ml_model_id}
 							onChange={(v) => setFormData({ ...formData, ml_model_id: v })}
+							options={mlModelOptions}
 						/>
 					</div>
 					<FormField
@@ -1382,9 +1864,11 @@ function DigitalTwinsPage() {
 // ============================================
 
 function StoragePage() {
+	const { activeProject, projects } = React.useContext(ProjectContext);
 	const [configs, setConfigs] = React.useState([]);
 	const [loading, setLoading] = React.useState(true);
 	const [showModal, setShowModal] = React.useState(false);
+	const [healthStatus, setHealthStatus] = React.useState({});
 	const [formData, setFormData] = React.useState({
 		name: '',
 		project_id: '',
@@ -1393,10 +1877,18 @@ function StoragePage() {
 		config: '{}',
 	});
 
+	// Default project_id when activeProject changes
+	React.useEffect(() => {
+		if (activeProject) {
+			setFormData(prev => ({ ...prev, project_id: activeProject.id }));
+		}
+	}, [activeProject]);
+
 	const loadConfigs = async () => {
 		setLoading(true);
 		try {
-			const data = await apiCall('/api/storage/configs?project_id=');
+			const projectId = activeProject?.id || '';
+			const data = await apiCall(`/api/storage/configs?project_id=${projectId}`);
 			setConfigs(data || []);
 		} catch (error) {
 			console.error('Failed to load storage configs:', error);
@@ -1407,7 +1899,7 @@ function StoragePage() {
 
 	React.useEffect(() => {
 		loadConfigs();
-	}, []);
+	}, [activeProject]);
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
@@ -1421,7 +1913,7 @@ function StoragePage() {
 				body: JSON.stringify(data),
 			});
 			setShowModal(false);
-			setFormData({ name: '', project_id: '', storage_type: '', connection_string: '', config: '{}' });
+			setFormData({ name: '', project_id: activeProject?.id || '', storage_type: '', connection_string: '', config: '{}' });
 			loadConfigs();
 		} catch (error) {
 			alert('Failed to create storage config: ' + error.message);
@@ -1439,13 +1931,21 @@ function StoragePage() {
 	};
 
 	const handleCheckHealth = async (id) => {
+		setHealthStatus(prev => ({ ...prev, [id]: 'checking' }));
 		try {
-			const result = await apiCall(`/api/storage/${id}/health`);
-			alert(`Health Status: ${result.status || 'Unknown'}\n${JSON.stringify(result, null, 2)}`);
-		} catch (error) {
-			alert('Failed to check health: ' + error.message);
+			const result = await apiCall(`/api/storage/health?config_id=${id}`);
+			setHealthStatus(prev => ({ ...prev, [id]: result.healthy ? 'ok' : 'error' }));
+		} catch {
+			setHealthStatus(prev => ({ ...prev, [id]: 'error' }));
 		}
+		setTimeout(() => setHealthStatus(prev => {
+			const n = { ...prev };
+			delete n[id];
+			return n;
+		}), 8000);
 	};
+
+	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
 
 	const columns = [
 		{ key: 'id', label: 'ID' },
@@ -1475,7 +1975,10 @@ function StoragePage() {
 					data={configs}
 					actions={(row) => (
 						<>
-							<Button label="Health" onClick={() => handleCheckHealth(row.id)} variant="secondary" />
+							{healthStatus[row.id] === 'checking' && <span style={{ color: 'var(--accent)' }}>Checking…</span>}
+							{healthStatus[row.id] === 'ok' && <span style={{ color: '#22c55e' }}>✓ Connected</span>}
+							{healthStatus[row.id] === 'error' && <span style={{ color: '#ef4444' }}>✗ Failed</span>}
+							<Button label="Test Connection" onClick={() => handleCheckHealth(row.id)} variant="secondary" />
 							<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
 						</>
 					)}
@@ -1492,9 +1995,11 @@ function StoragePage() {
 							required
 						/>
 						<FormField
-							label="Project ID"
+							label="Project"
+							type="select"
 							value={formData.project_id}
 							onChange={(v) => setFormData({ ...formData, project_id: v })}
+							options={projectOptions}
 							required
 						/>
 					</div>
@@ -1769,8 +2274,23 @@ function WorkTasksPage() {
 function App() {
 	const [currentPage, setCurrentPage] = React.useState('Projects');
 	const [sidebarOpen, setSidebarOpen] = React.useState(false);
+	const [projects, setProjects] = React.useState([]);
+	const [activeProject, setActiveProject] = React.useState(null);
 
 	const pages = ['Projects', 'Pipelines', 'Ontologies', 'ML Models', 'Digital Twins', 'Storage', 'Plugins', 'Work Queue'];
+
+	// Fetch projects on mount and set first project as active
+	React.useEffect(() => {
+		apiCall('/api/projects')
+			.then(data => {
+				const list = data || [];
+				setProjects(list);
+				if (list.length > 0 && !activeProject) {
+					setActiveProject(list[0]);
+				}
+			})
+			.catch(() => {});
+	}, []);
 
 	const navigate = (page) => {
 		setCurrentPage(page);
@@ -1833,11 +2353,25 @@ function App() {
 								{page}
 							</button>
 						))}
+						<div className="sidebar-project-selector">
+							<label>Working Project</label>
+							<select
+								value={activeProject?.id || ''}
+								onChange={e => setActiveProject(projects.find(p => p.id === e.target.value) || null)}
+							>
+								<option value="">— All Projects —</option>
+								{projects.map(p => (
+									<option key={p.id} value={p.id}>{p.name}</option>
+								))}
+							</select>
+						</div>
 					</nav>
 				</aside>
 				<main className="app-main">
 					<div className="app-container">
-						{renderPage()}
+						<ProjectContext.Provider value={{ activeProject, projects }}>
+							{renderPage()}
+						</ProjectContext.Provider>
 					</div>
 				</main>
 			</div>

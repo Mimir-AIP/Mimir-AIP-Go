@@ -1,13 +1,16 @@
 package extraction
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/mimir-aip/mimir-aip-go/pkg/llm"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
@@ -27,11 +30,17 @@ const (
 // Service handles entity extraction operations
 type Service struct {
 	storageService *storage.Service
+	llm            *llm.Service // nil = LLM disabled; always check IsEnabled()
 }
 
 // NewService creates a new extraction service
 func NewService(storageService *storage.Service) *Service {
 	return &Service{storageService: storageService}
+}
+
+// WithLLM returns a copy of the Service with the LLM service attached.
+func (s *Service) WithLLM(llmSvc *llm.Service) *Service {
+	return &Service{storageService: s.storageService, llm: llmSvc}
 }
 
 // ExtractFromStorage extracts entities from data in storage.
@@ -181,7 +190,62 @@ func (s *Service) extractUnstructuredFromStorageWithCIRs(_ string, cirsByStorage
 			records = append(records, cirToRows(cir)...)
 		}
 	}
-	return extractFromRecords(records), nil
+	result := extractFromRecords(records)
+
+	if s.llm != nil && s.llm.IsEnabled() && len(result.Entities) > 0 {
+		s.applyLLMEntityLabels(result, cirsByStorage)
+	}
+	return result, nil
+}
+
+// applyLLMEntityLabels calls the LLM to assign entity types to unstructured
+// entities that do not yet have an entity_type attribute.
+func (s *Service) applyLLMEntityLabels(result *models.ExtractionResult, cirsByStorage map[string][]*models.CIR) {
+	var names []string
+	for _, e := range result.Entities {
+		if e.Source == "unstructured" {
+			if _, hasType := e.Attributes["entity_type"]; !hasType {
+				names = append(names, e.Name)
+			}
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+
+	var storageIDs []string
+	colSet := make(map[string]bool)
+	for sid, cirs := range cirsByStorage {
+		storageIDs = append(storageIDs, sid)
+		for _, cir := range cirs {
+			if m, ok := cir.Data.(map[string]interface{}); ok {
+				for k := range m {
+					colSet[k] = true
+				}
+			}
+		}
+	}
+	contextCols := make([]string, 0, len(colSet))
+	for k := range colSet {
+		contextCols = append(contextCols, k)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	labels := s.llm.LabelEntityTypes(ctx, names, strings.Join(storageIDs, ", "), contextCols)
+
+	for i := range result.Entities {
+		if result.Entities[i].Source != "unstructured" {
+			continue
+		}
+		if label, ok := labels[result.Entities[i].Name]; ok && label != "" {
+			if result.Entities[i].Attributes == nil {
+				result.Entities[i].Attributes = make(map[string]interface{})
+			}
+			result.Entities[i].Attributes["entity_type"] = label
+		}
+	}
 }
 
 // extractFromRecords is the core statistical algorithm, separated from the

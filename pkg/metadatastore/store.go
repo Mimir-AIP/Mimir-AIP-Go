@@ -40,6 +40,12 @@ type MetadataStore interface {
 	ListExternalStoragePlugins() ([]*models.ExternalStoragePlugin, error)
 	DeleteExternalStoragePlugin(name string) error
 
+	// External LLM provider operations
+	SaveExternalLLMProvider(p *models.ExternalLLMProvider) error
+	GetExternalLLMProvider(name string) (*models.ExternalLLMProvider, error)
+	ListExternalLLMProviders() ([]*models.ExternalLLMProvider, error)
+	DeleteExternalLLMProvider(name string) error
+
 	// Storage operations
 	SaveStorageConfig(config *models.StorageConfig) error
 	GetStorageConfig(id string) (*models.StorageConfig, error)

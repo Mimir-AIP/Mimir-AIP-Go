@@ -13,6 +13,8 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/extraction"
 	"github.com/mimir-aip/mimir-aip-go/pkg/k8s"
+	"github.com/mimir-aip/mimir-aip-go/pkg/llm"
+	"github.com/mimir-aip/mimir-aip-go/pkg/llm/providers"
 	mcpserver "github.com/mimir-aip/mimir-aip-go/pkg/mcp"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
@@ -135,9 +137,58 @@ func main() {
 		log.Println("Dynamic storage plugin loader ready")
 	}
 
-	// Initialize ontology and extraction services
+	// Initialize ontology service
 	ontologyService := ontology.NewService(store)
-	extractionService := extraction.NewService(storageService)
+
+	// Initialise dynamic LLM provider loader.
+	// LLM_PROVIDER_DIR overrides the default cache location.
+	llmProviderDir := os.Getenv("LLM_PROVIDER_DIR")
+	if llmProviderDir == "" {
+		llmProviderDir = "/app/llm-providers"
+	}
+	llmLoader, llmLoaderErr := llm.NewLoader("/app", llmProviderDir, tempDir)
+	if llmLoaderErr != nil {
+		log.Printf("Warning: LLM provider loader unavailable: %v", llmLoaderErr)
+	}
+
+	// Create the LLM service with store + loader; register built-in providers.
+	llmService := llm.NewService(nil, "", false).
+		WithStore(store).
+		WithLoader(llmLoader)
+
+	llmService.RegisterProvider("openrouter", providers.NewOpenRouterProvider(cfg.LLMAPIKey))
+	llmService.RegisterProvider("openai_compat", providers.NewOpenAICompatProvider(
+		"openai_compat", cfg.LLMBaseURL, cfg.LLMAPIKey))
+
+	// Reload persisted external providers (non-fatal).
+	if err := llmService.LoadInstalledExternalProviders(); err != nil {
+		log.Printf("Warning: some external LLM providers failed to reload: %v", err)
+	}
+
+	// Activate the configured provider via registry lookup.
+	if cfg.LLMEnabled && cfg.LLMProvider != "" {
+		p, err := llmService.GetProvider(cfg.LLMProvider)
+		if err != nil {
+			log.Printf("Warning: LLM_PROVIDER %q not found in registry — LLM disabled", cfg.LLMProvider)
+		} else {
+			defaultModel := cfg.LLMModel
+			if defaultModel == "" {
+				switch cfg.LLMProvider {
+				case "openrouter":
+					defaultModel = "openrouter/free"
+				case "openai_compat":
+					defaultModel = "gpt-4o-mini"
+				}
+			}
+			llmService.SetActiveProvider(p, defaultModel)
+			log.Printf("LLM provider: %s (model: %s)", cfg.LLMProvider, defaultModel)
+		}
+	} else {
+		log.Println("LLM not configured — extraction uses statistical heuristics only")
+	}
+
+	// Initialize extraction service (with optional LLM enrichment).
+	extractionService := extraction.NewService(storageService).WithLLM(llmService)
 
 	// Initialize ML model service
 	mlmodelService := mlmodel.NewService(store, ontologyService, storageService, q)

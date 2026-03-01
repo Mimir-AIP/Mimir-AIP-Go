@@ -308,6 +308,16 @@ func (s *SQLiteStore) initSchema() error {
 		installed_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS external_llm_providers (
+		name            TEXT PRIMARY KEY,
+		repository_url  TEXT NOT NULL,
+		git_commit_hash TEXT NOT NULL DEFAULT '',
+		status          TEXT NOT NULL DEFAULT 'active',
+		error_message   TEXT NOT NULL DEFAULT '',
+		installed_at    DATETIME NOT NULL,
+		updated_at      DATETIME NOT NULL
+	);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -2075,6 +2085,74 @@ func (s *SQLiteStore) ListExternalStoragePlugins() ([]*models.ExternalStoragePlu
 func (s *SQLiteStore) DeleteExternalStoragePlugin(name string) error {
 	return s.retryOnBusy(func() error {
 		_, err := s.db.Exec(`DELETE FROM external_storage_plugins WHERE name = ?`, name)
+		return err
+	}, 5)
+}
+
+// ── External LLM Providers ────────────────────────────────────────────────────
+
+// SaveExternalLLMProvider upserts an external LLM provider record.
+func (s *SQLiteStore) SaveExternalLLMProvider(p *models.ExternalLLMProvider) error {
+	query := `
+		INSERT OR REPLACE INTO external_llm_providers
+		(name, repository_url, git_commit_hash, status, error_message, installed_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
+	return s.retryOnBusy(func() error {
+		_, err := s.db.Exec(query,
+			p.Name, p.RepositoryURL, p.GitCommitHash,
+			p.Status, p.ErrorMessage,
+			p.InstalledAt, p.UpdatedAt,
+		)
+		return err
+	}, 5)
+}
+
+// GetExternalLLMProvider retrieves a single external LLM provider by name.
+func (s *SQLiteStore) GetExternalLLMProvider(name string) (*models.ExternalLLMProvider, error) {
+	query := `
+		SELECT name, repository_url, git_commit_hash, status, error_message, installed_at, updated_at
+		FROM external_llm_providers WHERE name = ?`
+	row := s.db.QueryRow(query, name)
+	p := &models.ExternalLLMProvider{}
+	if err := row.Scan(
+		&p.Name, &p.RepositoryURL, &p.GitCommitHash,
+		&p.Status, &p.ErrorMessage,
+		&p.InstalledAt, &p.UpdatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("external LLM provider not found: %w", err)
+	}
+	return p, nil
+}
+
+// ListExternalLLMProviders returns all external LLM provider records.
+func (s *SQLiteStore) ListExternalLLMProviders() ([]*models.ExternalLLMProvider, error) {
+	query := `
+		SELECT name, repository_url, git_commit_hash, status, error_message, installed_at, updated_at
+		FROM external_llm_providers ORDER BY name`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list external LLM providers: %w", err)
+	}
+	defer rows.Close()
+	var providers []*models.ExternalLLMProvider
+	for rows.Next() {
+		p := &models.ExternalLLMProvider{}
+		if err := rows.Scan(
+			&p.Name, &p.RepositoryURL, &p.GitCommitHash,
+			&p.Status, &p.ErrorMessage,
+			&p.InstalledAt, &p.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan external LLM provider: %w", err)
+		}
+		providers = append(providers, p)
+	}
+	return providers, nil
+}
+
+// DeleteExternalLLMProvider removes an external LLM provider record.
+func (s *SQLiteStore) DeleteExternalLLMProvider(name string) error {
+	return s.retryOnBusy(func() error {
+		_, err := s.db.Exec(`DELETE FROM external_llm_providers WHERE name = ?`, name)
 		return err
 	}, 5)
 }

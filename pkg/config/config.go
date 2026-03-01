@@ -28,6 +28,12 @@ type Config struct {
 	WorkerAuthToken   string // shared Bearer token for /api/worktasks/* paths; empty = disabled
 	// Per-type concurrency limits (map of task type → max simultaneous workers)
 	ConcurrencyLimits map[string]int
+	// LLM provider configuration (all optional — LLM features degrade gracefully when unset)
+	LLMEnabled  bool
+	LLMProvider string // "openrouter" | "openai_compat" | any registered provider name
+	LLMAPIKey   string
+	LLMBaseURL  string // required for openai_compat
+	LLMModel    string // defaults per-provider when empty
 }
 
 // LoadConfig loads configuration from environment variables
@@ -51,6 +57,11 @@ func LoadConfig() (*Config, error) {
 		ClusterConfigFile:    getEnv("CLUSTER_CONFIG_FILE", ""),
 		WorkerAuthToken:      getEnv("WORKER_AUTH_TOKEN", ""),
 		ConcurrencyLimits:    getEnvAsConcurrencyLimits("WORKER_CONCURRENCY_LIMITS"),
+		LLMEnabled:           getEnvAsBool("LLM_ENABLED", false),
+		LLMProvider:          getEnv("LLM_PROVIDER", ""),
+		LLMAPIKey:            getEnv("LLM_API_KEY", ""),
+		LLMBaseURL:           getEnv("LLM_BASE_URL", ""),
+		LLMModel:             getEnv("LLM_MODEL", ""),
 	}
 
 	return config, nil
@@ -87,6 +98,19 @@ func getEnvAsConcurrencyLimits(key string) map[string]int {
 		defaults[k] = v
 	}
 	return defaults
+}
+
+// getEnvAsBool retrieves an environment variable as a boolean or returns a default value
+func getEnvAsBool(key string, defaultValue bool) bool {
+	valueStr := os.Getenv(key)
+	if valueStr == "" {
+		return defaultValue
+	}
+	value, err := strconv.ParseBool(valueStr)
+	if err != nil {
+		return defaultValue
+	}
+	return value
 }
 
 // getEnvAsInt retrieves an environment variable as an integer or returns a default value

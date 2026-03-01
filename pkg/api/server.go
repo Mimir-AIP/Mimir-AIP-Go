@@ -191,8 +191,15 @@ func (s *Server) handleWorkTaskList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tasks, err := s.queue.ListWorkTasks()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list tasks: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tasks":        tasks,
 		"queue_length": queueLength,
 	})
 }

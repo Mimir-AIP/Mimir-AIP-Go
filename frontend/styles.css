@@ -194,6 +194,34 @@ body {
 	opacity: 1;
 }
 
+.sidebar-project-selector {
+	padding: 12px 16px 16px;
+	border-top: 1px solid var(--border);
+	margin-top: 8px;
+}
+
+.sidebar-project-selector label {
+	display: block;
+	font-size: 0.65rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+	margin-bottom: 6px;
+}
+
+.sidebar-project-selector select {
+	width: 100%;
+	padding: 6px 8px;
+	background: var(--surface);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	font-family: var(--font-body);
+	font-size: 0.8rem;
+	cursor: pointer;
+}
+
 .sidebar-section-label {
 	padding: 16px 18px 4px;
 	font-size: 0.6rem;

@@ -148,20 +148,18 @@ func (h *StorageHandler) HandleStorageDelete(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(result)
 }
 
-// HandleStorageHealth handles requests to /api/storage/{id}/health
+// HandleStorageHealth handles requests to GET /api/storage/health?config_id=<id>
 func (h *StorageHandler) HandleStorageHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Extract ID from path
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 3 {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
+	storageID := r.URL.Query().Get("config_id")
+	if storageID == "" {
+		http.Error(w, "config_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-	storageID := parts[2]
 
 	healthy, err := h.service.HealthCheck(storageID)
 	if err != nil {

@@ -372,6 +372,299 @@ func extractStructuredRelationships(cols []colInfo, rows []interface{}, entityIn
 	return rels
 }
 
+// ─── Tabular row-entity extraction ───────────────────────────────────────────
+//
+// For structured data that is clearly a database result set (an array of maps
+// with a consistent schema and at least one key column), this path produces
+// much more accurate ontologies than ExtractFromStructuredCIR:
+//
+//   Old path:  each column VALUE is an entity instance ("Alice" of type "FirstName")
+//   This path: each ROW is an entity instance ("42" of type "Student"), and every
+//              column value (including numerics) becomes an entity attribute.
+//
+// The entity type is inferred in priority order:
+//  1. Explicit "entity_type" or "table_name" CIR parameter.
+//  2. Primary key column suffix stripped to PascalCase ("student_id" → "Student").
+//  3. CIR URI last path segment ("storage://x/attendance" → "Attendance").
+//
+// Returns (nil, false) when the data is not suitable (no key column, no type
+// inference possible), so the caller can fall back to ExtractFromStructuredCIR.
+
+// keyNameSuffixes are column name tokens that signal an identifier / primary key.
+// Mirrors the list in crosssource.go so that tabular extraction and column
+// profiling agree on what constitutes a key column.
+var keyNameSuffixes = []string{
+	"id", "key", "code", "number", "uuid", "ref",
+	"identifier", "no", "num", "email", "username", "token",
+}
+
+// ExtractSchemaFromTabularCIR extracts one entity per row from a CIR whose
+// data is a flat array of maps (database table result set, CSV rows, JSON
+// array of records).
+//
+// The function returns (nil, false) when the CIR is not suitable for row-entity
+// mode, in which case the caller should fall back to ExtractFromStructuredCIR.
+func ExtractSchemaFromTabularCIR(cir *models.CIR) (*models.ExtractionResult, bool) {
+	if cir == nil {
+		return nil, false
+	}
+	rows, ok := cir.Data.([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil, false
+	}
+	// Require first element to be an object row.
+	if _, ok := rows[0].(map[string]interface{}); !ok {
+		return nil, false
+	}
+
+	cols := inferColumns(rows)
+	if len(cols) == 0 {
+		return nil, false
+	}
+
+	entityType := detectTabularEntityType(cir, cols, rows)
+	if entityType == "" || entityType == "Entity" {
+		return nil, false
+	}
+
+	// Use cardinality to pick the true primary key (highest uniqueness ratio).
+	primaryKey := bestKeyColumnByCardinality(findAllKeyColumns(cols), rows)
+
+	seen := make(map[string]bool)
+	var entities []models.ExtractedEntity
+
+	for _, rawRow := range rows {
+		row, ok := rawRow.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Stable entity name from primary key value, or a row fingerprint.
+		entityName := ""
+		if primaryKey != "" {
+			if v, ok := row[primaryKey]; ok {
+				entityName = fmt.Sprintf("%v", v)
+			}
+		}
+		if entityName == "" {
+			entityName = rowFingerprint(row)
+		}
+		if seen[entityName] {
+			continue
+		}
+		seen[entityName] = true
+
+		// All columns become attributes; entity_type explicitly set.
+		attrs := make(map[string]interface{}, len(row)+1)
+		attrs["entity_type"] = entityType
+		for k, v := range row {
+			attrs[k] = v
+		}
+
+		entities = append(entities, models.ExtractedEntity{
+			Name:       entityName,
+			Attributes: attrs,
+			Source:     "structured",
+			Confidence: 0.90,
+		})
+	}
+
+	if len(entities) == 0 {
+		return nil, false
+	}
+
+	return &models.ExtractionResult{
+		Entities: entities,
+		Source:   "structured",
+	}, true
+}
+
+// detectTabularEntityType determines the entity type for a flat record CIR.
+// rows is required for cardinality-based primary key selection when multiple
+// candidate key columns exist.
+func detectTabularEntityType(cir *models.CIR, cols []colInfo, rows []interface{}) string {
+	// 1. Explicit CIR parameter.
+	for _, param := range []string{"entity_type", "table_name", "source_table"} {
+		if v, ok := cir.GetParameter(param); ok {
+			if s, ok := v.(string); ok && s != "" {
+				return colNameToType(s)
+			}
+		}
+	}
+
+	// 2. Primary key column suffix stripping.
+	// When multiple key columns exist, cardinality distinguishes the true PK
+	// (all-unique values) from foreign keys (repeated values).
+	keyColumns := findAllKeyColumns(cols)
+	keyCol := bestKeyColumnByCardinality(keyColumns, rows)
+	if keyCol != "" {
+		if t := stripKeySuffix(keyCol); t != "Entity" {
+			return t
+		}
+	}
+
+	// 3. URI last meaningful path segment.
+	uri := cir.Source.URI
+	if uri != "" {
+		parts := strings.Split(strings.TrimRight(uri, "/"), "/")
+		for i := len(parts) - 1; i >= 0; i-- {
+			seg := parts[i]
+			if seg != "" && !strings.HasPrefix(strings.ToLower(seg), "storage") {
+				return colNameToType(seg)
+			}
+		}
+	}
+
+	return "Entity"
+}
+
+// findAllKeyColumns returns all column names that match a known identifier suffix
+// (e.g. _id, _key, _code). The caller can then choose among them by cardinality.
+func findAllKeyColumns(cols []colInfo) []string {
+	var keyColumns []string
+	for _, col := range cols {
+		lower := strings.ToLower(col.name)
+		for _, suffix := range keyNameSuffixes {
+			if lower == suffix || strings.HasSuffix(lower, "_"+suffix) {
+				keyColumns = append(keyColumns, col.name)
+				break
+			}
+		}
+	}
+	return keyColumns
+}
+
+// bestKeyColumnByCardinality picks the column with the highest value cardinality
+// across the provided rows. A true primary key has all-unique values (ratio ≈ 1.0)
+// while foreign keys carry repeated values (ratio < 1.0).
+//
+// Falls back to the shortest column name when rows is empty or cardinalities tie.
+func bestKeyColumnByCardinality(keyColumns []string, rows []interface{}) string {
+	if len(keyColumns) == 0 {
+		return ""
+	}
+	if len(keyColumns) == 1 {
+		return keyColumns[0]
+	}
+
+	// Count unique values per candidate key column.
+	valueSets := make(map[string]map[string]struct{}, len(keyColumns))
+	for _, col := range keyColumns {
+		valueSets[col] = make(map[string]struct{})
+	}
+	totalRows := 0
+	for _, rawRow := range rows {
+		row, ok := rawRow.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		totalRows++
+		for _, col := range keyColumns {
+			v := fmt.Sprintf("%v", row[col])
+			valueSets[col][v] = struct{}{}
+		}
+	}
+
+	if totalRows == 0 {
+		// No row data: fall back to shortest name.
+		best := keyColumns[0]
+		for _, c := range keyColumns[1:] {
+			if len(c) < len(best) {
+				best = c
+			}
+		}
+		return best
+	}
+
+	// Pick the column with the highest cardinality ratio.
+	bestCol := keyColumns[0]
+	bestRatio := float64(len(valueSets[bestCol])) / float64(totalRows)
+	for _, col := range keyColumns[1:] {
+		ratio := float64(len(valueSets[col])) / float64(totalRows)
+		if ratio > bestRatio {
+			bestRatio = ratio
+			bestCol = col
+		}
+	}
+	return bestCol
+}
+
+// detectPrimaryKeyColumn returns the column most likely to be the primary key.
+// When entityTypeHint is set (lower-case), the function prefers a key column
+// whose name starts with that prefix (e.g. "student" → prefers "student_id").
+// Among equally-prefixed columns, the shortest name wins.
+func detectPrimaryKeyColumn(cols []colInfo, entityTypeHint string) string {
+	var keyColumns []string
+	for _, col := range cols {
+		lower := strings.ToLower(col.name)
+		for _, suffix := range keyNameSuffixes {
+			if lower == suffix || strings.HasSuffix(lower, "_"+suffix) {
+				keyColumns = append(keyColumns, col.name)
+				break
+			}
+		}
+	}
+	if len(keyColumns) == 0 {
+		return ""
+	}
+	if len(keyColumns) == 1 {
+		return keyColumns[0]
+	}
+	// Prefer column whose name starts with the entity type hint.
+	if entityTypeHint != "" {
+		for _, kc := range keyColumns {
+			if strings.HasPrefix(strings.ToLower(kc), entityTypeHint) {
+				return kc
+			}
+		}
+	}
+	// Fall back: shortest name (primary keys tend to be briefer than foreign keys).
+	sort.Slice(keyColumns, func(i, j int) bool {
+		return len(keyColumns[i]) < len(keyColumns[j])
+	})
+	return keyColumns[0]
+}
+
+// stripKeySuffix removes the known identifier suffix from a column name and
+// returns the remainder as a PascalCase entity type.
+//
+//	"student_id"      → "Student"
+//	"order_code"      → "Order"
+//	"grade_record_id" → "GradeRecord"
+//	"id"              → "Entity"  (bare suffix, no meaningful prefix)
+func stripKeySuffix(colName string) string {
+	lower := strings.ToLower(colName)
+	for _, suffix := range keyNameSuffixes {
+		sep := "_" + suffix
+		if strings.HasSuffix(lower, sep) {
+			base := colName[:len(colName)-len(sep)]
+			if base == "" {
+				return "Entity"
+			}
+			return colNameToType(base)
+		}
+		if lower == suffix {
+			return "Entity"
+		}
+	}
+	return colNameToType(colName)
+}
+
+// rowFingerprint returns a deterministic string identifying a row from its
+// sorted key=value pairs, used when no primary key column is available.
+func rowFingerprint(row map[string]interface{}) string {
+	keys := make([]string, 0, len(row))
+	for k := range row {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, row[k]))
+	}
+	return strings.Join(parts, "|")
+}
+
 // ─── Shared utilities ─────────────────────────────────────────────────────────
 
 // normalizeText performs basic text normalisation: lowercase, trim, collapse spaces.

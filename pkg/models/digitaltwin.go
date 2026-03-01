@@ -209,8 +209,10 @@ func (r *PredictionRequest) Validate() error {
 	if r.ModelID == "" {
 		return fmt.Errorf("model_id is required")
 	}
-	if r.Input == nil || len(r.Input) == 0 {
-		return fmt.Errorf("input is required")
+	// Input may be omitted when entity_id is provided; the service will
+	// auto-populate it from the entity's attributes and related entities.
+	if (r.Input == nil || len(r.Input) == 0) && r.EntityID == "" {
+		return fmt.Errorf("input is required (or provide entity_id to auto-populate from entity attributes)")
 	}
 	return nil
 }

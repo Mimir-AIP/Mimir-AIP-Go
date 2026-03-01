@@ -282,12 +282,22 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 }
 
 // triggerExtractionForIngestion calls POST /api/extraction/generate-ontology for an ingestion pipeline.
+//
+// It discovers ALL storage configs for the project (not just those used by
+// the current pipeline) so that cross-source link detection sees the full
+// dataset.  This enables a unified ontology across multiple ingestion pipelines
+// feeding the same project.
+//
 // This is best-effort: failures are logged but do not fail the pipeline task.
 func triggerExtractionForIngestion(orchestratorURL, projectID, pipelineID string) {
+	// Fetch all storage configs for the project so cross-source analysis
+	// can see data from every ingestion pipeline, not just the current one.
+	storageIDs := fetchProjectStorageIDs(orchestratorURL, projectID)
+
 	payload := map[string]interface{}{
 		"project_id":           projectID,
-		"storage_ids":          []string{},
-		"ontology_name":        "auto-" + pipelineID,
+		"storage_ids":          storageIDs,
+		"ontology_name":        "auto-" + projectID, // project-scoped, not pipeline-scoped
 		"include_structured":   true,
 		"include_unstructured": true,
 	}
@@ -306,10 +316,40 @@ func triggerExtractionForIngestion(orchestratorURL, projectID, pipelineID string
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		log.Printf("auto-extraction: triggered for project %s (pipeline %s)", projectID, pipelineID)
+		log.Printf("auto-extraction: triggered for project %s (pipeline %s, %d storage sources)", projectID, pipelineID, len(storageIDs))
 	} else {
 		log.Printf("auto-extraction: unexpected status %d for project %s", resp.StatusCode, projectID)
 	}
+}
+
+// fetchProjectStorageIDs retrieves the IDs of all storage configs for a project.
+// Returns an empty slice on any error (extraction will still run but without data).
+func fetchProjectStorageIDs(orchestratorURL, projectID string) []string {
+	url := fmt.Sprintf("%s/api/storage/configs?project_id=%s", orchestratorURL, projectID)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("auto-extraction: failed to fetch storage configs: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("auto-extraction: unexpected status %d fetching storage configs", resp.StatusCode)
+		return nil
+	}
+	var configs []struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&configs); err != nil {
+		log.Printf("auto-extraction: failed to decode storage configs: %v", err)
+		return nil
+	}
+	ids := make([]string, 0, len(configs))
+	for _, c := range configs {
+		if c.ID != "" {
+			ids = append(ids, c.ID)
+		}
+	}
+	return ids
 }
 
 // executeMLTraining executes an ML training work task
@@ -336,8 +376,33 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		return nil, fmt.Errorf("failed to decode model: %w", err)
 	}
 
-	// Load training data from storage
-	trainingData, err := loadTrainingDataFromStorage(orchestratorURL, task)
+	// Load training data.
+	//
+	// When digital_twin_id is set in the task parameters we load resolved,
+	// cross-source entity attributes from the digital twin rather than raw
+	// CIR records.  This gives the model access to the unified feature
+	// vector (e.g. grades + attendance combined) rather than siloed per-source
+	// rows.  Falls back to raw CIR loading if the twin fetch fails.
+	labelColumn := "label"
+	if lc, ok := task.TaskSpec.Parameters["label_column"].(string); ok && lc != "" {
+		labelColumn = lc
+	}
+	splitRatio := 0.8
+	if sr, ok := task.TaskSpec.Parameters["train_test_split"].(float64); ok && sr > 0 {
+		splitRatio = sr
+	}
+
+	var trainingData *training.TrainingData
+	if twinID, ok := task.TaskSpec.Parameters["digital_twin_id"].(string); ok && twinID != "" {
+		log.Printf("Loading training data from digital twin %s", twinID)
+		trainingData, err = loadTrainingDataFromDigitalTwin(orchestratorURL, twinID, labelColumn, splitRatio)
+		if err != nil {
+			log.Printf("Warning: failed to load from digital twin (%v); falling back to raw CIR data", err)
+			trainingData, err = loadTrainingDataFromStorage(orchestratorURL, task)
+		}
+	} else {
+		trainingData, err = loadTrainingDataFromStorage(orchestratorURL, task)
+	}
 	if err != nil {
 		reportTrainingFailure(orchestratorURL, task.TaskSpec.ModelID, err.Error())
 		return nil, fmt.Errorf("failed to load training data: %w", err)
@@ -513,6 +578,71 @@ func loadTrainingDataFromStorage(orchestratorURL string, task *models.WorkTask) 
 		TestLabels:    labels[splitIdx:],
 		FeatureNames:  featureNames,
 		Metadata:      map[string]any{"source": "storage"},
+	}, nil
+}
+
+// loadTrainingDataFromDigitalTwin fetches resolved entity attributes from a
+// digital twin and converts them into a training dataset.
+//
+// Unlike loadTrainingDataFromStorage (which reads raw, per-source CIR records),
+// this function reads the digital twin's already-resolved entity list where each
+// entity's Attributes map contains merged data from ALL contributing storage
+// sources.  For cross-source projects (e.g. grades DB + attendance DB), this
+// means a single training row for student_id=42 contains both their grade
+// average AND their attendance count — enabling models to learn relationships
+// that span source boundaries.
+//
+// Falls back: callers should fall back to loadTrainingDataFromStorage on error.
+func loadTrainingDataFromDigitalTwin(orchestratorURL, twinID, labelColumn string, splitRatio float64) (*training.TrainingData, error) {
+	url := fmt.Sprintf("%s/api/digital-twins/%s/entities", orchestratorURL, twinID)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch entities: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d fetching digital twin entities", resp.StatusCode)
+	}
+
+	var entities []struct {
+		Attributes map[string]any `json:"attributes"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&entities); err != nil {
+		return nil, fmt.Errorf("failed to decode entities: %w", err)
+	}
+
+	rows := make([]map[string]any, 0, len(entities))
+	for _, e := range entities {
+		if len(e.Attributes) > 0 {
+			rows = append(rows, e.Attributes)
+		}
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no entities with attributes found in digital twin %s", twinID)
+	}
+
+	features, labels, featureNames := cirMapsToFeatureRows(rows, labelColumn)
+	if len(features) == 0 {
+		return nil, fmt.Errorf("no usable feature rows from digital twin entities (twin: %s)", twinID)
+	}
+
+	splitIdx := int(float64(len(features)) * splitRatio)
+	if splitIdx <= 0 {
+		splitIdx = 1
+	}
+	if splitIdx >= len(features) {
+		splitIdx = len(features) - 1
+	}
+
+	log.Printf("Loaded %d training rows from digital twin %s (%d features)", len(features), twinID, len(featureNames))
+
+	return &training.TrainingData{
+		TrainFeatures: features[:splitIdx],
+		TrainLabels:   labels[:splitIdx],
+		TestFeatures:  features[splitIdx:],
+		TestLabels:    labels[splitIdx:],
+		FeatureNames:  featureNames,
+		Metadata:      map[string]any{"source": "digital_twin", "twin_id": twinID},
 	}, nil
 }
 

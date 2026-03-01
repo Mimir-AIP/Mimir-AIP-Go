@@ -86,8 +86,10 @@ func (h *ExtractionHandler) HandleExtractAndGenerate(w http.ResponseWriter, r *h
 	resp := map[string]interface{}{
 		"ontology": newOntology,
 		"extraction_summary": map[string]interface{}{
-			"entities_count":      len(extractionResult.Entities),
-			"relationships_count": len(extractionResult.Relationships),
+			"entities_count":           len(extractionResult.Entities),
+			"relationships_count":      len(extractionResult.Relationships),
+			"cross_source_links_count": len(extractionResult.CrossSourceLinks),
+			"cross_source_links":       extractionResult.CrossSourceLinks,
 		},
 	}
 	if ontologyDiff != nil {

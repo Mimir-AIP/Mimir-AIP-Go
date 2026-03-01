@@ -1555,6 +1555,84 @@ paths:
             summary: Extract entities and generate ontology
             tags:
                 - Extraction
+    /api/llm/models:
+        get:
+            description: Returns available models from the configured provider with TTL caching. Empty list when LLM not configured.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    enabled:
+                                        description: Whether LLM is configured
+                                        type: boolean
+                                    models:
+                                        items:
+                                            $ref: '#/components/schemas/LLMModel'
+                                        type: array
+                                    provider:
+                                        description: Provider name or 'none'
+                                        type: string
+                                type: object
+                    description: 200 OK
+            summary: List available LLM models
+            tags:
+                - LLM
+    /api/llm/providers:
+        get:
+            description: Returns all dynamically installed external LLM providers and their status.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExternalLLMProvider'
+                                type: array
+                    description: 200 OK
+            summary: List external LLM providers
+            tags:
+                - LLM
+        post:
+            description: Clones, compiles, and registers an LLM provider from a Git repository. Returns 201 on success, 422 when compilation fails.
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExternalLLMProvider'
+                    description: Created
+                "422":
+                    description: Processing failed — see error body
+            summary: Install an external LLM provider
+            tags:
+                - LLM
+    /api/llm/providers/{name}:
+        delete:
+            description: Removes the provider from the registry and deletes its compiled .so and database record. Returns 204 on success.
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Resource not found
+            summary: Uninstall an external LLM provider
+            tags:
+                - LLM
+        get:
+            description: Returns metadata for a single installed external LLM provider.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExternalLLMProvider'
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Get a single external LLM provider
+            tags:
+                - LLM
     /api/metrics:
         get:
             description: Returns task counts by status and type, plus the current queue depth.

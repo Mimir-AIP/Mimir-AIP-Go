@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -32,11 +33,8 @@ func NewService(store metadatastore.MetadataStore) *Service {
 		store:   store,
 		plugins: make(map[string]Plugin),
 	}
-
-	// Register default plugin
 	s.RegisterPlugin("default", NewDefaultPlugin())
-	s.RegisterPlugin("builtin", NewDefaultPlugin()) // Alias for default
-
+	s.RegisterPlugin("builtin", NewDefaultPlugin())
 	return s
 }
 
@@ -47,12 +45,18 @@ func NewServiceWithRegistry(store metadatastore.MetadataStore, registry PluginRe
 		plugins:        make(map[string]Plugin),
 		pluginRegistry: registry,
 	}
-
-	// Register default plugin
 	s.RegisterPlugin("default", NewDefaultPlugin())
-	s.RegisterPlugin("builtin", NewDefaultPlugin()) // Alias for default
-
+	s.RegisterPlugin("builtin", NewDefaultPlugin())
 	return s
+}
+
+// SetStorageSvc injects a CIRStorer into the built-in default/builtin plugins so that
+// store_cir and store_cir_batch actions can persist data to Mimir storage.
+// Call this after both the pipeline service and the storage service are created.
+func (s *Service) SetStorageSvc(svc CIRStorer) {
+	dp := NewDefaultPluginWithStorage(svc)
+	s.plugins["default"] = dp
+	s.plugins["builtin"] = dp
 }
 
 // RegisterPlugin registers a plugin
@@ -172,23 +176,25 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 	for currentStepIndex < len(pipeline.Steps) {
 		step := pipeline.Steps[currentStepIndex]
 
+		// for_each: iterate over a collection and execute sub-steps for each item
+		if step.ForEach != nil {
+			log.Printf("  Step %d: %s (for_each)", currentStepIndex+1, step.Name)
+			count, err := s.executeForEach(step, execution, pipeline.Steps)
+			if err != nil {
+				execution.Status = "failed"
+				execution.Error = fmt.Sprintf("step %s failed: %v", step.Name, err)
+				now := time.Now()
+				execution.CompletedAt = &now
+				return execution, fmt.Errorf("step %s failed: %w", step.Name, err)
+			}
+			execution.Context.SetStepData(step.Name, "count", count)
+			currentStepIndex++
+			continue
+		}
+
 		log.Printf("  Step %d: %s (%s.%s)", currentStepIndex+1, step.Name, step.Plugin, step.Action)
 
-		// Get plugin - check local registry first, then external registry
-		plugin, ok := s.plugins[step.Plugin]
-		if !ok && s.pluginRegistry != nil {
-			plugin, ok = s.pluginRegistry.GetPlugin(step.Plugin)
-		}
-		if !ok {
-			execution.Status = "failed"
-			execution.Error = fmt.Sprintf("unknown plugin: %s", step.Plugin)
-			now := time.Now()
-			execution.CompletedAt = &now
-			return execution, fmt.Errorf("unknown plugin: %s", step.Plugin)
-		}
-
-		// Execute step
-		result, err := plugin.Execute(step.Action, step.Parameters, execution.Context)
+		result, gotoTarget, err := s.executeStep(step, execution.Context)
 		if err != nil {
 			execution.Status = "failed"
 			execution.Error = fmt.Sprintf("step %s failed: %v", step.Name, err)
@@ -203,22 +209,8 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 			execution.Context.SetStepData(step.Name, key, value)
 		}
 
-		// Store output values from step configuration
-		if step.Output != nil {
-			for outputKey, outputTemplate := range step.Output {
-				// Resolve template
-				plugin := s.plugins["default"]
-				if dp, ok := plugin.(*DefaultPlugin); ok {
-					resolvedValue := dp.ResolveTemplates(outputTemplate, execution.Context)
-					execution.Context.SetStepData(step.Name, outputKey, resolvedValue)
-					log.Printf("    Output: %s = %v", outputKey, resolvedValue)
-				}
-			}
-		}
-
 		// Check for goto action
-		if gotoTarget, ok := result["goto"].(string); ok {
-			// Find target step index
+		if gotoTarget != "" {
 			targetIndex := -1
 			for i, s := range pipeline.Steps {
 				if s.Name == gotoTarget {
@@ -226,7 +218,6 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 					break
 				}
 			}
-
 			if targetIndex == -1 {
 				execution.Status = "failed"
 				execution.Error = fmt.Sprintf("goto target not found: %s", gotoTarget)
@@ -234,7 +225,6 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 				execution.CompletedAt = &now
 				return execution, fmt.Errorf("goto target not found: %s", gotoTarget)
 			}
-
 			log.Printf("    Jumping to step: %s", gotoTarget)
 			currentStepIndex = targetIndex
 			continue
@@ -251,6 +241,94 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 	log.Printf("Pipeline execution completed: %s", execution.ID)
 
 	return execution, nil
+}
+
+// executeStep runs a single pipeline step, returning its result map and any goto target.
+func (s *Service) executeStep(step models.PipelineStep, ctx *models.PipelineContext) (map[string]interface{}, string, error) {
+	plugin, ok := s.plugins[step.Plugin]
+	if !ok && s.pluginRegistry != nil {
+		plugin, ok = s.pluginRegistry.GetPlugin(step.Plugin)
+	}
+	if !ok {
+		return nil, "", fmt.Errorf("unknown plugin: %s", step.Plugin)
+	}
+
+	result, err := plugin.Execute(step.Action, step.Parameters, ctx)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Resolve and store declared output mappings
+	if step.Output != nil {
+		dp, isDef := s.plugins["default"].(*DefaultPlugin)
+		for outputKey, outputTemplate := range step.Output {
+			if isDef {
+				resolvedValue := dp.ResolveTemplates(outputTemplate, ctx)
+				ctx.SetStepData(step.Name, outputKey, resolvedValue)
+				log.Printf("    Output: %s = %v", outputKey, resolvedValue)
+			}
+		}
+	}
+
+	gotoTarget := ""
+	if gt, ok := result["goto"].(string); ok {
+		gotoTarget = gt
+	}
+
+	return result, gotoTarget, nil
+}
+
+// executeForEach iterates over a resolved array and runs the for_each sub-steps
+// for each element. Returns the number of items processed.
+func (s *Service) executeForEach(step models.PipelineStep, execution *models.PipelineExecution, allSteps []models.PipelineStep) (int, error) {
+	fe := step.ForEach
+
+	// Resolve the items array. Items is a template string referencing context.
+	var items []interface{}
+	dp, ok := s.plugins["default"].(*DefaultPlugin)
+	if !ok {
+		return 0, fmt.Errorf("for_each requires the default plugin to be registered")
+	}
+
+	resolved := dp.ResolveTemplates(fe.Items, execution.Context)
+	if err := json.Unmarshal([]byte(resolved), &items); err != nil {
+		return 0, fmt.Errorf("for_each items %q must resolve to a JSON array: %w", fe.Items, err)
+	}
+
+	as := fe.As
+	if as == "" {
+		as = "item"
+	}
+
+	for i, item := range items {
+		// Bind current item into _loop context
+		execution.Context.SetStepData("_loop", as, item)
+		execution.Context.SetStepData("_loop", "index", i)
+
+		// Execute sub-steps
+		for _, subStep := range fe.Steps {
+			if subStep.ForEach != nil {
+				// Nested for_each
+				if _, err := s.executeForEach(subStep, execution, nil); err != nil {
+					return i, fmt.Errorf("sub-step %s (iteration %d): %w", subStep.Name, i, err)
+				}
+				continue
+			}
+
+			result, gotoTarget, err := s.executeStep(subStep, execution.Context)
+			if err != nil {
+				return i, fmt.Errorf("sub-step %s (iteration %d): %w", subStep.Name, i, err)
+			}
+			for key, value := range result {
+				execution.Context.SetStepData(subStep.Name, key, value)
+			}
+			if gotoTarget != "" {
+				log.Printf("    for_each: goto inside sub-steps is not supported, ignoring target %s", gotoTarget)
+			}
+		}
+	}
+
+	return len(items), nil
 }
 
 // validateCreateRequest validates a pipeline creation request
@@ -283,11 +361,20 @@ func (s *Service) validateCreateRequest(req *models.PipelineCreateRequest) error
 		}
 		stepNames[step.Name] = true
 
-		if step.Plugin == "" {
-			return fmt.Errorf("step plugin is required for step: %s", step.Name)
-		}
-		if step.Action == "" {
-			return fmt.Errorf("step action is required for step: %s", step.Name)
+		if step.ForEach == nil {
+			if step.Plugin == "" {
+				return fmt.Errorf("step plugin is required for step: %s", step.Name)
+			}
+			if step.Action == "" {
+				return fmt.Errorf("step action is required for step: %s", step.Name)
+			}
+		} else {
+			if step.ForEach.Items == "" {
+				return fmt.Errorf("for_each.items is required for step: %s", step.Name)
+			}
+			if len(step.ForEach.Steps) == 0 {
+				return fmt.Errorf("for_each.steps must not be empty for step: %s", step.Name)
+			}
 		}
 	}
 

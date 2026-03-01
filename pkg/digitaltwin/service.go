@@ -210,6 +210,11 @@ func (s *Service) SyncWithStorage(twinID string) error {
 		fmt.Printf("Warning: failed to wire cross-type relationships for twin %s: %v\n", twin.ID, err)
 	}
 
+	// Evaluate attribute-based actions against the freshly synced entities.
+	if err := s.evaluateEntityActionsAfterSync(twin.ID); err != nil {
+		fmt.Printf("Warning: failed to evaluate entity actions after sync for twin %s: %v\n", twin.ID, err)
+	}
+
 	now := time.Now().UTC()
 	twin.LastSyncAt = &now
 	twin.UpdatedAt = now
@@ -219,6 +224,62 @@ func (s *Service) SyncWithStorage(twinID string) error {
 	}
 
 	return nil
+}
+
+// evaluateEntityActionsAfterSync runs attribute-based action evaluation
+// for every entity in the twin immediately after a sync.
+func (s *Service) evaluateEntityActionsAfterSync(twinID string) error {
+	entities, err := s.store.ListEntitiesByDigitalTwin(twinID)
+	if err != nil {
+		return err
+	}
+	for _, entity := range entities {
+		if err := s.actionManager.EvaluateEntityActions(twinID, entity); err != nil {
+			log.Printf("Warning: entity action evaluation failed for entity %s: %v", entity.ID, err)
+		}
+	}
+	return nil
+}
+
+// StartActionEvaluation starts a background goroutine that periodically re-evaluates
+// attribute-based actions for all active digital twins. This provides automatic
+// alerting even when no explicit predict call or manual sync is triggered.
+//
+// The interval controls how often the evaluation runs; a sensible default is 5 minutes.
+func (s *Service) StartActionEvaluation(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.runBackgroundActionEvaluation()
+			}
+		}
+	}()
+}
+
+// runBackgroundActionEvaluation iterates all active twins and evaluates
+// attribute-based actions against their current entity state.
+func (s *Service) runBackgroundActionEvaluation() {
+	twins, err := s.store.ListDigitalTwins()
+	if err != nil {
+		log.Printf("Background action evaluation: failed to list digital twins: %v", err)
+		return
+	}
+	for _, twin := range twins {
+		if twin.Status != "active" {
+			continue
+		}
+		if err := s.evaluateEntityActionsAfterSync(twin.ID); err != nil {
+			log.Printf("Background action evaluation: twin %s: %v", twin.ID, err)
+		}
+	}
 }
 
 // GetEntity retrieves an entity by ID

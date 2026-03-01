@@ -33,13 +33,30 @@ type Pipeline struct {
 	UpdatedAt   time.Time      `json:"updated_at" yaml:"-"`
 }
 
+// ForEachConfig configures iteration over a collection within a pipeline step.
+// When ForEach is set on a PipelineStep the step has no plugin/action of its own;
+// instead it iterates over the resolved Items array and executes Steps for each element.
+type ForEachConfig struct {
+	// Items is a context template expression that resolves to a JSON array,
+	// e.g. "{{context.fetch_catalogue.parsed}}"
+	Items string `json:"items" yaml:"items"`
+	// As is the context variable name bound to the current element during iteration.
+	// The element is accessible as {{context._loop.<As>}} inside sub-steps.
+	As string `json:"as" yaml:"as"`
+	// Steps are the sub-steps executed once per item.
+	Steps []PipelineStep `json:"steps" yaml:"steps"`
+}
+
 // PipelineStep represents a single step in a pipeline
 type PipelineStep struct {
 	Name       string                 `json:"name" yaml:"name"`
-	Plugin     string                 `json:"plugin" yaml:"plugin"`
-	Action     string                 `json:"action" yaml:"action"`
+	Plugin     string                 `json:"plugin,omitempty" yaml:"plugin,omitempty"`
+	Action     string                 `json:"action,omitempty" yaml:"action,omitempty"`
 	Parameters map[string]interface{} `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 	Output     map[string]string      `json:"output,omitempty" yaml:"output,omitempty"`
+	// ForEach, when set, turns this step into a loop over a collection.
+	// Plugin and Action are ignored when ForEach is present.
+	ForEach *ForEachConfig `json:"for_each,omitempty" yaml:"for_each,omitempty"`
 }
 
 // PipelineExecution represents a single execution of a pipeline

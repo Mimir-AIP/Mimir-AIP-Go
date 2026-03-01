@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/api"
 	"github.com/mimir-aip/mimir-aip-go/pkg/config"
@@ -110,6 +111,10 @@ func main() {
 	// Initialize storage service
 	storageService := storage.NewService(store)
 
+	// Give the pipeline service access to storage so that store_cir / store_cir_batch
+	// pipeline actions can persist data directly into Mimir storage.
+	pipelineService.SetStorageSvc(storageService)
+
 	// Register all built-in storage plugins
 	storageService.RegisterPlugin("filesystem", storageplugins.NewFilesystemPlugin())
 	storageService.RegisterPlugin("postgresql", storageplugins.NewPostgresPlugin())
@@ -198,6 +203,9 @@ func main() {
 
 	// Start prediction cache eviction background job
 	go dtService.StartCacheEviction(context.Background())
+
+	// Start background attribute-based action evaluation (every 5 minutes)
+	dtService.StartActionEvaluation(context.Background(), 5*time.Minute)
 
 	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, ML model, and digital twin services")
 

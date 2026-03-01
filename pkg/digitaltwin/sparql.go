@@ -59,7 +59,7 @@ func (e *SPARQLEngine) Execute(twin *models.DigitalTwin, req *models.QueryReques
 	// Evaluate the query
 	rows := evaluateSPARQL(parsedQuery, entities)
 
-	// Extract columns from SELECT variables or first row
+	// Extract columns from SELECT variables (includes aggregate aliases) or first row.
 	columns := parsedQuery.Variables
 	if len(columns) == 0 && len(rows) > 0 {
 		for k := range rows[0] {
@@ -134,6 +134,8 @@ var sparqlKeywords = map[string]bool{
 	"SELECT": true, "WHERE": true, "FILTER": true, "ORDER": true, "BY": true,
 	"LIMIT": true, "OFFSET": true, "ASC": true, "DESC": true, "PREFIX": true,
 	"OPTIONAL": true, "FROM": true, "DISTINCT": true, "A": true,
+	"GROUP": true, "HAVING": true,
+	"COUNT": true, "SUM": true, "AVG": true, "MIN": true, "MAX": true, "AS": true,
 }
 
 func tokenizeSPARQL(query string) []token {
@@ -308,15 +310,25 @@ type OrderByClause struct {
 	Descending bool
 }
 
+// AggregateExpr represents a SELECT aggregate expression such as (COUNT(?j) AS ?count).
+type AggregateExpr struct {
+	Function string // COUNT, SUM, AVG, MIN, MAX
+	Variable string // input variable name (without ?), or "*" for COUNT(*)
+	Alias    string // output alias variable name (without ?)
+}
+
 // SPARQLQuery holds the parsed query components
 type SPARQLQuery struct {
-	Prefixes  map[string]string
-	Variables []string // SELECT projected vars (without ?)
-	Patterns  []TriplePattern
-	Filters   []FilterExpr
-	OrderBy   []OrderByClause
-	Limit     int
-	Offset    int
+	Prefixes   map[string]string
+	Variables  []string        // SELECT projected vars (without ?); includes aggregate aliases
+	Patterns   []TriplePattern
+	Filters    []FilterExpr
+	Aggregates []AggregateExpr // Aggregate expressions from SELECT clause
+	GroupBy    []string        // GROUP BY variable names (without ?)
+	Having     []FilterExpr    // HAVING filters applied after grouping
+	OrderBy    []OrderByClause
+	Limit      int
+	Offset     int
 }
 
 type parser struct {
@@ -379,12 +391,25 @@ func parseSPARQL(tokens []token) (*SPARQLQuery, error) {
 		p.next()
 	}
 
-	// Variables or *
+	// Variables or * — also handle aggregate expressions like (COUNT(?j) AS ?count)
 	if p.peek().typ == tokPunct && p.peek().val == "*" {
 		p.next()
 	} else {
-		for p.peek().typ == tokVariable {
-			q.Variables = append(q.Variables, p.next().val)
+		for {
+			if p.peek().typ == tokVariable {
+				q.Variables = append(q.Variables, p.next().val)
+				continue
+			}
+			// Aggregate expression: (FUNC(?var) AS ?alias) or (FUNC(*) AS ?alias)
+			if p.peek().typ == tokPunct && p.peek().val == "(" {
+				if agg, ok := parseAggregateExpr(p); ok {
+					q.Aggregates = append(q.Aggregates, agg)
+					// Alias is also added to Variables so the projection step picks it up.
+					q.Variables = append(q.Variables, agg.Alias)
+					continue
+				}
+			}
+			break
 		}
 	}
 
@@ -457,6 +482,25 @@ func parseSPARQL(tokens []token) (*SPARQLQuery, error) {
 		p.next()
 	}
 
+	// GROUP BY
+	if p.peek().typ == tokKeyword && p.peek().val == "GROUP" {
+		p.next()
+		if p.peek().typ == tokKeyword && p.peek().val == "BY" {
+			p.next()
+			for p.peek().typ == tokVariable {
+				q.GroupBy = append(q.GroupBy, p.next().val)
+			}
+		}
+	}
+
+	// HAVING
+	if p.peek().typ == tokKeyword && p.peek().val == "HAVING" {
+		p.next()
+		if filter := parseFilter(p); filter != nil {
+			q.Having = append(q.Having, *filter)
+		}
+	}
+
 	// ORDER BY
 	if p.peek().typ == tokKeyword && p.peek().val == "ORDER" {
 		p.next()
@@ -509,6 +553,76 @@ func parseSPARQL(tokens []token) (*SPARQLQuery, error) {
 	}
 
 	return q, nil
+}
+
+// parseAggregateExpr parses expressions of the form (FUNC(?var) AS ?alias) or (FUNC(*) AS ?alias).
+// The opening "(" must already be peeked but not consumed. Returns (expr, true) on success.
+func parseAggregateExpr(p *parser) (AggregateExpr, bool) {
+	saved := p.pos // allow backtracking on failure
+	p.next()       // consume "("
+
+	// Function name: COUNT, SUM, AVG, MIN, MAX
+	if p.peek().typ != tokKeyword {
+		p.pos = saved
+		return AggregateExpr{}, false
+	}
+	fn := strings.ToUpper(p.next().val)
+	switch fn {
+	case "COUNT", "SUM", "AVG", "MIN", "MAX":
+		// valid
+	default:
+		p.pos = saved
+		return AggregateExpr{}, false
+	}
+
+	// Opening paren for argument
+	if p.peek().typ != tokPunct || p.peek().val != "(" {
+		p.pos = saved
+		return AggregateExpr{}, false
+	}
+	p.next()
+
+	// Argument: ?var or *
+	var varName string
+	if p.peek().typ == tokVariable {
+		varName = p.next().val
+	} else if p.peek().typ == tokPunct && p.peek().val == "*" {
+		varName = "*"
+		p.next()
+	} else {
+		p.pos = saved
+		return AggregateExpr{}, false
+	}
+
+	// Closing paren for argument
+	if p.peek().typ != tokPunct || p.peek().val != ")" {
+		p.pos = saved
+		return AggregateExpr{}, false
+	}
+	p.next()
+
+	// AS keyword
+	if p.peek().typ != tokKeyword || p.peek().val != "AS" {
+		p.pos = saved
+		return AggregateExpr{}, false
+	}
+	p.next()
+
+	// Alias variable
+	if p.peek().typ != tokVariable {
+		p.pos = saved
+		return AggregateExpr{}, false
+	}
+	alias := p.next().val
+
+	// Closing outer paren
+	if p.peek().typ != tokPunct || p.peek().val != ")" {
+		p.pos = saved
+		return AggregateExpr{}, false
+	}
+	p.next()
+
+	return AggregateExpr{Function: fn, Variable: varName, Alias: alias}, true
 }
 
 // parseTriple parses a single triple pattern
@@ -691,6 +805,21 @@ func evaluateSPARQL(q *SPARQLQuery, entities []*models.Entity) []map[string]inte
 	}
 	bindings = filtered
 
+	// Apply GROUP BY + aggregates
+	if len(q.GroupBy) > 0 || len(q.Aggregates) > 0 {
+		bindings = applyGroupBy(q.GroupBy, q.Aggregates, bindings)
+		// Apply HAVING filters on the grouped results
+		if len(q.Having) > 0 {
+			grouped := bindings[:0]
+			for _, b := range bindings {
+				if matchesFilters(q.Having, b) {
+					grouped = append(grouped, b)
+				}
+			}
+			bindings = grouped
+		}
+	}
+
 	// Apply ORDER BY
 	if len(q.OrderBy) > 0 {
 		sort.SliceStable(bindings, func(i, j int) bool {
@@ -865,6 +994,139 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 
 	// Subject is a literal – pass through unchanged
 	return bindings
+}
+
+// applyGroupBy partitions bindings by the GROUP BY variables and computes
+// aggregate functions (COUNT, SUM, AVG, MIN, MAX) for each group.
+// If groupBy is empty but aggregates are present, all bindings form a single group.
+func applyGroupBy(groupBy []string, aggs []AggregateExpr, bindings []sparqlBinding) []sparqlBinding {
+	// Build ordered group map to preserve insertion order.
+	type group struct {
+		rows []sparqlBinding
+	}
+	groupKeys := []string{}
+	groups := map[string]*group{}
+
+	for _, b := range bindings {
+		// Build composite key from GROUP BY variable values.
+		parts := make([]string, len(groupBy))
+		for i, v := range groupBy {
+			parts[i] = fmt.Sprintf("%v", b[v])
+		}
+		key := strings.Join(parts, "\x00")
+		if _, exists := groups[key]; !exists {
+			groupKeys = append(groupKeys, key)
+			groups[key] = &group{}
+		}
+		groups[key].rows = append(groups[key].rows, b)
+	}
+
+	// If no GROUP BY but aggregates exist, treat all rows as one group.
+	if len(groupBy) == 0 {
+		key := "_all"
+		groupKeys = []string{key}
+		groups[key] = &group{rows: bindings}
+	}
+
+	result := make([]sparqlBinding, 0, len(groups))
+	for _, key := range groupKeys {
+		g := groups[key]
+		row := sparqlBinding{}
+
+		// Copy GROUP BY variable values from the first row of the group.
+		if len(g.rows) > 0 {
+			for _, v := range groupBy {
+				row[v] = g.rows[0][v]
+			}
+		}
+
+		// Compute aggregates.
+		for _, agg := range aggs {
+			row[agg.Alias] = computeAggregate(agg, g.rows)
+		}
+
+		result = append(result, row)
+	}
+	return result
+}
+
+// computeAggregate calculates a single aggregate function over a set of bindings.
+func computeAggregate(agg AggregateExpr, rows []sparqlBinding) interface{} {
+	switch agg.Function {
+	case "COUNT":
+		if agg.Variable == "*" {
+			return float64(len(rows))
+		}
+		count := 0
+		for _, b := range rows {
+			if _, ok := b[agg.Variable]; ok {
+				count++
+			}
+		}
+		return float64(count)
+
+	case "SUM":
+		sum := 0.0
+		for _, b := range rows {
+			if v, ok := b[agg.Variable]; ok {
+				if f, err := toFloat(v); err == nil {
+					sum += f
+				}
+			}
+		}
+		return sum
+
+	case "AVG":
+		sum := 0.0
+		n := 0
+		for _, b := range rows {
+			if v, ok := b[agg.Variable]; ok {
+				if f, err := toFloat(v); err == nil {
+					sum += f
+					n++
+				}
+			}
+		}
+		if n == 0 {
+			return 0.0
+		}
+		return sum / float64(n)
+
+	case "MIN":
+		var minVal *float64
+		for _, b := range rows {
+			if v, ok := b[agg.Variable]; ok {
+				if f, err := toFloat(v); err == nil {
+					if minVal == nil || f < *minVal {
+						cp := f
+						minVal = &cp
+					}
+				}
+			}
+		}
+		if minVal == nil {
+			return nil
+		}
+		return *minVal
+
+	case "MAX":
+		var maxVal *float64
+		for _, b := range rows {
+			if v, ok := b[agg.Variable]; ok {
+				if f, err := toFloat(v); err == nil {
+					if maxVal == nil || f > *maxVal {
+						cp := f
+						maxVal = &cp
+					}
+				}
+			}
+		}
+		if maxVal == nil {
+			return nil
+		}
+		return *maxVal
+	}
+	return nil
 }
 
 // matchesFilters checks whether a binding satisfies all FILTER expressions

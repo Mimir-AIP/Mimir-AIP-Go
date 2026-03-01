@@ -34,13 +34,37 @@ func NewService(storageService *storage.Service) *Service {
 	return &Service{storageService: storageService}
 }
 
-// ExtractFromStorage extracts entities from data in storage
+// ExtractFromStorage extracts entities from data in storage.
+//
+// When multiple storage sources are provided the function also performs
+// cross-source link detection: it compares the statistical profile of each
+// column across all storage sources and reports pairs that are likely to be
+// foreign-key-style join points (e.g. student_id appearing in both a grades DB
+// and an attendance DB).  No domain configuration is required.
 func (s *Service) ExtractFromStorage(projectID string, storageIDs []string, includeStructured, includeUnstructured bool) (*models.ExtractionResult, error) {
 	var structuredResult *models.ExtractionResult
 	var unstructuredResult *models.ExtractionResult
 
+	// Collect column profiles per storage for cross-source link detection.
+	// We always retrieve CIR data here regardless of includeStructured so that
+	// cross-source links are detected even when only unstructured is requested.
+	var allProfiles []models.ColumnProfile
+	cirsByStorage := make(map[string][]*models.CIR, len(storageIDs))
+
+	for _, storageID := range storageIDs {
+		cirs, err := s.storageService.Retrieve(storageID, &models.CIRQuery{Limit: 1000})
+		if err != nil {
+			// Non-fatal: log and continue so one bad source doesn't abort everything.
+			fmt.Printf("Warning: cross-source profiling: failed to retrieve from %s: %v\n", storageID, err)
+			continue
+		}
+		cirsByStorage[storageID] = cirs
+		profiles := BuildColumnProfilesFromCIRs(storageID, cirs)
+		allProfiles = append(allProfiles, profiles...)
+	}
+
 	if includeStructured {
-		result, err := s.extractStructuredFromStorage(projectID, storageIDs)
+		result, err := s.extractStructuredFromStorageWithCIRs(projectID, storageIDs, cirsByStorage)
 		if err != nil {
 			return nil, fmt.Errorf("structured extraction failed: %w", err)
 		}
@@ -48,29 +72,46 @@ func (s *Service) ExtractFromStorage(projectID string, storageIDs []string, incl
 	}
 
 	if includeUnstructured {
-		result, err := s.extractUnstructuredFromStorage(projectID, storageIDs)
+		result, err := s.extractUnstructuredFromStorageWithCIRs(projectID, cirsByStorage)
 		if err != nil {
 			return nil, fmt.Errorf("unstructured extraction failed: %w", err)
 		}
 		unstructuredResult = result
 	}
 
-	return ReconcileEntities(structuredResult, unstructuredResult), nil
+	result := ReconcileEntities(structuredResult, unstructuredResult)
+
+	// Detect cross-source links when more than one storage source contributed data.
+	if len(storageIDs) > 1 {
+		result.CrossSourceLinks = DetectCrossSourceLinks(allProfiles)
+	}
+
+	return result, nil
 }
 
 // ─── Structured path ──────────────────────────────────────────────────────────
 
-func (s *Service) extractStructuredFromStorage(projectID string, storageIDs []string) (*models.ExtractionResult, error) {
+// extractStructuredFromStorageWithCIRs runs structured extraction using
+// pre-fetched CIR data (avoiding a second round of storage calls).
+func (s *Service) extractStructuredFromStorageWithCIRs(_ string, storageIDs []string, cirsByStorage map[string][]*models.CIR) (*models.ExtractionResult, error) {
 	allEntities := []models.ExtractedEntity{}
 	allRelationships := []models.ExtractedRelationship{}
 
 	for _, storageID := range storageIDs {
-		cirItems, err := s.storageService.Retrieve(storageID, &models.CIRQuery{Limit: 1000})
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve data from storage %s: %w", storageID, err)
-		}
-
+		cirItems := cirsByStorage[storageID]
 		for _, cir := range cirItems {
+			// Try row-entity extraction first for structured record tables.
+			// This produces one entity per row with the entity type inferred
+			// from the key column name (e.g. "student_id" → type "Student"),
+			// and preserves numeric/boolean column values as typed attributes.
+			// This is more accurate than column-value extraction for DB tables.
+			if tabResult, ok := ExtractSchemaFromTabularCIR(cir); ok {
+				allEntities = append(allEntities, tabResult.Entities...)
+				allRelationships = append(allRelationships, tabResult.Relationships...)
+				continue
+			}
+
+			// Fall back to column-value entity extraction for non-record CIRs.
 			result, err := ExtractFromStructuredCIR(cir)
 			if err != nil {
 				continue
@@ -128,13 +169,11 @@ func (s *Service) extractStructuredFromStorage(projectID string, storageIDs []st
 // Relationships are discovered via Normalised PMI (NPMI) on pairs of
 // entity candidates that co-occur in the same records.
 
-func (s *Service) extractUnstructuredFromStorage(_ string, storageIDs []string) (*models.ExtractionResult, error) {
+// extractUnstructuredFromStorageWithCIRs runs unstructured (NLP) extraction
+// using pre-fetched CIR data.
+func (s *Service) extractUnstructuredFromStorageWithCIRs(_ string, cirsByStorage map[string][]*models.CIR) (*models.ExtractionResult, error) {
 	var records []extractionRecord
-	for _, storageID := range storageIDs {
-		cirItems, err := s.storageService.Retrieve(storageID, &models.CIRQuery{Limit: 1000})
-		if err != nil {
-			continue
-		}
+	for _, cirItems := range cirsByStorage {
 		for _, cir := range cirItems {
 			// cirToRows expands array-format CIR data into per-row records so
 			// that corpus statistics (IDF, NPMI) are computed at row granularity
@@ -142,7 +181,6 @@ func (s *Service) extractUnstructuredFromStorage(_ string, storageIDs []string) 
 			records = append(records, cirToRows(cir)...)
 		}
 	}
-
 	return extractFromRecords(records), nil
 }
 

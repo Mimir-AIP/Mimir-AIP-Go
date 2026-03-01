@@ -199,30 +199,63 @@ func setDiff(a, b map[string]bool) []string {
 	return result
 }
 
-// GenerateFromExtraction generates a Turtle ontology from extraction results
+// GenerateFromExtraction generates a Turtle ontology from extraction results.
+//
+// Status is set to "active" when no active ontology already exists for the
+// project so that the first auto-generated ontology is immediately usable
+// without any manual intervention.  Subsequent regenerations that differ from
+// the currently active ontology are set to "needs_review" by the caller
+// (extraction handler) after diffing.
 func (s *Service) GenerateFromExtraction(projectID, name string, extractionResult *models.ExtractionResult) (*models.Ontology, error) {
 	if extractionResult == nil {
 		return nil, fmt.Errorf("extraction result cannot be nil")
 	}
 
-	// Generate Turtle content from extraction result
 	turtleContent := generateTurtleFromExtraction(extractionResult)
 
-	// Create ontology
+	// Determine initial status: active if no active ontology exists yet.
+	initialStatus := "draft"
+	existingOntologies, err := s.store.ListOntologiesByProject(projectID)
+	if err == nil {
+		hasActive := false
+		for _, o := range existingOntologies {
+			if o.Status == "active" {
+				hasActive = true
+				break
+			}
+		}
+		if !hasActive {
+			initialStatus = "active"
+		}
+	}
+
+	desc := fmt.Sprintf("Auto-generated ontology from %d entities", len(extractionResult.Entities))
+	if len(extractionResult.CrossSourceLinks) > 0 {
+		desc += fmt.Sprintf(", %d cross-source links", len(extractionResult.CrossSourceLinks))
+	}
+
 	req := &models.OntologyCreateRequest{
 		ProjectID:   projectID,
 		Name:        name,
-		Description: fmt.Sprintf("Auto-generated ontology from %d entities", len(extractionResult.Entities)),
+		Description: desc,
 		Version:     "1.0",
 		Content:     turtleContent,
-		Status:      "draft",
+		Status:      initialStatus,
 		IsGenerated: true,
 	}
 
 	return s.CreateOntology(req)
 }
 
-// generateTurtleFromExtraction converts extraction results to Turtle format
+// generateTurtleFromExtraction converts extraction results to Turtle format.
+//
+// Entity class names are derived from the entity_type attribute set during
+// structured extraction (which reflects the column/table name, e.g. "Student"),
+// not from the entity value itself (e.g. "Alice Johnson").
+//
+// Cross-source links discovered by the extraction engine are emitted as
+// owl:ObjectProperty declarations with :crossSourceLink "true" so that
+// downstream consumers (digital twin sync, SPARQL) can identify join points.
 func generateTurtleFromExtraction(result *models.ExtractionResult) string {
 	var builder strings.Builder
 
@@ -233,77 +266,181 @@ func generateTurtleFromExtraction(result *models.ExtractionResult) string {
 	builder.WriteString("@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n")
 	builder.WriteString("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n\n")
 
-	// Extract unique entity types from entities
+	// Collect unique entity class names from the entity_type attribute,
+	// which is set by structured extraction to the source column/table name.
+	// Only fall back to the entity name for unstructured entities whose name
+	// looks like a type (no spaces, short enough to be a class name).
 	entityTypes := make(map[string]bool)
 	for _, entity := range result.Entities {
-		// Use first word of entity name as type (simplified heuristic)
-		entityType := getEntityType(entity.Name)
-		entityTypes[entityType] = true
+		t := resolveEntityType(entity)
+		if t != "" && t != "Entity" {
+			entityTypes[capitalize(t)] = true
+		}
 	}
 
-	// Write entity type classes
+	// Also collect entity types from cross-source links (they may reference
+	// entity types not present in the extracted entity list).
+	for _, link := range result.CrossSourceLinks {
+		if link.EntityTypeA != "" {
+			entityTypes[capitalize(link.EntityTypeA)] = true
+		}
+		if link.EntityTypeB != "" {
+			entityTypes[capitalize(link.EntityTypeB)] = true
+		}
+	}
+
+	// Write entity type classes.
 	builder.WriteString("# Entity Types (Classes)\n")
-	for entityType := range entityTypes {
-		className := capitalize(entityType)
+	for className := range entityTypes {
 		builder.WriteString(fmt.Sprintf(":%s a owl:Class ;\n", className))
 		builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" .\n\n", className))
 	}
 
-	// Extract unique attributes from all entities
-	attributes := make(map[string]string) // attribute name -> inferred type
-
+	// Collect datatype properties (scalar attributes) from entities.
+	// Properties are grouped by entity type so that rdfs:domain can be emitted,
+	// allowing parseOntologyClasses in the digital twin to correctly associate
+	// each property with its owning class.
+	//
+	// When the same property name appears in multiple entity types, the first
+	// entity type encountered takes precedence for domain assignment.
+	type propSpec struct {
+		xsdType    string
+		domainType string // PascalCase entity type, empty if unknown
+	}
+	propsByName := make(map[string]propSpec) // camelCase propName → spec
+	skipAttrs := map[string]bool{
+		"entity_type": true, "source_column": true, "occurrence_count": true,
+		"doc_frequency": true, "total_occurrences": true, "cap_consistency": true,
+		"fields": true,
+	}
 	for _, entity := range result.Entities {
+		et := capitalize(resolveEntityType(entity))
 		for attrName, attrValue := range entity.Attributes {
-			if _, exists := attributes[attrName]; !exists {
-				attributes[attrName] = inferXSDType(attrValue)
+			if skipAttrs[attrName] {
+				continue
+			}
+			propName := toCamelCase(attrName)
+			if _, exists := propsByName[propName]; !exists {
+				propsByName[propName] = propSpec{
+					xsdType:    inferXSDType(attrValue),
+					domainType: et,
+				}
 			}
 		}
 	}
 
-	// Write datatype properties (attributes)
 	builder.WriteString("# Datatype Properties (Attributes)\n")
-	for attrName, xsdType := range attributes {
-		propName := toCamelCase(attrName)
+	for propName, spec := range propsByName {
 		builder.WriteString(fmt.Sprintf(":%s a owl:DatatypeProperty ;\n", propName))
 		builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" ;\n", propName))
-		builder.WriteString(fmt.Sprintf("    rdfs:range xsd:%s .\n\n", xsdType))
+		if spec.domainType != "" && spec.domainType != "Entity" {
+			builder.WriteString(fmt.Sprintf("    rdfs:domain :%s ;\n", spec.domainType))
+		}
+		builder.WriteString(fmt.Sprintf("    rdfs:range xsd:%s .\n\n", spec.xsdType))
 	}
 
-	// Extract unique relationships
-	relationTypes := make(map[string]struct {
-		from string
-		to   string
-	})
-
+	// Collect object properties from intra-source relationships.
+	type relSpec struct{ from, to string }
+	relationTypes := make(map[string]relSpec)
 	for _, rel := range result.Relationships {
-		key := rel.Relation
-		relationTypes[key] = struct {
-			from string
-			to   string
-		}{
-			from: getEntityType(rel.Entity1.Name),
-			to:   getEntityType(rel.Entity2.Name),
+		key := toCamelCase(rel.Relation)
+		from := capitalize(resolveEntityType(*rel.Entity1))
+		to := capitalize(resolveEntityType(*rel.Entity2))
+		if from != "" && to != "" {
+			relationTypes[key] = relSpec{from, to}
 		}
 	}
 
-	// Write object properties (relationships)
+	// Emit cross-source link ObjectProperties.
+	// Each link produces a bidirectional has<EntityTypeB> property on EntityTypeA.
+	// The property name encodes both entity types for clarity.
+	for _, link := range result.CrossSourceLinks {
+		typeA := capitalize(link.EntityTypeA)
+		typeB := capitalize(link.EntityTypeB)
+		if typeA == "" || typeB == "" {
+			continue
+		}
+		// Produce has<TypeB> on TypeA (and has<TypeA> on TypeB).
+		fwdKey := "has" + typeB
+		bwdKey := "has" + typeA
+		if _, exists := relationTypes[fwdKey]; !exists {
+			relationTypes[fwdKey] = relSpec{typeA, typeB}
+		}
+		if _, exists := relationTypes[bwdKey]; !exists {
+			relationTypes[bwdKey] = relSpec{typeB, typeA}
+		}
+	}
+
 	builder.WriteString("# Object Properties (Relationships)\n")
-	for relName, rel := range relationTypes {
-		propName := toCamelCase(relName)
+	for propName, rel := range relationTypes {
 		builder.WriteString(fmt.Sprintf(":%s a owl:ObjectProperty ;\n", propName))
 		builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" ;\n", propName))
-		builder.WriteString(fmt.Sprintf("    rdfs:domain :%s ;\n", capitalize(rel.from)))
-		builder.WriteString(fmt.Sprintf("    rdfs:range :%s .\n\n", capitalize(rel.to)))
+		builder.WriteString(fmt.Sprintf("    rdfs:domain :%s ;\n", rel.from))
+		builder.WriteString(fmt.Sprintf("    rdfs:range :%s .\n\n", rel.to))
+	}
+
+	// Annotate cross-source links as identity-key bridges so tools can
+	// distinguish them from intra-source structural relationships.
+	if len(result.CrossSourceLinks) > 0 {
+		builder.WriteString("# Cross-Source Identity Links\n")
+		for _, link := range result.CrossSourceLinks {
+			typeA := capitalize(link.EntityTypeA)
+			typeB := capitalize(link.EntityTypeB)
+			propName := toCamelCase(link.ColumnA + "_links_" + link.ColumnB)
+			builder.WriteString(fmt.Sprintf(":%s a owl:ObjectProperty ;\n", propName))
+			builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" ;\n", propName))
+			builder.WriteString(fmt.Sprintf("    rdfs:domain :%s ;\n", typeA))
+			builder.WriteString(fmt.Sprintf("    rdfs:range :%s ;\n", typeB))
+			builder.WriteString(fmt.Sprintf("    :crossSourceLink \"true\"^^xsd:boolean ;\n"))
+			builder.WriteString(fmt.Sprintf("    :linkConfidence \"%s\"^^xsd:float ;\n", fmt.Sprintf("%.3f", link.Confidence)))
+			builder.WriteString(fmt.Sprintf("    :joinColumnA \"%s\" ;\n", link.ColumnA))
+			builder.WriteString(fmt.Sprintf("    :joinColumnB \"%s\" .\n\n", link.ColumnB))
+		}
 	}
 
 	return builder.String()
 }
 
-// getEntityType extracts entity type from entity name (simplified heuristic)
-func getEntityType(name string) string {
-	// Use the entire name as the type for now
-	// In a more sophisticated implementation, this would use NLP or pattern matching
-	return name
+// resolveEntityType extracts a meaningful entity class name from an
+// ExtractedEntity, preferring the entity_type attribute set during structured
+// extraction over using the raw entity value as a class name.
+func resolveEntityType(entity models.ExtractedEntity) string {
+	// Structured extraction: entity_type attribute holds the column/table name.
+	if et, ok := entity.Attributes["entity_type"].(string); ok && et != "" {
+		return et
+	}
+	// Unstructured extraction: try the first field key the entity appeared in.
+	if fields, ok := entity.Attributes["fields"].([]interface{}); ok && len(fields) > 0 {
+		if s, ok := fields[0].(string); ok && s != "" {
+			return colNameToType(s)
+		}
+	}
+	// Fall back to the entity name only if it looks like a type identifier:
+	// no spaces, no digits-only, short enough to be a class name.
+	name := strings.TrimSpace(entity.Name)
+	if name != "" && !strings.Contains(name, " ") && len(name) <= 50 {
+		return name
+	}
+	return "Entity"
+}
+
+// colNameToType converts a snake_case/kebab-case column name to PascalCase,
+// matching the logic in pkg/extraction/structured.go so that entity types
+// generated from ontology and extraction are consistent.
+func colNameToType(col string) string {
+	parts := strings.FieldsFunc(col, func(r rune) bool {
+		return r == '_' || r == '-' || r == ' '
+	})
+	var b strings.Builder
+	for _, p := range parts {
+		runes := []rune(p)
+		if len(runes) == 0 {
+			continue
+		}
+		b.WriteRune([]rune(strings.ToUpper(string(runes[0])))[0])
+		b.WriteString(string(runes[1:]))
+	}
+	return b.String()
 }
 
 // inferXSDType infers XSD type from a value

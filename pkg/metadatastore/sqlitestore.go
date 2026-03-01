@@ -1642,6 +1642,32 @@ func (s *SQLiteStore) ListEntitiesByDigitalTwin(twinID string) ([]*models.Entity
 	return entities, nil
 }
 
+// ListEntitiesByTypeInTwin lists all entities of a specific type within a digital twin.
+// Uses the existing twin_id + entity_type indices for efficient lookup.
+func (s *SQLiteStore) ListEntitiesByTypeInTwin(twinID, entityType string) ([]*models.Entity, error) {
+	query := `SELECT data FROM dt_entities WHERE twin_id = ? AND entity_type = ? ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query, twinID, entityType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list entities by type: %w", err)
+	}
+	defer rows.Close()
+
+	var entities []*models.Entity
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan entity: %w", err)
+		}
+		var entity models.Entity
+		if err := json.Unmarshal(data, &entity); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal entity: %w", err)
+		}
+		entities = append(entities, &entity)
+	}
+	return entities, nil
+}
+
 // DeleteEntity deletes an entity
 func (s *SQLiteStore) DeleteEntity(id string) error {
 	query := `DELETE FROM dt_entities WHERE id = ?`

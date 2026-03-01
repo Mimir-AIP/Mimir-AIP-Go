@@ -371,6 +371,180 @@ func TestColNameToType(t *testing.T) {
 	}
 }
 
+// ─── Tabular row-entity extraction tests ─────────────────────────────────────
+
+func TestExtractSchemaFromTabularCIR(t *testing.T) {
+	t.Run("Student table: entity type from key column, numeric attrs preserved", func(t *testing.T) {
+		cir := &models.CIR{
+			Data: []interface{}{
+				map[string]interface{}{"student_id": 42, "first_name": "Alice", "grade": 88.0, "attendance_rate": 0.92},
+				map[string]interface{}{"student_id": 43, "first_name": "Bob", "grade": 72.0, "attendance_rate": 0.85},
+				map[string]interface{}{"student_id": 44, "first_name": "Carol", "grade": 91.0, "attendance_rate": 0.97},
+			},
+		}
+		result, ok := ExtractSchemaFromTabularCIR(cir)
+		if !ok {
+			t.Fatal("expected ExtractSchemaFromTabularCIR to succeed for student table")
+		}
+		if len(result.Entities) != 3 {
+			t.Errorf("expected 3 entities (one per student); got %d", len(result.Entities))
+		}
+		// Entity type must be "Student" (stripped from student_id).
+		for _, e := range result.Entities {
+			et, _ := e.Attributes["entity_type"].(string)
+			if et != "Student" {
+				t.Errorf("expected entity_type=Student; got %q", et)
+			}
+			// Numeric grade must be preserved (not discarded).
+			if _, ok := e.Attributes["grade"]; !ok {
+				t.Error("grade attribute should be present on entity")
+			}
+		}
+	})
+
+	t.Run("Explicit entity_type CIR param takes priority over key column heuristic", func(t *testing.T) {
+		cir := &models.CIR{
+			Source: models.CIRSource{Parameters: map[string]interface{}{"entity_type": "Pupil"}},
+			Data: []interface{}{
+				map[string]interface{}{"student_id": 1, "name": "Alice"},
+			},
+		}
+		result, ok := ExtractSchemaFromTabularCIR(cir)
+		if !ok {
+			t.Fatal("expected success with explicit entity_type param")
+		}
+		if et, _ := result.Entities[0].Attributes["entity_type"].(string); et != "Pupil" {
+			t.Errorf("expected entity_type=Pupil; got %q", et)
+		}
+	})
+
+	t.Run("Grade records table: GradeRecord from grade_record_id", func(t *testing.T) {
+		cir := &models.CIR{
+			Data: []interface{}{
+				map[string]interface{}{"grade_record_id": 1, "student_id": 42, "subject": "Math", "score": 88},
+				map[string]interface{}{"grade_record_id": 2, "student_id": 42, "subject": "Science", "score": 91},
+				map[string]interface{}{"grade_record_id": 3, "student_id": 43, "subject": "Math", "score": 72},
+			},
+		}
+		result, ok := ExtractSchemaFromTabularCIR(cir)
+		if !ok {
+			t.Fatal("expected success for grade_records table")
+		}
+		if len(result.Entities) != 3 {
+			t.Errorf("expected 3 grade record entities; got %d", len(result.Entities))
+		}
+		et, _ := result.Entities[0].Attributes["entity_type"].(string)
+		if et != "GradeRecord" {
+			t.Errorf("expected entity_type=GradeRecord; got %q", et)
+		}
+	})
+
+	t.Run("No key column: falls back gracefully (returns false)", func(t *testing.T) {
+		cir := &models.CIR{
+			Data: []interface{}{
+				map[string]interface{}{"name": "Alice", "dept": "Engineering"},
+				map[string]interface{}{"name": "Bob", "dept": "Sales"},
+			},
+		}
+		_, ok := ExtractSchemaFromTabularCIR(cir)
+		// "name" and "dept" have no key suffix → should fall back
+		if ok {
+			t.Error("expected fallback (false) when no key column and no URI/param type hint")
+		}
+	})
+
+	t.Run("URI-based type inference when no key column but URI has type segment", func(t *testing.T) {
+		cir := &models.CIR{
+			Source: models.CIRSource{URI: "storage://db-1/attendance_records"},
+			Data: []interface{}{
+				map[string]interface{}{"name": "Alice", "days_absent": 3},
+				map[string]interface{}{"name": "Bob", "days_absent": 7},
+			},
+		}
+		result, ok := ExtractSchemaFromTabularCIR(cir)
+		if !ok {
+			t.Fatal("expected success via URI segment")
+		}
+		et, _ := result.Entities[0].Attributes["entity_type"].(string)
+		if et != "AttendanceRecords" {
+			t.Errorf("expected entity_type=AttendanceRecords from URI; got %q", et)
+		}
+	})
+
+	t.Run("Non-array CIR data returns false", func(t *testing.T) {
+		cir := &models.CIR{Data: "just a string"}
+		if _, ok := ExtractSchemaFromTabularCIR(cir); ok {
+			t.Error("expected false for non-array CIR data")
+		}
+	})
+
+	t.Run("Deduplication: same student_id in multiple rows produces one entity", func(t *testing.T) {
+		// If the same student appears twice (duplicate rows), only one entity.
+		cir := &models.CIR{
+			Data: []interface{}{
+				map[string]interface{}{"student_id": 42, "first_name": "Alice", "grade": 88},
+				map[string]interface{}{"student_id": 42, "first_name": "Alice", "grade": 91},
+			},
+		}
+		result, ok := ExtractSchemaFromTabularCIR(cir)
+		if !ok {
+			t.Fatal("expected success")
+		}
+		if len(result.Entities) != 1 {
+			t.Errorf("expected 1 deduplicated entity; got %d", len(result.Entities))
+		}
+	})
+}
+
+func TestStripKeySuffix(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"student_id", "Student"},
+		{"grade_record_id", "GradeRecord"},
+		{"order_code", "Order"},
+		{"employee_uuid", "Employee"},
+		{"id", "Entity"},
+		{"uuid", "Entity"},
+		{"attendance_record_key", "AttendanceRecord"},
+	}
+	for _, tc := range cases {
+		got := stripKeySuffix(tc.in)
+		if got != tc.want {
+			t.Errorf("stripKeySuffix(%q) = %q; want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestDetectPrimaryKeyColumn(t *testing.T) {
+	t.Run("Single key column", func(t *testing.T) {
+		cols := []colInfo{
+			{name: "student_id"},
+			{name: "first_name"},
+			{name: "grade"},
+		}
+		if got := detectPrimaryKeyColumn(cols, ""); got != "student_id" {
+			t.Errorf("expected student_id; got %q", got)
+		}
+	})
+
+	t.Run("Multiple key columns: entity hint picks matching one", func(t *testing.T) {
+		cols := []colInfo{
+			{name: "grade_record_id"},
+			{name: "student_id"},
+			{name: "subject"},
+		}
+		// With hint "grade_record" we should prefer grade_record_id.
+		got := detectPrimaryKeyColumn(cols, "grade_record")
+		if got != "grade_record_id" {
+			t.Errorf("expected grade_record_id with hint; got %q", got)
+		}
+		// Without hint: shortest wins (student_id is shorter).
+		got2 := detectPrimaryKeyColumn(cols, "")
+		if got2 != "student_id" {
+			t.Errorf("expected student_id (shortest) without hint; got %q", got2)
+		}
+	})
+}
+
 // ─── normalizeText unit test (retained utility) ───────────────────────────────
 
 func TestNormalizeText(t *testing.T) {

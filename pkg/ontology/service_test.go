@@ -137,8 +137,10 @@ func TestGenerateFromExtraction(t *testing.T) {
 		t.Error("Ontology should be marked as generated")
 	}
 
-	if ontology.Status != "draft" {
-		t.Errorf("Expected status 'draft', got %s", ontology.Status)
+	// When no active ontology exists for the project, the first generated
+	// ontology is automatically set to "active" so it is immediately usable.
+	if ontology.Status != "active" {
+		t.Errorf("Expected status 'active' (auto-activated on first generation), got %s", ontology.Status)
 	}
 
 	// Check that Turtle content contains expected elements

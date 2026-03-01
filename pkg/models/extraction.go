@@ -27,9 +27,41 @@ type ExtractedAttribute struct {
 
 // ExtractionResult represents the complete result of entity extraction
 type ExtractionResult struct {
-	Entities      []ExtractedEntity       `json:"entities"`
-	Relationships []ExtractedRelationship `json:"relationships"`
-	Attributes    []ExtractedAttribute    `json:"attributes,omitempty"`
-	Source        string                  `json:"source"` // "structured" or "unstructured"
+	Entities          []ExtractedEntity       `json:"entities"`
+	Relationships     []ExtractedRelationship `json:"relationships"`
+	Attributes        []ExtractedAttribute    `json:"attributes,omitempty"`
+	Source            string                  `json:"source"` // "structured" or "unstructured"
+	CrossSourceLinks  []CrossSourceLink       `json:"cross_source_links,omitempty"`
+}
+
+// ColumnProfile captures the statistical fingerprint of a single column within
+// a storage source. It is computed during extraction and used by the cross-source
+// link detection algorithm without any domain-specific configuration.
+type ColumnProfile struct {
+	StorageID        string          `json:"storage_id"`
+	EntityType       string          `json:"entity_type"`   // inferred entity type for the table
+	ColumnName       string          `json:"column_name"`
+	ValueSample      map[string]bool `json:"-"`             // in-memory only; not serialised
+	TotalRows        int             `json:"total_rows"`
+	UniqueCount      int             `json:"unique_count"`
+	CardinalityRatio float64         `json:"cardinality_ratio"` // UniqueCount / TotalRows
+	IsNumeric        bool            `json:"is_numeric"`
+	IsLikelyKey      bool            `json:"is_likely_key"` // high cardinality or key-like name
+}
+
+// CrossSourceLink describes a statistically-discovered bridge between two columns
+// from different storage sources — a foreign-key-like join inferred purely from
+// value overlap and column name similarity. No domain configuration is required.
+type CrossSourceLink struct {
+	StorageA         string  `json:"storage_a"`
+	ColumnA          string  `json:"column_a"`
+	EntityTypeA      string  `json:"entity_type_a"`
+	StorageB         string  `json:"storage_b"`
+	ColumnB          string  `json:"column_b"`
+	EntityTypeB      string  `json:"entity_type_b"`
+	Confidence       float64 `json:"confidence"`
+	NameSimilarity   float64 `json:"name_similarity"`
+	ValueOverlap     float64 `json:"value_overlap"`     // Jaccard index of value sets
+	SharedValueCount int     `json:"shared_value_count"`
 }
 

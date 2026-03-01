@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -173,20 +174,28 @@ func (s *Service) ListDigitalTwinsByProject(projectID string) ([]*models.Digital
 	return twins, nil
 }
 
-// SyncWithStorage synchronizes digital twin entities with CIR data from storage
+// SyncWithStorage synchronizes digital twin entities with CIR data from storage.
+//
+// Entity resolution: when the same logical entity appears in multiple storage
+// sources (e.g. student_id=42 in grades_db and in attendance_db), the records
+// are merged into a single canonical entity rather than creating duplicates.
+// Resolution is driven entirely by key-field value matching — no configuration
+// required.
+//
+// Relationship wiring: after all sources are synced, entities of different
+// types that share a common key-field value (the join detected during
+// extraction) are linked via EntityRelationship entries.
 func (s *Service) SyncWithStorage(twinID string) error {
 	twin, err := s.store.GetDigitalTwin(twinID)
 	if err != nil {
 		return fmt.Errorf("failed to get digital twin: %w", err)
 	}
 
-	// Get ontology to know entity types
 	ont, err := s.ontologyService.GetOntology(twin.OntologyID)
 	if err != nil {
 		return fmt.Errorf("failed to get ontology: %w", err)
 	}
 
-	// Sync entities from storage configs
 	if twin.Config != nil && len(twin.Config.StorageIDs) > 0 {
 		for _, storageID := range twin.Config.StorageIDs {
 			if err := s.syncFromStorage(twin, ont, storageID); err != nil {
@@ -195,7 +204,12 @@ func (s *Service) SyncWithStorage(twinID string) error {
 		}
 	}
 
-	// Update last sync time
+	// Wire cross-type relationships based on shared key field values.
+	if err := s.wireRelationships(twin.ID); err != nil {
+		// Non-fatal: log and continue.
+		fmt.Printf("Warning: failed to wire cross-type relationships for twin %s: %v\n", twin.ID, err)
+	}
+
 	now := time.Now().UTC()
 	twin.LastSyncAt = &now
 	twin.UpdatedAt = now
@@ -306,7 +320,13 @@ func (s *Service) Query(twinID string, req *models.QueryRequest) (*models.QueryR
 	return result, nil
 }
 
-// Predict runs ML model prediction on entity data
+// Predict runs ML model prediction on entity data.
+//
+// When EntityID is provided, the service automatically enriches the input
+// feature map with attributes from directly related entities, prefixed by
+// their type (e.g. "attendance.days_absent").  This lets models trained on
+// cross-source features produce accurate predictions even when called with
+// only an entity reference rather than a manually constructed feature vector.
 func (s *Service) Predict(twinID string, req *models.PredictionRequest) (*models.Prediction, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
@@ -320,6 +340,15 @@ func (s *Service) Predict(twinID string, req *models.PredictionRequest) (*models
 	// Check if predictions are enabled
 	if twin.Config != nil && !twin.Config.EnablePredictions {
 		return nil, fmt.Errorf("predictions are disabled for this digital twin")
+	}
+
+	// Enrich the input with related entity attributes when an entity ID is
+	// given.  This is non-fatal: if enrichment fails the caller-supplied
+	// input (or an empty map) is used as-is.
+	if req.EntityID != "" {
+		if err := s.enrichPredictionInput(req); err != nil {
+			fmt.Printf("Warning: failed to enrich prediction input for entity %s: %v\n", req.EntityID, err)
+		}
 	}
 
 	// Run prediction through inference engine
@@ -340,6 +369,50 @@ func (s *Service) Predict(twinID string, req *models.PredictionRequest) (*models
 	}
 
 	return prediction, nil
+}
+
+// enrichPredictionInput loads the target entity's attributes into req.Input
+// (if the caller did not supply them) and then merges attributes from all
+// directly related entities under type-prefixed keys.
+//
+// Example: a Student entity with a related AttendanceRecord produces keys like:
+//
+//	"avg_grade"              → from Student.Attributes
+//	"attendancerecord.days_absent" → from the related AttendanceRecord
+//
+// Related entity attributes are added only when the key is not already present,
+// so caller-supplied values always take precedence.  Depth is limited to
+// direct (depth-1) relationships to keep the feature vector bounded.
+func (s *Service) enrichPredictionInput(req *models.PredictionRequest) error {
+	entity, err := s.store.GetEntity(req.EntityID)
+	if err != nil {
+		return fmt.Errorf("failed to load entity: %w", err)
+	}
+
+	// Auto-populate input from entity attributes when the caller omitted them.
+	if len(req.Input) == 0 {
+		req.Input = make(map[string]interface{}, len(entity.Attributes))
+		for k, v := range entity.Attributes {
+			req.Input[k] = v
+		}
+	}
+
+	// Merge related entity attributes with a type prefix.
+	for _, rel := range entity.Relationships {
+		related, err := s.store.GetEntity(rel.TargetID)
+		if err != nil {
+			continue // non-fatal: skip missing related entities
+		}
+		prefix := strings.ToLower(rel.TargetType) + "."
+		for k, v := range related.Attributes {
+			key := prefix + k
+			if _, exists := req.Input[key]; !exists {
+				req.Input[key] = v
+			}
+		}
+	}
+
+	return nil
 }
 
 // BatchPredict runs batch predictions
@@ -620,14 +693,21 @@ func containsString(slice []string, s string) bool {
 	return false
 }
 
-// syncFromStorage retrieves CIR data from a storage source and creates/updates entities
+// syncFromStorage retrieves CIR data from a storage source and creates or
+// merges entities in the digital twin.
+//
+// Entity resolution: before creating a new entity, the function checks whether
+// an entity of the same type with the same key-field value already exists
+// (e.g. from a previous pipeline that wrote to a different storage).  If found,
+// the new attributes are merged into the existing entity rather than creating
+// a duplicate.  The source storage ID is appended to the entity's source list.
 func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology, storageID string) error {
 	cirs, err := s.storageService.Retrieve(storageID, &models.CIRQuery{})
 	if err != nil {
 		return fmt.Errorf("failed to retrieve CIR data from storage %s: %w", storageID, err)
 	}
 
-	// Build ontology class names for entity type inference
+	// Build ontology class names for entity type inference.
 	var classNames []string
 	if entityTypes, ok := twin.Metadata["entity_types"]; ok {
 		if etMap, ok := entityTypes.(map[string]interface{}); ok {
@@ -636,6 +716,36 @@ func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology
 			}
 		}
 	}
+
+	// Pre-load existing entities per type into an in-memory index to avoid
+	// N×M database queries during resolution.  The index is keyed by
+	// (entityType, keyField, keyValue) → entity pointer.
+	//
+	// We build this lazily per entity type on first encounter.
+	typeIndex := make(map[string]map[string]*models.Entity) // entityType → (keyField+":"+keyValue → entity)
+
+	loadTypeIndex := func(entityType string) {
+		if _, loaded := typeIndex[entityType]; loaded {
+			return
+		}
+		existing, err := s.store.ListEntitiesByTypeInTwin(twin.ID, entityType)
+		if err != nil {
+			typeIndex[entityType] = make(map[string]*models.Entity)
+			return
+		}
+		idx := make(map[string]*models.Entity, len(existing))
+		for _, e := range existing {
+			for _, kf := range detectKeyFields(e.Attributes) {
+				kv := keyValue(e.Attributes[kf])
+				if kv != "" {
+					idx[kf+":"+kv] = e
+				}
+			}
+		}
+		typeIndex[entityType] = idx
+	}
+
+	now := time.Now().UTC()
 
 	for _, cir := range cirs {
 		dataMap, err := cir.GetDataAsMap()
@@ -646,32 +756,307 @@ func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology
 		entityType := inferEntityTypeFromCIR(cir, classNames)
 		sourceID := cir.Source.URI
 
-		// Convert CIR data map to entity attributes (keep all keys)
 		attrs := make(map[string]interface{}, len(dataMap))
 		for k, v := range dataMap {
 			attrs[k] = v
 		}
 
-		now := time.Now().UTC()
-		entity := &models.Entity{
-			ID:             uuid.New().String(),
-			DigitalTwinID:  twin.ID,
-			Type:           entityType,
-			Attributes:     attrs,
-			SourceDataID:   &sourceID,
-			IsModified:     false,
-			Modifications:  make(map[string]interface{}),
-			ComputedValues: map[string]interface{}{"storage_id": storageID},
-			CreatedAt:      now,
-			UpdatedAt:      now,
+		// Attempt entity resolution: find an existing entity of the same type
+		// that shares a key-field value with this CIR record.
+		loadTypeIndex(entityType)
+		idx := typeIndex[entityType]
+
+		var resolved *models.Entity
+		keyFields := detectKeyFields(attrs)
+		for _, kf := range keyFields {
+			kv := keyValue(attrs[kf])
+			if kv == "" {
+				continue
+			}
+			if existing, ok := idx[kf+":"+kv]; ok {
+				resolved = existing
+				break
+			}
 		}
 
-		if err := s.store.SaveEntity(entity); err != nil {
-			fmt.Printf("Warning: failed to save entity from CIR: %v\n", err)
+		if resolved != nil {
+			// Merge: add new attributes without overwriting existing values.
+			for k, v := range attrs {
+				if _, exists := resolved.Attributes[k]; !exists {
+					resolved.Attributes[k] = v
+				}
+			}
+			// Append this storage to the source list.
+			appendSourceID(resolved, storageID)
+			resolved.UpdatedAt = now
+
+			if err := s.store.SaveEntity(resolved); err != nil {
+				fmt.Printf("Warning: failed to merge entity from storage %s: %v\n", storageID, err)
+			}
+			// Update index with any new key values the merged attrs might expose.
+			for _, kf := range keyFields {
+				kv := keyValue(attrs[kf])
+				if kv != "" {
+					idx[kf+":"+kv] = resolved
+				}
+			}
+		} else {
+			// Create new entity.
+			entity := &models.Entity{
+				ID:            uuid.New().String(),
+				DigitalTwinID: twin.ID,
+				Type:          entityType,
+				Attributes:    attrs,
+				SourceDataID:  &sourceID,
+				IsModified:    false,
+				Modifications: make(map[string]interface{}),
+				ComputedValues: map[string]interface{}{
+					"source_ids": []interface{}{storageID},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			if err := s.store.SaveEntity(entity); err != nil {
+				fmt.Printf("Warning: failed to save entity from CIR: %v\n", err)
+				continue
+			}
+			// Register in index so subsequent CIRs from this storage can match it.
+			for _, kf := range keyFields {
+				kv := keyValue(attrs[kf])
+				if kv != "" {
+					idx[kf+":"+kv] = entity
+				}
+			}
 		}
 	}
 
 	return nil
+}
+
+// appendSourceID adds storageID to an entity's ComputedValues["source_ids"]
+// list if it is not already present.
+func appendSourceID(entity *models.Entity, storageID string) {
+	if entity.ComputedValues == nil {
+		entity.ComputedValues = make(map[string]interface{})
+	}
+	existing, _ := entity.ComputedValues["source_ids"].([]interface{})
+	for _, v := range existing {
+		if s, _ := v.(string); s == storageID {
+			return // already present
+		}
+	}
+	entity.ComputedValues["source_ids"] = append(existing, storageID)
+}
+
+// wireRelationships links entities of different types that share a common
+// key-field value.  This is the runtime equivalent of foreign-key resolution:
+// a GradeRecord with student_id=42 and an AttendanceRecord with student_id=42
+// will be linked bidirectionally via an EntityRelationship of type
+// "relatedByStudentId".
+//
+// The algorithm is data-agnostic: it discovers shared key fields by comparing
+// attribute name sets across entity types, then joins on matching values.
+func (s *Service) wireRelationships(twinID string) error {
+	allEntities, err := s.store.ListEntitiesByDigitalTwin(twinID)
+	if err != nil {
+		return fmt.Errorf("failed to list entities: %w", err)
+	}
+
+	// Group entities by type.
+	byType := make(map[string][]*models.Entity)
+	for _, e := range allEntities {
+		byType[e.Type] = append(byType[e.Type], e)
+	}
+
+	types := make([]string, 0, len(byType))
+	for t := range byType {
+		types = append(types, t)
+	}
+
+	if len(types) < 2 {
+		return nil // nothing to link
+	}
+
+	// Track which entity pairs have already been linked to avoid duplicates.
+	linked := make(map[string]bool)
+
+	// For each pair of distinct entity types, find common key fields and
+	// build index-based joins.
+	for i := 0; i < len(types); i++ {
+		for j := i + 1; j < len(types); j++ {
+			typeA, typeB := types[i], types[j]
+			entitiesA := byType[typeA]
+			entitiesB := byType[typeB]
+
+			// Find key field names that appear in both entity types.
+			sharedKeys := commonKeyFieldNames(entitiesA, entitiesB)
+			if len(sharedKeys) == 0 {
+				continue
+			}
+
+			// Build value index for type B: field → value → entity
+			bIndex := make(map[string]map[string]*models.Entity) // field → value → entity
+			for _, e := range entitiesB {
+				for _, kf := range sharedKeys {
+					kv := keyValue(e.Attributes[kf])
+					if kv == "" {
+						continue
+					}
+					if bIndex[kf] == nil {
+						bIndex[kf] = make(map[string]*models.Entity)
+					}
+					bIndex[kf][kv] = e
+				}
+			}
+
+			// Match entities from type A against the index.
+			for _, eA := range entitiesA {
+				for _, kf := range sharedKeys {
+					kv := keyValue(eA.Attributes[kf])
+					if kv == "" {
+						continue
+					}
+					eB, ok := bIndex[kf][kv]
+					if !ok {
+						continue
+					}
+
+					relType := "relatedBy" + toCamelCaseRel(kf)
+
+					// A → B
+					fwdKey := eA.ID + "|" + eB.ID + "|" + relType
+					if !linked[fwdKey] {
+						linked[fwdKey] = true
+						if !hasRelationship(eA, relType, eB.ID) {
+							eA.Relationships = append(eA.Relationships, &models.EntityRelationship{
+								Type:       relType,
+								TargetID:   eB.ID,
+								TargetType: typeB,
+							})
+						}
+					}
+					// B → A (bidirectional)
+					bwdKey := eB.ID + "|" + eA.ID + "|" + relType
+					if !linked[bwdKey] {
+						linked[bwdKey] = true
+						if !hasRelationship(eB, relType, eA.ID) {
+							eB.Relationships = append(eB.Relationships, &models.EntityRelationship{
+								Type:       relType,
+								TargetID:   eA.ID,
+								TargetType: typeA,
+							})
+						}
+					}
+				}
+			}
+
+			// Persist updated entities.
+			for _, e := range entitiesA {
+				if err := s.store.SaveEntity(e); err != nil {
+					fmt.Printf("Warning: failed to save wired entity %s: %v\n", e.ID, err)
+				}
+			}
+			for _, e := range entitiesB {
+				if err := s.store.SaveEntity(e); err != nil {
+					fmt.Printf("Warning: failed to save wired entity %s: %v\n", e.ID, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// commonKeyFieldNames returns key-like attribute names that appear in both
+// entity type sets.  Only the first 20 entities per type are sampled to keep
+// the operation bounded for large twins.
+func commonKeyFieldNames(entitiesA, entitiesB []*models.Entity) []string {
+	sampleA := entitiesA
+	if len(sampleA) > 20 {
+		sampleA = sampleA[:20]
+	}
+	sampleB := entitiesB
+	if len(sampleB) > 20 {
+		sampleB = sampleB[:20]
+	}
+
+	keysA := make(map[string]bool)
+	for _, e := range sampleA {
+		for _, kf := range detectKeyFields(e.Attributes) {
+			keysA[kf] = true
+		}
+	}
+
+	var shared []string
+	seenB := make(map[string]bool)
+	for _, e := range sampleB {
+		for _, kf := range detectKeyFields(e.Attributes) {
+			if keysA[kf] && !seenB[kf] {
+				seenB[kf] = true
+				shared = append(shared, kf)
+			}
+		}
+	}
+	return shared
+}
+
+// hasRelationship returns true if entity already has a relationship of the
+// given type pointing to targetID.
+func hasRelationship(e *models.Entity, relType, targetID string) bool {
+	for _, r := range e.Relationships {
+		if r.Type == relType && r.TargetID == targetID {
+			return true
+		}
+	}
+	return false
+}
+
+// toCamelCaseRel converts a field name like "student_id" → "StudentId"
+// for use in relationship type names.
+func toCamelCaseRel(s string) string {
+	parts := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '_' || r == '-' || r == ' '
+	})
+	var b strings.Builder
+	for _, p := range parts {
+		if len(p) == 0 {
+			continue
+		}
+		b.WriteString(strings.ToUpper(p[:1]) + p[1:])
+	}
+	return b.String()
+}
+
+// detectKeyFields is re-exported here for use within the digitaltwin package.
+// It returns attribute names that look like stable join keys.
+func detectKeyFields(attributes map[string]interface{}) []string {
+	keyNameSuffixes := []string{"id", "key", "code", "number", "uuid", "ref", "identifier", "no", "num", "email", "username", "token"}
+	var keys []string
+	for k := range attributes {
+		lower := strings.ToLower(k)
+		for _, suffix := range keyNameSuffixes {
+			if strings.HasSuffix(lower, suffix) || lower == suffix {
+				keys = append(keys, k)
+				break
+			}
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// keyValue returns a normalised string representation of an attribute value
+// for equality comparison across data sources.
+func keyValue(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	s := fmt.Sprintf("%v", v)
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(s, "0")
+		s = strings.TrimRight(s, ".")
+	}
+	return strings.TrimSpace(s)
 }
 
 // inferEntityTypeFromCIR tries to infer the entity type from a CIR record
@@ -723,24 +1108,58 @@ func inferEntityTypeFromCIR(cir *models.CIR, ontologyClasses []string) string {
 	return "default"
 }
 
-// populateEntityFromSource merges source CIR data with entity modifications
+// populateEntityFromSource merges source CIR data with entity modifications.
+//
+// For merged entities (those produced by cross-source entity resolution, which
+// store multiple source IDs in ComputedValues["source_ids"]), the Attributes
+// map was already fully populated at sync time from all contributing sources.
+// Re-fetching from a single CIR would lose the other sources' data, so we
+// instead just apply any delta modifications on top of the stored merge.
+//
+// For single-source entities the original behaviour is preserved: re-fetch the
+// CIR from storage and build a fresh merged view of source + modifications.
 func (s *Service) populateEntityFromSource(entity *models.Entity) error {
 	if entity.SourceDataID == nil {
 		return nil
 	}
 
-	// Determine which storage holds this entity
+	// Detect merged multi-source entities.
+	if entity.ComputedValues != nil {
+		if sourceIDs, ok := entity.ComputedValues["source_ids"].([]interface{}); ok {
+			if len(sourceIDs) > 1 {
+				// Already fully merged at sync time — only apply deltas.
+				for k, v := range entity.Modifications {
+					if entity.Attributes == nil {
+						entity.Attributes = make(map[string]interface{})
+					}
+					entity.Attributes[k] = v
+				}
+				return nil
+			}
+		}
+	}
+
+	// Determine which single storage holds this entity.
 	storageID := ""
 	if entity.ComputedValues != nil {
-		if sid, ok := entity.ComputedValues["storage_id"].(string); ok {
-			storageID = sid
+		// New format: source_ids list with exactly one entry.
+		if sourceIDs, ok := entity.ComputedValues["source_ids"].([]interface{}); ok && len(sourceIDs) == 1 {
+			if sid, ok := sourceIDs[0].(string); ok {
+				storageID = sid
+			}
+		}
+		// Legacy format: singular storage_id string.
+		if storageID == "" {
+			if sid, ok := entity.ComputedValues["storage_id"].(string); ok {
+				storageID = sid
+			}
 		}
 	}
 	if storageID == "" {
 		return nil
 	}
 
-	// Retrieve all CIRs and find the matching one by URI
+	// Retrieve all CIRs and find the matching one by URI.
 	cirs, err := s.storageService.Retrieve(storageID, &models.CIRQuery{})
 	if err != nil {
 		return nil // non-fatal
@@ -752,7 +1171,7 @@ func (s *Service) populateEntityFromSource(entity *models.Entity) error {
 			if err != nil {
 				continue
 			}
-			// Build merged view: source + delta modifications
+			// Build merged view: source + delta modifications.
 			merged := make(map[string]interface{}, len(sourceData))
 			for k, v := range sourceData {
 				merged[k] = v

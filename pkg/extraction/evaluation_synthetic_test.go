@@ -502,3 +502,100 @@ func TestSyntheticCrossSourceAdversarial_RejectOneSidedKeyJoins(t *testing.T) {
 		}
 	}
 }
+
+func TestSyntheticCrossSourceConfidenceCalibration(t *testing.T) {
+	profiles, expected := syntheticCalibrationProfiles()
+	links := DetectCrossSourceLinks(profiles)
+	if len(links) == 0 {
+		t.Fatal("expected links for calibration dataset")
+	}
+
+	type check struct {
+		threshold  float64
+		minPrec    float64
+		minSupport int
+	}
+	checks := []check{
+		{threshold: 0.35, minPrec: 0.35, minSupport: 6},
+		{threshold: 0.55, minPrec: 0.45, minSupport: 4},
+		{threshold: 0.75, minPrec: 0.95, minSupport: 3},
+	}
+
+	observedPrec := make([]float64, 0, len(checks))
+	for _, c := range checks {
+		prec, support, pred := precisionAtThreshold(links, expected, c.threshold)
+		if support < c.minSupport {
+			t.Fatalf("threshold %.2f has insufficient support: got=%d want>=%d", c.threshold, support, c.minSupport)
+		}
+		if prec < c.minPrec {
+			t.Fatalf("threshold %.2f precision below target: got=%.3f want>=%.3f; predicted=%v", c.threshold, prec, c.minPrec, sortedKeys(pred))
+		}
+		observedPrec = append(observedPrec, prec)
+	}
+
+	if observedPrec[len(observedPrec)-1] < observedPrec[0]+0.30 {
+		t.Fatalf("calibration slope too weak: low-threshold precision=%.3f high-threshold precision=%.3f", observedPrec[0], observedPrec[len(observedPrec)-1])
+	}
+}
+
+func syntheticCalibrationProfiles() ([]models.ColumnProfile, map[string]struct{}) {
+	alphaRows := make([]map[string]interface{}, 0, 200)
+	betaRows := make([]map[string]interface{}, 0, 200)
+	gammaRows := make([]map[string]interface{}, 0, 200)
+
+	for i := 1; i <= 200; i++ {
+		recordID := fmt.Sprintf("R-%04d", i)
+		customerRef := fmt.Sprintf("CUST-%04d", i)
+		partnerRef := fmt.Sprintf("R-%04d", 1+(i%100))
+		accountKey := fmt.Sprintf("R-%04d", 1+(i%140))
+
+		alphaRows = append(alphaRows, map[string]interface{}{
+			"record_id":    recordID,
+			"customer_ref": customerRef,
+		})
+		betaRows = append(betaRows, map[string]interface{}{
+			"record_id":   recordID,
+			"partner_ref": partnerRef,
+		})
+		gammaRows = append(gammaRows, map[string]interface{}{
+			"record_id":   recordID,
+			"account_key": accountKey,
+		})
+	}
+
+	alpha := makeCIR("alpha", "AlphaRecord", alphaRows)
+	beta := makeCIR("beta", "BetaRecord", betaRows)
+	gamma := makeCIR("gamma", "GammaRecord", gammaRows)
+
+	profiles := append([]models.ColumnProfile{}, BuildColumnProfilesFromCIRs("alpha", []*models.CIR{alpha})...)
+	profiles = append(profiles, BuildColumnProfilesFromCIRs("beta", []*models.CIR{beta})...)
+	profiles = append(profiles, BuildColumnProfilesFromCIRs("gamma", []*models.CIR{gamma})...)
+
+	expected := map[string]struct{}{
+		canonicalLinkKey("alpha", "record_id", "beta", "record_id"):  {},
+		canonicalLinkKey("alpha", "record_id", "gamma", "record_id"): {},
+		canonicalLinkKey("beta", "record_id", "gamma", "record_id"):  {},
+	}
+	return profiles, expected
+}
+
+func precisionAtThreshold(links []models.CrossSourceLink, expected map[string]struct{}, threshold float64) (precision float64, support int, predicted map[string]struct{}) {
+	predicted = make(map[string]struct{})
+	for _, l := range links {
+		if l.Confidence >= threshold {
+			predicted[canonicalLinkKey(l.StorageA, l.ColumnA, l.StorageB, l.ColumnB)] = struct{}{}
+		}
+	}
+	if len(predicted) == 0 {
+		return 0, 0, predicted
+	}
+	tp := 0
+	for k := range predicted {
+		if _, ok := expected[k]; ok {
+			tp++
+		}
+	}
+	support = len(predicted)
+	precision = float64(tp) / float64(support)
+	return precision, support, predicted
+}

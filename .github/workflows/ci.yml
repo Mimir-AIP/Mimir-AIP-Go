@@ -37,7 +37,7 @@ jobs:
         run: go test -race -timeout 120s ./pkg/...
 
       - name: Run synthetic extraction quality gates
-        run: go test -timeout 120s ./pkg/extraction -run 'SyntheticCrossDomain|SyntheticLinkingInvariant|SyntheticCrossSourceAdversarial|SyntheticMixedMode'
+        run: go test -timeout 120s ./pkg/extraction -run 'SyntheticCrossDomain|SyntheticCrossSourceConfidenceCalibration|SyntheticLinkingInvariant|SyntheticCrossSourceAdversarial|SyntheticMixedMode'
 
 
   openapi-check:

@@ -2086,9 +2086,16 @@ paths:
             summary: Update pipeline
             tags:
                 - Pipelines
-    /api/pipelines/execute:
+    /api/pipelines/{id}/execute:
         post:
             description: Enqueues a pipeline for asynchronous execution by a worker.
+            parameters:
+                - description: Pipeline ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
             requestBody:
                 content:
                     application/json:
@@ -2096,14 +2103,16 @@ paths:
                             $ref: '#/components/schemas/PipelineExecutionRequest'
                 required: true
             responses:
-                "201":
+                "202":
                     content:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/WorkTask'
-                    description: Created
+                    description: Accepted — processing in background
                 "400":
                     description: Bad request — invalid input
+                "404":
+                    description: Resource not found
             summary: Execute pipeline
             tags:
                 - Pipelines

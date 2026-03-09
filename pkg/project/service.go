@@ -14,6 +14,10 @@ import (
 var (
 	projectNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,50}$`)
 	versionRegex     = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+	// Association validation errors
+	ErrComponentNotFound        = fmt.Errorf("component not found")
+	ErrComponentProjectMismatch = fmt.Errorf("component belongs to a different project")
 )
 
 // Service provides project management operations
@@ -246,6 +250,10 @@ func (s *Service) AddPipeline(projectID, pipelineID string) error {
 		return err
 	}
 
+	if err := s.requirePipelineOwnership(projectID, pipelineID); err != nil {
+		return err
+	}
+
 	if slices.Contains(project.Components.Pipelines, pipelineID) {
 		return nil
 	}
@@ -281,6 +289,10 @@ func (s *Service) RemovePipeline(projectID, pipelineID string) error {
 func (s *Service) AddOntology(projectID, ontologyID string) error {
 	project, err := s.store.GetProject(projectID)
 	if err != nil {
+		return err
+	}
+
+	if err := s.requireOntologyOwnership(projectID, ontologyID); err != nil {
 		return err
 	}
 
@@ -321,6 +333,10 @@ func (s *Service) AddMLModel(projectID, modelID string) error {
 		return err
 	}
 
+	if err := s.requireMLModelOwnership(projectID, modelID); err != nil {
+		return err
+	}
+
 	if slices.Contains(project.Components.MLModels, modelID) {
 		return nil
 	}
@@ -355,6 +371,10 @@ func (s *Service) RemoveMLModel(projectID, modelID string) error {
 func (s *Service) AddDigitalTwin(projectID, twinID string) error {
 	project, err := s.store.GetProject(projectID)
 	if err != nil {
+		return err
+	}
+
+	if err := s.requireDigitalTwinOwnership(projectID, twinID); err != nil {
 		return err
 	}
 
@@ -395,6 +415,10 @@ func (s *Service) AddStorage(projectID, storageID string) error {
 		return err
 	}
 
+	if err := s.requireStorageOwnership(projectID, storageID); err != nil {
+		return err
+	}
+
 	if slices.Contains(project.Components.StorageConfigs, storageID) {
 		return nil
 	}
@@ -423,6 +447,61 @@ func (s *Service) RemoveStorage(projectID, storageID string) error {
 	project.Metadata.UpdatedAt = time.Now()
 
 	return s.store.SaveProject(project)
+}
+
+func (s *Service) requirePipelineOwnership(projectID, pipelineID string) error {
+	pipeline, err := s.store.GetPipeline(pipelineID)
+	if err != nil {
+		return fmt.Errorf("%w: pipeline %s", ErrComponentNotFound, pipelineID)
+	}
+	if pipeline.ProjectID != projectID {
+		return fmt.Errorf("%w: pipeline %s belongs to project %s", ErrComponentProjectMismatch, pipelineID, pipeline.ProjectID)
+	}
+	return nil
+}
+
+func (s *Service) requireOntologyOwnership(projectID, ontologyID string) error {
+	ontology, err := s.store.GetOntology(ontologyID)
+	if err != nil {
+		return fmt.Errorf("%w: ontology %s", ErrComponentNotFound, ontologyID)
+	}
+	if ontology.ProjectID != projectID {
+		return fmt.Errorf("%w: ontology %s belongs to project %s", ErrComponentProjectMismatch, ontologyID, ontology.ProjectID)
+	}
+	return nil
+}
+
+func (s *Service) requireMLModelOwnership(projectID, modelID string) error {
+	model, err := s.store.GetMLModel(modelID)
+	if err != nil {
+		return fmt.Errorf("%w: ml model %s", ErrComponentNotFound, modelID)
+	}
+	if model.ProjectID != projectID {
+		return fmt.Errorf("%w: ml model %s belongs to project %s", ErrComponentProjectMismatch, modelID, model.ProjectID)
+	}
+	return nil
+}
+
+func (s *Service) requireDigitalTwinOwnership(projectID, twinID string) error {
+	twin, err := s.store.GetDigitalTwin(twinID)
+	if err != nil {
+		return fmt.Errorf("%w: digital twin %s", ErrComponentNotFound, twinID)
+	}
+	if twin.ProjectID != projectID {
+		return fmt.Errorf("%w: digital twin %s belongs to project %s", ErrComponentProjectMismatch, twinID, twin.ProjectID)
+	}
+	return nil
+}
+
+func (s *Service) requireStorageOwnership(projectID, storageID string) error {
+	storageConfig, err := s.store.GetStorageConfig(storageID)
+	if err != nil {
+		return fmt.Errorf("%w: storage config %s", ErrComponentNotFound, storageID)
+	}
+	if storageConfig.ProjectID != projectID {
+		return fmt.Errorf("%w: storage config %s belongs to project %s", ErrComponentProjectMismatch, storageID, storageConfig.ProjectID)
+	}
+	return nil
 }
 
 // validateCreateRequest validates a project creation request

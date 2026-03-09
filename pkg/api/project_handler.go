@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -227,7 +228,14 @@ func (h *ProjectHandler) HandleProjectComponent(w http.ResponseWriter, r *http.R
 	}
 
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update project component: %v", err), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, project.ErrComponentNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, project.ErrComponentProjectMismatch):
+			status = http.StatusBadRequest
+		}
+		http.Error(w, fmt.Sprintf("Failed to update project component: %v", err), status)
 		return
 	}
 

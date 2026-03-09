@@ -1,0 +1,157 @@
+{
+  "domains": [
+    {
+      "name": "healthcare",
+      "sources": [
+        {
+          "storage_id": "ehr",
+          "entity_type": "ClinicalRecord",
+          "rows": [
+            {"patient_id": "P1001", "diagnosis_code": "E11", "facility_code": "F01"},
+            {"patient_id": "P1002", "diagnosis_code": "I10", "facility_code": "F01"},
+            {"patient_id": "P1003", "diagnosis_code": "E11", "facility_code": "F02"},
+            {"patient_id": "P1004", "diagnosis_code": "I48", "facility_code": "F02"},
+            {"patient_id": "P1005", "diagnosis_code": "E11", "facility_code": "F01"}
+          ]
+        },
+        {
+          "storage_id": "claims",
+          "entity_type": "ClaimRecord",
+          "rows": [
+            {"member_ref": "P1001", "claim_id": "CLM9001", "payer_code": "PAY01"},
+            {"member_ref": "P1002", "claim_id": "CLM9002", "payer_code": "PAY01"},
+            {"member_ref": "P1003", "claim_id": "CLM9003", "payer_code": "PAY02"},
+            {"member_ref": "P1004", "claim_id": "CLM9004", "payer_code": "PAY02"},
+            {"member_ref": "P1005", "claim_id": "CLM9005", "payer_code": "PAY01"}
+          ]
+        },
+        {
+          "storage_id": "labs",
+          "entity_type": "LabRecord",
+          "rows": [
+            {"subject_key": "P1001", "lab_order": "LAB7001", "panel_code": "LP01"},
+            {"subject_key": "P1002", "lab_order": "LAB7002", "panel_code": "LP02"},
+            {"subject_key": "P1003", "lab_order": "LAB7003", "panel_code": "LP01"},
+            {"subject_key": "P1004", "lab_order": "LAB7004", "panel_code": "LP03"},
+            {"subject_key": "P1005", "lab_order": "LAB7005", "panel_code": "LP02"}
+          ]
+        }
+      ],
+      "expected_links": [
+        ["ehr.patient_id", "claims.member_ref"],
+        ["ehr.patient_id", "labs.subject_key"],
+        ["claims.member_ref", "labs.subject_key"]
+      ],
+      "unstructured_records": [
+        {"patient": "Sarah Thompson", "diagnosis": "Type 2 Diabetes", "medication": "Metformin", "hospital": "St. Mary's Medical Center", "physician": "Dr. James Okafor"},
+        {"patient": "Robert Chen", "diagnosis": "Hypertensive Heart Disease", "medication": "Lisinopril", "hospital": "St. Mary's Medical Center", "physician": "Dr. James Okafor"},
+        {"patient": "Maria Gonzalez", "diagnosis": "Type 2 Diabetes", "medication": "Metformin", "hospital": "Riverside General Hospital", "physician": "Dr. Priya Sharma"},
+        {"patient": "David Kim", "diagnosis": "Atrial Fibrillation", "medication": "Warfarin", "hospital": "Riverside General Hospital", "physician": "Dr. Priya Sharma"},
+        {"patient": "Emily Nakamura", "diagnosis": "Type 2 Diabetes", "medication": "Metformin", "hospital": "St. Mary's Medical Center", "physician": "Dr. James Okafor"}
+      ],
+      "expected_entities": ["Metformin", "St. Mary's Medical Center", "Type 2 Diabetes"]
+    },
+    {
+      "name": "legal",
+      "sources": [
+        {
+          "storage_id": "cases",
+          "entity_type": "CaseRecord",
+          "rows": [
+            {"case_id": "CASE-101", "court_code": "CRT1", "verdict_code": "V1"},
+            {"case_id": "CASE-102", "court_code": "CRT1", "verdict_code": "V2"},
+            {"case_id": "CASE-103", "court_code": "CRT2", "verdict_code": "V1"},
+            {"case_id": "CASE-104", "court_code": "CRT2", "verdict_code": "V3"},
+            {"case_id": "CASE-105", "court_code": "CRT1", "verdict_code": "V2"}
+          ]
+        },
+        {
+          "storage_id": "filings",
+          "entity_type": "FilingRecord",
+          "rows": [
+            {"docket_ref": "CASE-101", "filing_id": "FIL-5001", "office_code": "OF1"},
+            {"docket_ref": "CASE-102", "filing_id": "FIL-5002", "office_code": "OF1"},
+            {"docket_ref": "CASE-103", "filing_id": "FIL-5003", "office_code": "OF2"},
+            {"docket_ref": "CASE-104", "filing_id": "FIL-5004", "office_code": "OF3"},
+            {"docket_ref": "CASE-105", "filing_id": "FIL-5005", "office_code": "OF2"}
+          ]
+        },
+        {
+          "storage_id": "judgments",
+          "entity_type": "JudgmentRecord",
+          "rows": [
+            {"matter_key": "CASE-101", "order_id": "ORD-3001", "panel_code": "PN1"},
+            {"matter_key": "CASE-102", "order_id": "ORD-3002", "panel_code": "PN2"},
+            {"matter_key": "CASE-103", "order_id": "ORD-3003", "panel_code": "PN2"},
+            {"matter_key": "CASE-104", "order_id": "ORD-3004", "panel_code": "PN3"},
+            {"matter_key": "CASE-105", "order_id": "ORD-3005", "panel_code": "PN1"}
+          ]
+        }
+      ],
+      "expected_links": [
+        ["cases.case_id", "filings.docket_ref"],
+        ["cases.case_id", "judgments.matter_key"],
+        ["filings.docket_ref", "judgments.matter_key"]
+      ],
+      "unstructured_records": [
+        {"case": "Smith v. Jones", "court": "Supreme Court of California", "plaintiff": "John Smith", "defendant": "Acme Corporation", "verdict": "Dismissed"},
+        {"case": "Williams v. Acme Corporation", "court": "Supreme Court of California", "plaintiff": "Mary Williams", "defendant": "Acme Corporation", "verdict": "Settled"},
+        {"case": "Chen v. Acme Corporation", "court": "US District Court", "plaintiff": "Robert Chen", "defendant": "Acme Corporation", "verdict": "Dismissed"},
+        {"case": "Garcia v. TechGiant Inc", "court": "Supreme Court of California", "plaintiff": "Elena Garcia", "defendant": "TechGiant Inc", "verdict": "Plaintiff Prevailed"},
+        {"case": "Lee v. Acme Corporation", "court": "US District Court", "plaintiff": "James Lee", "defendant": "Acme Corporation", "verdict": "Settled"}
+      ],
+      "expected_entities": ["Acme Corporation", "Supreme Court of California", "Dismissed"]
+    },
+    {
+      "name": "media",
+      "sources": [
+        {
+          "storage_id": "cms",
+          "entity_type": "ArticleRecord",
+          "rows": [
+            {"article_id": "ART-2001", "section": "tech", "author_ref": "AUTH01"},
+            {"article_id": "ART-2002", "section": "business", "author_ref": "AUTH02"},
+            {"article_id": "ART-2003", "section": "politics", "author_ref": "AUTH03"},
+            {"article_id": "ART-2004", "section": "tech", "author_ref": "AUTH04"},
+            {"article_id": "ART-2005", "section": "world", "author_ref": "AUTH05"}
+          ]
+        },
+        {
+          "storage_id": "analytics",
+          "entity_type": "EngagementRecord",
+          "rows": [
+            {"content_ref": "ART-2001", "session_id": "SES-9001", "geo_code": "G01"},
+            {"content_ref": "ART-2002", "session_id": "SES-9002", "geo_code": "G02"},
+            {"content_ref": "ART-2003", "session_id": "SES-9003", "geo_code": "G03"},
+            {"content_ref": "ART-2004", "session_id": "SES-9004", "geo_code": "G01"},
+            {"content_ref": "ART-2005", "session_id": "SES-9005", "geo_code": "G02"}
+          ]
+        },
+        {
+          "storage_id": "ads",
+          "entity_type": "AdInventoryRecord",
+          "rows": [
+            {"story_key": "ART-2001", "ad_slot_id": "AD-8001", "campaign": "CMP01"},
+            {"story_key": "ART-2002", "ad_slot_id": "AD-8002", "campaign": "CMP02"},
+            {"story_key": "ART-2003", "ad_slot_id": "AD-8003", "campaign": "CMP03"},
+            {"story_key": "ART-2004", "ad_slot_id": "AD-8004", "campaign": "CMP01"},
+            {"story_key": "ART-2005", "ad_slot_id": "AD-8005", "campaign": "CMP02"}
+          ]
+        }
+      ],
+      "expected_links": [
+        ["cms.article_id", "analytics.content_ref"],
+        ["cms.article_id", "ads.story_key"],
+        ["analytics.content_ref", "ads.story_key"]
+      ],
+      "unstructured_records": [
+        {"author": "jane_doe", "content": "Just attended the OpenAI Summit in San Francisco. Great session with Sam Altman and Greg Brockman."},
+        {"author": "tech_blogger", "content": "Sam Altman announced new GPT features at the OpenAI Summit. Huge crowd at San Francisco."},
+        {"author": "ai_watcher", "content": "OpenAI Summit was incredible. San Francisco never disappoints for tech events. Sam Altman is inspiring."},
+        {"author": "dev_news", "content": "OpenAI Summit highlights: Sam Altman on the future of AGI. Venue was San Francisco Moscone Center."},
+        {"author": "ml_researcher", "content": "Great talks at the OpenAI Summit. Met Greg Brockman in San Francisco. Exciting times for AI."}
+      ],
+      "expected_entities": ["OpenAI Summit", "San Francisco", "Sam Altman"]
+    }
+  ]
+}

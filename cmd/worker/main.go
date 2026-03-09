@@ -813,8 +813,8 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	}
 
 	var artifact struct {
-		ModelType    string                 `json:"model_type"`
-		FeatureNames []string               `json:"feature_names"`
+		ModelType    string         `json:"model_type"`
+		FeatureNames []string       `json:"feature_names"`
 		Parameters   map[string]any `json:"parameters"`
 	}
 	if err := json.Unmarshal(artifactData, &artifact); err != nil {
@@ -824,6 +824,7 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	allRows := append(inferenceData.TrainFeatures, inferenceData.TestFeatures...)
 	results := make([]map[string]any, 0, len(allRows))
 
+	inferenceFailures := 0
 	for _, row := range allRows {
 		// Build feature vector in artifact's feature name ordering (positional match)
 		features := make([]float64, len(artifact.FeatureNames))
@@ -835,13 +836,18 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 
 		pred, err := workerRunInference(artifact.ModelType, artifact.Parameters, features)
 		if err != nil {
-			log.Printf("Warning: inference failed for row: %v", err)
-			pred = 0.0
+			inferenceFailures++
+			log.Printf("Inference failed for row %v: %v", row, err)
+			continue
 		}
 		results = append(results, map[string]any{
 			"input":      row,
 			"prediction": pred,
 		})
+	}
+
+	if inferenceFailures > 0 {
+		return nil, fmt.Errorf("inference failed for %d/%d rows", inferenceFailures, len(allRows))
 	}
 
 	// Write results to disk
@@ -919,16 +925,25 @@ func workerRunInference(modelType string, parameters map[string]any, features []
 		return bestClass, nil
 
 	case "regression":
-		weightsRaw, ok := parameters["weights"]
+		modelDataRaw, ok := parameters["model_data"]
 		if !ok {
 			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
 		}
-		weightsSlice, ok := weightsRaw.([]any)
+		modelData, ok := modelDataRaw.(map[string]any)
 		if !ok {
-			return 0.0, fmt.Errorf("invalid weights format in artifact parameters for %s", modelType)
+			return 0.0, fmt.Errorf("invalid model_data format in artifact parameters for %s", modelType)
+		}
+
+		coeffsRaw, ok := modelData["coefficients"]
+		if !ok {
+			return 0.0, fmt.Errorf("coefficients missing from model_data for %s", modelType)
+		}
+		weightsSlice, ok := coeffsRaw.([]any)
+		if !ok {
+			return 0.0, fmt.Errorf("invalid coefficients format in model_data for %s", modelType)
 		}
 		intercept := 0.0
-		if b, ok := parameters["intercept"]; ok {
+		if b, ok := modelData["intercept"]; ok {
 			if bFloat, ok := b.(float64); ok {
 				intercept = bFloat
 			}
@@ -944,13 +959,21 @@ func workerRunInference(modelType string, parameters map[string]any, features []
 		return pred, nil
 
 	case "neural_network":
-		weightsRaw, ok := parameters["weights"]
+		modelDataRaw, ok := parameters["model_data"]
 		if !ok {
 			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
 		}
-		biasesRaw, ok := parameters["biases"]
+		modelData, ok := modelDataRaw.(map[string]any)
 		if !ok {
-			return 0.0, fmt.Errorf("model_data missing from artifact parameters for %s", modelType)
+			return 0.0, fmt.Errorf("invalid model_data format in artifact parameters for %s", modelType)
+		}
+		weightsRaw, ok := modelData["weights"]
+		if !ok {
+			return 0.0, fmt.Errorf("weights missing from model_data for %s", modelType)
+		}
+		biasesRaw, ok := modelData["biases"]
+		if !ok {
+			return 0.0, fmt.Errorf("biases missing from model_data for %s", modelType)
 		}
 		weightsJSON, err := json.Marshal(weightsRaw)
 		if err != nil {

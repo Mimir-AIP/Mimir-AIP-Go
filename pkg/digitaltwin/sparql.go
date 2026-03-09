@@ -892,34 +892,43 @@ func evaluateSPARQL(q *SPARQLQuery, entities []*models.Entity) []map[string]inte
 
 // applyTriple extends bindings according to a single triple pattern
 func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models.Entity, entityByID map[string]*models.Entity) []sparqlBinding {
-	result := make([]sparqlBinding, 0)
+	result := make([]sparqlBinding, 0, len(bindings))
 
 	// rdf:type pattern: ?s a :Type  →  bind ?s to entity IDs of matching type
 	if pat.Predicate == "a" || pat.Predicate == "type" {
+		if !pat.IsVar[0] {
+			return result
+		}
 		typeName := pat.Object
+		matchingEntities := make([]*models.Entity, 0, len(entities))
+		for _, ent := range entities {
+			if ent.Type == typeName {
+				matchingEntities = append(matchingEntities, ent)
+			}
+		}
+		result = make([]sparqlBinding, 0, len(bindings)*len(matchingEntities))
 		for _, b := range bindings {
-			if pat.IsVar[0] {
-				if existingID, bound := b[pat.Subject]; bound {
-					// Subject already bound – verify type matches
-					id, ok := bindingID(existingID)
-					if !ok {
-						continue
-					}
-					if ent, ok := entityByID[id]; ok {
-						if ent.Type == typeName {
-							result = append(result, b)
-						}
-					}
-				} else {
-					// Subject unbound – fan out over all matching entities
-					for _, ent := range entities {
-						if ent.Type == typeName {
-							nb := cloneBinding(b)
-							nb[pat.Subject] = ent.ID
-							result = append(result, nb)
-						}
-					}
+			if existingID, bound := b[pat.Subject]; bound {
+				id, ok := bindingID(existingID)
+				if !ok {
+					continue
 				}
+				if ent, ok := entityByID[id]; ok && ent.Type == typeName {
+					result = append(result, b)
+				}
+				continue
+			}
+
+			if len(b) == 0 {
+				for _, ent := range matchingEntities {
+					result = append(result, sparqlBinding{pat.Subject: ent.ID})
+				}
+				continue
+			}
+			for _, ent := range matchingEntities {
+				nb := cloneBinding(b)
+				nb[pat.Subject] = ent.ID
+				result = append(result, nb)
 			}
 		}
 		return result
@@ -944,71 +953,82 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 						if bindOrMatch(b, pat.Object, attrVal) {
 							result = append(result, b)
 						}
-					} else {
-						if fmt.Sprintf("%v", attrVal) == pat.Object {
-							result = append(result, b)
-						}
+					} else if fmt.Sprintf("%v", attrVal) == pat.Object {
+						result = append(result, b)
 					}
-				} else {
-					// Attribute not found – check entity relationships
-					for _, rel := range ent.Relationships {
-						if rel.Type != pat.Predicate {
-							continue
-						}
-						target, targetOK := entityByID[rel.TargetID]
-						if !targetOK {
-							continue
-						}
-						if pat.IsVar[2] {
-							nb := cloneBinding(b)
-							nb[pat.Object] = target.ID
-							result = append(result, nb)
-						} else {
-							if target.ID == pat.Object {
-								result = append(result, b)
-							}
-						}
+					continue
+				}
+
+				// Attribute not found – check entity relationships
+				for _, rel := range ent.Relationships {
+					if rel.Type != pat.Predicate {
+						continue
+					}
+					target, targetOK := entityByID[rel.TargetID]
+					if !targetOK {
+						continue
+					}
+					if pat.IsVar[2] {
+						nb := cloneBinding(b)
+						nb[pat.Object] = target.ID
+						result = append(result, nb)
+					} else if target.ID == pat.Object {
+						result = append(result, b)
 					}
 				}
-			} else {
-				// Subject unbound – fan out over all entities
-				for _, ent := range entities {
-					attrVal, hasAttr := ent.Attributes[pat.Predicate]
-					if hasAttr {
-						if pat.IsVar[2] {
+				continue
+			}
+
+			// Subject unbound – fan out over all entities
+			for _, ent := range entities {
+				attrVal, hasAttr := ent.Attributes[pat.Predicate]
+				if hasAttr {
+					if pat.IsVar[2] {
+						if len(b) == 0 {
+							result = append(result, sparqlBinding{pat.Subject: ent.ID, pat.Object: attrVal})
+						} else {
 							nb := cloneBinding(b)
 							nb[pat.Subject] = ent.ID
 							nb[pat.Object] = attrVal
 							result = append(result, nb)
-						} else {
-							if fmt.Sprintf("%v", attrVal) == pat.Object {
-								nb := cloneBinding(b)
-								nb[pat.Subject] = ent.ID
-								result = append(result, nb)
-							}
 						}
-					} else {
-						// Check relationships
-						for _, rel := range ent.Relationships {
-							if rel.Type != pat.Predicate {
-								continue
-							}
-							target, targetOK := entityByID[rel.TargetID]
-							if !targetOK {
-								continue
-							}
-							if pat.IsVar[2] {
-								nb := cloneBinding(b)
-								nb[pat.Subject] = ent.ID
-								nb[pat.Object] = target.ID
-								result = append(result, nb)
-							} else {
-								if target.ID == pat.Object {
-									nb := cloneBinding(b)
-									nb[pat.Subject] = ent.ID
-									result = append(result, nb)
-								}
-							}
+					} else if fmt.Sprintf("%v", attrVal) == pat.Object {
+						if len(b) == 0 {
+							result = append(result, sparqlBinding{pat.Subject: ent.ID})
+						} else {
+							nb := cloneBinding(b)
+							nb[pat.Subject] = ent.ID
+							result = append(result, nb)
+						}
+					}
+					continue
+				}
+
+				// Check relationships
+				for _, rel := range ent.Relationships {
+					if rel.Type != pat.Predicate {
+						continue
+					}
+					target, targetOK := entityByID[rel.TargetID]
+					if !targetOK {
+						continue
+					}
+					if pat.IsVar[2] {
+						if len(b) == 0 {
+							result = append(result, sparqlBinding{pat.Subject: ent.ID, pat.Object: target.ID})
+						} else {
+							nb := cloneBinding(b)
+							nb[pat.Subject] = ent.ID
+							nb[pat.Object] = target.ID
+							result = append(result, nb)
+						}
+					} else if target.ID == pat.Object {
+						if len(b) == 0 {
+							result = append(result, sparqlBinding{pat.Subject: ent.ID})
+						} else {
+							nb := cloneBinding(b)
+							nb[pat.Subject] = ent.ID
+							result = append(result, nb)
 						}
 					}
 				}

@@ -179,6 +179,9 @@ func (f *FilesystemPlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, erro
 	}
 
 	results := make([]*models.CIR, 0)
+	matched := 0
+	offset := query.Offset
+	limit := query.Limit
 
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
@@ -196,19 +199,21 @@ func (f *FilesystemPlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, erro
 			continue // Skip invalid JSON
 		}
 
-		// Apply filters
-		if f.matchesFilters(&cir, query.Filters) {
-			results = append(results, &cir)
+		if !f.matchesFilters(&cir, query.Filters) {
+			continue
 		}
-	}
 
-	// Apply limit and offset
-	if query.Offset > 0 && query.Offset < len(results) {
-		results = results[query.Offset:]
-	}
+		if matched < offset {
+			matched++
+			continue
+		}
 
-	if query.Limit > 0 && query.Limit < len(results) {
-		results = results[:query.Limit]
+		results = append(results, &cir)
+		matched++
+
+		if limit > 0 && len(results) >= limit {
+			break
+		}
 	}
 
 	return results, nil

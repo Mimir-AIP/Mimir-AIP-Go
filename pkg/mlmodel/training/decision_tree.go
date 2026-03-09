@@ -3,6 +3,7 @@ package training
 import (
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"gonum.org/v1/gonum/mat"
@@ -219,7 +220,9 @@ func median(values []float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
-	return stat.Quantile(0.5, stat.Empirical, values, nil)
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+	return stat.Quantile(0.5, stat.Empirical, sorted, nil)
 }
 
 func giniImpurity(labels []float64) float64 {

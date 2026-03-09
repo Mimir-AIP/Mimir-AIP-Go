@@ -770,12 +770,29 @@ func parseFilter(p *parser) *FilterExpr {
 type sparqlBinding map[string]interface{}
 
 func cloneBinding(b sparqlBinding) sparqlBinding {
-	nb := make(sparqlBinding, len(b))
+	nb := make(sparqlBinding, len(b)+1)
 	for k, v := range b {
 		nb[k] = v
 	}
 	return nb
 }
+
+func bindingID(v interface{}) (string, bool) {
+	if id, ok := v.(string); ok {
+		return id, true
+	}
+	id := fmt.Sprintf("%v", v)
+	return id, id != ""
+}
+
+func bindOrMatch(b sparqlBinding, variable string, value interface{}) bool {
+	if existing, ok := b[variable]; ok {
+		return evalFilter(existing, "eq", value)
+	}
+	b[variable] = value
+	return true
+}
+
 
 // evaluateSPARQL evaluates the parsed query against the entity set
 func evaluateSPARQL(q *SPARQLQuery, entities []*models.Entity) []map[string]interface{} {
@@ -884,7 +901,11 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 			if pat.IsVar[0] {
 				if existingID, bound := b[pat.Subject]; bound {
 					// Subject already bound – verify type matches
-					if ent, ok := entityByID[fmt.Sprintf("%v", existingID)]; ok {
+					id, ok := bindingID(existingID)
+					if !ok {
+						continue
+					}
+					if ent, ok := entityByID[id]; ok {
 						if ent.Type == typeName {
 							result = append(result, b)
 						}
@@ -909,16 +930,20 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 		for _, b := range bindings {
 			if existingID, bound := b[pat.Subject]; bound {
 				// Subject is already bound to an entity ID
-				ent, ok := entityByID[fmt.Sprintf("%v", existingID)]
+				id, ok := bindingID(existingID)
+				if !ok {
+					continue
+				}
+				ent, ok := entityByID[id]
 				if !ok {
 					continue
 				}
 				attrVal, hasAttr := ent.Attributes[pat.Predicate]
 				if hasAttr {
 					if pat.IsVar[2] {
-						nb := cloneBinding(b)
-						nb[pat.Object] = attrVal
-						result = append(result, nb)
+						if bindOrMatch(b, pat.Object, attrVal) {
+							result = append(result, b)
+						}
 					} else {
 						if fmt.Sprintf("%v", attrVal) == pat.Object {
 							result = append(result, b)

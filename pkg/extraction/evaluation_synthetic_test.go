@@ -3,6 +3,7 @@ package extraction
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -372,4 +373,132 @@ func sortedKeys(m map[string]struct{}) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func TestSyntheticLinkingInvariantToColumnFormatAndNumericEncoding(t *testing.T) {
+	leftRows := make([]map[string]interface{}, 0, 120)
+	rightRows := make([]map[string]interface{}, 0, 120)
+	for i := 1; i <= 120; i++ {
+		leftRows = append(leftRows, map[string]interface{}{
+			"customer_id": i,
+			"region_code": fmt.Sprintf("R%02d", i%5),
+		})
+		rightRows = append(rightRows, map[string]interface{}{
+			"CustomerID": fmt.Sprintf("%d.0", i),
+			"segment":    []string{"enterprise", "smb", "public"}[i%3],
+		})
+	}
+
+	left := makeCIR("crm", "CustomerRecord", leftRows)
+	right := makeCIR("billing", "InvoiceRecord", rightRows)
+	profiles := append([]models.ColumnProfile{}, BuildColumnProfilesFromCIRs("crm", []*models.CIR{left})...)
+	profiles = append(profiles, BuildColumnProfilesFromCIRs("billing", []*models.CIR{right})...)
+
+	links := DetectCrossSourceLinks(profiles)
+	if len(links) == 0 {
+		t.Fatal("expected links for numeric-format/casing invariant dataset")
+	}
+
+	pred := observedLinkKeys(links)
+	want := map[string]struct{}{canonicalLinkKey("crm", "customer_id", "billing", "CustomerID"): {}}
+	precision, recall, f1, tp, fp, fn := scoreSet(pred, want)
+	if precision < 0.90 || recall < 1.0 || f1 < 0.90 {
+		t.Fatalf("invariance link quality below threshold: precision=%.3f recall=%.3f f1=%.3f tp=%d fp=%d fn=%d\nwant=%v\ngot=%v",
+			precision, recall, f1, tp, fp, fn, sortedKeys(want), sortedKeys(pred))
+	}
+}
+
+func TestSyntheticMixedModeInvariantToTextNoise(t *testing.T) {
+	records := []extractionRecord{
+		makeRecord(map[string]string{"author": "jane_doe", "content": "FYI: OpenAI Summit!!! in San Francisco, with Sam Altman -- incredible."}),
+		makeRecord(map[string]string{"author": "tech_blogger", "content": "openai summit @ san francisco: sam altman keynote recap..."}),
+		makeRecord(map[string]string{"author": "ai_watcher", "content": "OpenAI Summit (San Francisco) had Sam Altman and Greg Brockman."}),
+		makeRecord(map[string]string{"author": "dev_news", "content": "Breaking: OpenAI Summit, San Francisco Moscone Center, Sam Altman speaking."}),
+		makeRecord(map[string]string{"author": "ml_researcher", "content": "Great talks at OpenAI Summit; met Greg Brockman in San Francisco."}),
+	}
+
+	result := extractFromRecords(records)
+	if len(result.Entities) == 0 {
+		t.Fatal("expected entities from noisy text records")
+	}
+
+	wants := []string{"OpenAI Summit", "San Francisco", "Sam Altman"}
+	found := 0
+	for _, want := range wants {
+		if containsEntity(result, want) {
+			found++
+		}
+	}
+	coverage := float64(found) / float64(len(wants))
+	if coverage < 0.66 {
+		t.Fatalf("noisy text coverage below threshold: %.3f (%d/%d), entities=%v", coverage, found, len(wants), entityNames(result))
+	}
+
+	structured := syntheticStructuredCIRForDomain("media")
+	structuredResult, err := ExtractFromStructuredCIR(structured)
+	if err != nil {
+		t.Fatalf("ExtractFromStructuredCIR failed: %v", err)
+	}
+	reconciled := ReconcileEntities(structuredResult, result)
+	if len(reconciled.Entities) == 0 {
+		t.Fatal("expected reconciled entities for noisy mixed-mode dataset")
+	}
+}
+
+func TestSyntheticCrossSourceAdversarial_NoFalseJoinOnCategoricals(t *testing.T) {
+	leftRows := make([]map[string]interface{}, 0, 400)
+	rightRows := make([]map[string]interface{}, 0, 400)
+	for i := 1; i <= 400; i++ {
+		leftRows = append(leftRows, map[string]interface{}{
+			"ticket_id": fmt.Sprintf("TCK-%06d", i),
+			"status":    []string{"open", "closed"}[i%2],
+			"priority":  []string{"low", "high"}[i%2],
+		})
+		rightRows = append(rightRows, map[string]interface{}{
+			"incident_id": fmt.Sprintf("INC-%06d", i),
+			"status":      []string{"open", "closed"}[i%2],
+			"priority":    []string{"low", "high"}[i%2],
+		})
+	}
+
+	left := makeCIR("support", "TicketRecord", leftRows)
+	right := makeCIR("ops", "IncidentRecord", rightRows)
+	profiles := append([]models.ColumnProfile{}, BuildColumnProfilesFromCIRs("support", []*models.CIR{left})...)
+	profiles = append(profiles, BuildColumnProfilesFromCIRs("ops", []*models.CIR{right})...)
+
+	links := DetectCrossSourceLinks(profiles)
+	for _, l := range links {
+		pair := strings.ToLower(l.ColumnA + "|" + l.ColumnB)
+		if strings.Contains(pair, "status") || strings.Contains(pair, "priority") {
+			t.Fatalf("categorical false positive detected: %+v", l)
+		}
+	}
+}
+
+func TestSyntheticCrossSourceAdversarial_RejectOneSidedKeyJoins(t *testing.T) {
+	leftRows := make([]map[string]interface{}, 0, 180)
+	rightRows := make([]map[string]interface{}, 0, 180)
+	for i := 1; i <= 180; i++ {
+		id := fmt.Sprintf("%d", i)
+		leftRows = append(leftRows, map[string]interface{}{
+			"customer_id": id,
+			"channel":     []string{"retail", "online", "partner"}[i%3],
+		})
+		rightRows = append(rightRows, map[string]interface{}{
+			"channel": []string{"retail", "online", "partner"}[i%3],
+			"region":  []string{"na", "emea", "apac"}[i%3],
+		})
+	}
+
+	left := makeCIR("sales", "CustomerRecord", leftRows)
+	right := makeCIR("marketing", "CampaignRecord", rightRows)
+	profiles := append([]models.ColumnProfile{}, BuildColumnProfilesFromCIRs("sales", []*models.CIR{left})...)
+	profiles = append(profiles, BuildColumnProfilesFromCIRs("marketing", []*models.CIR{right})...)
+
+	links := DetectCrossSourceLinks(profiles)
+	for _, l := range links {
+		if strings.EqualFold(l.ColumnA, "channel") || strings.EqualFold(l.ColumnB, "channel") {
+			t.Fatalf("one-sided key gate failed; unexpected channel link: %+v", l)
+		}
+	}
 }

@@ -36,6 +36,10 @@ jobs:
       - name: Run unit tests
         run: go test -race -timeout 120s ./pkg/...
 
+      - name: Run synthetic extraction quality gates
+        run: go test -timeout 120s ./pkg/extraction -run 'SyntheticCrossDomain|SyntheticLinkingInvariant|SyntheticCrossSourceAdversarial|SyntheticMixedMode'
+
+
   openapi-check:
     name: OpenAPI spec up to date
     runs-on: ubuntu-latest

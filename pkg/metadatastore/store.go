@@ -18,6 +18,8 @@ type MetadataStore interface {
 	ListPipelines() ([]*models.Pipeline, error)
 	ListPipelinesByProject(projectID string) ([]*models.Pipeline, error)
 	DeletePipeline(id string) error
+	GetPipelineCheckpoint(projectID, pipelineID, stepName, scope string) (*models.PipelineCheckpoint, error)
+	SavePipelineCheckpoint(checkpoint *models.PipelineCheckpoint) error
 
 	// Schedule operations
 	SaveSchedule(schedule *models.Schedule) error

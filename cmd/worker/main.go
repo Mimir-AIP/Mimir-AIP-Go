@@ -120,6 +120,10 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		}
 	}
 
+	context.SetStepData("_runtime", "project_id", pipeline.ProjectID)
+	context.SetStepData("_runtime", "pipeline_id", pipeline.ID)
+	context.SetStepData("_runtime", "trigger_type", fmt.Sprintf("%v", task.TaskSpec.Parameters["trigger_type"]))
+
 	// Initialize plugin system via HTTP registry
 	// Workers fetch plugins from the orchestrator's plugin registry service
 	// Use orchestratorURL that was already set above
@@ -129,8 +133,10 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 
 	// Initialize plugin registry with built-in plugins
 	pluginRegistry := make(map[string]pipelinepkg.Plugin)
-	pluginRegistry["default"] = pipelinepkg.NewDefaultPlugin()
-	pluginRegistry["builtin"] = pipelinepkg.NewDefaultPlugin()
+	storageClient := pipelinepkg.NewHTTPStorageClient(orchestratorURL)
+	checkpointClient := pipelinepkg.NewHTTPCheckpointStore(orchestratorURL)
+	pluginRegistry["default"] = pipelinepkg.NewDefaultPluginWithDeps(storageClient, checkpointClient)
+	pluginRegistry["builtin"] = pipelinepkg.NewDefaultPluginWithDeps(storageClient, checkpointClient)
 
 	// Discover and load custom plugins needed for this pipeline
 	// We'll load them on-demand as we encounter them in the pipeline steps
@@ -194,6 +200,8 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		if !ok {
 			return nil, fmt.Errorf("unknown plugin: %s", step.Plugin)
 		}
+
+		context.SetStepData("_runtime", "current_step", step.Name)
 
 		// Execute step
 		result, err := pluginInstance.Execute(step.Action, step.Parameters, context)

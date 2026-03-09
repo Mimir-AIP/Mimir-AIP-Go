@@ -25,6 +25,30 @@ func init() {
 		RequestBody: doc.JsonBody(doc.Ref("PipelineExecutionRequest")),
 		Responses:   doc.R(doc.Accepted(doc.Ref("WorkTask")), doc.BadRequest(), doc.NotFound()),
 	})
+	doc.Register("GET", "/api/pipelines/{id}/checkpoints", doc.RouteDoc{
+		Summary:     "Get pipeline checkpoint",
+		Description: "Returns persisted connector checkpoint state for a pipeline step.",
+		Tags:        []string{"Pipelines"},
+		Params: []doc.Param{
+			doc.PParam("id", "Pipeline ID"),
+			doc.QParam("step_name", "Pipeline step name", true),
+			doc.QParam("scope", "Optional checkpoint scope", false),
+		},
+		Responses: doc.R(doc.OK(doc.Ref("PipelineCheckpoint")), doc.NotFound(), doc.BadRequest()),
+	})
+	doc.Register("PUT", "/api/pipelines/{id}/checkpoints", doc.RouteDoc{
+		Summary:     "Save pipeline checkpoint",
+		Description: "Persists connector checkpoint state for a pipeline step with optimistic versioning.",
+		Tags:        []string{"Pipelines"},
+		Params: []doc.Param{
+			doc.PParam("id", "Pipeline ID"),
+			doc.QParam("step_name", "Pipeline step name", true),
+			doc.QParam("scope", "Optional checkpoint scope", false),
+		},
+		RequestBody: doc.JsonBody(doc.Ref("PipelineCheckpoint")),
+		Responses:   doc.R(doc.OK(doc.Ref("PipelineCheckpoint")), doc.BadRequest()),
+	})
+
 	doc.Register("GET", "/api/pipelines/{id}", doc.RouteDoc{
 		Summary:     "Get pipeline",
 		Description: "Returns a single pipeline by ID.",

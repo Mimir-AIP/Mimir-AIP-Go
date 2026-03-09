@@ -120,6 +120,23 @@ func (s *SQLiteStore) initSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_pipelines_project_id ON pipelines(project_id);
 
+	CREATE TABLE IF NOT EXISTS pipeline_checkpoints (
+		project_id TEXT NOT NULL,
+		pipeline_id TEXT NOT NULL,
+		step_name TEXT NOT NULL,
+		scope TEXT NOT NULL DEFAULT '',
+		version INTEGER NOT NULL,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		data TEXT NOT NULL,
+		PRIMARY KEY (project_id, pipeline_id, step_name, scope),
+		FOREIGN KEY (project_id) REFERENCES projects(id),
+		FOREIGN KEY (pipeline_id) REFERENCES pipelines(id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_pipeline_checkpoints_pipeline_id ON pipeline_checkpoints(pipeline_id);
+
+
 	CREATE TABLE IF NOT EXISTS schedules (
 		id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,
@@ -528,6 +545,121 @@ func (s *SQLiteStore) DeletePipeline(id string) error {
 		return fmt.Errorf("failed to delete pipeline: %w", err)
 	}
 	return nil
+}
+
+// GetPipelineCheckpoint retrieves persisted connector state for one pipeline step.
+func (s *SQLiteStore) GetPipelineCheckpoint(projectID, pipelineID, stepName, scope string) (*models.PipelineCheckpoint, error) {
+	var (
+		version   int
+		createdAt time.Time
+		updatedAt time.Time
+		data      string
+	)
+
+	query := `
+		SELECT version, created_at, updated_at, data
+		FROM pipeline_checkpoints
+		WHERE project_id = ? AND pipeline_id = ? AND step_name = ? AND scope = ?
+	`
+
+	err := s.db.QueryRow(query, projectID, pipelineID, stepName, scope).Scan(&version, &createdAt, &updatedAt, &data)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pipeline checkpoint: %w", err)
+	}
+
+	checkpointData := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(data), &checkpointData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal pipeline checkpoint: %w", err)
+	}
+
+	return &models.PipelineCheckpoint{
+		ProjectID:  projectID,
+		PipelineID: pipelineID,
+		StepName:   stepName,
+		Scope:      scope,
+		Version:    version,
+		Checkpoint: checkpointData,
+		CreatedAt:  createdAt,
+		UpdatedAt:  updatedAt,
+	}, nil
+}
+
+// SavePipelineCheckpoint inserts or updates persisted connector state with optimistic versioning.
+func (s *SQLiteStore) SavePipelineCheckpoint(checkpoint *models.PipelineCheckpoint) error {
+	if checkpoint == nil {
+		return fmt.Errorf("pipeline checkpoint is required")
+	}
+	if checkpoint.ProjectID == "" || checkpoint.PipelineID == "" || checkpoint.StepName == "" {
+		return fmt.Errorf("pipeline checkpoint requires project_id, pipeline_id, and step_name")
+	}
+	if checkpoint.Checkpoint == nil {
+		checkpoint.Checkpoint = map[string]interface{}{}
+	}
+
+	return s.retryOnBusy(func() error {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		var (
+			currentVersion int
+			createdAt      time.Time
+		)
+
+		lookupErr := tx.QueryRow(`
+			SELECT version, created_at
+			FROM pipeline_checkpoints
+			WHERE project_id = ? AND pipeline_id = ? AND step_name = ? AND scope = ?
+		`, checkpoint.ProjectID, checkpoint.PipelineID, checkpoint.StepName, checkpoint.Scope).Scan(&currentVersion, &createdAt)
+
+		now := time.Now().UTC()
+		switch lookupErr {
+		case nil:
+			if checkpoint.Version != currentVersion {
+				return fmt.Errorf("pipeline checkpoint version conflict: expected %d, got %d", currentVersion, checkpoint.Version)
+			}
+			checkpoint.Version = currentVersion + 1
+			checkpoint.CreatedAt = createdAt
+			checkpoint.UpdatedAt = now
+		case sql.ErrNoRows:
+			if checkpoint.Version != 0 {
+				return fmt.Errorf("pipeline checkpoint version conflict: expected 0, got %d", checkpoint.Version)
+			}
+			checkpoint.Version = 1
+			checkpoint.CreatedAt = now
+			checkpoint.UpdatedAt = now
+		default:
+			return fmt.Errorf("failed to read existing pipeline checkpoint: %w", lookupErr)
+		}
+
+		data, err := json.Marshal(checkpoint.Checkpoint)
+		if err != nil {
+			return fmt.Errorf("failed to marshal pipeline checkpoint: %w", err)
+		}
+
+		if currentVersion == 0 && checkpoint.Version == 1 {
+			_, err = tx.Exec(`
+				INSERT INTO pipeline_checkpoints (project_id, pipeline_id, step_name, scope, version, created_at, updated_at, data)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`, checkpoint.ProjectID, checkpoint.PipelineID, checkpoint.StepName, checkpoint.Scope, checkpoint.Version, checkpoint.CreatedAt, checkpoint.UpdatedAt, string(data))
+		} else {
+			_, err = tx.Exec(`
+				UPDATE pipeline_checkpoints
+				SET version = ?, updated_at = ?, data = ?
+				WHERE project_id = ? AND pipeline_id = ? AND step_name = ? AND scope = ?
+			`, checkpoint.Version, checkpoint.UpdatedAt, string(data), checkpoint.ProjectID, checkpoint.PipelineID, checkpoint.StepName, checkpoint.Scope)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to persist pipeline checkpoint: %w", err)
+		}
+
+		return tx.Commit()
+	}, 5)
 }
 
 // SaveSchedule saves a schedule to the database

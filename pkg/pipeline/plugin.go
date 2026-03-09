@@ -3,7 +3,6 @@ package pipeline
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
@@ -27,6 +26,14 @@ type CIRStorer interface {
 	Store(storageID string, cir *models.CIR) (*models.StorageResult, error)
 }
 
+// PipelineCheckpointStore is the subset of metadata persistence required by built-in
+// checkpoint actions. Implemented by the metadata store in-process and an HTTP client
+// inside workers.
+type PipelineCheckpointStore interface {
+	GetPipelineCheckpoint(projectID, pipelineID, stepName, scope string) (*models.PipelineCheckpoint, error)
+	SavePipelineCheckpoint(checkpoint *models.PipelineCheckpoint) error
+}
+
 // Plugin defines the interface for pipeline step executors
 type Plugin interface {
 	Execute(action string, params map[string]interface{}, ctx *models.PipelineContext) (map[string]interface{}, error)
@@ -34,23 +41,28 @@ type Plugin interface {
 
 // DefaultPlugin implements built-in pipeline actions
 type DefaultPlugin struct {
-	httpClient *http.Client
-	storageSvc CIRStorer // nil when storage integration is not configured
+	httpClient      *http.Client
+	storageSvc      CIRStorer               // nil when storage integration is not configured
+	checkpointStore PipelineCheckpointStore // nil when checkpoint persistence is unavailable
 }
 
 // NewDefaultPlugin creates a new default plugin instance without storage integration.
 func NewDefaultPlugin() *DefaultPlugin {
-	return &DefaultPlugin{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-	}
+	return NewDefaultPluginWithDeps(nil, nil)
 }
 
 // NewDefaultPluginWithStorage creates a default plugin that can persist CIR data
 // via the provided CIRStorer (typically *storage.Service).
 func NewDefaultPluginWithStorage(svc CIRStorer) *DefaultPlugin {
+	return NewDefaultPluginWithDeps(svc, nil)
+}
+
+// NewDefaultPluginWithDeps creates a default plugin with optional persistence dependencies.
+func NewDefaultPluginWithDeps(storageSvc CIRStorer, checkpointStore PipelineCheckpointStore) *DefaultPlugin {
 	return &DefaultPlugin{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		storageSvc: svc,
+		httpClient:      &http.Client{Timeout: 30 * time.Second},
+		storageSvc:      storageSvc,
+		checkpointStore: checkpointStore,
 	}
 }
 
@@ -65,6 +77,14 @@ func (p *DefaultPlugin) Execute(action string, params map[string]interface{}, ct
 		return p.pollRSS(params, ctx)
 	case "ingest_csv":
 		return p.ingestCSV(params, ctx)
+	case "ingest_csv_url":
+		return p.ingestCSVURL(params, ctx)
+	case "query_sql":
+		return p.querySQL(params, ctx)
+	case "load_checkpoint":
+		return p.loadCheckpoint(params, ctx)
+	case "save_checkpoint":
+		return p.saveCheckpoint(params, ctx)
 	case "parse_json":
 		return p.parseJSON(params, ctx)
 	case "if_else":
@@ -707,67 +727,16 @@ func (p *DefaultPlugin) ingestCSV(params map[string]interface{}, ctx *models.Pip
 	}
 	csvData := p.ResolveTemplates(rawCSV, ctx)
 
-	reader := csv.NewReader(strings.NewReader(csvData))
-	if delimiter, ok := params["delimiter"].(string); ok && delimiter != "" {
-		reader.Comma = []rune(delimiter)[0]
-	}
-
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("ingest_csv: failed to parse CSV: %w", err)
-	}
-	if len(records) == 0 {
-		return map[string]interface{}{
-			"items":       []interface{}{},
-			"new_count":   0,
-			"total_count": 0,
-			"checkpoint":  connectorCheckpoint{Seen: []string{}}.toMap(),
-		}, nil
-	}
-
-	hasHeader := true
-	if hasHeaderParam, ok := params["has_header"].(bool); ok {
-		hasHeader = hasHeaderParam
-	}
-
-	headers := make([]string, 0)
-	dataStart := 0
-	if hasHeader {
-		headers = append(headers, records[0]...)
-		dataStart = 1
-	} else {
-		for idx := range records[0] {
-			headers = append(headers, fmt.Sprintf("column_%d", idx+1))
-		}
-	}
-
-	items := make([]interface{}, 0, len(records)-dataStart)
-	for rowIdx := dataStart; rowIdx < len(records); rowIdx++ {
-		row := records[rowIdx]
-		if len(row) != len(headers) {
-			continue
-		}
-		item := make(map[string]interface{}, len(headers))
-		for i, header := range headers {
-			item[header] = row[i]
-		}
-		items = append(items, item)
-	}
-
 	checkpoint, err := p.parseConnectorCheckpoint(params["checkpoint"], ctx)
 	if err != nil {
 		return nil, fmt.Errorf("ingest_csv: invalid checkpoint: %w", err)
 	}
-	maxSeen := parseMaxCheckpointItems(params["max_checkpoint_items"])
-	newItems, nextCheckpoint := dedupeByCheckpoint(items, checkpoint, maxSeen)
 
-	return map[string]interface{}{
-		"items":       newItems,
-		"headers":     headers,
-		"new_count":   len(newItems),
-		"total_count": len(items),
-		"checkpoint":  nextCheckpoint.toMap(),
-	}, nil
+	result, err := p.ingestCSVWithCheckpoint(csvData, params, checkpoint)
+	if err != nil {
+		return nil, fmt.Errorf("ingest_csv: %w", err)
+	}
+	return result, nil
 }
 
 func parseMaxCheckpointItems(raw interface{}) int {
@@ -946,50 +915,65 @@ func (c connectorCheckpoint) toMap() map[string]interface{} {
 
 // ResolveTemplates resolves {{context.step_name.key}} template variables in a string.
 func (p *DefaultPlugin) ResolveTemplates(input string, ctx *models.PipelineContext) string {
-	pattern := regexp.MustCompile(`\{\{([^}]+)\}\}`)
-
-	result := pattern.ReplaceAllStringFunc(input, func(match string) string {
-		expr := strings.TrimSpace(match[2 : len(match)-2])
-		parts := strings.Split(expr, ".")
-
-		if len(parts) < 2 {
-			return match
-		}
-
-		if parts[0] != "context" {
-			return p.evaluateTemplate(expr, ctx)
-		}
-
-		if len(parts) < 3 {
-			return match
-		}
-
-		stepName := parts[1]
-		key := parts[2]
-
-		value, exists := ctx.GetStepData(stepName, key)
-		if !exists {
-			return match
-		}
-
-		// Handle nested access (e.g., {{context.step.key.nested}})
-		if len(parts) > 3 {
-			for i := 3; i < len(parts); i++ {
-				if m, ok := value.(map[string]interface{}); ok {
-					value, exists = m[parts[i]]
-					if !exists {
-						return match
-					}
-				} else {
-					return match
+	exactPattern := regexp.MustCompile(`^\s*\{\{([^}]+)\}\}\s*$`)
+	if matches := exactPattern.FindStringSubmatch(input); len(matches) == 2 {
+		expr := strings.TrimSpace(matches[1])
+		if value, ok := p.resolveTemplateValue(expr, ctx); ok {
+			switch typed := value.(type) {
+			case string:
+				return typed
+			default:
+				if bytes, err := json.Marshal(typed); err == nil {
+					return string(bytes)
 				}
+				return fmt.Sprintf("%v", typed)
 			}
 		}
+	}
 
-		return fmt.Sprintf("%v", value)
+	pattern := regexp.MustCompile(`\{\{([^}]+)\}\}`)
+	return pattern.ReplaceAllStringFunc(input, func(match string) string {
+		expr := strings.TrimSpace(match[2 : len(match)-2])
+		if value, ok := p.resolveTemplateValue(expr, ctx); ok {
+			return fmt.Sprintf("%v", value)
+		}
+		return match
 	})
+}
 
-	return result
+func (p *DefaultPlugin) resolveTemplateValue(expr string, ctx *models.PipelineContext) (interface{}, bool) {
+	parts := strings.Split(expr, ".")
+	if len(parts) < 2 {
+		return nil, false
+	}
+	if parts[0] != "context" {
+		return p.evaluateTemplate(expr, ctx), true
+	}
+	if len(parts) < 3 {
+		return nil, false
+	}
+
+	stepName := parts[1]
+	key := parts[2]
+	value, exists := ctx.GetStepData(stepName, key)
+	if !exists {
+		return nil, false
+	}
+
+	if len(parts) > 3 {
+		for i := 3; i < len(parts); i++ {
+			if m, ok := value.(map[string]interface{}); ok {
+				value, exists = m[parts[i]]
+				if !exists {
+					return nil, false
+				}
+				continue
+			}
+			return nil, false
+		}
+	}
+
+	return value, true
 }
 
 func (p *DefaultPlugin) evaluateTemplate(expr string, ctx *models.PipelineContext) string {

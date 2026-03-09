@@ -1,12 +1,17 @@
 package pipeline
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"testing"
 
+	_ "modernc.org/sqlite"
+
+	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
@@ -163,6 +168,153 @@ func TestIngestCSV_CheckpointPreventsReplay(t *testing.T) {
 	}
 	if asInt(t, third["new_count"]) != 1 {
 		t.Fatalf("expected third csv ingest new_count=1, got %v", third["new_count"])
+	}
+}
+
+func TestIngestCSVURL_CheckpointPreventsReplay(t *testing.T) {
+	ctx := models.NewPipelineContext(DefaultContextMaxSize)
+	plugin := NewDefaultPlugin()
+
+	var mu sync.RWMutex
+	csvBody := "id,name\n1,A\n2,B\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.RLock()
+		defer mu.RUnlock()
+		w.Header().Set("Content-Type", "text/csv")
+		_, _ = w.Write([]byte(csvBody))
+	}))
+	defer server.Close()
+
+	first, err := plugin.Execute("ingest_csv_url", map[string]interface{}{"url": server.URL}, ctx)
+	if err != nil {
+		t.Fatalf("first csv url ingest failed: %v", err)
+	}
+	if asInt(t, first["new_count"]) != 2 {
+		t.Fatalf("expected first csv url ingest new_count=2, got %v", first["new_count"])
+	}
+
+	second, err := plugin.Execute("ingest_csv_url", map[string]interface{}{
+		"url":        server.URL,
+		"checkpoint": first["checkpoint"],
+	}, ctx)
+	if err != nil {
+		t.Fatalf("second csv url ingest failed: %v", err)
+	}
+	if asInt(t, second["new_count"]) != 0 {
+		t.Fatalf("expected second csv url ingest new_count=0, got %v", second["new_count"])
+	}
+
+	mu.Lock()
+	csvBody = "id,name\n1,A\n2,B\n3,C\n"
+	mu.Unlock()
+
+	third, err := plugin.Execute("ingest_csv_url", map[string]interface{}{
+		"url":        server.URL,
+		"checkpoint": second["checkpoint"],
+	}, ctx)
+	if err != nil {
+		t.Fatalf("third csv url ingest failed: %v", err)
+	}
+	if asInt(t, third["new_count"]) != 1 {
+		t.Fatalf("expected third csv url ingest new_count=1, got %v", third["new_count"])
+	}
+}
+
+func TestLoadAndSaveCheckpoint_PersistsAcrossCalls(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(tmpDir, "checkpoints.db"))
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+	defer store.Close()
+
+	plugin := NewDefaultPluginWithDeps(nil, store)
+	ctx := models.NewPipelineContext(DefaultContextMaxSize)
+	ctx.SetStepData("_runtime", "project_id", "project-1")
+	ctx.SetStepData("_runtime", "pipeline_id", "pipe-1")
+	ctx.SetStepData("_runtime", "current_step", "source")
+
+	saved, err := plugin.Execute("save_checkpoint", map[string]interface{}{
+		"checkpoint": map[string]interface{}{"last_cursor": "cursor-1"},
+	}, ctx)
+	if err != nil {
+		t.Fatalf("save_checkpoint failed: %v", err)
+	}
+	if asInt(t, saved["version"]) != 1 {
+		t.Fatalf("expected saved version=1, got %v", saved["version"])
+	}
+
+	loaded, err := plugin.Execute("load_checkpoint", map[string]interface{}{}, ctx)
+	if err != nil {
+		t.Fatalf("load_checkpoint failed: %v", err)
+	}
+	if exists, _ := loaded["exists"].(bool); !exists {
+		t.Fatalf("expected checkpoint to exist")
+	}
+	checkpointMap, ok := loaded["checkpoint"].(map[string]interface{})
+	if !ok || fmt.Sprintf("%v", checkpointMap["last_cursor"]) != "cursor-1" {
+		t.Fatalf("unexpected checkpoint payload: %#v", loaded["checkpoint"])
+	}
+
+	ctx.SetStepData("loaded", "checkpoint", loaded["checkpoint"])
+	ctx.SetStepData("loaded", "version", loaded["version"])
+	updated, err := plugin.Execute("save_checkpoint", map[string]interface{}{
+		"checkpoint": "{{context.loaded.checkpoint}}",
+		"version":    "{{context.loaded.version}}",
+	}, ctx)
+	if err != nil {
+		t.Fatalf("second save_checkpoint failed: %v", err)
+	}
+	if asInt(t, updated["version"]) != 2 {
+		t.Fatalf("expected saved version=2, got %v", updated["version"])
+	}
+}
+
+func TestResolveArray_FromStructuredTemplate(t *testing.T) {
+	ctx := models.NewPipelineContext(DefaultContextMaxSize)
+	ctx.SetStepData("fetch", "items", []interface{}{map[string]interface{}{"id": 1}})
+
+	plugin := NewDefaultPlugin()
+	items, err := plugin.resolveArray("{{context.fetch.items}}", ctx)
+	if err != nil {
+		t.Fatalf("resolveArray failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected one item, got %d", len(items))
+	}
+}
+
+func TestQuerySQL_ReturnsRowsAndCursor(t *testing.T) {
+	tmpDir := t.TempDir()
+	dsn := "file:" + filepath.Join(tmpDir, "query.db")
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE repairs (id INTEGER PRIMARY KEY, updated_at TEXT NOT NULL, amount INTEGER NOT NULL)`); err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO repairs (updated_at, amount) VALUES ('2024-01-01T00:00:00Z', 100), ('2024-01-02T00:00:00Z', 150)`); err != nil {
+		t.Fatalf("failed to insert rows: %v", err)
+	}
+
+	plugin := NewDefaultPlugin()
+	result, err := plugin.Execute("query_sql", map[string]interface{}{
+		"driver":        "sqlite",
+		"dsn":           dsn,
+		"query":         "SELECT id, updated_at, amount FROM repairs ORDER BY updated_at",
+		"cursor_column": "updated_at",
+	}, models.NewPipelineContext(DefaultContextMaxSize))
+	if err != nil {
+		t.Fatalf("query_sql failed: %v", err)
+	}
+	if asInt(t, result["row_count"]) != 2 {
+		t.Fatalf("expected row_count=2, got %v", result["row_count"])
+	}
+	if fmt.Sprintf("%v", result["next_cursor"]) != "2024-01-02T00:00:00Z" {
+		t.Fatalf("unexpected next_cursor: %v", result["next_cursor"])
 	}
 }
 

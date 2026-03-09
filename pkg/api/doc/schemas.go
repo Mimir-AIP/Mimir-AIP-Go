@@ -71,6 +71,16 @@ func init() {
 			"steps":       ArrOf("PipelineStep"),
 			"status":      Str("New status"),
 		}),
+		"PipelineCheckpoint": Props([]string{"project_id", "pipeline_id", "step_name", "version", "checkpoint"}, M{
+			"project_id":  Str("Owning project ID"),
+			"pipeline_id": Str("Pipeline ID"),
+			"step_name":   Str("Pipeline step name"),
+			"scope":       Str("Optional checkpoint scope"),
+			"version":     Int("Optimistic lock version"),
+			"checkpoint":  M{"type": "object", "additionalProperties": true},
+			"created_at":  Str("ISO-8601 creation timestamp"),
+			"updated_at":  Str("ISO-8601 last-updated timestamp"),
+		}),
 		"PipelineExecutionRequest": Props([]string{"pipeline_id"}, M{
 			"pipeline_id":  Str("Pipeline ID to execute"),
 			"trigger_type": Str("manual | scheduled | automatic"),

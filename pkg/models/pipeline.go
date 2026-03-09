@@ -126,6 +126,18 @@ type PipelineUpdateRequest struct {
 	Status      *PipelineStatus `json:"status,omitempty"`
 }
 
+// PipelineCheckpoint stores incremental connector state for a pipeline step.
+type PipelineCheckpoint struct {
+	ProjectID  string                 `json:"project_id"`
+	PipelineID string                 `json:"pipeline_id"`
+	StepName   string                 `json:"step_name"`
+	Scope      string                 `json:"scope,omitempty"`
+	Version    int                    `json:"version"`
+	Checkpoint map[string]interface{} `json:"checkpoint"`
+	CreatedAt  time.Time              `json:"created_at"`
+	UpdatedAt  time.Time              `json:"updated_at"`
+}
+
 // PipelineExecutionRequest represents a request to execute a pipeline
 type PipelineExecutionRequest struct {
 	TriggerType string                 `json:"trigger_type"`

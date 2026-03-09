@@ -22,41 +22,48 @@ type PluginRegistry interface {
 
 // Service provides pipeline management and execution operations
 type Service struct {
-	store          metadatastore.MetadataStore
-	plugins        map[string]Plugin
-	pluginRegistry PluginRegistry
+	store           metadatastore.MetadataStore
+	plugins         map[string]Plugin
+	pluginRegistry  PluginRegistry
+	storageSvc      CIRStorer
+	checkpointStore PipelineCheckpointStore
 }
 
 // NewService creates a new pipeline service
 func NewService(store metadatastore.MetadataStore) *Service {
 	s := &Service{
-		store:   store,
-		plugins: make(map[string]Plugin),
+		store:           store,
+		plugins:         make(map[string]Plugin),
+		checkpointStore: store,
 	}
-	s.RegisterPlugin("default", NewDefaultPlugin())
-	s.RegisterPlugin("builtin", NewDefaultPlugin())
+	s.refreshBuiltinPlugins()
 	return s
 }
 
 // NewServiceWithRegistry creates a new pipeline service with an external plugin registry
 func NewServiceWithRegistry(store metadatastore.MetadataStore, registry PluginRegistry) *Service {
 	s := &Service{
-		store:          store,
-		plugins:        make(map[string]Plugin),
-		pluginRegistry: registry,
+		store:           store,
+		plugins:         make(map[string]Plugin),
+		pluginRegistry:  registry,
+		checkpointStore: store,
 	}
-	s.RegisterPlugin("default", NewDefaultPlugin())
-	s.RegisterPlugin("builtin", NewDefaultPlugin())
+	s.refreshBuiltinPlugins()
 	return s
+}
+
+func (s *Service) refreshBuiltinPlugins() {
+	dp := NewDefaultPluginWithDeps(s.storageSvc, s.checkpointStore)
+	s.plugins["default"] = dp
+	s.plugins["builtin"] = dp
 }
 
 // SetStorageSvc injects a CIRStorer into the built-in default/builtin plugins so that
 // store_cir and store_cir_batch actions can persist data to Mimir storage.
 // Call this after both the pipeline service and the storage service are created.
 func (s *Service) SetStorageSvc(svc CIRStorer) {
-	dp := NewDefaultPluginWithStorage(svc)
-	s.plugins["default"] = dp
-	s.plugins["builtin"] = dp
+	s.storageSvc = svc
+	s.refreshBuiltinPlugins()
 }
 
 // RegisterPlugin registers a plugin
@@ -137,6 +144,16 @@ func (s *Service) Update(id string, req *models.PipelineUpdateRequest) (*models.
 	return pipeline, nil
 }
 
+// GetCheckpoint retrieves persisted connector state for a pipeline step.
+func (s *Service) GetCheckpoint(projectID, pipelineID, stepName, scope string) (*models.PipelineCheckpoint, error) {
+	return s.store.GetPipelineCheckpoint(projectID, pipelineID, stepName, scope)
+}
+
+// SaveCheckpoint persists connector state for a pipeline step.
+func (s *Service) SaveCheckpoint(checkpoint *models.PipelineCheckpoint) error {
+	return s.store.SavePipelineCheckpoint(checkpoint)
+}
+
 // Delete deletes a pipeline
 func (s *Service) Delete(id string) error {
 	return s.store.DeletePipeline(id)
@@ -168,6 +185,10 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 			execution.Context.SetStepData("_parameters", key, value)
 		}
 	}
+
+	execution.Context.SetStepData("_runtime", "project_id", pipeline.ProjectID)
+	execution.Context.SetStepData("_runtime", "pipeline_id", pipeline.ID)
+	execution.Context.SetStepData("_runtime", "trigger_type", req.TriggerType)
 
 	// Execute pipeline steps
 	log.Printf("Executing pipeline %s (%s) - %d steps", pipeline.Name, pipeline.ID, len(pipeline.Steps))
@@ -245,6 +266,8 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 
 // executeStep runs a single pipeline step, returning its result map and any goto target.
 func (s *Service) executeStep(step models.PipelineStep, ctx *models.PipelineContext) (map[string]interface{}, string, error) {
+	ctx.SetStepData("_runtime", "current_step", step.Name)
+
 	plugin, ok := s.plugins[step.Plugin]
 	if !ok && s.pluginRegistry != nil {
 		plugin, ok = s.pluginRegistry.GetPlugin(step.Plugin)

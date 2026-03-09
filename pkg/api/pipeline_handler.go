@@ -46,6 +46,10 @@ func (h *PipelineHandler) HandlePipeline(w http.ResponseWriter, r *http.Request)
 		h.HandlePipelineExecute(w, r)
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, "/checkpoints") {
+		h.HandlePipelineCheckpoint(w, r)
+		return
+	}
 
 	// Extract pipeline ID from path
 	pipelineID := strings.TrimPrefix(r.URL.Path, "/api/pipelines/")
@@ -60,6 +64,62 @@ func (h *PipelineHandler) HandlePipeline(w http.ResponseWriter, r *http.Request)
 		h.handleUpdate(w, r, pipelineID)
 	case http.MethodDelete:
 		h.handleDelete(w, r, pipelineID)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandlePipelineCheckpoint handles GET/PUT /api/pipelines/{id}/checkpoints?step_name=...&scope=...
+func (h *PipelineHandler) HandlePipelineCheckpoint(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/pipelines/"), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] != "checkpoints" {
+		http.Error(w, "Invalid path: expected /api/pipelines/{id}/checkpoints", http.StatusBadRequest)
+		return
+	}
+	pipelineID := parts[0]
+
+	pipeline, err := h.service.Get(pipelineID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Pipeline not found: %v", err), http.StatusNotFound)
+		return
+	}
+
+	stepName := r.URL.Query().Get("step_name")
+	if stepName == "" {
+		http.Error(w, "step_name query parameter is required", http.StatusBadRequest)
+		return
+	}
+	scope := r.URL.Query().Get("scope")
+
+	switch r.Method {
+	case http.MethodGet:
+		checkpoint, err := h.service.GetCheckpoint(pipeline.ProjectID, pipelineID, stepName, scope)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to load checkpoint: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if checkpoint == nil {
+			http.Error(w, "Checkpoint not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(checkpoint)
+	case http.MethodPut:
+		var checkpoint models.PipelineCheckpoint
+		if err := json.NewDecoder(r.Body).Decode(&checkpoint); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		checkpoint.ProjectID = pipeline.ProjectID
+		checkpoint.PipelineID = pipelineID
+		checkpoint.StepName = stepName
+		checkpoint.Scope = scope
+		if err := h.service.SaveCheckpoint(&checkpoint); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to save checkpoint: %v", err), http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(checkpoint)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}

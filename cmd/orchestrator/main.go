@@ -253,6 +253,7 @@ func main() {
 	server.RegisterHandler("/api/storage/update", storageHandler.HandleStorageUpdate)
 	server.RegisterHandler("/api/storage/delete", storageHandler.HandleStorageDelete)
 	server.RegisterHandler("/api/storage/health", storageHandler.HandleStorageHealth)
+	server.RegisterHandler("/api/storage/ingestion-health", storageHandler.HandleIngestionHealth)
 
 	// Register dynamic storage plugin handlers
 	storagePluginHandler := api.NewStoragePluginHandler(storageService)

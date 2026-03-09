@@ -148,6 +148,26 @@ func (h *StorageHandler) HandleStorageDelete(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(result)
 }
 
+// HandleIngestionHealth handles GET /api/storage/ingestion-health?project_id=<id>
+func (h *StorageHandler) HandleIngestionHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+	report, err := h.service.GetIngestionHealth(projectID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to compute ingestion health: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(report)
+}
+
 // HandleStorageHealth handles requests to GET /api/storage/health?config_id=<id>
 func (h *StorageHandler) HandleStorageHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

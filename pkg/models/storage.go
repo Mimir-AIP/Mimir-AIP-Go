@@ -129,6 +129,38 @@ type StorageMetadata struct {
 	Capabilities []string `json:"capabilities"`
 }
 
+type IngestionHealthStatus string
+
+const (
+	IngestionHealthHealthy  IngestionHealthStatus = "healthy"
+	IngestionHealthWarning  IngestionHealthStatus = "warning"
+	IngestionHealthCritical IngestionHealthStatus = "critical"
+)
+
+// IngestionHealthSource captures ingestion quality metrics for one storage source.
+type IngestionHealthSource struct {
+	StorageID         string                `json:"storage_id"`
+	PluginType        string                `json:"plugin_type"`
+	SampleSize        int                   `json:"sample_size"`
+	LastIngestedAt    *time.Time            `json:"last_ingested_at,omitempty"`
+	FreshnessScore    float64               `json:"freshness_score"`
+	CompletenessScore float64               `json:"completeness_score"`
+	SchemaDriftScore  float64               `json:"schema_drift_score"`
+	OverallScore      float64               `json:"overall_score"`
+	Status            IngestionHealthStatus `json:"status"`
+	Findings          []string              `json:"findings,omitempty"`
+}
+
+// IngestionHealthReport is a project-level ingestion quality summary.
+type IngestionHealthReport struct {
+	ProjectID       string                  `json:"project_id"`
+	GeneratedAt     time.Time               `json:"generated_at"`
+	OverallScore    float64                 `json:"overall_score"`
+	Status          IngestionHealthStatus   `json:"status"`
+	Sources         []IngestionHealthSource `json:"sources"`
+	Recommendations []string                `json:"recommendations,omitempty"`
+}
+
 // StorageConfig represents the configuration for a project's storage
 type StorageConfig struct {
 	ID         string                 `json:"id"`

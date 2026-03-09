@@ -79,4 +79,11 @@ func init() {
 			"error":   doc.Str("Error message if unhealthy"),
 		}))),
 	})
+	doc.Register("GET", "/api/storage/ingestion-health", doc.RouteDoc{
+		Summary:     "Project ingestion health report",
+		Description: "Computes freshness, completeness, and schema drift scores across all active storage sources in a project.",
+		Tags:        []string{"Storage"},
+		Params:      []doc.Param{doc.QParam("project_id", "Project ID", true)},
+		Responses:   doc.R(doc.OK(doc.Ref("IngestionHealthReport")), doc.BadRequest(), doc.NotFound()),
+	})
 }

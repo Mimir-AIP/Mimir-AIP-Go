@@ -153,7 +153,6 @@ func (s *Service) InitializeStorage(storageID string, ontology *models.OntologyD
 		if err := plugin.CreateSchema(ontology); err != nil {
 			return fmt.Errorf("failed to create storage schema: %w", err)
 		}
-		storageConfig.OntologyID = ontology.Entities[0].Name // Simplified - should store ontology separately
 		storageConfig.UpdatedAt = time.Now().Format(time.RFC3339)
 		if err := s.store.SaveStorageConfig(storageConfig); err != nil {
 			return fmt.Errorf("failed to update storage config: %w", err)

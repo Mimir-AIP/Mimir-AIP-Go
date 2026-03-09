@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -115,13 +116,13 @@ func (e *SPARQLEngine) simpleEntityListing(entities []*models.Entity, limit int)
 type tokenType int
 
 const (
-	tokKeyword   tokenType = iota // SELECT, WHERE, FILTER, ORDER, BY, LIMIT, OFFSET, ASC, DESC, PREFIX, OPTIONAL
-	tokVariable                   // ?varName
-	tokURI                        // :localName or <full-uri>
-	tokLiteral                    // "string"
-	tokNumber                     // 42, 3.14
-	tokPunct                      // { } ( ) . , ; =
-	tokDot                        // .
+	tokKeyword  tokenType = iota // SELECT, WHERE, FILTER, ORDER, BY, LIMIT, OFFSET, ASC, DESC, PREFIX, OPTIONAL
+	tokVariable                  // ?varName
+	tokURI                       // :localName or <full-uri>
+	tokLiteral                   // "string"
+	tokNumber                    // 42, 3.14
+	tokPunct                     // { } ( ) . , ; =
+	tokDot                       // .
 	tokEOF
 )
 
@@ -283,17 +284,17 @@ func tokenizeSPARQL(query string) []token {
 func isAlpha(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
-func isDigit(r rune) bool  { return r >= '0' && r <= '9' }
+func isDigit(r rune) bool    { return r >= '0' && r <= '9' }
 func isAlphaNum(r rune) bool { return isAlpha(r) || isDigit(r) }
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 
 // TriplePattern represents a single triple in the WHERE clause
 type TriplePattern struct {
-	Subject   string   // variable name (without ?) or literal
-	Predicate string   // local name (e.g. "age", "a")
-	Object    string   // variable name or literal
-	IsVar     [3]bool  // which positions are variables
+	Subject   string  // variable name (without ?) or literal
+	Predicate string  // local name (e.g. "age", "a")
+	Object    string  // variable name or literal
+	IsVar     [3]bool // which positions are variables
 }
 
 // FilterExpr represents a FILTER clause
@@ -320,7 +321,7 @@ type AggregateExpr struct {
 // SPARQLQuery holds the parsed query components
 type SPARQLQuery struct {
 	Prefixes   map[string]string
-	Variables  []string        // SELECT projected vars (without ?); includes aggregate aliases
+	Variables  []string // SELECT projected vars (without ?); includes aggregate aliases
 	Patterns   []TriplePattern
 	Filters    []FilterExpr
 	Aggregates []AggregateExpr // Aggregate expressions from SELECT clause
@@ -769,12 +770,41 @@ func parseFilter(p *parser) *FilterExpr {
 
 type sparqlBinding map[string]interface{}
 
-func cloneBinding(b sparqlBinding) sparqlBinding {
-	nb := make(sparqlBinding, len(b)+1)
-	for k, v := range b {
+var sparqlBindingPool = sync.Pool{
+	New: func() interface{} {
+		return make(sparqlBinding)
+	},
+}
+
+type bindingArena struct {
+	allocated []sparqlBinding
+}
+
+func (a *bindingArena) newBinding() sparqlBinding {
+	b := sparqlBindingPool.Get().(sparqlBinding)
+	for k := range b {
+		delete(b, k)
+	}
+	a.allocated = append(a.allocated, b)
+	return b
+}
+
+func (a *bindingArena) cloneBinding(src sparqlBinding) sparqlBinding {
+	nb := a.newBinding()
+	for k, v := range src {
 		nb[k] = v
 	}
 	return nb
+}
+
+func (a *bindingArena) release() {
+	for _, b := range a.allocated {
+		for k := range b {
+			delete(b, k)
+		}
+		sparqlBindingPool.Put(b)
+	}
+	a.allocated = a.allocated[:0]
 }
 
 func bindingID(v interface{}) (string, bool) {
@@ -793,7 +823,6 @@ func bindOrMatch(b sparqlBinding, variable string, value interface{}) bool {
 	return true
 }
 
-
 // evaluateSPARQL evaluates the parsed query against the entity set
 func evaluateSPARQL(q *SPARQLQuery, entities []*models.Entity) []map[string]interface{} {
 	// Build lookup table: entity ID → entity
@@ -804,10 +833,12 @@ func evaluateSPARQL(q *SPARQLQuery, entities []*models.Entity) []map[string]inte
 
 	// Start with one empty binding
 	bindings := []sparqlBinding{{}}
+	arena := bindingArena{allocated: make([]sparqlBinding, 0, len(entities))}
+	defer arena.release()
 
 	// Apply triple patterns
 	for _, pattern := range q.Patterns {
-		bindings = applyTriple(pattern, bindings, entities, entityByID)
+		bindings = applyTriple(pattern, bindings, entities, entityByID, &arena)
 		if len(bindings) == 0 {
 			break
 		}
@@ -873,7 +904,7 @@ func evaluateSPARQL(q *SPARQLQuery, entities []*models.Entity) []map[string]inte
 	// Project to SELECT variables
 	results := make([]map[string]interface{}, 0, len(bindings))
 	for _, b := range bindings {
-		row := make(map[string]interface{})
+		row := make(map[string]interface{}, len(q.Variables))
 		if len(q.Variables) > 0 {
 			for _, v := range q.Variables {
 				if val, ok := b[v]; ok {
@@ -891,7 +922,7 @@ func evaluateSPARQL(q *SPARQLQuery, entities []*models.Entity) []map[string]inte
 }
 
 // applyTriple extends bindings according to a single triple pattern
-func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models.Entity, entityByID map[string]*models.Entity) []sparqlBinding {
+func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models.Entity, entityByID map[string]*models.Entity, arena *bindingArena) []sparqlBinding {
 	result := make([]sparqlBinding, 0, len(bindings))
 
 	// rdf:type pattern: ?s a :Type  →  bind ?s to entity IDs of matching type
@@ -921,12 +952,14 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 
 			if len(b) == 0 {
 				for _, ent := range matchingEntities {
-					result = append(result, sparqlBinding{pat.Subject: ent.ID})
+					nb := arena.newBinding()
+					nb[pat.Subject] = ent.ID
+					result = append(result, nb)
 				}
 				continue
 			}
 			for _, ent := range matchingEntities {
-				nb := cloneBinding(b)
+				nb := arena.cloneBinding(b)
 				nb[pat.Subject] = ent.ID
 				result = append(result, nb)
 			}
@@ -969,7 +1002,7 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 						continue
 					}
 					if pat.IsVar[2] {
-						nb := cloneBinding(b)
+						nb := arena.cloneBinding(b)
 						nb[pat.Object] = target.ID
 						result = append(result, nb)
 					} else if target.ID == pat.Object {
@@ -985,18 +1018,23 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 				if hasAttr {
 					if pat.IsVar[2] {
 						if len(b) == 0 {
-							result = append(result, sparqlBinding{pat.Subject: ent.ID, pat.Object: attrVal})
+							nb := arena.newBinding()
+							nb[pat.Subject] = ent.ID
+							nb[pat.Object] = attrVal
+							result = append(result, nb)
 						} else {
-							nb := cloneBinding(b)
+							nb := arena.cloneBinding(b)
 							nb[pat.Subject] = ent.ID
 							nb[pat.Object] = attrVal
 							result = append(result, nb)
 						}
 					} else if fmt.Sprintf("%v", attrVal) == pat.Object {
 						if len(b) == 0 {
-							result = append(result, sparqlBinding{pat.Subject: ent.ID})
+							nb := arena.newBinding()
+							nb[pat.Subject] = ent.ID
+							result = append(result, nb)
 						} else {
-							nb := cloneBinding(b)
+							nb := arena.cloneBinding(b)
 							nb[pat.Subject] = ent.ID
 							result = append(result, nb)
 						}
@@ -1015,18 +1053,23 @@ func applyTriple(pat TriplePattern, bindings []sparqlBinding, entities []*models
 					}
 					if pat.IsVar[2] {
 						if len(b) == 0 {
-							result = append(result, sparqlBinding{pat.Subject: ent.ID, pat.Object: target.ID})
+							nb := arena.newBinding()
+							nb[pat.Subject] = ent.ID
+							nb[pat.Object] = target.ID
+							result = append(result, nb)
 						} else {
-							nb := cloneBinding(b)
+							nb := arena.cloneBinding(b)
 							nb[pat.Subject] = ent.ID
 							nb[pat.Object] = target.ID
 							result = append(result, nb)
 						}
 					} else if target.ID == pat.Object {
 						if len(b) == 0 {
-							result = append(result, sparqlBinding{pat.Subject: ent.ID})
+							nb := arena.newBinding()
+							nb[pat.Subject] = ent.ID
+							result = append(result, nb)
 						} else {
-							nb := cloneBinding(b)
+							nb := arena.cloneBinding(b)
 							nb[pat.Subject] = ent.ID
 							result = append(result, nb)
 						}
@@ -1257,4 +1300,3 @@ func compareVals(a, b interface{}) int {
 	bs := fmt.Sprintf("%v", b)
 	return strings.Compare(as, bs)
 }
-

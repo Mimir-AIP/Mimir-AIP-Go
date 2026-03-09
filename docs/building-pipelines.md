@@ -131,6 +131,35 @@ Makes an HTTP request.
     body:   "{{context.call-api.response.body}}"
 ```
 
+### `poll_http_json`
+
+Fetches a JSON HTTP endpoint and returns only items not already represented in the provided checkpoint. When the upstream sends `ETag` or `Last-Modified`, those values are preserved in the returned checkpoint.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `url` | Yes | — | JSON endpoint URL |
+| `method` | No | `GET` | HTTP method |
+| `headers` | No | — | Request headers |
+| `body` | No | — | Optional request body |
+| `items_path` | No | — | Dot-path to the array inside the JSON payload; defaults to `items` or the root array/object |
+| `checkpoint` | No | — | Previous checkpoint object |
+| `max_checkpoint_items` | No | `200` | Max remembered item hashes |
+
+**Output keys:** `items`, `new_count`, `total_count`, `checkpoint`
+
+### `poll_rss`
+
+Fetches an RSS feed and emits only newly seen items based on checkpoint hashes.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `url` | Yes | — | RSS feed URL |
+| `checkpoint` | No | — | Previous checkpoint object |
+| `max_checkpoint_items` | No | `200` | Max remembered item hashes |
+
+**Output keys:** `items`, `new_count`, `total_count`, `checkpoint`
+
+
 ### `parse_json`
 
 Parses a JSON string into a structured value.
@@ -221,6 +250,111 @@ Jumps to a named step (for simple loops). Use sparingly — unbounded loops will
   parameters:
     target: fetch
 ```
+
+### `load_checkpoint` / `save_checkpoint`
+
+Workers are stateless. For incremental ingestion across scheduled runs, persist cursor or dedupe state explicitly with checkpoint actions.
+
+| Parameter | Action | Required | Description |
+|-----------|--------|----------|-------------|
+| `project_id` | both | No | Defaults to the executing pipeline project |
+| `pipeline_id` | both | No | Defaults to the executing pipeline ID |
+| `step_name` | both | No | Defaults to the current step name |
+| `scope` | both | No | Optional namespace when one step tracks multiple feeds/tables |
+| `default` | `load_checkpoint` | No | Default object to return when no checkpoint exists |
+| `checkpoint` | `save_checkpoint` | Yes | Object payload to persist |
+| `version` | `save_checkpoint` | No | Optimistic lock version from a previous `load_checkpoint` |
+
+**Output keys:**
+
+- `load_checkpoint`: `exists`, `version`, `checkpoint`, `updated_at`
+- `save_checkpoint`: `saved`, `version`, `checkpoint`, `updated_at`
+
+```yaml
+steps:
+  - name: load-feed-state
+    plugin: default
+    action: load_checkpoint
+    parameters:
+      step_name: supplier-feed
+      scope: daily-prices
+      default:
+        seen_hashes: []
+
+  - name: fetch-feed
+    plugin: default
+    action: poll_rss
+    parameters:
+      url: "https://supplier.example.com/prices.rss"
+      checkpoint: "{{context.load-feed-state.checkpoint}}"
+
+  - name: save-feed-state
+    plugin: default
+    action: save_checkpoint
+    parameters:
+      step_name: supplier-feed
+      scope: daily-prices
+      checkpoint: "{{context.fetch-feed.checkpoint}}"
+      version: "{{context.load-feed-state.version}}"
+```
+
+### `query_sql`
+
+Executes a SQL query and returns rows as structured objects. This is designed for stateless workers: your pipeline loads a checkpoint, interpolates it into the query, then persists the next cursor after the query completes.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `dsn` | Yes | — | Database connection string |
+| `query` | Yes | — | SQL query string (template strings supported) |
+| `driver` | No | `mysql` | SQL driver name |
+| `cursor_column` | No | — | Column whose last returned value becomes `next_cursor` |
+
+**Output keys:** `items`, `row_count`, optionally `next_cursor`, `checkpoint`
+
+```yaml
+- name: load-repair-cursor
+  plugin: default
+  action: load_checkpoint
+  parameters:
+    step_name: repair-sql
+    default:
+      last_cursor: "1970-01-01T00:00:00Z"
+
+- name: fetch-repairs
+  plugin: default
+  action: query_sql
+  parameters:
+    dsn: "{{context._parameters.mysql_dsn}}"
+    query: >-
+      SELECT repair_id, amount, updated_at
+      FROM repairs
+      WHERE updated_at > '{{context.load-repair-cursor.checkpoint.last_cursor}}'
+      ORDER BY updated_at
+    cursor_column: updated_at
+
+- name: save-repair-cursor
+  plugin: default
+  action: save_checkpoint
+  parameters:
+    step_name: repair-sql
+    checkpoint: "{{context.fetch-repairs.checkpoint}}"
+    version: "{{context.load-repair-cursor.version}}"
+```
+
+### `ingest_csv_url`
+
+Fetches a CSV document from a URL, parses rows into structured objects, and applies the same dedupe checkpoint model as `ingest_csv`. ETag / Last-Modified values are carried inside the returned checkpoint when present.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `url` | Yes | — | CSV URL |
+| `headers` | No | — | Additional request headers |
+| `delimiter` | No | `,` | Single-character delimiter |
+| `has_header` | No | `true` | Whether the first row is a header row |
+| `checkpoint` | No | — | Previous checkpoint object from `load_checkpoint` or a prior run |
+
+**Output keys:** `items`, `headers`, `new_count`, `total_count`, `checkpoint`
+
 
 ---
 

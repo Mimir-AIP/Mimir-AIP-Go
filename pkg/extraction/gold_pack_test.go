@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"testing"
 	"time"
 
@@ -226,11 +225,3 @@ func goldStructuredCIR(domain goldDomain) *models.CIR {
 	return makeCIR(domain.Name+"-structured", src.EntityType, rows)
 }
 
-func sortedDomainNames(pack goldPack) []string {
-	names := make([]string, 0, len(pack.Domains))
-	for _, d := range pack.Domains {
-		names = append(names, d.Name)
-	}
-	sort.Strings(names)
-	return names
-}

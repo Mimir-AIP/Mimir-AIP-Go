@@ -524,6 +524,7 @@ func TestSyntheticCrossSourceConfidenceCalibration(t *testing.T) {
 	observedPrec := make([]float64, 0, len(checks))
 	for _, c := range checks {
 		prec, support, pred := precisionAtThreshold(links, expected, c.threshold)
+		t.Logf("threshold=%.2f precision=%.3f support=%d", c.threshold, prec, support)
 		if support < c.minSupport {
 			t.Fatalf("threshold %.2f has insufficient support: got=%d want>=%d", c.threshold, support, c.minSupport)
 		}

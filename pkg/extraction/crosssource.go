@@ -307,17 +307,29 @@ func scorePair(a, b models.ColumnProfile) (models.CrossSourceLink, bool) {
 	// Signal 2: column name similarity.
 	nameSim := columnNameSimilarity(a.ColumnName, b.ColumnName)
 
-	// Signal 3: key-likeness bonus.
+	// Signal 3: cardinality alignment. True key-key links should exhibit
+	// similar uniqueness ratios across sources; partial-range decoys should not.
+	cardinalitySim := 1 - math.Abs(a.CardinalityRatio-b.CardinalityRatio)
+	if cardinalitySim < 0 {
+		cardinalitySim = 0
+	}
+
+	// Guardrail: if names are not similar, require cardinality alignment to be
+	// reasonably strong unless value overlap itself is very high, which allows
+	// aliases like sid ↔ student_id where one side is repeated per fact table row.
+	if nameSim < 0.20 && cardinalitySim < 0.80 && overlap < 0.60 {
+		return models.CrossSourceLink{}, false
+	}
+
+	// Signal 4: key-likeness bonus.
 	keyBonus := 0.0
-	switch {
-	case a.IsLikelyKey && b.IsLikelyKey:
-		keyBonus = 0.20
-	case a.IsLikelyKey || b.IsLikelyKey:
+	if a.IsLikelyKey && b.IsLikelyKey {
 		keyBonus = 0.10
 	}
 
-	// Combined confidence: value overlap is the dominant signal.
-	confidence := math.Min(0.50*overlap+0.30*nameSim+keyBonus, 0.97)
+	// Combined confidence: value overlap remains dominant; name similarity
+	// and cardinality alignment refine precision on ambiguous overlaps.
+	confidence := math.Min(0.50*overlap+0.25*nameSim+0.15*cardinalitySim+keyBonus, 0.97)
 	if confidence < minLinkConfidence {
 		return models.CrossSourceLink{}, false
 	}

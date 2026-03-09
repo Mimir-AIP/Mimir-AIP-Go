@@ -217,6 +217,15 @@ async function apiCall(endpoint, options = {}) {
 			throw new Error(error || `HTTP ${response.status}`);
 		}
 
+		if (response.status === 204) {
+			return null;
+		}
+
+		const contentType = response.headers.get('content-type') || '';
+		if (!contentType.includes('application/json')) {
+			return await response.text();
+		}
+
 		return await response.json();
 	} catch (error) {
 		console.error('API Error:', error);
@@ -241,7 +250,6 @@ function ProjectsPage() {
 	const [formData, setFormData] = React.useState({
 		name: '',
 		description: '',
-		owner: '',
 	});
 
 	const loadProjects = async () => {
@@ -267,7 +275,7 @@ function ProjectsPage() {
 				body: JSON.stringify(formData),
 			});
 			setShowModal(false);
-			setFormData({ name: '', description: '', owner: '' });
+			setFormData({ name: '', description: '' });
 			loadProjects();
 		} catch (error) {
 			alert('Failed to create project: ' + error.message);
@@ -288,13 +296,16 @@ function ProjectsPage() {
 		{ key: 'id', label: 'ID' },
 		{ key: 'name', label: 'Name' },
 		{ key: 'description', label: 'Description' },
-		{ key: 'owner', label: 'Owner' },
 		{
 			key: 'status',
 			label: 'Status',
 			render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span>
 		},
-		{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleDateString() },
+		{
+			key: 'created_at',
+			label: 'Created',
+			render: (row) => new Date(row.metadata?.created_at || row.created_at).toLocaleDateString()
+		},
 	];
 
 	return (
@@ -320,20 +331,12 @@ function ProjectsPage() {
 
 			<Modal open={showModal} onClose={() => setShowModal(false)} title="Create New Project">
 				<form onSubmit={handleSubmit}>
-					<div className="form-grid">
-						<FormField
-							label="Project Name"
-							value={formData.name}
-							onChange={(v) => setFormData({ ...formData, name: v })}
-							required
-						/>
-						<FormField
-							label="Owner"
-							value={formData.owner}
-							onChange={(v) => setFormData({ ...formData, owner: v })}
-							required
-						/>
-					</div>
+					<FormField
+						label="Project Name"
+						value={formData.name}
+						onChange={(v) => setFormData({ ...formData, name: v })}
+						required
+					/>
 					<FormField
 						label="Description"
 						type="textarea"
@@ -2043,8 +2046,8 @@ function PluginsPage() {
 	const [loading, setLoading] = React.useState(true);
 	const [showModal, setShowModal] = React.useState(false);
 	const [formData, setFormData] = React.useState({
-		git_url: '',
-		version: 'main',
+		repository_url: '',
+		git_ref: 'main',
 	});
 
 	const loadPlugins = async () => {
@@ -2071,7 +2074,7 @@ function PluginsPage() {
 				body: JSON.stringify(formData),
 			});
 			setShowModal(false);
-			setFormData({ git_url: '', version: 'main' });
+			setFormData({ repository_url: '', git_ref: 'main' });
 			loadPlugins();
 		} catch (error) {
 			alert('Failed to install plugin: ' + error.message);
@@ -2090,7 +2093,7 @@ function PluginsPage() {
 
 	const handleUpdate = async (name) => {
 		try {
-			await apiCall(`/api/plugins/${name}`, { method: 'PUT' });
+			await apiCall(`/api/plugins/${name}`, { method: 'PUT', body: JSON.stringify({}) });
 			alert('Plugin updated!');
 			loadPlugins();
 		} catch (error) {
@@ -2136,15 +2139,15 @@ function PluginsPage() {
 				<form onSubmit={handleSubmit}>
 					<FormField
 						label="Git Repository URL"
-						value={formData.git_url}
-						onChange={(v) => setFormData({ ...formData, git_url: v })}
+						value={formData.repository_url}
+						onChange={(v) => setFormData({ ...formData, repository_url: v })}
 						placeholder="https://github.com/user/plugin.git"
 						required
 					/>
 					<FormField
 						label="Version/Branch"
-						value={formData.version}
-						onChange={(v) => setFormData({ ...formData, version: v })}
+						value={formData.git_ref}
+						onChange={(v) => setFormData({ ...formData, git_ref: v })}
 						placeholder="main"
 					/>
 					<Button type="submit" label="Install Plugin" />

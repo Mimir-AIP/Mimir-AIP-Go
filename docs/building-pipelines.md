@@ -267,10 +267,9 @@ curl -X POST http://localhost:8080/api/pipelines \
 ### Execute a pipeline
 
 ```bash
-curl -X POST http://localhost:8080/api/pipelines/execute \
+curl -X POST http://localhost:8080/api/pipelines/pipe-456/execute \
   -H "Content-Type: application/json" \
   -d '{
-    "pipeline_id": "pipe-456",
     "trigger_type": "manual",
     "parameters": {
       "resource_id": "abc123",

@@ -17,12 +17,13 @@ func init() {
 		RequestBody: doc.JsonBody(doc.Ref("PipelineCreateRequest")),
 		Responses:   doc.R(doc.Created(doc.Ref("Pipeline")), doc.BadRequest()),
 	})
-	doc.Register("POST", "/api/pipelines/execute", doc.RouteDoc{
+	doc.Register("POST", "/api/pipelines/{id}/execute", doc.RouteDoc{
 		Summary:     "Execute pipeline",
 		Description: "Enqueues a pipeline for asynchronous execution by a worker.",
 		Tags:        []string{"Pipelines"},
+		Params:      []doc.Param{doc.PParam("id", "Pipeline ID")},
 		RequestBody: doc.JsonBody(doc.Ref("PipelineExecutionRequest")),
-		Responses:   doc.R(doc.Created(doc.Ref("WorkTask")), doc.BadRequest()),
+		Responses:   doc.R(doc.Accepted(doc.Ref("WorkTask")), doc.BadRequest(), doc.NotFound()),
 	})
 	doc.Register("GET", "/api/pipelines/{id}", doc.RouteDoc{
 		Summary:     "Get pipeline",

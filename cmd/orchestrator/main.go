@@ -229,12 +229,10 @@ func main() {
 	server.RegisterHandler("/api/projects/", projectHandler.HandleProject)
 	server.RegisterHandler("/api/projects/clone", projectHandler.HandleProjectClone)
 
-
 	// Register pipeline handlers
 	pipelineHandler := api.NewPipelineHandler(pipelineService, q)
 	server.RegisterHandler("/api/pipelines", pipelineHandler.HandlePipelines)
 	server.RegisterHandler("/api/pipelines/", pipelineHandler.HandlePipeline)
-	server.RegisterHandler("/api/pipelines/execute", pipelineHandler.HandlePipelineExecute)
 
 	// Register schedule handlers
 	scheduleHandler := api.NewScheduleHandler(schedulerService)
@@ -312,4 +310,3 @@ func main() {
 
 	log.Println("Shutting down orchestrator...")
 }
-

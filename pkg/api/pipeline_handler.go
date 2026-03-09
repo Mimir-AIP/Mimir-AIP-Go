@@ -74,8 +74,8 @@ func (h *PipelineHandler) HandlePipelineExecute(w http.ResponseWriter, r *http.R
 
 	// Extract pipeline ID from path
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/pipelines/"), "/")
-	if len(parts) < 2 {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
+	if len(parts) != 2 || parts[0] == "" || parts[1] != "execute" {
+		http.Error(w, "Invalid path: expected /api/pipelines/{id}/execute", http.StatusBadRequest)
 		return
 	}
 	pipelineID := parts[0]

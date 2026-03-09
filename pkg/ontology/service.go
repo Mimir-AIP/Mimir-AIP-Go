@@ -201,37 +201,46 @@ func setDiff(a, b map[string]bool) []string {
 
 // GenerateFromExtraction generates a Turtle ontology from extraction results.
 //
-// Status is set to "active" when no active ontology already exists for the
-// project so that the first auto-generated ontology is immediately usable
-// without any manual intervention.  Subsequent regenerations that differ from
-// the currently active ontology are set to "needs_review" by the caller
-// (extraction handler) after diffing.
+// Auto-generated ontologies are maintained as a single active ontology per
+// (project, name). Re-generating from new ingestion data updates the existing
+// generated ontology in place instead of creating draft copies that require
+// manual activation.
 func (s *Service) GenerateFromExtraction(projectID, name string, extractionResult *models.ExtractionResult) (*models.Ontology, error) {
 	if extractionResult == nil {
 		return nil, fmt.Errorf("extraction result cannot be nil")
 	}
 
 	turtleContent := generateTurtleFromExtraction(extractionResult)
-
-	// Determine initial status: active if no active ontology exists yet.
-	initialStatus := "draft"
-	existingOntologies, err := s.store.ListOntologiesByProject(projectID)
-	if err == nil {
-		hasActive := false
-		for _, o := range existingOntologies {
-			if o.Status == "active" {
-				hasActive = true
-				break
-			}
-		}
-		if !hasActive {
-			initialStatus = "active"
-		}
-	}
-
 	desc := fmt.Sprintf("Auto-generated ontology from %d entities", len(extractionResult.Entities))
 	if len(extractionResult.CrossSourceLinks) > 0 {
 		desc += fmt.Sprintf(", %d cross-source links", len(extractionResult.CrossSourceLinks))
+	}
+
+	existingOntologies, err := s.store.ListOntologiesByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list existing ontologies: %w", err)
+	}
+
+	for _, existing := range existingOntologies {
+		if !existing.IsGenerated || existing.Name != name {
+			continue
+		}
+
+		if existing.Content == turtleContent && existing.Description == desc && existing.Status == "active" {
+			return existing, nil
+		}
+
+		active := "active"
+		updateReq := &models.OntologyUpdateRequest{
+			Description: &desc,
+			Content:     &turtleContent,
+			Status:      &active,
+		}
+		updated, err := s.UpdateOntology(existing.ID, updateReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update generated ontology: %w", err)
+		}
+		return updated, nil
 	}
 
 	req := &models.OntologyCreateRequest{
@@ -240,7 +249,7 @@ func (s *Service) GenerateFromExtraction(projectID, name string, extractionResul
 		Description: desc,
 		Version:     "1.0",
 		Content:     turtleContent,
-		Status:      initialStatus,
+		Status:      "active",
 		IsGenerated: true,
 	}
 

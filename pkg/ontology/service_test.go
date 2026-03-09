@@ -290,3 +290,75 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+func TestGenerateFromExtraction_UpsertsGeneratedOntology(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	service := NewService(store)
+	projectID := "test-project-id"
+	name := "auto-test-project-id"
+
+	first := &models.ExtractionResult{
+		Entities: []models.ExtractedEntity{
+			{
+				Name: "entity-a",
+				Attributes: map[string]interface{}{
+					"entity_type": "Device",
+					"serial":      "A-1",
+				},
+				Source:     "structured",
+				Confidence: 0.9,
+			},
+		},
+	}
+
+	firstOntology, err := service.GenerateFromExtraction(projectID, name, first)
+	if err != nil {
+		t.Fatalf("first GenerateFromExtraction failed: %v", err)
+	}
+	if firstOntology.Status != "active" {
+		t.Fatalf("expected first generated ontology to be active, got %s", firstOntology.Status)
+	}
+
+	second := &models.ExtractionResult{
+		Entities: []models.ExtractedEntity{
+			{
+				Name: "entity-a",
+				Attributes: map[string]interface{}{
+					"entity_type": "Device",
+					"serial":      "A-1",
+					"firmware":    "1.2.3",
+				},
+				Source:     "structured",
+				Confidence: 0.9,
+			},
+		},
+	}
+
+	secondOntology, err := service.GenerateFromExtraction(projectID, name, second)
+	if err != nil {
+		t.Fatalf("second GenerateFromExtraction failed: %v", err)
+	}
+
+	if secondOntology.ID != firstOntology.ID {
+		t.Fatalf("expected ontology upsert to keep ID %s, got %s", firstOntology.ID, secondOntology.ID)
+	}
+	if secondOntology.Status != "active" {
+		t.Fatalf("expected updated generated ontology to remain active, got %s", secondOntology.Status)
+	}
+	if firstOntology.Content == secondOntology.Content {
+		t.Fatal("expected ontology content to change after second extraction")
+	}
+
+	projectOntologies, err := service.GetProjectOntologies(projectID)
+	if err != nil {
+		t.Fatalf("GetProjectOntologies failed: %v", err)
+	}
+	if len(projectOntologies) != 1 {
+		t.Fatalf("expected exactly 1 generated ontology record after upsert, got %d", len(projectOntologies))
+	}
+}

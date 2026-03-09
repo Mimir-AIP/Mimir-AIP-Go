@@ -62,27 +62,7 @@ func (h *ExtractionHandler) HandleExtractAndGenerate(w http.ResponseWriter, r *h
 		return
 	}
 
-	// Diff against existing active ontologies and flag if changed
-	var ontologyDiff interface{}
-	existingOntologies, err := h.ontologyService.GetProjectOntologies(req.ProjectID)
-	if err == nil {
-		for _, existing := range existingOntologies {
-			if existing.Status == "active" && existing.ID != newOntology.ID {
-				diff := h.ontologyService.DiffOntologies(existing.Content, newOntology.Content)
-				if diff.HasChanges {
-					if flagErr := h.ontologyService.FlagForReview(newOntology.ID, diff); flagErr != nil {
-						// Non-fatal: log and continue
-						fmt.Printf("Warning: failed to flag ontology for review: %v\n", flagErr)
-					}
-					newOntology.Status = "needs_review"
-					ontologyDiff = diff
-				}
-				break
-			}
-		}
-	}
-
-	// Return ontology
+	// Return ontology and extraction summary
 	resp := map[string]interface{}{
 		"ontology": newOntology,
 		"extraction_summary": map[string]interface{}{
@@ -91,9 +71,6 @@ func (h *ExtractionHandler) HandleExtractAndGenerate(w http.ResponseWriter, r *h
 			"cross_source_links_count": len(extractionResult.CrossSourceLinks),
 			"cross_source_links":       extractionResult.CrossSourceLinks,
 		},
-	}
-	if ontologyDiff != nil {
-		resp["ontology_diff"] = ontologyDiff
 	}
 
 	w.Header().Set("Content-Type", "application/json")

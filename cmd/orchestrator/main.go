@@ -11,6 +11,7 @@ import (
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/api"
 	"github.com/mimir-aip/mimir-aip-go/pkg/config"
+	"github.com/mimir-aip/mimir-aip-go/pkg/connectors"
 	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/extraction"
 	"github.com/mimir-aip/mimir-aip-go/pkg/k8s"
@@ -194,6 +195,7 @@ func main() {
 
 	// Initialize extraction service (with optional LLM enrichment).
 	extractionService := extraction.NewService(storageService).WithLLM(llmService)
+	connectorService := connectors.NewService(pipelineService, schedulerService, storageService)
 
 	// Initialize ML model service
 	mlmodelService := mlmodel.NewService(store, ontologyService, storageService, q)
@@ -238,6 +240,10 @@ func main() {
 	scheduleHandler := api.NewScheduleHandler(schedulerService)
 	server.RegisterHandler("/api/schedules", scheduleHandler.HandleSchedules)
 	server.RegisterHandler("/api/schedules/", scheduleHandler.HandleSchedule)
+
+	// Register bundled connector handler
+	connectorsHandler := api.NewConnectorsHandler(connectorService)
+	server.RegisterHandler("/api/connectors", connectorsHandler.HandleConnectors)
 
 	// Register plugin handlers
 	pluginHandler := api.NewPluginHandler(pluginService)

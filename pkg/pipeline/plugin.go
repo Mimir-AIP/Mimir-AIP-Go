@@ -75,6 +75,10 @@ func (p *DefaultPlugin) Execute(action string, params map[string]interface{}, ct
 		return p.pollHTTPJSON(params, ctx)
 	case "poll_rss":
 		return p.pollRSS(params, ctx)
+	case "poll_sql_incremental":
+		return p.pollSQLIncremental(params, ctx)
+	case "poll_csv_drop":
+		return p.pollCSVDrop(params, ctx)
 	case "ingest_csv":
 		return p.ingestCSV(params, ctx)
 	case "ingest_csv_url":
@@ -545,6 +549,7 @@ type connectorCheckpoint struct {
 	Seen         []string
 	ETag         string
 	LastModified string
+	LastCursor   interface{}
 }
 
 func (p *DefaultPlugin) pollHTTPJSON(params map[string]interface{}, ctx *models.PipelineContext) (map[string]interface{}, error) {
@@ -869,6 +874,9 @@ func (p *DefaultPlugin) parseConnectorCheckpoint(raw interface{}, ctx *models.Pi
 	if lm, ok := asMap["last_modified"].(string); ok {
 		checkpoint.LastModified = lm
 	}
+	if lastCursor, exists := asMap["last_cursor"]; exists {
+		checkpoint.LastCursor = lastCursor
+	}
 
 	rawSeen, hasSeen := asMap["seen_hashes"]
 	if !hasSeen {
@@ -903,12 +911,16 @@ func decodeStringSlice(raw interface{}) []string {
 }
 
 func (c connectorCheckpoint) toMap() map[string]interface{} {
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"seen_hashes":    c.Seen,
 		"etag":           c.ETag,
 		"last_modified":  c.LastModified,
 		"last_polled_at": time.Now().UTC().Format(time.RFC3339),
 	}
+	if c.LastCursor != nil {
+		result["last_cursor"] = c.LastCursor
+	}
+	return result
 }
 
 // ── Template resolution ───────────────────────────────────────────────────────

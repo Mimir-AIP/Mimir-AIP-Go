@@ -48,6 +48,16 @@ type MetadataStore interface {
 	ListExternalLLMProviders() ([]*models.ExternalLLMProvider, error)
 	DeleteExternalLLMProvider(name string) error
 
+	// Analysis operations
+	SaveAnalysisRun(run *models.AnalysisRun) error
+	GetAnalysisRun(id string) (*models.AnalysisRun, error)
+	ListAnalysisRunsByProject(projectID string) ([]*models.AnalysisRun, error)
+	SaveReviewItem(item *models.ReviewItem) error
+	GetReviewItem(id string) (*models.ReviewItem, error)
+	ListReviewItems(projectID string) ([]*models.ReviewItem, error)
+	SaveInsight(insight *models.Insight) error
+	GetInsight(id string) (*models.Insight, error)
+	ListInsightsByProject(projectID string) ([]*models.Insight, error)
 	// Storage operations
 	SaveStorageConfig(config *models.StorageConfig) error
 	GetStorageConfig(id string) (*models.StorageConfig, error)

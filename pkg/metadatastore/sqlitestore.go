@@ -335,6 +335,52 @@ func (s *SQLiteStore) initSchema() error {
 		installed_at    DATETIME NOT NULL,
 		updated_at      DATETIME NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS analysis_runs (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		status TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		completed_at DATETIME,
+		data TEXT NOT NULL,
+		FOREIGN KEY (project_id) REFERENCES projects(id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_analysis_runs_project_id ON analysis_runs(project_id);
+	CREATE INDEX IF NOT EXISTS idx_analysis_runs_kind ON analysis_runs(kind);
+
+	CREATE TABLE IF NOT EXISTS review_items (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		run_id TEXT NOT NULL,
+		finding_type TEXT NOT NULL,
+		status TEXT NOT NULL,
+		confidence REAL NOT NULL,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		data TEXT NOT NULL,
+		FOREIGN KEY (project_id) REFERENCES projects(id),
+		FOREIGN KEY (run_id) REFERENCES analysis_runs(id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_review_items_project_id ON review_items(project_id);
+	CREATE INDEX IF NOT EXISTS idx_review_items_status ON review_items(status);
+
+	CREATE TABLE IF NOT EXISTS insights (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		run_id TEXT NOT NULL,
+		type TEXT NOT NULL,
+		severity TEXT NOT NULL,
+		confidence REAL NOT NULL,
+		status TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		data TEXT NOT NULL,
+		FOREIGN KEY (project_id) REFERENCES projects(id),
+		FOREIGN KEY (run_id) REFERENCES analysis_runs(id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_insights_project_id ON insights(project_id);
+	CREATE INDEX IF NOT EXISTS idx_insights_severity ON insights(severity);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -2287,4 +2333,160 @@ func (s *SQLiteStore) DeleteExternalLLMProvider(name string) error {
 		_, err := s.db.Exec(`DELETE FROM external_llm_providers WHERE name = ?`, name)
 		return err
 	}, 5)
+}
+
+// ── Analysis Runs ─────────────────────────────────────────────────────────────
+
+// SaveAnalysisRun upserts a persisted analysis run.
+func (s *SQLiteStore) SaveAnalysisRun(run *models.AnalysisRun) error {
+	data, err := json.Marshal(run)
+	if err != nil {
+		return fmt.Errorf("failed to marshal analysis run: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO analysis_runs (id, project_id, kind, status, created_at, completed_at, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
+	return s.retryOnBusy(func() error {
+		_, err := s.db.Exec(query, run.ID, run.ProjectID, run.Kind, run.Status, run.CreatedAt, run.CompletedAt, string(data))
+		return err
+	}, 5)
+}
+
+// GetAnalysisRun retrieves a single persisted analysis run by ID.
+func (s *SQLiteStore) GetAnalysisRun(id string) (*models.AnalysisRun, error) {
+	var data string
+	if err := s.db.QueryRow(`SELECT data FROM analysis_runs WHERE id = ?`, id).Scan(&data); err != nil {
+		return nil, fmt.Errorf("analysis run not found: %w", err)
+	}
+	run := &models.AnalysisRun{}
+	if err := json.Unmarshal([]byte(data), run); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal analysis run: %w", err)
+	}
+	return run, nil
+}
+
+// ListAnalysisRunsByProject lists persisted analysis runs for one project.
+func (s *SQLiteStore) ListAnalysisRunsByProject(projectID string) ([]*models.AnalysisRun, error) {
+	rows, err := s.db.Query(`SELECT data FROM analysis_runs WHERE project_id = ? ORDER BY created_at DESC`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list analysis runs: %w", err)
+	}
+	defer rows.Close()
+	result := make([]*models.AnalysisRun, 0)
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan analysis run: %w", err)
+		}
+		run := &models.AnalysisRun{}
+		if err := json.Unmarshal([]byte(data), run); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal analysis run: %w", err)
+		}
+		result = append(result, run)
+	}
+	return result, nil
+}
+
+// ── Review Items ───────────────────────────────────────────────────────────────
+
+// SaveReviewItem upserts a persisted review item.
+func (s *SQLiteStore) SaveReviewItem(item *models.ReviewItem) error {
+	data, err := json.Marshal(item)
+	if err != nil {
+		return fmt.Errorf("failed to marshal review item: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO review_items (id, project_id, run_id, finding_type, status, confidence, created_at, updated_at, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	return s.retryOnBusy(func() error {
+		_, err := s.db.Exec(query, item.ID, item.ProjectID, item.RunID, item.FindingType, item.Status, item.Confidence, item.CreatedAt, item.UpdatedAt, string(data))
+		return err
+	}, 5)
+}
+
+// GetReviewItem retrieves a single persisted review item by ID.
+func (s *SQLiteStore) GetReviewItem(id string) (*models.ReviewItem, error) {
+	var data string
+	if err := s.db.QueryRow(`SELECT data FROM review_items WHERE id = ?`, id).Scan(&data); err != nil {
+		return nil, fmt.Errorf("review item not found: %w", err)
+	}
+	item := &models.ReviewItem{}
+	if err := json.Unmarshal([]byte(data), item); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal review item: %w", err)
+	}
+	return item, nil
+}
+
+// ListReviewItems lists review items for a project ordered by recency.
+func (s *SQLiteStore) ListReviewItems(projectID string) ([]*models.ReviewItem, error) {
+	rows, err := s.db.Query(`SELECT data FROM review_items WHERE project_id = ? ORDER BY created_at DESC`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list review items: %w", err)
+	}
+	defer rows.Close()
+	result := make([]*models.ReviewItem, 0)
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan review item: %w", err)
+		}
+		item := &models.ReviewItem{}
+		if err := json.Unmarshal([]byte(data), item); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal review item: %w", err)
+		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+// ── Insights ───────────────────────────────────────────────────────────────────
+
+// SaveInsight upserts a persisted insight.
+func (s *SQLiteStore) SaveInsight(insight *models.Insight) error {
+	data, err := json.Marshal(insight)
+	if err != nil {
+		return fmt.Errorf("failed to marshal insight: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO insights (id, project_id, run_id, type, severity, confidence, status, created_at, updated_at, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	return s.retryOnBusy(func() error {
+		_, err := s.db.Exec(query, insight.ID, insight.ProjectID, insight.RunID, insight.Type, insight.Severity, insight.Confidence, insight.Status, insight.CreatedAt, insight.UpdatedAt, string(data))
+		return err
+	}, 5)
+}
+
+// GetInsight retrieves a single persisted insight by ID.
+func (s *SQLiteStore) GetInsight(id string) (*models.Insight, error) {
+	var data string
+	if err := s.db.QueryRow(`SELECT data FROM insights WHERE id = ?`, id).Scan(&data); err != nil {
+		return nil, fmt.Errorf("insight not found: %w", err)
+	}
+	insight := &models.Insight{}
+	if err := json.Unmarshal([]byte(data), insight); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal insight: %w", err)
+	}
+	return insight, nil
+}
+
+// ListInsightsByProject lists persisted insights for one project ordered by recency.
+func (s *SQLiteStore) ListInsightsByProject(projectID string) ([]*models.Insight, error) {
+	rows, err := s.db.Query(`SELECT data FROM insights WHERE project_id = ? ORDER BY created_at DESC`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list insights: %w", err)
+	}
+	defer rows.Close()
+	result := make([]*models.Insight, 0)
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan insight: %w", err)
+		}
+		insight := &models.Insight{}
+		if err := json.Unmarshal([]byte(data), insight); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal insight: %w", err)
+		}
+		result = append(result, insight)
+	}
+	return result, nil
 }

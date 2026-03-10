@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mimir-aip/mimir-aip-go/pkg/analysis"
 	"github.com/mimir-aip/mimir-aip-go/pkg/api"
 	"github.com/mimir-aip/mimir-aip-go/pkg/config"
 	"github.com/mimir-aip/mimir-aip-go/pkg/connectors"
@@ -195,6 +196,7 @@ func main() {
 
 	// Initialize extraction service (with optional LLM enrichment).
 	extractionService := extraction.NewService(storageService).WithLLM(llmService)
+	analysisService := analysis.NewService(store, extractionService, storageService)
 	connectorService := connectors.NewService(pipelineService, schedulerService, storageService)
 
 	// Initialize ML model service
@@ -244,6 +246,14 @@ func main() {
 	// Register bundled connector handler
 	connectorsHandler := api.NewConnectorsHandler(connectorService)
 	server.RegisterHandler("/api/connectors", connectorsHandler.HandleConnectors)
+
+	// Register analysis and insight handlers
+	analysisHandler := api.NewAnalysisHandler(analysisService)
+	server.RegisterHandler("/api/analysis/resolver", analysisHandler.HandleResolverRun)
+	server.RegisterHandler("/api/analysis/resolver/metrics", analysisHandler.HandleResolverMetrics)
+	server.RegisterHandler("/api/reviews", analysisHandler.HandleReviewItems)
+	server.RegisterHandler("/api/reviews/", analysisHandler.HandleReviewItem)
+	server.RegisterHandler("/api/insights", analysisHandler.HandleInsights)
 
 	// Register plugin handlers
 	pluginHandler := api.NewPluginHandler(pluginService)

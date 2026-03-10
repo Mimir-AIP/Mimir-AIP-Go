@@ -206,12 +206,15 @@ func main() {
 	dtService := digitaltwin.NewService(store, ontologyService, storageService, mlmodelService, q)
 
 	// Start prediction cache eviction background job
+	// Start persisted daily insight generation loop.
+	analysisService.StartInsightLoop(context.Background(), 24*time.Hour)
+
 	go dtService.StartCacheEviction(context.Background())
 
 	// Start background attribute-based action evaluation (every 5 minutes)
 	dtService.StartActionEvaluation(context.Background(), 5*time.Minute)
 
-	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, ML model, and digital twin services")
+	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, analysis, connectors, ML model, and digital twin services")
 
 	// Start scheduler
 	schedulerService.Start()

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 )
 
 const (
@@ -23,7 +24,7 @@ type PluginRegistry interface {
 // Service provides pipeline management and execution operations
 type Service struct {
 	store           metadatastore.MetadataStore
-	plugins         map[string]Plugin
+	plugins         *pluginruntime.Registry[Plugin]
 	pluginRegistry  PluginRegistry
 	storageSvc      CIRStorer
 	checkpointStore PipelineCheckpointStore
@@ -33,7 +34,7 @@ type Service struct {
 func NewService(store metadatastore.MetadataStore) *Service {
 	s := &Service{
 		store:           store,
-		plugins:         make(map[string]Plugin),
+		plugins:         pluginruntime.NewRegistry[Plugin](),
 		checkpointStore: store,
 	}
 	s.refreshBuiltinPlugins()
@@ -44,7 +45,7 @@ func NewService(store metadatastore.MetadataStore) *Service {
 func NewServiceWithRegistry(store metadatastore.MetadataStore, registry PluginRegistry) *Service {
 	s := &Service{
 		store:           store,
-		plugins:         make(map[string]Plugin),
+		plugins:         pluginruntime.NewRegistry[Plugin](),
 		pluginRegistry:  registry,
 		checkpointStore: store,
 	}
@@ -54,8 +55,8 @@ func NewServiceWithRegistry(store metadatastore.MetadataStore, registry PluginRe
 
 func (s *Service) refreshBuiltinPlugins() {
 	dp := NewDefaultPluginWithDeps(s.storageSvc, s.checkpointStore)
-	s.plugins["default"] = dp
-	s.plugins["builtin"] = dp
+	s.plugins.Register("default", dp)
+	s.plugins.Register("builtin", dp)
 }
 
 // SetStorageSvc injects a CIRStorer into the built-in default/builtin plugins so that
@@ -68,7 +69,7 @@ func (s *Service) SetStorageSvc(svc CIRStorer) {
 
 // RegisterPlugin registers a plugin
 func (s *Service) RegisterPlugin(name string, plugin Plugin) {
-	s.plugins[name] = plugin
+	s.plugins.Register(name, plugin)
 }
 
 // Create creates a new pipeline
@@ -268,7 +269,7 @@ func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionReques
 func (s *Service) executeStep(step models.PipelineStep, ctx *models.PipelineContext) (map[string]interface{}, string, error) {
 	ctx.SetStepData("_runtime", "current_step", step.Name)
 
-	plugin, ok := s.plugins[step.Plugin]
+	plugin, ok := s.plugins.Get(step.Plugin)
 	if !ok && s.pluginRegistry != nil {
 		plugin, ok = s.pluginRegistry.GetPlugin(step.Plugin)
 	}
@@ -283,7 +284,8 @@ func (s *Service) executeStep(step models.PipelineStep, ctx *models.PipelineCont
 
 	// Resolve and store declared output mappings
 	if step.Output != nil {
-		dp, isDef := s.plugins["default"].(*DefaultPlugin)
+		dpPlugin, _ := s.plugins.Get("default")
+		dp, isDef := dpPlugin.(*DefaultPlugin)
 		for outputKey, outputTemplate := range step.Output {
 			if isDef {
 				resolvedValue := dp.ResolveTemplates(outputTemplate, ctx)
@@ -308,7 +310,8 @@ func (s *Service) executeForEach(step models.PipelineStep, execution *models.Pip
 
 	// Resolve the items array. Items is a template string referencing context.
 	var items []interface{}
-	dp, ok := s.plugins["default"].(*DefaultPlugin)
+	dpPlugin, ok := s.plugins.Get("default")
+	dp, ok := dpPlugin.(*DefaultPlugin)
 	if !ok {
 		return 0, fmt.Errorf("for_each requires the default plugin to be registered")
 	}

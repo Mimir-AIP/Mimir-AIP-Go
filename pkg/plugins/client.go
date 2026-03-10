@@ -4,207 +4,72 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 )
 
-// Client is a client for downloading plugins from the registry
+// Client fetches pipeline plugin metadata from the orchestrator and compiles the
+// plugin locally with the worker's Go toolchain.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
-	cacheDir   string
+	runtime    *pluginruntime.Loader[pipeline.Plugin]
+	initErr    error
 }
 
-// NewClient creates a new plugin registry client
+// NewClient creates a new plugin registry client.
 func NewClient(baseURL, cacheDir string) *Client {
-	return &Client{
+	runtime, err := pluginruntime.NewLoader(pluginruntime.BuildSpec[pipeline.Plugin]{
+		LogPrefix:      "pipeline plugin loader",
+		AppDir:         "/app",
+		CacheDir:       cacheDir,
+		TempDir:        filepath.Join(cacheDir, "tmp"),
+		HostPackageDir: "plugins",
+		ClonePrefix:    "pp",
+		SymbolName:     "Plugin",
+		DefaultGitRef:  "main",
+		Resolver:       pluginruntime.ResolveSymbol[pipeline.Plugin],
+	})
+	client := &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		cacheDir: cacheDir,
+		runtime: runtime,
+		initErr: err,
 	}
+	return client
 }
 
-// CompilePlugin compiles a plugin from source in the local environment
-// This ensures the plugin is built with the exact same Go toolchain as the worker
+// CompilePlugin compiles a plugin from source in the local worker environment.
 func (c *Client) CompilePlugin(name string) (string, error) {
-	// Ensure cache directory exists
-	if err := os.MkdirAll(c.cacheDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create cache directory: %w", err)
+	if c.initErr != nil {
+		return "", fmt.Errorf("failed to initialise plugin client: %w", c.initErr)
 	}
-
-	// Fetch plugin metadata to get repository URL and commit
 	metadata, err := c.FetchPluginMetadata(name)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch plugin metadata: %w", err)
 	}
-
-	// Create cache file path
-	cachePath := filepath.Join(c.cacheDir, fmt.Sprintf("%s.so", name))
-
-	// Check if we already have this version cached
-	if c.isCached(cachePath, metadata.Version, metadata.GitCommitHash, metadata.UpdatedAt.Format(time.RFC3339)) {
-		fmt.Printf("Plugin %s already cached\n", name)
-		return cachePath, nil
+	if _, _, err := c.runtime.CompileAndLoad(name, metadata.RepositoryURL, metadata.GitCommitHash, metadata.GitCommitHash); err != nil {
+		return "", fmt.Errorf("failed to compile plugin: %w", err)
 	}
-
-	// Build plugin INSIDE /app/plugins/<name> to use the same module context
-	pluginDir := filepath.Join("/app/plugins", name)
-	if err := os.RemoveAll(pluginDir); err != nil {
-		return "", fmt.Errorf("failed to clean plugin directory: %w", err)
-	}
-	if err := os.MkdirAll(pluginDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create plugin directory: %w", err)
-	}
-	defer os.RemoveAll(pluginDir)
-
-	fmt.Printf("Cloning plugin repository: %s\n", metadata.RepositoryURL)
-
-	// Clone plugin repository directly into /app/plugins/<name>
-	if err := c.cloneRepository(metadata.RepositoryURL, metadata.GitCommitHash, pluginDir); err != nil {
-		return "", fmt.Errorf("failed to clone repository: %w", err)
-	}
-
-	fmt.Printf("Flattening action files\n")
-
-	// Flatten action files (move from actions/ to root)
-	if err := c.flattenActionFiles(pluginDir); err != nil {
-		return "", fmt.Errorf("failed to flatten action files: %w", err)
-	}
-
-	fmt.Printf("Removing plugin go.mod (will use parent /app/go.mod)\n")
-
-	// Remove the plugin's go.mod and go.sum - we'll use /app's module instead
-	os.Remove(filepath.Join(pluginDir, "go.mod"))
-	os.Remove(filepath.Join(pluginDir, "go.sum"))
-
-	// Print checksum for debugging
-	fmt.Printf("Plugin build info (using /app source):\n")
-	cmd := exec.Command("sh", "-c", "md5sum /app/pkg/models/*.go | head -3")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
-
-	fmt.Printf("Compiling plugin binary (no go mod tidy needed - using /app module)\n")
-
-	// Compile plugin directly - no go mod tidy needed since we're using /app's go.mod
-	buildCmd := exec.Command("go", "build", "-buildmode=plugin", "-trimpath", "-o", cachePath, "./plugins/"+name)
-	buildCmd.Dir = "/app"
-	buildCmd.Env = append(os.Environ(), "CGO_ENABLED=1")
-
-	if output, err := buildCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("plugin compilation failed: %w\nOutput: %s", err, string(output))
-	}
-
-	fmt.Printf("Plugin compiled successfully\n")
-
-	// Check build ID
-	fmt.Printf("Plugin build ID:\n")
-	buildIDCmd := exec.Command("go", "tool", "buildid", cachePath)
-	buildIDCmd.Stdout = os.Stdout
-	buildIDCmd.Stderr = os.Stderr
-	buildIDCmd.Run()
-
-	// Check module info
-	fmt.Printf("Plugin module info (all):\n")
-	versionCmd := exec.Command("go", "version", "-m", cachePath)
-	versionCmd.Stdout = os.Stdout
-	versionCmd.Stderr = os.Stderr
-	versionCmd.Run()
-
-	// Store version metadata for cache validation
-	c.storeCacheMetadata(cachePath, metadata.Version, metadata.GitCommitHash, metadata.UpdatedAt.Format(time.RFC3339))
-
-	return cachePath, nil
+	return c.runtime.SoPath(name), nil
 }
 
-// cloneRepository clones a git repository at a specific commit
-func (c *Client) cloneRepository(repoURL, commit, targetDir string) error {
-	// Clone repository
-	cloneCmd := exec.Command("git", "clone", repoURL, targetDir)
-	if output, err := cloneCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git clone failed: %w\nOutput: %s", err, string(output))
+// LoadPlugin loads a compiled plugin from the local cache.
+func (c *Client) LoadPlugin(name string) (pipeline.Plugin, error) {
+	if c.initErr != nil {
+		return nil, fmt.Errorf("failed to initialise plugin client: %w", c.initErr)
 	}
-
-	// Checkout specific commit
-	checkoutCmd := exec.Command("git", "checkout", commit)
-	checkoutCmd.Dir = targetDir
-	if output, err := checkoutCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git checkout failed: %w\nOutput: %s", err, string(output))
-	}
-
-	return nil
+	return c.runtime.LoadCached(name)
 }
 
-// flattenActionFiles moves action files from actions/ subdirectory to root
-func (c *Client) flattenActionFiles(dir string) error {
-	actionsDir := filepath.Join(dir, "actions")
-
-	// Check if actions directory exists
-	if _, err := os.Stat(actionsDir); os.IsNotExist(err) {
-		return nil // No actions directory, nothing to flatten
-	}
-
-	// Read all files in actions directory
-	entries, err := os.ReadDir(actionsDir)
-	if err != nil {
-		return fmt.Errorf("failed to read actions directory: %w", err)
-	}
-
-	// Move each .go file to root
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
-			continue
-		}
-
-		src := filepath.Join(actionsDir, entry.Name())
-		dst := filepath.Join(dir, entry.Name())
-
-		if err := os.Rename(src, dst); err != nil {
-			return fmt.Errorf("failed to move %s: %w", entry.Name(), err)
-		}
-	}
-
-	return nil
-}
-
-// isCached checks if a plugin is already cached with the same version
-func (c *Client) isCached(path, version, commit, updated string) bool {
-	// Check if file exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return false
-	}
-
-	// Check metadata file
-	metaPath := path + ".meta"
-	data, err := os.ReadFile(metaPath)
-	if err != nil {
-		return false
-	}
-
-	// Format: "version:commit:updated"
-	expected := fmt.Sprintf("%s:%s:%s", version, commit, updated)
-	return string(data) == expected
-}
-
-// storeCacheMetadata stores version info for cache validation
-func (c *Client) storeCacheMetadata(path, version, commit, updated string) {
-	metaPath := path + ".meta"
-	data := fmt.Sprintf("%s:%s:%s", version, commit, updated)
-	if err := os.WriteFile(metaPath, []byte(data), 0644); err != nil {
-		log.Printf("Warning: failed to write plugin cache metadata %s: %v", metaPath, err)
-	}
-}
-
-// FetchPluginMetadata fetches plugin metadata from the registry
+// FetchPluginMetadata fetches plugin metadata from the registry.
 func (c *Client) FetchPluginMetadata(name string) (*models.Plugin, error) {
 	url := fmt.Sprintf("%s/api/plugins/%s", c.baseURL, name)
 

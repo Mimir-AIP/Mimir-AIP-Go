@@ -8,7 +8,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"plugin"
 	"sort"
 	"strconv"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel/training"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	pipelinepkg "github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 	"github.com/mimir-aip/mimir-aip-go/pkg/plugins"
 )
 
@@ -132,11 +132,11 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	pluginClient := plugins.NewClient(orchestratorURL, pluginCacheDir)
 
 	// Initialize plugin registry with built-in plugins
-	pluginRegistry := make(map[string]pipelinepkg.Plugin)
+	pluginRegistry := pluginruntime.NewRegistry[pipelinepkg.Plugin]()
 	storageClient := pipelinepkg.NewHTTPStorageClient(orchestratorURL)
 	checkpointClient := pipelinepkg.NewHTTPCheckpointStore(orchestratorURL)
-	pluginRegistry["default"] = pipelinepkg.NewDefaultPluginWithDeps(storageClient, checkpointClient)
-	pluginRegistry["builtin"] = pipelinepkg.NewDefaultPluginWithDeps(storageClient, checkpointClient)
+	pluginRegistry.Register("default", pipelinepkg.NewDefaultPluginWithDeps(storageClient, checkpointClient))
+	pluginRegistry.Register("builtin", pipelinepkg.NewDefaultPluginWithDeps(storageClient, checkpointClient))
 
 	// Discover and load custom plugins needed for this pipeline
 	// We'll load them on-demand as we encounter them in the pipeline steps
@@ -157,30 +157,13 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		}
 
 		log.Printf("Loading plugin from: %s", pluginPath)
-
-		// Load the plugin using Go's plugin system
-		p, err := plugin.Open(pluginPath)
+		pluginInstance, err := pluginClient.LoadPlugin(pluginName)
 		if err != nil {
-			log.Printf("Warning: Failed to open plugin %s: %v", pluginName, err)
+			log.Printf("Warning: Failed to load plugin %s: %v", pluginName, err)
 			continue
 		}
 
-		// Look for the Plugin symbol
-		symPlugin, err := p.Lookup("Plugin")
-		if err != nil {
-			log.Printf("Warning: Plugin %s does not export 'Plugin' symbol: %v", pluginName, err)
-			continue
-		}
-
-		// Assert that it implements the pipeline.Plugin interface
-		pluginInstance, ok := symPlugin.(pipelinepkg.Plugin)
-		if !ok {
-			log.Printf("Warning: Plugin %s does not implement pipeline.Plugin interface", pluginName)
-			continue
-		}
-
-		// Register in registry
-		pluginRegistry[pluginName] = pluginInstance
+		pluginRegistry.Register(pluginName, pluginInstance)
 		log.Printf("Loaded custom plugin: %s", pluginName)
 	}
 
@@ -196,7 +179,7 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		log.Printf("  Step %d: %s (%s.%s)", currentStepIndex+1, step.Name, step.Plugin, step.Action)
 
 		// Get plugin
-		pluginInstance, ok := pluginRegistry[step.Plugin]
+		pluginInstance, ok := pluginRegistry.Get(step.Plugin)
 		if !ok {
 			return nil, fmt.Errorf("unknown plugin: %s", step.Plugin)
 		}

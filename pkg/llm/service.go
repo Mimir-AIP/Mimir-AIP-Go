@@ -12,6 +12,7 @@ import (
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 )
 
 const (
@@ -31,7 +32,7 @@ type Service struct {
 	cacheExpiry  time.Time
 
 	// registry maps provider names to Provider implementations (built-in + external).
-	registry map[string]Provider
+	registry *pluginruntime.Registry[Provider]
 	// store persists external provider metadata (nil = no persistence).
 	store metadatastore.MetadataStore
 	// loader compiles and loads external provider .so files (nil = no dynamic loading).
@@ -45,7 +46,7 @@ func NewService(provider Provider, defaultModel string, enabled bool) *Service {
 		provider:     provider,
 		enabled:      enabled,
 		defaultModel: defaultModel,
-		registry:     make(map[string]Provider),
+		registry:     pluginruntime.NewRegistry[Provider](),
 	}
 }
 
@@ -76,16 +77,12 @@ func (s *Service) SetActiveProvider(p Provider, defaultModel string) {
 
 // RegisterProvider adds a named provider to the in-memory registry.
 func (s *Service) RegisterProvider(name string, p Provider) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.registry[name] = p
+	s.registry.Register(name, p)
 }
 
 // GetProvider retrieves a provider from the registry by name.
 func (s *Service) GetProvider(name string) (Provider, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	p, ok := s.registry[name]
+	p, ok := s.registry.Get(name)
 	if !ok {
 		return nil, fmt.Errorf("llm: provider %q not found in registry", name)
 	}
@@ -94,13 +91,7 @@ func (s *Service) GetProvider(name string) (Provider, error) {
 
 // ListRegisteredProviders returns the names of all registered providers.
 func (s *Service) ListRegisteredProviders() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	names := make([]string, 0, len(s.registry))
-	for name := range s.registry {
-		names = append(names, name)
-	}
-	return names
+	return s.registry.Names()
 }
 
 // InstallExternalProvider clones, compiles, and registers an LLM provider from
@@ -174,9 +165,7 @@ func (s *Service) GetExternalProvider(name string) (*models.ExternalLLMProvider,
 // Note: Go plugins cannot be unloaded from memory; a process restart is needed
 // for removal to take full effect on in-flight calls.
 func (s *Service) UninstallExternalProvider(name string) error {
-	s.mu.Lock()
-	delete(s.registry, name)
-	s.mu.Unlock()
+	s.registry.Delete(name)
 
 	if s.loader != nil {
 		_ = os.Remove(s.loader.soPath(name))

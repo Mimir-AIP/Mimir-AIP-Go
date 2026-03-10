@@ -6,19 +6,18 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 )
 
 // Service provides storage management operations
 type Service struct {
 	store        metadatastore.MetadataStore
-	plugins      map[string]models.StoragePlugin
-	mu           sync.RWMutex
+	plugins      *pluginruntime.Registry[models.StoragePlugin]
 	pluginLoader *PluginLoader // nil when dynamic loading is not configured
 }
 
@@ -26,24 +25,19 @@ type Service struct {
 func NewService(store metadatastore.MetadataStore) *Service {
 	return &Service{
 		store:   store,
-		plugins: make(map[string]models.StoragePlugin),
+		plugins: pluginruntime.NewRegistry[models.StoragePlugin](),
 	}
 }
 
 // RegisterPlugin registers a storage plugin
 func (s *Service) RegisterPlugin(pluginType string, plugin models.StoragePlugin) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.plugins[pluginType] = plugin
+	s.plugins.Register(pluginType, plugin)
 	log.Printf("Registered storage plugin: %s", pluginType)
 }
 
 // GetPlugin retrieves a registered plugin by type
 func (s *Service) GetPlugin(pluginType string) (models.StoragePlugin, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	plugin, ok := s.plugins[pluginType]
+	plugin, ok := s.plugins.Get(pluginType)
 	if !ok {
 		return nil, fmt.Errorf("storage plugin not found: %s", pluginType)
 	}
@@ -660,10 +654,9 @@ func (s *Service) GetExternalPlugin(name string) (*models.ExternalStoragePlugin,
 // Note: Go plugins cannot be unloaded from memory; the process must restart
 // for the removal to take full effect on in-flight storage operations.
 func (s *Service) UninstallExternalPlugin(name string) error {
-	// Remove from live map.
-	s.mu.Lock()
-	delete(s.plugins, name)
-	s.mu.Unlock()
+	// Remove from live registry.
+
+	s.plugins.Delete(name)
 
 	// Remove .so and meta from cache.
 	if s.pluginLoader != nil {

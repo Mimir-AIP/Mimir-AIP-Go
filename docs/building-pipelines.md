@@ -394,13 +394,13 @@ Fetches a CSV document from a URL, parses rows into structured objects, and appl
 
 ## Using custom plugins
 
-Replace `plugin: default` with the name of any installed custom plugin. The name matches the repository slug used at install time (last URL segment, `.git` stripped).
+Replace `plugin: default` with the manifest `name` of any installed custom pipeline plugin. For example, `OpenLibraryMimirPlugin` installs as `openlibrary` because its `plugin.yaml` sets `name: openlibrary`.
 
 ```yaml
 steps:
   - name: ingest-data
-    plugin: open-library-plugin   # installed from github.com/Mimir-AIP/OpenLibraryMimirPlugin
-    action: ingest
+    plugin: openlibrary   # plugin.yaml name from github.com/Mimir-AIP/OpenLibraryMimirPlugin
+    action: search_books
     parameters:
       subject: "science"
       limit: 100

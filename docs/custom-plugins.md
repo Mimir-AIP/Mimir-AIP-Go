@@ -93,7 +93,7 @@ curl -X POST http://localhost:8080/api/plugins \
   -d '{"repository_url": "https://github.com/your-org/my-plugin", "git_ref": "main"}'
 ```
 
-The worker clones, compiles, and caches the `.so` automatically on next use via the shared runtime loader. The plugin name is derived from the repository name (last path segment, `.git` stripped).
+The worker clones, compiles, and caches the `.so` automatically on next use via the shared runtime loader. For pipeline plugins, the install-time name comes from `plugin.yaml` (`name:`), so choose a stable manifest name and use that same name in pipeline step definitions.
 
 ---
 

@@ -1,12 +1,12 @@
 # Custom Plugins for Mimir AIP
 
-Mimir supports three kinds of runtime-extensible plugins, all using the same pattern: implement a Go interface, host the code in a Git repository, and install via the REST API. The orchestrator or worker clones, compiles (`go build -buildmode=plugin`), and loads the `.so` at runtime.
+Mimir supports three kinds of runtime-extensible plugins, all using the same pattern: implement a Go interface, host the code in a Git repository, and install via the REST API. Internally, all three now use the same shared runtime loader and cache path, so plugin authors get a consistent contract without Mimir hard-coding separate extension systems for each subsystem.
 
 ---
 
 ## Part 1 — Pipeline Step Plugins
 
-Pipeline step plugins add new processing steps that workers execute inside pipelines. Workers clone, compile, and cache the `.so` on first use.
+Pipeline step plugins add new processing steps that workers execute inside pipelines. Workers clone, compile, and cache the `.so` on first use via the shared runtime loader.
 
 ### Interface
 
@@ -93,13 +93,13 @@ curl -X POST http://localhost:8080/api/plugins \
   -d '{"repository_url": "https://github.com/your-org/my-plugin", "git_ref": "main"}'
 ```
 
-The worker clones, compiles, and caches the `.so` automatically on next use. The plugin name is derived from the repository name (last path segment, `.git` stripped).
+The worker clones, compiles, and caches the `.so` automatically on next use via the shared runtime loader. The plugin name is derived from the repository name (last path segment, `.git` stripped).
 
 ---
 
 ## Part 2 — Storage Plugins
 
-Storage plugins connect Mimir to any data backend. The orchestrator clones, compiles, and loads the `.so` at startup (and on `POST /api/storage-plugins`).
+Storage plugins connect Mimir to any data backend. The orchestrator installs and reloads these plugins through the shared runtime loader at startup and on `POST /api/storage-plugins`.
 
 ### Interface
 
@@ -156,7 +156,7 @@ func (p *MyStoragePlugin) CreateSchema(ontology *models.OntologyDefinition) erro
 
 func (p *MyStoragePlugin) Store(cir *models.CIR) (*models.StorageResult, error) {
     // write the CIR record
-    return &models.StorageResult{RecordsAffected: 1}, nil
+    return &models.StorageResult{Success: true, AffectedItems: 1}, nil
 }
 
 func (p *MyStoragePlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, error) {
@@ -165,15 +165,15 @@ func (p *MyStoragePlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, error
 }
 
 func (p *MyStoragePlugin) Update(query *models.CIRQuery, updates *models.CIRUpdate) (*models.StorageResult, error) {
-    return &models.StorageResult{}, nil
+    return &models.StorageResult{Success: true, AffectedItems: 0}, nil
 }
 
 func (p *MyStoragePlugin) Delete(query *models.CIRQuery) (*models.StorageResult, error) {
-    return &models.StorageResult{}, nil
+    return &models.StorageResult{Success: true, AffectedItems: 0}, nil
 }
 
 func (p *MyStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
-    return &models.StorageMetadata{Type: "my-backend"}, nil
+    return &models.StorageMetadata{StorageType: "my-backend"}, nil
 }
 
 func (p *MyStoragePlugin) HealthCheck() (bool, error) {
@@ -193,7 +193,7 @@ curl -X POST http://localhost:8080/api/storage-plugins \
   -d '{"repository_url": "https://github.com/your-org/my-storage-plugin", "git_ref": "v1.0.0"}'
 ```
 
-The orchestrator clones, compiles, loads the `.so`, and registers it as a new storage backend type. From that point it is available as a `plugin_type` when creating storage configs.
+The orchestrator clones, compiles, caches, and loads the `.so` through the shared runtime loader, then registers it as a new storage backend type. From that point it is available as a `plugin_type` when creating storage configs.
 
 ### Managing storage plugins
 
@@ -210,7 +210,7 @@ The orchestrator clones, compiles, loads the `.so`, and registers it as a new st
 
 ## Part 3 — LLM Provider Plugins
 
-LLM provider plugins add new language model back-ends (beyond the built-in OpenRouter and OpenAI-compatible providers). The orchestrator clones, compiles, and loads the `.so` at startup.
+LLM provider plugins add new language model back-ends (beyond the built-in OpenRouter and OpenAI-compatible providers). The orchestrator installs them through the same shared runtime loader used by the other plugin categories.
 
 ### Interface
 

@@ -100,7 +100,7 @@ Pipeline-level parameters passed at execution time are available as `{{context._
 
 ## Built-in plugin actions (`plugin: default`)
 
-The `default` (or `builtin`) plugin is always available with no installation required.
+The `default` (or `builtin`) plugin is always available with no installation required. Guided onboarding and bundled connector setup still create ordinary pipelines under the hood — they simply pre-fill these same built-in actions and checkpoint patterns for common source types.
 
 ### `http_request`
 
@@ -158,6 +158,40 @@ Fetches an RSS feed and emits only newly seen items based on checkpoint hashes.
 | `max_checkpoint_items` | No | `200` | Max remembered item hashes |
 
 **Output keys:** `items`, `new_count`, `total_count`, `checkpoint`
+
+
+### `poll_sql_incremental`
+
+Polls a MySQL or PostgreSQL table incrementally using a cursor column and returns only rows newer than the stored checkpoint cursor.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `driver` | No | `mysql` | `mysql`, `postgresql`, or `pgx` |
+| `dsn` | Yes | — | Database connection string |
+| `table` | Yes | — | Table or view name to query |
+| `cursor_column` | Yes | — | Monotonic column used for incremental progress |
+| `limit` | No | `500` | Maximum rows to return per run |
+| `checkpoint` | No | — | Previous checkpoint object from `load_checkpoint` |
+
+**Output keys:** `items`, `row_count`, `checkpoint`, `source`
+
+Returned rows include `_source_table`, and the checkpoint stores `last_cursor` so future runs only fetch newly appended data.
+
+### `poll_csv_drop`
+
+Polls a filesystem path glob for unseen CSV files, parses them into structured rows, and remembers processed file hashes in the checkpoint.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `path_glob` | Yes | — | File glob such as `/data/drop/*.csv` or `./demo/*.csv` |
+| `has_header` | No | `true` | Whether the first row is a header row |
+| `delimiter` | No | `,` | Single-character delimiter |
+| `checkpoint` | No | — | Previous checkpoint object from `load_checkpoint` |
+| `max_checkpoint_items` | No | `200` | Maximum remembered processed file hashes |
+
+**Output keys:** `items`, `new_count`, `total_count`, `checkpoint`
+
+Returned rows include `_source_file`, making it easy to preserve provenance before storing the records in Mimir storage.
 
 
 ### `parse_json`
@@ -439,7 +473,7 @@ curl -X POST http://localhost:8080/api/schedules \
   -H "Content-Type: application/json" \
   -d '{
     "project_id": "proj-123",
-    "pipeline_id": "pipe-456",
+    "pipelines": ["pipe-456"],
     "name": "Nightly ingest",
     "cron_schedule": "0 2 * * *",
     "enabled": true
@@ -447,6 +481,34 @@ curl -X POST http://localhost:8080/api/schedules \
 ```
 
 ---
+
+## Connector-backed pipelines
+
+For self-serve onboarding and low-code ingestion, the orchestrator also exposes a bundled connector catalog at `/api/connectors`. Posting to that API does **not** create a special connector runtime — it materialises an ordinary pipeline plus an optional schedule that you can inspect and edit like any other project resource.
+
+```bash
+curl -X POST http://localhost:8080/api/connectors \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj-123",
+    "kind": "http_json_poll",
+    "name": "Supplier feed",
+    "storage_id": "store-789",
+    "source_config": {
+      "url": "https://supplier.example.com/feed.json",
+      "item_path": "items"
+    },
+    "schedule": {
+      "cron_schedule": "0 * * * *",
+      "enabled": true
+    }
+  }'
+```
+
+Connector templates currently cover incremental SQL polling, HTTP JSON polling, RSS/Atom feeds, and CSV file-drop ingestion. Because the result is a standard pipeline, advanced users can continue refining the generated steps manually.
+
+---
+
 
 ## Further reading
 

@@ -229,7 +229,7 @@ func (s *Service) materializeSteps(template models.ConnectorTemplate, req *model
 			"checkpoint": "{{context.load_source_checkpoint.checkpoint}}",
 		}
 		if itemPath := strings.TrimSpace(stringValue(source, "item_path", "")); itemPath != "" {
-			fetchParams["item_path"] = itemPath
+			fetchParams["items_path"] = itemPath
 		}
 		fetch := models.PipelineStep{Name: "poll_http_feed", Plugin: "default", Action: "poll_http_json", Parameters: fetchParams}
 		storeBatch.Parameters["items"] = "{{context.poll_http_feed.items}}"

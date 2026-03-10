@@ -1,6 +1,6 @@
 # Mimir AIP
 
-Mimir AIP is an ontology-driven platform for data aggregation, processing and analysis. It aims to provide a unified runtime for data ingestion pipelines, machine learning model training and inference, and digital twin management — all backed by a persistent metadata store and exposed as [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tools for direct use by AI agents and LLM-based workflows, you are free to use the platform directly or via your favourite agent tooling. Mimir AIP is built in Go for performance and ease of deployment, with a React/TypeScript frontend for user-friendly management. It runs on Kubernetes and supports a wide range of storage backends, additionally it is an extensible system, making it easy to design and build custom plugins for new data sources, ML model types, or processing steps. Mimir AIP aims to offer an accessible yet powerful solution targetting small and medium sized enterprises looking to leverage their data and derive insights without the overhead of building a custom platform from scratch, or relying on locked-in SaaS solutions. 
+Mimir AIP is an ontology-driven platform for data aggregation, processing, and analysis. It provides a unified runtime for ingestion pipelines, machine learning model training and inference, digital twin management, guided or advanced project onboarding, and always-on project analysis — all backed by a persistent metadata store and exposed as [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tools for direct use by AI agents and LLM-based workflows. Mimir AIP is built in Go for performance and ease of deployment, with a React-based web frontend for user-friendly management. It runs on Kubernetes, supports a wide range of storage backends, and is extensible through runtime-loaded pipeline plugins, storage plugins, and LLM providers. The platform is designed to stay use-case agnostic: bundled connectors, review queues, and insight generation all compile down to the same core project resources rather than hard-coding one domain-specific workflow.
 
 ---
 
@@ -30,12 +30,12 @@ Mimir AIP consists of two binaries and an optional web frontend:
                ▼                          ▼
 ┌─────────────────────────────────────────────────────┐
 │                    Orchestrator                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
-│  │ Projects │  │Pipelines │  │   ML Models      │  │
-│  │ Ontology │  │Schedules │  │   Digital Twins  │  │
-│  │ Storage  │  │  Queue   │  │   MCP Server     │  │
-│  └──────────┘  └────┬─────┘  └──────────────────┘  │
-│          SQLite     │                               │
+│  ┌──────────┐  ┌────────────┐  ┌──────────────────┐  │
+│  │ Projects │  │ Pipelines  │  │   Ontologies     │  │
+│  │ Storage  │  │ Schedules  │  │   ML Models      │  │
+│  │Onboarding│  │ Connectors │  │   Digital Twins  │  │
+│  │ Analysis │  │   Queue    │  │ Insights / MCP   │  │
+│  └──────────┘  └────┬───────┘  └──────────────────┘  │
 └─────────────────────┼───────────────────────────────┘
                       │  Kubernetes Jobs
                       ▼
@@ -53,11 +53,11 @@ Mimir AIP consists of two binaries and an optional web frontend:
           └───────────────────────┘
 ```
 
-**Orchestrator** — the long-running HTTP server. Manages all persistent metadata (projects, pipelines, ontologies, ML models, digital twins, storage configurations, schedules) in SQLite. Exposes a REST API and an MCP SSE endpoint. Spawns **Workers** as Kubernetes Jobs when pipeline execution, ML training, ML inference, or digital twin synchronisation is required.
+**Orchestrator** — the long-running HTTP server. Manages persistent metadata in SQLite for projects, pipelines, schedules, ontologies, ML models, digital twins, storage configurations, analysis runs, review items, and insights. Exposes the REST API and MCP SSE endpoint. Also hosts the generic connector catalog, materializes bundled connectors into ordinary pipelines and schedules, and runs lightweight recurring control-plane work such as daily project insight generation. Heavy execution (pipeline runs, ML training, inference, digital twin synchronisation) is still delegated to **Workers** as Kubernetes Jobs.
 
 **Worker** — a short-lived binary run as a Kubernetes Job. Reads its task type and parameters from environment variables, calls the orchestrator API to fetch configuration, executes the work, and reports results back. Designed with scalability in mind, supporting concurrent workers across multiple Kubernetes clusters — the orchestrator dispatches jobs to a configurable cluster pool, spilling over from the primary cluster to remote or cloud clusters when capacity is reached.
 
-**Frontend** — a lightweight React/TypeScript single-page application served by a small Go HTTP server. Communicates exclusively with the orchestrator REST API.
+**Frontend** — a lightweight React single-page application served by a small Go HTTP server. Communicates exclusively with the orchestrator REST API and now exposes both guided and advanced onboarding flows, bundled connector setup, and project-level insights and review surfaces.
 
 ---
 
@@ -65,17 +65,33 @@ Mimir AIP consists of two binaries and an optional web frontend:
 
 | Term | Description |
 |------|-------------|
-| **Project** | Top-level organisational unit. Groups pipelines, ontologies, ML models, digital twins, and storage configurations. |
+| **Project** | Top-level organisational unit. Groups pipelines, ontologies, ML models, digital twins, and storage configurations, and stores project-wide preferences such as onboarding mode. |
+| **Onboarding Mode** | Project preference that selects either a guided setup flow (connector-driven) or the full advanced manual workflow. |
+| **Storage Config** | A connection definition for a storage backend (filesystem, PostgreSQL, MySQL, MongoDB, S3, Redis, Elasticsearch, or Neo4j). Data is stored and retrieved using the **CIR** (Common Internal Representation) format. |
+| **Connector Template** | A bundled, metadata-driven ingestion template that materialises into an ordinary pipeline plus an optional schedule. |
 | **Pipeline** | A named, ordered sequence of processing steps (ingestion → processing → output). Pipelines are executed asynchronously by workers. |
 | **Schedule** | A cron-based trigger that enqueues one or more pipelines on a recurring basis. |
 | **Ontology** | An OWL/Turtle vocabulary that defines the entity types, properties, and relationships for a project domain. Used to structure storage and constrain ML model training. |
-| **Storage Config** | A connection definition for a storage backend (filesystem, PostgreSQL, MySQL, MongoDB, S3, Redis, Elasticsearch, or Neo4j). Data is stored and retrieved using the **CIR** (Common Internal Representation) format. |
 | **CIR** | Common Internal Representation — the normalised record format used across all storage backends. Each CIR contains a `source` block (provenance), a `data` block (the payload), and a `metadata` block. |
+| **Insight** | A persisted autonomous finding, such as an anomaly spike, trend break, or co-occurrence surge, generated from project storage data. |
+| **Review Item** | A persisted reviewable finding — currently used for cross-source link decisions — whose accepted or rejected outcome improves future scoring. |
 | **ML Model** | A model definition (type: decision tree, random forest, regression, or neural network) linked to an ontology. Training and inference are executed by workers. |
 | **Digital Twin** | A live in-memory graph of entities and their attributes, initialised from an ontology and synchronised from storage. Queryable via a built-in SPARQL engine. |
-| **MCP** | [Model Context Protocol](https://modelcontextprotocol.io) — an open standard for exposing tools to AI agents. Mimir exposes 55 tools covering all platform resources, allowing users to interact with the system within the enviroment of their favourite tools and leverage natural language to configure and operate Mimir AIP. |
+| **MCP** | [Model Context Protocol](https://modelcontextprotocol.io) — an open standard for exposing tools to AI agents. Mimir exposes MCP tools across the platform's core resources so agent workflows can configure and operate projects directly. |
 
 ---
+
+## Typical project workflow
+
+1. Create or select a **Project** and choose either **guided** or **advanced** onboarding.
+2. Define a **Storage Config** for where normalised CIR data should land.
+3. Create a **Pipeline** manually, or materialise one from a bundled **Connector Template**; add a **Schedule** if the source should run incrementally.
+4. Generate or refine an **Ontology** from stored data and cross-source extraction results.
+5. Train **ML Models** and initialise or sync **Digital Twins** against the ontology and storage-backed project data.
+6. Use the **Insights & Review** surfaces to monitor ingestion behaviour, inspect autonomous findings, and calibrate cross-source link confidence over time.
+
+---
+
 
 ## Quick Start
 

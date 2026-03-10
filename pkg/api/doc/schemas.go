@@ -90,25 +90,72 @@ func init() {
 
 		// ── Schedules ─────────────────────────────────────────────────────────
 		"Schedule": Props(nil, M{
-			"id":           Str("Schedule ID (UUID)"),
-			"name":         Str("Schedule name"),
-			"cron":         Str("Cron expression (e.g. '0 * * * *')"),
-			"pipeline_ids": Arr(M{"type": "string"}),
-			"enabled":      Bool("Whether the schedule is active"),
-			"created_at":   Str("ISO-8601 creation timestamp"),
-			"updated_at":   Str("ISO-8601 last-updated timestamp"),
+			"id":            Str("Schedule ID (UUID)"),
+			"project_id":    Str("Owning project ID"),
+			"name":          Str("Schedule name"),
+			"pipelines":     Arr(M{"type": "string"}),
+			"cron_schedule": Str("Cron expression (e.g. '0 * * * *')"),
+			"enabled":       Bool("Whether the schedule is active"),
+			"created_at":    Str("ISO-8601 creation timestamp"),
+			"updated_at":    Str("ISO-8601 last-updated timestamp"),
+			"last_run":      Str("ISO-8601 timestamp of the last run"),
+			"next_run":      Str("ISO-8601 timestamp of the next planned run"),
 		}),
-		"ScheduleCreateRequest": Props([]string{"name", "cron", "pipeline_ids"}, M{
-			"name":         Str("Schedule name"),
-			"cron":         Str("Cron expression"),
-			"pipeline_ids": Arr(M{"type": "string"}),
-			"enabled":      Bool("Start enabled (default true)"),
+		"ScheduleCreateRequest": Props([]string{"project_id", "name", "pipelines", "cron_schedule"}, M{
+			"project_id":    Str("Owning project ID"),
+			"name":          Str("Schedule name"),
+			"pipelines":     Arr(M{"type": "string"}),
+			"cron_schedule": Str("Cron expression"),
+			"enabled":       Bool("Start enabled (default true)"),
 		}),
 		"ScheduleUpdateRequest": Props(nil, M{
-			"name":         Str("New name"),
-			"cron":         Str("New cron expression"),
-			"pipeline_ids": Arr(M{"type": "string"}),
-			"enabled":      Bool("Enable or disable"),
+			"name":          Str("New name"),
+			"pipelines":     Arr(M{"type": "string"}),
+			"cron_schedule": Str("New cron expression"),
+			"enabled":       Bool("Enable or disable"),
+		}),
+
+		// ── Connectors ────────────────────────────────────────────────────────
+		"ConnectorFieldOption": Props([]string{"value", "label"}, M{
+			"value": Str("Option value"),
+			"label": Str("Display label"),
+		}),
+		"ConnectorField": Props([]string{"name", "label", "type", "required"}, M{
+			"name":        Str("Field key"),
+			"label":       Str("Human-readable field label"),
+			"type":        Str("text | number | boolean | select"),
+			"description": Str("Field description"),
+			"required":    Bool("Whether the field is required"),
+			"default":     M{"description": "Optional default value"},
+			"options":     ArrOf("ConnectorFieldOption"),
+		}),
+		"ConnectorTemplate": Props([]string{"kind", "label", "description", "category", "pipeline_type", "supports_schedule", "fields"}, M{
+			"kind":              Str("Template identifier"),
+			"label":             Str("Display name"),
+			"description":       Str("What this connector does"),
+			"category":          Str("database | http | feed | file"),
+			"pipeline_type":     Str("Pipeline type created by this connector"),
+			"supports_schedule": Bool("Whether recurring execution is supported"),
+			"fields":            ArrOf("ConnectorField"),
+		}),
+		"ConnectorScheduleRequest": Props([]string{"cron_schedule"}, M{
+			"name":          Str("Optional schedule name override"),
+			"cron_schedule": Str("Cron expression for recurring runs"),
+			"enabled":       Bool("Whether the schedule starts enabled"),
+		}),
+		"ConnectorSetupRequest": Props([]string{"project_id", "kind", "name", "storage_id", "source_config"}, M{
+			"project_id":    Str("Owning project ID"),
+			"kind":          Str("Connector template kind"),
+			"name":          Str("Pipeline name to create"),
+			"description":   Str("Optional pipeline description"),
+			"storage_id":    Str("Destination storage configuration ID"),
+			"source_config": M{"type": "object", "additionalProperties": true},
+			"schedule":      Ref("ConnectorScheduleRequest"),
+		}),
+		"ConnectorSetupResponse": Props([]string{"template", "pipeline"}, M{
+			"template": Ref("ConnectorTemplate"),
+			"pipeline": Ref("Pipeline"),
+			"schedule": Ref("Schedule"),
 		}),
 
 		// ── Pipeline Plugins ─────────────────────────────────────────────────

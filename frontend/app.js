@@ -237,46 +237,312 @@ async function apiCall(endpoint, options = {}) {
 // PROJECT CONTEXT
 // ============================================
 
-const ProjectContext = React.createContext({ activeProject: null, projects: [] });
+const ProjectContext = React.createContext({
+	activeProject: null,
+	activeProjectId: '',
+	projects: [],
+	setActiveProject: () => {},
+	setActiveProjectId: () => {},
+	refreshProjects: async () => [],
+});
 
-// ============================================
-// PROJECTS PAGE
-// ============================================
+function getProjectOnboardingMode(project) {
+	return project?.settings?.onboarding_mode || 'advanced';
+}
+
+function deriveStorageConfigLabel(config) {
+	const details = config?.config || {};
+	const candidate = details.path || details.table || details.bucket || details.url || details.database || details.container || details.topic;
+	if (candidate) return `${config?.plugin_type || 'storage'}: ${candidate}`;
+	return `${config?.plugin_type || 'storage'} · ${String(config?.id || 'new').slice(0, 8)}`;
+}
+
+function renderConfigPreview(value) {
+	try {
+		return JSON.stringify(value || {}, null, 2);
+	} catch {
+		return '{}';
+	}
+}
+
+function ConnectorFieldInput({ field, value, onChange }) {
+	const inputValue = value ?? (field.type === 'boolean' ? false : '');
+	if (field.type === 'boolean') {
+		return (
+			<div className="form-group">
+				<label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+					<input type="checkbox" checked={!!inputValue} onChange={e => onChange(e.target.checked)} />
+					<span>{field.label}{field.required ? ' *' : ''}</span>
+				</label>
+				{field.description && <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{field.description}</div>}
+			</div>
+		);
+	}
+
+	if (field.type === 'select') {
+		return (
+			<FormField
+				label={field.label}
+				type="select"
+				value={inputValue}
+				onChange={onChange}
+				options={(field.options || []).map(opt => ({ value: opt.value, label: opt.label }))}
+				required={field.required}
+			/>
+		);
+	}
+
+	if (field.type === 'number') {
+		return (
+			<div className="form-group">
+				<label>{field.label}{field.required ? ' *' : ''}</label>
+				<input
+					type="number"
+					value={inputValue}
+					onChange={e => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+					required={field.required}
+					style={{ width: '100%', padding: '8px', background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px' }}
+				/>
+				{field.description && <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{field.description}</div>}
+			</div>
+		);
+	}
+
+	return (
+		<FormField
+			label={field.label}
+			value={inputValue}
+			onChange={onChange}
+			placeholder={field.description || ''}
+			required={field.required}
+		/>
+	);
+}
+
+function GuidedOnboardingPanel({ project }) {
+	const [loading, setLoading] = React.useState(false);
+	const [templates, setTemplates] = React.useState([]);
+	const [storageConfigs, setStorageConfigs] = React.useState([]);
+	const [selectedKind, setSelectedKind] = React.useState('');
+	const [formData, setFormData] = React.useState({
+		name: '',
+		description: '',
+		storage_id: '',
+		source_config: {},
+		create_schedule: false,
+		schedule_name: '',
+		cron_schedule: '0 * * * *',
+		enabled: true,
+	});
+
+	const activeTemplate = templates.find(template => template.kind === selectedKind) || null;
+
+	const loadGuidedOptions = React.useCallback(async () => {
+		if (!project?.id) {
+			setTemplates([]);
+			setStorageConfigs([]);
+			setSelectedKind('');
+			return;
+		}
+		setLoading(true);
+		try {
+			const [connectorData, storageData] = await Promise.all([
+				apiCall('/api/connectors'),
+				apiCall(`/api/storage/configs?project_id=${project.id}`),
+			]);
+			const nextTemplates = connectorData || [];
+			const nextStorageConfigs = storageData || [];
+			setTemplates(nextTemplates);
+			setStorageConfigs(nextStorageConfigs);
+			setSelectedKind(prev => (prev && nextTemplates.some(template => template.kind === prev)) ? prev : (nextTemplates[0]?.kind || ''));
+			setFormData(prev => ({
+				...prev,
+				storage_id: nextStorageConfigs.some(cfg => cfg.id === prev.storage_id) ? prev.storage_id : (nextStorageConfigs[0]?.id || ''),
+			}));
+		} catch (error) {
+			console.error('Failed to load guided onboarding data:', error);
+			setTemplates([]);
+			setStorageConfigs([]);
+		}
+		setLoading(false);
+	}, [project?.id]);
+
+	React.useEffect(() => {
+		loadGuidedOptions();
+	}, [loadGuidedOptions]);
+
+	React.useEffect(() => {
+		if (!activeTemplate) return;
+		setFormData(prev => {
+			const nextSourceConfig = {};
+			(activeTemplate.fields || []).forEach(field => {
+				const defaultValue = field.default !== undefined ? field.default : (field.type === 'boolean' ? false : '');
+				nextSourceConfig[field.name] = prev.source_config[field.name] !== undefined ? prev.source_config[field.name] : defaultValue;
+			});
+			return {
+				...prev,
+				source_config: nextSourceConfig,
+				create_schedule: activeTemplate.supports_schedule ? prev.create_schedule : false,
+			};
+		});
+	}, [activeTemplate?.kind]);
+
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		if (!project?.id || !activeTemplate) return;
+		try {
+			const payload = {
+				project_id: project.id,
+				kind: activeTemplate.kind,
+				name: formData.name,
+				description: formData.description,
+				storage_id: formData.storage_id,
+				source_config: formData.source_config,
+			};
+			if (activeTemplate.supports_schedule && formData.create_schedule) {
+				payload.schedule = {
+					name: formData.schedule_name || `${formData.name} schedule`,
+					cron_schedule: formData.cron_schedule,
+					enabled: formData.enabled,
+				};
+			}
+			const result = await apiCall('/api/connectors', {
+				method: 'POST',
+				body: JSON.stringify(payload),
+			});
+			alert(`Connector created: ${result?.pipeline?.name || formData.name}`);
+			setFormData(prev => ({
+				...prev,
+				name: '',
+				description: '',
+				source_config: {},
+				create_schedule: false,
+				schedule_name: '',
+				cron_schedule: '0 * * * *',
+				enabled: true,
+			}));
+			await loadGuidedOptions();
+		} catch (error) {
+			alert('Failed to create connector: ' + error.message);
+		}
+	};
+
+	if (!project?.id) {
+		return <div className="empty-state">Choose a project to start guided onboarding.</div>;
+	}
+
+	if (loading) {
+		return <div className="loading">Loading guided onboarding...</div>;
+	}
+
+	if (templates.length === 0) {
+		return <div className="empty-state">No connector templates are available from /api/connectors.</div>;
+	}
+
+	if (storageConfigs.length === 0) {
+		return <div className="empty-state">Create a storage configuration first, then return here to materialize a connector.</div>;
+	}
+
+	return (
+		<form onSubmit={handleSubmit}>
+			<div className="form-grid">
+				<FormField
+					label="Connector Template"
+					type="select"
+					value={selectedKind}
+					onChange={setSelectedKind}
+					options={templates.map(template => ({ value: template.kind, label: `${template.label} (${template.category})` }))}
+					required
+				/>
+				<FormField
+					label="Destination Storage"
+					type="select"
+					value={formData.storage_id}
+					onChange={v => setFormData({ ...formData, storage_id: v })}
+					options={storageConfigs.map(cfg => ({ value: cfg.id, label: deriveStorageConfigLabel(cfg) }))}
+					required
+				/>
+			</div>
+			{activeTemplate && (
+				<div style={{ marginBottom: '16px', padding: '12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px' }}>
+					<div style={{ color: 'var(--accent)', fontWeight: 'bold', marginBottom: '4px' }}>{activeTemplate.label}</div>
+					<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>{activeTemplate.description}</div>
+					<div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Creates a {activeTemplate.pipeline_type} pipeline{activeTemplate.supports_schedule ? ' with optional recurring schedule.' : '.'}</div>
+				</div>
+			)}
+			<div className="form-grid">
+				<FormField label="Pipeline Name" value={formData.name} onChange={v => setFormData({ ...formData, name: v })} required />
+				<FormField label="Description" value={formData.description} onChange={v => setFormData({ ...formData, description: v })} />
+			</div>
+			<div className="form-grid">
+				{(activeTemplate?.fields || []).map(field => (
+					<div key={field.name}>
+						<ConnectorFieldInput
+							field={field}
+							value={formData.source_config[field.name]}
+							onChange={value => setFormData(prev => ({ ...prev, source_config: { ...prev.source_config, [field.name]: value } }))}
+						/>
+					</div>
+				))}
+			</div>
+			{activeTemplate?.supports_schedule && (
+				<div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+					<label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+						<input type="checkbox" checked={formData.create_schedule} onChange={e => setFormData({ ...formData, create_schedule: e.target.checked })} />
+						Create a recurring schedule now
+					</label>
+					{formData.create_schedule && (
+						<>
+							<div className="form-grid">
+								<FormField label="Schedule Name" value={formData.schedule_name} onChange={v => setFormData({ ...formData, schedule_name: v })} placeholder={`${formData.name || activeTemplate.label} schedule`} />
+								<div className="form-group">
+									<label>Cron Schedule *</label>
+									<CronBuilder value={formData.cron_schedule} onChange={v => setFormData({ ...formData, cron_schedule: v })} />
+								</div>
+							</div>
+							<label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+								<input type="checkbox" checked={formData.enabled} onChange={e => setFormData({ ...formData, enabled: e.target.checked })} />
+								Start enabled
+							</label>
+						</>
+					)}
+				</div>
+			)}
+			<div style={{ marginTop: '16px' }}>
+				<Button type="submit" label="Create Connector Pipeline" />
+			</div>
+		</form>
+	);
+}
 
 function ProjectsPage() {
-	const [projects, setProjects] = React.useState([]);
-	const [loading, setLoading] = React.useState(true);
+	const { projects, activeProject, setActiveProject, refreshProjects } = React.useContext(ProjectContext);
 	const [showModal, setShowModal] = React.useState(false);
 	const [formData, setFormData] = React.useState({
 		name: '',
 		description: '',
+		onboarding_mode: 'guided',
 	});
-
-	const loadProjects = async () => {
-		setLoading(true);
-		try {
-			const data = await apiCall('/api/projects');
-			setProjects(data || []);
-		} catch (error) {
-			console.error('Failed to load projects:', error);
-		}
-		setLoading(false);
-	};
+	const [modeDraft, setModeDraft] = React.useState(getProjectOnboardingMode(activeProject));
 
 	React.useEffect(() => {
-		loadProjects();
-	}, []);
+		setModeDraft(getProjectOnboardingMode(activeProject));
+	}, [activeProject?.id, activeProject?.settings?.onboarding_mode]);
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		try {
 			await apiCall('/api/projects', {
 				method: 'POST',
-				body: JSON.stringify(formData),
+				body: JSON.stringify({
+					name: formData.name,
+					description: formData.description,
+					settings: { onboarding_mode: formData.onboarding_mode },
+				}),
 			});
 			setShowModal(false);
-			setFormData({ name: '', description: '' });
-			loadProjects();
+			setFormData({ name: '', description: '', onboarding_mode: 'guided' });
+			await refreshProjects();
 		} catch (error) {
 			alert('Failed to create project: ' + error.message);
 		}
@@ -286,9 +552,22 @@ function ProjectsPage() {
 		if (!confirm('Delete this project?')) return;
 		try {
 			await apiCall(`/api/projects/${id}`, { method: 'DELETE' });
-			loadProjects();
+			await refreshProjects();
 		} catch (error) {
 			alert('Failed to delete project: ' + error.message);
+		}
+	};
+
+	const handleModeSave = async () => {
+		if (!activeProject?.id) return;
+		try {
+			await apiCall(`/api/projects/${activeProject.id}`, {
+				method: 'PUT',
+				body: JSON.stringify({ settings: { ...activeProject.settings, onboarding_mode: modeDraft } }),
+			});
+			await refreshProjects(activeProject.id);
+		} catch (error) {
+			alert('Failed to update onboarding mode: ' + error.message);
 		}
 	};
 
@@ -296,6 +575,7 @@ function ProjectsPage() {
 		{ key: 'id', label: 'ID' },
 		{ key: 'name', label: 'Name' },
 		{ key: 'description', label: 'Description' },
+		{ key: 'onboarding_mode', label: 'Onboarding', render: row => getProjectOnboardingMode(row) },
 		{
 			key: 'status',
 			label: 'Status',
@@ -315,33 +595,66 @@ function ProjectsPage() {
 				<Button label="+ New Project" onClick={() => setShowModal(true)} />
 			</div>
 
-			{loading ? (
-				<div className="loading">Loading projects...</div>
-			) : (
-				<Table
-					columns={columns}
-					data={projects}
-					actions={(row) => (
-						<>
-							<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
-						</>
-					)}
-				/>
-			)}
+			<Table
+				columns={columns}
+				data={projects}
+				actions={(row) => (
+					<>
+						{activeProject?.id === row.id ? (
+							<span className="status-badge status-active">Active</span>
+						) : (
+							<Button label="Use" onClick={() => setActiveProject(row)} variant="secondary" />
+						)}
+						<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
+					</>
+				)}
+			/>
+
+			<div style={{ marginTop: '24px', padding: '18px', border: '1px solid var(--border)', borderRadius: '8px', background: 'rgba(255,153,0,0.04)' }}>
+				<div className="section-header" style={{ marginBottom: '12px' }}>
+					<div>
+						<h3 style={{ marginBottom: '4px' }}>Onboarding</h3>
+						<div style={{ color: 'var(--text-secondary)' }}>Choose between guided connector setup and the existing advanced manual workflow.</div>
+					</div>
+				</div>
+				{activeProject ? (
+					<>
+						<div className="form-grid">
+							<div className="form-group"><label>Active Project</label><div style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--surface)' }}>{activeProject.name}</div></div>
+							<FormField
+								label="Onboarding Mode"
+								type="select"
+								value={modeDraft}
+								onChange={setModeDraft}
+								options={[{ value: 'guided', label: 'guided' }, { value: 'advanced', label: 'advanced' }]}
+								required
+							/>
+						</div>
+						<div style={{ marginBottom: '16px' }}>
+							<Button label="Save Onboarding Mode" onClick={handleModeSave} variant="secondary" />
+						</div>
+						{modeDraft === 'guided' ? (
+							<GuidedOnboardingPanel project={activeProject} />
+						) : (
+							<div className="empty-state">Advanced mode keeps the manual pages available: Storage, Pipelines, Ontologies, ML Models, and Digital Twins.</div>
+						)}
+					</>
+				) : (
+					<div className="empty-state">Select a project to configure onboarding, insights, and reviews.</div>
+				)}
+			</div>
 
 			<Modal open={showModal} onClose={() => setShowModal(false)} title="Create New Project">
 				<form onSubmit={handleSubmit}>
+					<FormField label="Project Name" value={formData.name} onChange={(v) => setFormData({ ...formData, name: v })} required />
+					<FormField label="Description" type="textarea" value={formData.description} onChange={(v) => setFormData({ ...formData, description: v })} />
 					<FormField
-						label="Project Name"
-						value={formData.name}
-						onChange={(v) => setFormData({ ...formData, name: v })}
+						label="Onboarding Mode"
+						type="select"
+						value={formData.onboarding_mode}
+						onChange={(v) => setFormData({ ...formData, onboarding_mode: v })}
+						options={[{ value: 'guided', label: 'guided' }, { value: 'advanced', label: 'advanced' }]}
 						required
-					/>
-					<FormField
-						label="Description"
-						type="textarea"
-						value={formData.description}
-						onChange={(v) => setFormData({ ...formData, description: v })}
 					/>
 					<Button type="submit" label="Create Project" />
 				</form>
@@ -438,7 +751,7 @@ function StepBuilder({ value, onChange }) {
 	const removeStep = (i) => setSteps(prev => prev.filter((_, idx) => idx !== i));
 	const updateStep = (i, field, val) => setSteps(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
 
-	const builtinActions = ['http_request', 'parse_json', 'set_context', 'get_context', 'if_else', 'goto'];
+	const builtinActions = ['http_request', 'poll_http_json', 'poll_rss', 'poll_sql_incremental', 'poll_csv_drop', 'ingest_csv', 'ingest_csv_url', 'query_sql', 'load_checkpoint', 'save_checkpoint', 'parse_json', 'if_else', 'set_context', 'get_context', 'goto', 'store_cir', 'store_cir_batch', 'send_email', 'send_webhook'];
 
 	const getActions = (pluginName) => {
 		if (pluginName === 'default' || pluginName === 'builtin') return builtinActions;
@@ -649,21 +962,19 @@ function PipelinesPage() {
 	});
 	const [scheduleForm, setScheduleForm] = React.useState({
 		name: '',
-		pipeline_id: '',
+		pipelines: [],
 		project_id: '',
-		cron_expression: '',
+		cron_schedule: '',
 		enabled: true,
 	});
 
-	// Default project_id when activeProject changes
 	React.useEffect(() => {
-		if (activeProject) {
+		if (activeProject?.id) {
 			setPipelineForm(prev => ({ ...prev, project_id: activeProject.id }));
 			setScheduleForm(prev => ({ ...prev, project_id: activeProject.id }));
 		}
-	}, [activeProject]);
+	}, [activeProject?.id]);
 
-	// Subscribe to WebSocket for pipeline execution status updates
 	useTaskWebSocket((task) => {
 		if (task.type !== 'pipeline_execution') return;
 		const pid = task.task_spec && task.task_spec.pipeline_id;
@@ -683,6 +994,8 @@ function PipelinesPage() {
 			setSchedules(schedulesData || []);
 		} catch (error) {
 			console.error('Failed to load data:', error);
+			setPipelines([]);
+			setSchedules([]);
 		}
 		setLoading(false);
 	};
@@ -691,16 +1004,18 @@ function PipelinesPage() {
 		loadData();
 	}, []);
 
+	const filteredPipelines = activeProject?.id ? pipelines.filter(pipeline => pipeline.project_id === activeProject.id) : pipelines;
+	const filteredSchedules = activeProject?.id ? schedules.filter(schedule => schedule.project_id === activeProject.id) : schedules;
+
 	const handlePipelineSubmit = async (e) => {
 		e.preventDefault();
 		try {
-			const data = {
-				...pipelineForm,
-				steps: JSON.parse(pipelineForm.steps),
-			};
 			await apiCall('/api/pipelines', {
 				method: 'POST',
-				body: JSON.stringify(data),
+				body: JSON.stringify({
+					...pipelineForm,
+					steps: JSON.parse(pipelineForm.steps),
+				}),
 			});
 			setShowPipelineModal(false);
 			setPipelineForm({ name: '', description: '', project_id: activeProject?.id || '', type: 'ingestion', steps: '[]' });
@@ -715,10 +1030,13 @@ function PipelinesPage() {
 		try {
 			await apiCall('/api/schedules', {
 				method: 'POST',
-				body: JSON.stringify(scheduleForm),
+				body: JSON.stringify({
+					...scheduleForm,
+					pipelines: scheduleForm.pipelines.filter(Boolean),
+				}),
 			});
 			setShowScheduleModal(false);
-			setScheduleForm({ name: '', pipeline_id: '', project_id: activeProject?.id || '', cron_expression: '', enabled: true });
+			setScheduleForm({ name: '', pipelines: [], project_id: activeProject?.id || '', cron_schedule: '', enabled: true });
 			loadData();
 		} catch (error) {
 			alert('Failed to create schedule: ' + error.message);
@@ -751,17 +1069,19 @@ function PipelinesPage() {
 			await apiCall(`/api/pipelines/${id}/execute`, { method: 'POST', body: JSON.stringify({}) });
 			setExecutionStatus(prev => ({ ...prev, [id]: 'done' }));
 			setTimeout(() => setExecutionStatus(prev => {
-				const n = { ...prev };
-				delete n[id];
-				return n;
+				const next = { ...prev };
+				delete next[id];
+				return next;
 			}), 5000);
-		} catch (error) {
+		} catch {
 			setExecutionStatus(prev => ({ ...prev, [id]: 'error' }));
 		}
 	};
 
 	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
-	const pipelineOptions = pipelines.map(p => ({ value: p.id, label: p.name }));
+	const schedulePipelineOptions = pipelines
+		.filter(pipeline => !scheduleForm.project_id || pipeline.project_id === scheduleForm.project_id)
+		.map(pipeline => ({ value: pipeline.id, label: pipeline.name }));
 
 	const pipelineColumns = [
 		{ key: 'id', label: 'ID' },
@@ -774,8 +1094,8 @@ function PipelinesPage() {
 	const scheduleColumns = [
 		{ key: 'id', label: 'ID' },
 		{ key: 'name', label: 'Name' },
-		{ key: 'pipeline_id', label: 'Pipeline ID' },
-		{ key: 'cron_expression', label: 'Cron Expression' },
+		{ key: 'pipelines', label: 'Pipelines', render: (row) => Array.isArray(row.pipelines) && row.pipelines.length > 0 ? row.pipelines.join(', ') : '-' },
+		{ key: 'cron_schedule', label: 'Cron Schedule' },
 		{
 			key: 'enabled',
 			label: 'Status',
@@ -793,19 +1113,18 @@ function PipelinesPage() {
 					<Button label="+ New Schedule" onClick={() => setShowScheduleModal(true)} variant="secondary" />
 				</div>
 			</div>
+			{activeProject && (
+				<div style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Filtering to project: <strong style={{ color: 'var(--accent)' }}>{activeProject.name}</strong></div>
+			)}
 
-			<Tabs
-				tabs={['Pipelines', 'Recurring Jobs']}
-				activeTab={selectedTab}
-				onTabChange={setSelectedTab}
-			/>
+			<Tabs tabs={['Pipelines', 'Recurring Jobs']} activeTab={selectedTab} onTabChange={setSelectedTab} />
 
 			{loading ? (
 				<div className="loading">Loading...</div>
 			) : selectedTab === 'Pipelines' ? (
 				<Table
 					columns={pipelineColumns}
-					data={pipelines}
+					data={filteredPipelines}
 					actions={(row) => (
 						<>
 							{executionStatus[row.id] === 'running'
@@ -823,53 +1142,22 @@ function PipelinesPage() {
 			) : (
 				<Table
 					columns={scheduleColumns}
-					data={schedules}
-					actions={(row) => (
-						<>
-							<Button label="Delete" onClick={() => handleDeleteSchedule(row.id)} variant="danger" />
-						</>
-					)}
+					data={filteredSchedules}
+					actions={(row) => <Button label="Delete" onClick={() => handleDeleteSchedule(row.id)} variant="danger" />}
 				/>
 			)}
 
 			<Modal open={showPipelineModal} onClose={() => setShowPipelineModal(false)} title="Create New Pipeline">
 				<form onSubmit={handlePipelineSubmit}>
 					<div className="form-grid">
-						<FormField
-							label="Pipeline Name"
-							value={pipelineForm.name}
-							onChange={(v) => setPipelineForm({ ...pipelineForm, name: v })}
-							required
-						/>
-						<FormField
-							label="Project"
-							type="select"
-							value={pipelineForm.project_id}
-							onChange={(v) => setPipelineForm({ ...pipelineForm, project_id: v })}
-							options={projectOptions}
-							required
-						/>
+						<FormField label="Pipeline Name" value={pipelineForm.name} onChange={(v) => setPipelineForm({ ...pipelineForm, name: v })} required />
+						<FormField label="Project" type="select" value={pipelineForm.project_id} onChange={(v) => setPipelineForm({ ...pipelineForm, project_id: v })} options={projectOptions} required />
 					</div>
-					<FormField
-						label="Pipeline Type"
-						type="select"
-						value={pipelineForm.type}
-						onChange={(v) => setPipelineForm({ ...pipelineForm, type: v })}
-						options={['ingestion', 'processing', 'output']}
-						required
-					/>
-					<FormField
-						label="Description"
-						type="textarea"
-						value={pipelineForm.description}
-						onChange={(v) => setPipelineForm({ ...pipelineForm, description: v })}
-					/>
+					<FormField label="Pipeline Type" type="select" value={pipelineForm.type} onChange={(v) => setPipelineForm({ ...pipelineForm, type: v })} options={['ingestion', 'processing', 'output']} required />
+					<FormField label="Description" type="textarea" value={pipelineForm.description} onChange={(v) => setPipelineForm({ ...pipelineForm, description: v })} />
 					<div className="form-group">
 						<label>Steps</label>
-						<StepBuilder
-							value={pipelineForm.steps}
-							onChange={v => setPipelineForm({ ...pipelineForm, steps: v })}
-						/>
+						<StepBuilder value={pipelineForm.steps} onChange={v => setPipelineForm({ ...pipelineForm, steps: v })} />
 					</div>
 					<Button type="submit" label="Create Pipeline" />
 				</form>
@@ -878,38 +1166,27 @@ function PipelinesPage() {
 			<Modal open={showScheduleModal} onClose={() => setShowScheduleModal(false)} title="Create Recurring Job">
 				<form onSubmit={handleScheduleSubmit}>
 					<div className="form-grid">
-						<FormField
-							label="Schedule Name"
-							value={scheduleForm.name}
-							onChange={(v) => setScheduleForm({ ...scheduleForm, name: v })}
-							required
-						/>
-						<FormField
-							label="Pipeline"
-							type="select"
-							value={scheduleForm.pipeline_id}
-							onChange={(v) => setScheduleForm({ ...scheduleForm, pipeline_id: v })}
-							options={pipelineOptions}
-							required
-						/>
+						<FormField label="Schedule Name" value={scheduleForm.name} onChange={(v) => setScheduleForm({ ...scheduleForm, name: v })} required />
+						<FormField label="Project" type="select" value={scheduleForm.project_id} onChange={(v) => setScheduleForm({ ...scheduleForm, project_id: v, pipelines: [] })} options={projectOptions} required />
 					</div>
 					<div className="form-grid">
 						<FormField
-							label="Project"
+							label="Pipeline"
 							type="select"
-							value={scheduleForm.project_id}
-							onChange={(v) => setScheduleForm({ ...scheduleForm, project_id: v })}
-							options={projectOptions}
+							value={scheduleForm.pipelines[0] || ''}
+							onChange={(v) => setScheduleForm({ ...scheduleForm, pipelines: v ? [v] : [] })}
+							options={schedulePipelineOptions}
 							required
 						/>
 						<div className="form-group">
 							<label>Schedule *</label>
-							<CronBuilder
-								value={scheduleForm.cron_expression}
-								onChange={v => setScheduleForm({ ...scheduleForm, cron_expression: v })}
-							/>
+							<CronBuilder value={scheduleForm.cron_schedule} onChange={v => setScheduleForm({ ...scheduleForm, cron_schedule: v })} />
 						</div>
 					</div>
+					<label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+						<input type="checkbox" checked={scheduleForm.enabled} onChange={e => setScheduleForm({ ...scheduleForm, enabled: e.target.checked })} />
+						Enabled
+					</label>
 					<Button type="submit" label="Create Schedule" />
 				</form>
 			</Modal>
@@ -1042,7 +1319,7 @@ function OntologiesPage() {
 	};
 
 	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
-	const storageConfigOptions = storageConfigs.map(c => ({ value: c.id, label: c.name }));
+	const storageConfigOptions = storageConfigs.map(c => ({ value: c.id, label: deriveStorageConfigLabel(c) }));
 
 	const columns = [
 		{ key: 'id', label: 'ID' },
@@ -1403,7 +1680,7 @@ function MLModelsPage() {
 									e.target.checked ? [...prev, cfg.id] : prev.filter(id => id !== cfg.id)
 								)}
 							/>
-							{' '}{cfg.name} ({cfg.storage_type})
+							{' '}{deriveStorageConfigLabel(cfg)}
 						</label>
 					))
 				)}
@@ -1873,19 +2150,16 @@ function StoragePage() {
 	const [showModal, setShowModal] = React.useState(false);
 	const [healthStatus, setHealthStatus] = React.useState({});
 	const [formData, setFormData] = React.useState({
-		name: '',
 		project_id: '',
-		storage_type: '',
-		connection_string: '',
+		plugin_type: 'filesystem',
 		config: '{}',
 	});
 
-	// Default project_id when activeProject changes
 	React.useEffect(() => {
-		if (activeProject) {
+		if (activeProject?.id) {
 			setFormData(prev => ({ ...prev, project_id: activeProject.id }));
 		}
-	}, [activeProject]);
+	}, [activeProject?.id]);
 
 	const loadConfigs = async () => {
 		setLoading(true);
@@ -1902,21 +2176,21 @@ function StoragePage() {
 
 	React.useEffect(() => {
 		loadConfigs();
-	}, [activeProject]);
+	}, [activeProject?.id]);
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		try {
-			const data = {
-				...formData,
-				config: JSON.parse(formData.config),
-			};
 			await apiCall('/api/storage/configs', {
 				method: 'POST',
-				body: JSON.stringify(data),
+				body: JSON.stringify({
+					project_id: formData.project_id,
+					plugin_type: formData.plugin_type,
+					config: JSON.parse(formData.config),
+				}),
 			});
 			setShowModal(false);
-			setFormData({ name: '', project_id: activeProject?.id || '', storage_type: '', connection_string: '', config: '{}' });
+			setFormData({ project_id: activeProject?.id || '', plugin_type: 'filesystem', config: '{}' });
 			loadConfigs();
 		} catch (error) {
 			alert('Failed to create storage config: ' + error.message);
@@ -1942,25 +2216,24 @@ function StoragePage() {
 			setHealthStatus(prev => ({ ...prev, [id]: 'error' }));
 		}
 		setTimeout(() => setHealthStatus(prev => {
-			const n = { ...prev };
-			delete n[id];
-			return n;
+			const next = { ...prev };
+			delete next[id];
+			return next;
 		}), 8000);
 	};
 
 	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
-
 	const columns = [
 		{ key: 'id', label: 'ID' },
-		{ key: 'name', label: 'Name' },
-		{ key: 'storage_type', label: 'Type' },
+		{ key: 'label', label: 'Label', render: row => deriveStorageConfigLabel(row) },
+		{ key: 'plugin_type', label: 'Plugin Type' },
 		{ key: 'project_id', label: 'Project ID' },
 		{
-			key: 'status',
-			label: 'Status',
-			render: (row) => <span className={`status-badge status-${row.status || 'active'}`}>{row.status || 'active'}</span>
+			key: 'config',
+			label: 'Config',
+			render: row => <pre style={{ margin: 0, fontSize: '0.75rem', maxWidth: '320px', whiteSpace: 'pre-wrap' }}>{renderConfigPreview(row.config)}</pre>
 		},
-		{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleDateString() },
+		{ key: 'created_at', label: 'Created', render: row => new Date(row.created_at).toLocaleDateString() },
 	];
 
 	return (
@@ -1969,6 +2242,7 @@ function StoragePage() {
 				<h2>Storage Configurations</h2>
 				<Button label="+ New Storage Config" onClick={() => setShowModal(true)} />
 			</div>
+			{activeProject && <div style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Showing storage for <strong style={{ color: 'var(--accent)' }}>{activeProject.name}</strong>.</div>}
 
 			{loading ? (
 				<div className="loading">Loading storage configurations...</div>
@@ -1991,45 +2265,10 @@ function StoragePage() {
 			<Modal open={showModal} onClose={() => setShowModal(false)} title="Create Storage Configuration">
 				<form onSubmit={handleSubmit}>
 					<div className="form-grid">
-						<FormField
-							label="Config Name"
-							value={formData.name}
-							onChange={(v) => setFormData({ ...formData, name: v })}
-							required
-						/>
-						<FormField
-							label="Project"
-							type="select"
-							value={formData.project_id}
-							onChange={(v) => setFormData({ ...formData, project_id: v })}
-							options={projectOptions}
-							required
-						/>
+						<FormField label="Project" type="select" value={formData.project_id} onChange={(v) => setFormData({ ...formData, project_id: v })} options={projectOptions} required />
+						<FormField label="Plugin Type" value={formData.plugin_type} onChange={(v) => setFormData({ ...formData, plugin_type: v })} placeholder="filesystem, s3, postgres, mongodb..." required />
 					</div>
-					<div className="form-grid">
-						<FormField
-							label="Storage Type"
-							type="select"
-							value={formData.storage_type}
-							onChange={(v) => setFormData({ ...formData, storage_type: v })}
-							options={['s3', 'gcs', 'azure', 'postgres', 'mongodb']}
-							required
-						/>
-						<FormField
-							label="Connection String"
-							value={formData.connection_string}
-							onChange={(v) => setFormData({ ...formData, connection_string: v })}
-							placeholder="storage://..."
-							required
-						/>
-					</div>
-					<FormField
-						label="Configuration (JSON)"
-						type="textarea"
-						value={formData.config}
-						onChange={(v) => setFormData({ ...formData, config: v })}
-						placeholder='{"region": "us-east-1"}'
-					/>
+					<FormField label="Configuration (JSON)" type="textarea" value={formData.config} onChange={(v) => setFormData({ ...formData, config: v })} placeholder='{"path": "./data"}' required />
 					<Button type="submit" label="Create Storage Config" />
 				</form>
 			</Modal>
@@ -2271,6 +2510,246 @@ function WorkTasksPage() {
 }
 
 // ============================================
+// INSIGHTS & REVIEW PAGE
+// ============================================
+
+function InsightsReviewPage() {
+	const { activeProject } = React.useContext(ProjectContext);
+	const [storageConfigs, setStorageConfigs] = React.useState([]);
+	const [selectedStorageIds, setSelectedStorageIds] = React.useState([]);
+	const [insights, setInsights] = React.useState([]);
+	const [reviews, setReviews] = React.useState([]);
+	const [resolverMetrics, setResolverMetrics] = React.useState(null);
+	const [severityFilter, setSeverityFilter] = React.useState('');
+	const [minConfidence, setMinConfidence] = React.useState('');
+	const [reviewStatus, setReviewStatus] = React.useState('pending');
+	const [reviewer, setReviewer] = React.useState('');
+	const [rationales, setRationales] = React.useState({});
+	const [loading, setLoading] = React.useState(false);
+
+	const loadStorageConfigs = React.useCallback(async () => {
+		if (!activeProject?.id) {
+			setStorageConfigs([]);
+			setSelectedStorageIds([]);
+			return;
+		}
+		const data = await apiCall(`/api/storage/configs?project_id=${activeProject.id}`);
+		setStorageConfigs(data || []);
+		setSelectedStorageIds(prev => (prev || []).filter(id => (data || []).some(cfg => cfg.id === id)));
+	}, [activeProject?.id]);
+
+	const loadInsights = React.useCallback(async () => {
+		if (!activeProject?.id) {
+			setInsights([]);
+			return;
+		}
+		const params = new URLSearchParams({ project_id: activeProject.id });
+		if (severityFilter) params.set('severity', severityFilter);
+		if (minConfidence !== '') params.set('min_confidence', minConfidence);
+		const data = await apiCall(`/api/insights?${params.toString()}`);
+		setInsights(data || []);
+	}, [activeProject?.id, severityFilter, minConfidence]);
+
+	const loadReviews = React.useCallback(async () => {
+		if (!activeProject?.id) {
+			setReviews([]);
+			return;
+		}
+		const params = new URLSearchParams({ project_id: activeProject.id });
+		if (reviewStatus) params.set('status', reviewStatus);
+		const data = await apiCall(`/api/reviews?${params.toString()}`);
+		setReviews(data || []);
+	}, [activeProject?.id, reviewStatus]);
+
+	const loadMetrics = React.useCallback(async () => {
+		if (!activeProject?.id) {
+			setResolverMetrics(null);
+			return;
+		}
+		const data = await apiCall(`/api/analysis/resolver/metrics?project_id=${activeProject.id}`);
+		setResolverMetrics(data || null);
+	}, [activeProject?.id]);
+
+	React.useEffect(() => {
+		if (!activeProject?.id) {
+			setInsights([]);
+			setReviews([]);
+			setStorageConfigs([]);
+			setResolverMetrics(null);
+			setSelectedStorageIds([]);
+			return;
+		}
+		setLoading(true);
+		Promise.all([loadStorageConfigs(), loadInsights(), loadReviews(), loadMetrics()])
+			.catch(error => console.error('Failed to load insights/review data:', error))
+			.finally(() => setLoading(false));
+	}, [activeProject?.id]);
+
+	const handleGenerateInsights = async () => {
+		if (!activeProject?.id) return;
+		try {
+			await apiCall('/api/insights', { method: 'POST', body: JSON.stringify({ project_id: activeProject.id }) });
+			await loadInsights();
+		} catch (error) {
+			alert('Failed to generate insights: ' + error.message);
+		}
+	};
+
+	const handleRunResolver = async () => {
+		if (!activeProject?.id || selectedStorageIds.length < 2) return;
+		try {
+			const result = await apiCall('/api/analysis/resolver', {
+				method: 'POST',
+				body: JSON.stringify({ project_id: activeProject.id, storage_ids: selectedStorageIds }),
+			});
+			setResolverMetrics(result?.metrics || null);
+			setReviews(result?.review_items || []);
+			await loadMetrics();
+		} catch (error) {
+			alert('Failed to run resolver analysis: ' + error.message);
+		}
+	};
+
+	const handleReviewDecision = async (itemId, decision) => {
+		try {
+			await apiCall(`/api/reviews/${itemId}/decision`, {
+				method: 'POST',
+				body: JSON.stringify({
+					decision,
+					rationale: rationales[itemId] || '',
+					reviewer,
+				}),
+			});
+			await Promise.all([loadReviews(), loadMetrics()]);
+		} catch (error) {
+			alert('Failed to submit review decision: ' + error.message);
+		}
+	};
+
+	const insightColumns = [
+		{ key: 'type', label: 'Type' },
+		{ key: 'severity', label: 'Severity' },
+		{ key: 'confidence', label: 'Confidence', render: row => Number(row.confidence || 0).toFixed(2) },
+		{ key: 'status', label: 'Status' },
+		{ key: 'explanation', label: 'Explanation' },
+		{ key: 'suggested_action', label: 'Suggested Action' },
+	];
+
+	if (!activeProject?.id) {
+		return (
+			<div className="content-section">
+				<div className="section-header"><h2>Insights & Review</h2></div>
+				<div className="empty-state">Select a project before generating insights, running resolver analysis, or reviewing findings.</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="content-section">
+			<div className="section-header">
+				<h2>Insights & Review</h2>
+				<div style={{ display: 'flex', gap: '8px' }}>
+					<Button label="Generate Insights" onClick={handleGenerateInsights} />
+					<Button label="Refresh" onClick={() => Promise.all([loadInsights(), loadReviews(), loadMetrics(), loadStorageConfigs()])} variant="secondary" />
+				</div>
+			</div>
+			<div style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>Project: <strong style={{ color: 'var(--accent)' }}>{activeProject.name}</strong></div>
+
+			{loading ? <div className="loading">Loading insights and review queue...</div> : (
+				<>
+					<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+						<div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)' }}>
+							<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>High-confidence precision</div>
+							<div style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>{resolverMetrics ? Number(resolverMetrics.high_confidence_precision || 0).toFixed(2) : '0.00'}</div>
+						</div>
+						<div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)' }}>
+							<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Pending review</div>
+							<div style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>{resolverMetrics?.decision_counts?.pending || 0}</div>
+						</div>
+						<div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)' }}>
+							<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Accepted feedback</div>
+							<div style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>{resolverMetrics?.decision_counts?.accepted || 0}</div>
+						</div>
+						<div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)' }}>
+							<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Rejected feedback</div>
+							<div style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>{resolverMetrics?.decision_counts?.rejected || 0}</div>
+						</div>
+					</div>
+
+					<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '20px', background: 'rgba(255,153,0,0.04)' }}>
+						<h3 style={{ marginBottom: '8px' }}>Resolver Review Queue</h3>
+						<div style={{ color: 'var(--text-secondary)', marginBottom: '12px' }}>Select at least two storage configs and run generic cross-source resolution.</div>
+						<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+							{storageConfigs.map(cfg => (
+								<label key={cfg.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)' }}>
+									<input
+										type="checkbox"
+										checked={selectedStorageIds.includes(cfg.id)}
+										onChange={e => setSelectedStorageIds(prev => e.target.checked ? [...prev, cfg.id] : prev.filter(id => id !== cfg.id))}
+									/>
+									<span>{deriveStorageConfigLabel(cfg)}</span>
+								</label>
+							))}
+						</div>
+						<div className="form-grid">
+							<FormField label="Reviewer" value={reviewer} onChange={setReviewer} placeholder="analyst@team" />
+							<div style={{ display: 'flex', alignItems: 'flex-end' }}>
+								<Button label="Run Resolver Analysis" onClick={handleRunResolver} disabled={selectedStorageIds.length < 2} />
+							</div>
+						</div>
+						{selectedStorageIds.length < 2 && <div style={{ color: 'var(--text-secondary)', marginTop: '8px' }}>Choose at least two storage configs to compare.</div>}
+					</div>
+
+					<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '20px' }}>
+						<div className="section-header" style={{ marginBottom: '12px' }}>
+							<h3 style={{ margin: 0 }}>Insights</h3>
+							<div style={{ display: 'flex', gap: '8px' }}>
+								<FormField label="Severity" type="select" value={severityFilter} onChange={setSeverityFilter} options={[{ value: '', label: 'all' }, 'low', 'medium', 'high', 'critical']} />
+								<FormField label="Min Confidence" type="number" value={minConfidence} onChange={setMinConfidence} placeholder="0.5" />
+								<Button label="Apply Filters" onClick={loadInsights} variant="secondary" />
+							</div>
+						</div>
+						<Table columns={insightColumns} data={insights} />
+					</div>
+
+					<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '8px' }}>
+						<div className="section-header" style={{ marginBottom: '12px' }}>
+							<h3 style={{ margin: 0 }}>Review Queue</h3>
+							<div style={{ display: 'flex', gap: '8px' }}>
+								<FormField label="Status" type="select" value={reviewStatus} onChange={setReviewStatus} options={[{ value: '', label: 'all' }, 'pending', 'accepted', 'rejected', 'auto_accepted']} />
+								<Button label="Reload Queue" onClick={loadReviews} variant="secondary" />
+							</div>
+						</div>
+						{reviews.length === 0 ? (
+							<div className="empty-state">No review items for the current filters.</div>
+						) : (
+							reviews.map(item => (
+								<div key={item.id} style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '6px', marginBottom: '12px', background: 'var(--surface)' }}>
+									<div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}>
+										<div>
+											<div style={{ color: 'var(--accent)', fontWeight: 'bold' }}>{item.finding_type}</div>
+											<div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Status: {item.status} · Suggested: {item.suggested_decision} · Confidence: {Number(item.confidence || 0).toFixed(2)}</div>
+										</div>
+										<div className={`status-badge status-${item.status === 'accepted' || item.status === 'auto_accepted' ? 'active' : item.status === 'rejected' ? 'failed' : 'pending'}`}>{item.status}</div>
+									</div>
+									<div style={{ marginBottom: '8px' }}>{item.rationale}</div>
+									<pre style={{ margin: '0 0 12px 0', fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>{renderConfigPreview(item.evidence || item.payload)}</pre>
+									<FormField label="Decision rationale" type="textarea" value={rationales[item.id] || ''} onChange={value => setRationales(prev => ({ ...prev, [item.id]: value }))} placeholder="Why are you accepting or rejecting this link?" />
+									<div style={{ display: 'flex', gap: '8px' }}>
+										<Button label="Accept" onClick={() => handleReviewDecision(item.id, 'accept')} />
+										<Button label="Reject" onClick={() => handleReviewDecision(item.id, 'reject')} variant="danger" />
+									</div>
+								</div>
+							))
+						)}
+					</div>
+				</>
+			)}
+		</div>
+	);
+}
+
+// ============================================
 // MAIN APP
 // ============================================
 
@@ -2278,22 +2757,29 @@ function App() {
 	const [currentPage, setCurrentPage] = React.useState('Projects');
 	const [sidebarOpen, setSidebarOpen] = React.useState(false);
 	const [projects, setProjects] = React.useState([]);
-	const [activeProject, setActiveProject] = React.useState(null);
+	const [activeProjectId, setActiveProjectId] = React.useState(undefined);
 
-	const pages = ['Projects', 'Pipelines', 'Ontologies', 'ML Models', 'Digital Twins', 'Storage', 'Plugins', 'Work Queue'];
-
-	// Fetch projects on mount and set first project as active
-	React.useEffect(() => {
-		apiCall('/api/projects')
-			.then(data => {
-				const list = data || [];
-				setProjects(list);
-				if (list.length > 0 && !activeProject) {
-					setActiveProject(list[0]);
-				}
-			})
-			.catch(() => {});
+	const refreshProjects = React.useCallback(async (preferredProjectId) => {
+		const data = await apiCall('/api/projects');
+		const list = data || [];
+		setProjects(list);
+		setActiveProjectId(prev => {
+			const target = preferredProjectId !== undefined ? preferredProjectId : prev;
+			if (!list.length) return '';
+			if (target === '') return '';
+			if (target === undefined || target === null) return list[0].id;
+			return list.some(project => project.id === target) ? target : list[0].id;
+		});
+		return list;
 	}, []);
+
+	React.useEffect(() => {
+		refreshProjects().catch(() => {});
+	}, [refreshProjects]);
+
+	const activeProject = projects.find(project => project.id === activeProjectId) || null;
+	const setActiveProject = React.useCallback((project) => setActiveProjectId(project?.id || ''), []);
+	const pages = ['Projects', 'Pipelines', 'Ontologies', 'ML Models', 'Digital Twins', 'Storage', 'Insights & Review', 'Plugins', 'Work Queue'];
 
 	const navigate = (page) => {
 		setCurrentPage(page);
@@ -2314,6 +2800,8 @@ function App() {
 				return <DigitalTwinsPage />;
 			case 'Storage':
 				return <StoragePage />;
+			case 'Insights & Review':
+				return <InsightsReviewPage />;
 			case 'Plugins':
 				return <PluginsPage />;
 			case 'Work Queue':
@@ -2327,52 +2815,35 @@ function App() {
 		<div className="app-shell">
 			<header className="app-topbar">
 				<div className="topbar-brand">
-					<button
-						className="hamburger"
-						onClick={() => setSidebarOpen(o => !o)}
-						aria-label="Toggle navigation"
-					>
+					<button className="hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle navigation">
 						<span/><span/><span/>
 					</button>
 					<span className="topbar-logo">◆</span>
 					<span className="topbar-name">Mimir AIP</span>
 				</div>
 				<div className="topbar-meta">
-					<span className="topbar-version">v0.1.0</span>
+					<span className="topbar-version">{activeProject ? `Project: ${activeProject.name}` : 'All projects'}</span>
 				</div>
 			</header>
 			<div className="app-body">
-				{sidebarOpen && (
-					<div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
-				)}
+				{sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 				<aside className={`app-sidebar${sidebarOpen ? ' is-open' : ''}`}>
 					<nav className="sidebar-nav">
 						{pages.map(page => (
-							<button
-								key={page}
-								className={`nav-item${currentPage === page ? ' active' : ''}`}
-								onClick={() => navigate(page)}
-							>
-								{page}
-							</button>
+							<button key={page} className={`nav-item${currentPage === page ? ' active' : ''}`} onClick={() => navigate(page)}>{page}</button>
 						))}
 						<div className="sidebar-project-selector">
 							<label>Working Project</label>
-							<select
-								value={activeProject?.id || ''}
-								onChange={e => setActiveProject(projects.find(p => p.id === e.target.value) || null)}
-							>
+							<select value={activeProjectId ?? ''} onChange={e => setActiveProjectId(e.target.value)}>
 								<option value="">— All Projects —</option>
-								{projects.map(p => (
-									<option key={p.id} value={p.id}>{p.name}</option>
-								))}
+								{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
 							</select>
 						</div>
 					</nav>
 				</aside>
 				<main className="app-main">
 					<div className="app-container">
-						<ProjectContext.Provider value={{ activeProject, projects }}>
+						<ProjectContext.Provider value={{ activeProject, activeProjectId: activeProjectId || '', projects, setActiveProject, setActiveProjectId, refreshProjects }}>
 							{renderPage()}
 						</ProjectContext.Provider>
 					</div>

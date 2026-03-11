@@ -48,22 +48,35 @@ const (
 	ReviewDecisionReject ReviewDecision = "reject"
 )
 
-// ReviewItem stores a persisted reviewable finding snapshot.
+// ReviewItem stores a persisted reviewable finding snapshot keyed by a stable
+// finding identity so repeated analyses update the same operator-facing item.
 type ReviewItem struct {
-	ID                string           `json:"id"`
-	ProjectID         string           `json:"project_id"`
-	RunID             string           `json:"run_id"`
-	FindingType       string           `json:"finding_type"`
-	Status            ReviewItemStatus `json:"status"`
-	SuggestedDecision string           `json:"suggested_decision,omitempty"`
-	Confidence        float64          `json:"confidence"`
-	Payload           map[string]any   `json:"payload"`
-	Evidence          map[string]any   `json:"evidence,omitempty"`
-	Rationale         string           `json:"rationale,omitempty"`
-	Reviewer          string           `json:"reviewer,omitempty"`
-	ReviewedAt        *time.Time       `json:"reviewed_at,omitempty"`
-	CreatedAt         time.Time        `json:"created_at"`
-	UpdatedAt         time.Time        `json:"updated_at"`
+	ID                string                `json:"id"`
+	ProjectID         string                `json:"project_id"`
+	RunID             string                `json:"run_id"`
+	FindingType       string                `json:"finding_type"`
+	FindingKey        string                `json:"finding_key"`
+	Status            ReviewItemStatus      `json:"status"`
+	SuggestedDecision string                `json:"suggested_decision,omitempty"`
+	Confidence        float64               `json:"confidence"`
+	OccurrenceCount   int                   `json:"occurrence_count"`
+	Payload           map[string]any        `json:"payload"`
+	Evidence          map[string]any        `json:"evidence,omitempty"`
+	Rationale         string                `json:"rationale,omitempty"`
+	Reviewer          string                `json:"reviewer,omitempty"`
+	ReviewedAt        *time.Time            `json:"reviewed_at,omitempty"`
+	DecisionHistory   []ReviewDecisionEvent `json:"decision_history,omitempty"`
+	CreatedAt         time.Time             `json:"created_at"`
+	UpdatedAt         time.Time             `json:"updated_at"`
+}
+
+// ReviewDecisionEvent records one explicit operator decision for a stable finding.
+type ReviewDecisionEvent struct {
+	Decision     ReviewDecision   `json:"decision"`
+	Reviewer     string           `json:"reviewer,omitempty"`
+	Rationale    string           `json:"rationale,omitempty"`
+	PreviousStatus ReviewItemStatus `json:"previous_status,omitempty"`
+	DecidedAt    time.Time        `json:"decided_at"`
 }
 
 // ReviewDecisionRequest applies a human decision to a review item.

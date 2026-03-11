@@ -7,6 +7,7 @@ func init() {
 		Summary:     "Run cross-source resolver analysis",
 		Description: "Detects cross-source links, persists a review queue for uncertain links, and records resolver calibration metrics.",
 		Tags:        []string{"Analysis"},
+		RequestBody: doc.JsonBody(doc.Ref("ResolverRunRequest")),
 		Responses:   doc.R(doc.Created(doc.Obj("Resolver run result")), doc.BadRequest()),
 	})
 
@@ -33,6 +34,8 @@ func init() {
 		Summary:     "Decide a review item",
 		Description: "Accepts or rejects one review item and persists the feedback for future resolver calibration.",
 		Tags:        []string{"Analysis"},
+		Params:      []doc.Param{doc.PParam("id", "Review item ID")},
+		RequestBody: doc.JsonBody(doc.Ref("ReviewDecisionRequest")),
 		Responses:   doc.R(doc.OK(doc.Ref("ReviewItem")), doc.BadRequest()),
 	})
 
@@ -52,6 +55,7 @@ func init() {
 		Summary:     "Generate project insights",
 		Description: "Runs generic anomaly, trend-break, and co-occurrence detectors for one project and persists the resulting insights.",
 		Tags:        []string{"Insights"},
+		RequestBody: doc.JsonBody(doc.Ref("InsightGenerateRequest")),
 		Responses:   doc.R(doc.Created(doc.Obj("Insight generation result")), doc.BadRequest()),
 	})
 }

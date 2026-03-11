@@ -136,3 +136,106 @@ func TestGenerateProjectInsightsCreatesPersistedSpikeInsight(t *testing.T) {
 		t.Fatalf("expected positive confidence, got %f", persisted[0].Confidence)
 	}
 }
+
+func TestBuildReviewItemReusesStableFindingIdentity(t *testing.T) {
+	service, _, cleanup := setupAnalysisService(t)
+	defer cleanup()
+
+	now := time.Now().UTC()
+	link := models.CrossSourceLink{
+		StorageA:         "storage-a",
+		ColumnA:          "email",
+		EntityTypeA:      "User",
+		StorageB:         "storage-b",
+		ColumnB:          "email_address",
+		EntityTypeB:      "Customer",
+		Confidence:       0.91,
+		NameSimilarity:   0.82,
+		ValueOverlap:     0.77,
+		SharedValueCount: 12,
+	}
+	findingKey := reviewFindingKey(link)
+	existing := &models.ReviewItem{
+		ID:              "existing-review-item",
+		ProjectID:       "project-review",
+		RunID:           "run-1",
+		FindingType:     "cross_source_link",
+		FindingKey:      findingKey,
+		Status:          models.ReviewItemStatusAccepted,
+		Confidence:      0.75,
+		OccurrenceCount: 1,
+		Payload:         map[string]any{"storage_a": link.StorageA},
+		CreatedAt:       now.Add(-time.Hour),
+		UpdatedAt:       now.Add(-time.Hour),
+	}
+	if err := service.store.SaveReviewItem(existing); err != nil {
+		t.Fatalf("failed to seed review item: %v", err)
+	}
+
+	updated, err := service.buildReviewItem("project-review", "run-2", link, extraction.LinkNeedsReview, now)
+	if err != nil {
+		t.Fatalf("buildReviewItem returned error: %v", err)
+	}
+	if updated.ID != existing.ID {
+		t.Fatalf("expected stable review item ID %s, got %s", existing.ID, updated.ID)
+	}
+	if updated.RunID != "run-2" {
+		t.Fatalf("expected latest run ID to be recorded, got %s", updated.RunID)
+	}
+	if updated.OccurrenceCount != 2 {
+		t.Fatalf("expected occurrence count to increment to 2, got %d", updated.OccurrenceCount)
+	}
+	if updated.Status != models.ReviewItemStatusPending {
+		t.Fatalf("expected recurring finding to reopen as pending, got %s", updated.Status)
+	}
+	if updated.CreatedAt != existing.CreatedAt {
+		t.Fatalf("expected original created_at to be preserved")
+	}
+	if updated.FindingKey != findingKey {
+		t.Fatalf("expected finding key %s, got %s", findingKey, updated.FindingKey)
+	}
+}
+
+func TestDecideReviewItemAppendsDecisionHistory(t *testing.T) {
+	service, _, cleanup := setupAnalysisService(t)
+	defer cleanup()
+
+	now := time.Now().UTC()
+	item := &models.ReviewItem{
+		ID:              "decision-item",
+		ProjectID:       "project-review",
+		RunID:           "run-1",
+		FindingType:     "cross_source_link",
+		FindingKey:      "cross_source_link::storage-a::user::email::storage-b::customer::email_address",
+		Status:          models.ReviewItemStatusPending,
+		Confidence:      0.83,
+		OccurrenceCount: 1,
+		Payload:         map[string]any{"storage_a": "storage-a"},
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := service.store.SaveReviewItem(item); err != nil {
+		t.Fatalf("failed to seed decision item: %v", err)
+	}
+
+	updated, err := service.DecideReviewItem(item.ID, &models.ReviewDecisionRequest{
+		Decision:  models.ReviewDecisionAccept,
+		Reviewer:  "alice",
+		Rationale: "confirmed match",
+	})
+	if err != nil {
+		t.Fatalf("DecideReviewItem returned error: %v", err)
+	}
+	if updated.Status != models.ReviewItemStatusAccepted {
+		t.Fatalf("expected accepted status, got %s", updated.Status)
+	}
+	if len(updated.DecisionHistory) != 1 {
+		t.Fatalf("expected one decision history event, got %d", len(updated.DecisionHistory))
+	}
+	if updated.DecisionHistory[0].PreviousStatus != models.ReviewItemStatusPending {
+		t.Fatalf("expected previous status pending, got %s", updated.DecisionHistory[0].PreviousStatus)
+	}
+	if updated.Reviewer != "alice" || updated.Rationale != "confirmed match" {
+		t.Fatalf("expected reviewer and rationale to be persisted")
+	}
+}

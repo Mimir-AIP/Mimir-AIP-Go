@@ -219,7 +219,7 @@ helm install mimir-aip ./helm/mimir-aip \
 
 ## MCP Integration
 
-Mimir AIP exposes 55 MCP tools over a Server-Sent Events (SSE) transport at `/mcp/sse`. Any MCP-compatible client can connect.
+Mimir AIP exposes 64 MCP tools over a Server-Sent Events (SSE) transport at `/mcp/sse`. Any MCP-compatible client can connect.
 
 ### Claude Code
 
@@ -245,10 +245,13 @@ Then start a Claude Code session — the full Mimir toolset will be available au
 | Projects | 8 | CRUD, clone, component associations |
 | Pipelines | 6 | CRUD, execute |
 | Schedules | 5 | CRUD |
-| ML Models | 7 | CRUD, train, infer, recommend |
+| Connectors | 2 | List bundled templates, materialize pipelines/schedules |
+| Analysis | 4 | Run resolver analysis, inspect metrics, list reviews, decide findings |
+| Insights | 2 | List and generate autonomous insights |
+| ML Models | 8 | CRUD, train, infer, recommend, monitor |
 | Digital Twins | 7 | CRUD, sync, SPARQL query |
-| Ontologies | 6 | CRUD, generate from text, extract from storage |
-| Storage | 8 | Config CRUD, store/retrieve/update/delete data, health check |
+| Ontologies | 8 | CRUD, generate from text, extract from storage, inspect ontology text |
+| Storage | 10 | Config CRUD, store/retrieve/update/delete data, health and ingestion health |
 | Tasks | 3 | List, get, cancel work tasks |
 | System | 1 | Platform health |
 

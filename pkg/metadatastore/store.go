@@ -50,12 +50,15 @@ type MetadataStore interface {
 
 	// Analysis operations
 	SaveAnalysisRun(run *models.AnalysisRun) error
+	SaveResolverRun(run *models.AnalysisRun, items []*models.ReviewItem) error
 	GetAnalysisRun(id string) (*models.AnalysisRun, error)
 	ListAnalysisRunsByProject(projectID string) ([]*models.AnalysisRun, error)
 	SaveReviewItem(item *models.ReviewItem) error
 	GetReviewItem(id string) (*models.ReviewItem, error)
+	GetReviewItemByFindingKey(projectID, findingKey string) (*models.ReviewItem, error)
 	ListReviewItems(projectID string) ([]*models.ReviewItem, error)
 	SaveInsight(insight *models.Insight) error
+	SaveInsightRun(run *models.AnalysisRun, insights []*models.Insight) error
 	GetInsight(id string) (*models.Insight, error)
 	ListInsightsByProject(projectID string) ([]*models.Insight, error)
 	// Storage operations

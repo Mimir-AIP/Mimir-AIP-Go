@@ -1,222 +1,74 @@
 package digitaltwin
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
+	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
+	"github.com/mimir-aip/mimir-aip-go/pkg/queue"
+	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
-// TestModelArtifactSerialization tests model artifact JSON serialization
-func TestModelArtifactSerialization(t *testing.T) {
-	artifact := &ModelArtifact{
-		ModelType:    "regression",
-		FeatureNames: []string{"feature1", "feature2"},
-		Parameters: map[string]interface{}{
-			"weights":   []interface{}{0.5, 0.3},
-			"intercept": 1.2,
-		},
-		Metadata: map[string]interface{}{
-			"trained_at": time.Now().Format(time.RFC3339),
-		},
+func setupDigitalTwinService(t *testing.T) (*Service, *queue.Queue, func()) {
+	t.Helper()
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "digitaltwin.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
 	}
-
-	if artifact.ModelType != "regression" {
-		t.Errorf("Expected model type 'regression', got '%s'", artifact.ModelType)
+	q, err := queue.NewQueue()
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
 	}
-
-	if len(artifact.FeatureNames) != 2 {
-		t.Errorf("Expected 2 features, got %d", len(artifact.FeatureNames))
+	service := NewService(store, ontology.NewService(store), storage.NewService(store), nil, q)
+	return service, q, func() {
+		_ = q.Close()
+		_ = store.Close()
 	}
 }
 
-// TestActionConditionEvaluation tests action condition evaluation logic
-func TestActionConditionEvaluation(t *testing.T) {
-	manager := &ActionManager{}
+func TestEnqueueSyncQueuesWorkAndMarksTwinSyncing(t *testing.T) {
+	service, q, cleanup := setupDigitalTwinService(t)
+	defer cleanup()
 
-	tests := []struct {
-		name       string
-		condition  *models.ActionCondition
-		prediction *models.Prediction
-		expected   bool
-	}{
-		{
-			name: "greater than - true",
-			condition: &models.ActionCondition{
-				ModelID:   "model1",
-				Operator:  "gt",
-				Threshold: 10.0,
-			},
-			prediction: &models.Prediction{
-				ModelID: "model1",
-				Output:  15.0,
-			},
-			expected: true,
-		},
-		{
-			name: "greater than - false",
-			condition: &models.ActionCondition{
-				ModelID:   "model1",
-				Operator:  "gt",
-				Threshold: 20.0,
-			},
-			prediction: &models.Prediction{
-				ModelID: "model1",
-				Output:  15.0,
-			},
-			expected: false,
-		},
-		{
-			name: "less than - true",
-			condition: &models.ActionCondition{
-				ModelID:   "model1",
-				Operator:  "lt",
-				Threshold: 20.0,
-			},
-			prediction: &models.Prediction{
-				ModelID: "model1",
-				Output:  15.0,
-			},
-			expected: true,
-		},
-		{
-			name: "equal - true",
-			condition: &models.ActionCondition{
-				ModelID:   "model1",
-				Operator:  "eq",
-				Threshold: 15.0,
-			},
-			prediction: &models.Prediction{
-				ModelID: "model1",
-				Output:  15.0,
-			},
-			expected: true,
-		},
-		{
-			name: "wrong model - false",
-			condition: &models.ActionCondition{
-				ModelID:   "model2",
-				Operator:  "gt",
-				Threshold: 10.0,
-			},
-			prediction: &models.Prediction{
-				ModelID: "model1",
-				Output:  15.0,
-			},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := manager.evaluatePredictionCondition(tt.condition, tt.prediction)
-			if result != tt.expected {
-				t.Errorf("Expected %v, got %v", tt.expected, result)
-			}
-		})
-	}
-}
-
-// TestInferenceEngineRegressionPrediction tests regression prediction
-func TestInferenceEngineRegressionPrediction(t *testing.T) {
-	engine := &InferenceEngine{}
-
-	artifact := &ModelArtifact{
-		ModelType:    "regression",
-		FeatureNames: []string{"x1", "x2"},
-		Parameters: map[string]interface{}{
-			"weights":   []interface{}{2.0, 3.0},
-			"intercept": 1.0,
-		},
-	}
-
-	features := []float64{5.0, 10.0}
-
-	// Expected: 1.0 + (2.0 * 5.0) + (3.0 * 10.0) = 1 + 10 + 30 = 41.0
-	result := engine.predictRegression(artifact, features)
-
-	if resultFloat, ok := result.(float64); ok {
-		if resultFloat != 41.0 {
-			t.Errorf("Expected 41.0, got %v", resultFloat)
-		}
-	} else {
-		t.Errorf("Expected float64 result, got %T", result)
-	}
-}
-
-// TestScenarioCreation tests scenario creation logic
-func TestScenarioCreation(t *testing.T) {
 	now := time.Now().UTC()
-
-	scenario := &models.Scenario{
-		ID:            "scenario1",
-		DigitalTwinID: "twin1",
-		Name:          "Price Increase Scenario",
-		Description:   "What if we increase price by 20%",
-		BaseState:     "current",
-		Status:        "active",
-		CreatedAt:     now,
-		UpdatedAt:     now,
-		Modifications: []*models.ScenarioModification{
-			{
-				EntityType:    "Product",
-				EntityID:      "prod1",
-				Attribute:     "price",
-				OriginalValue: 100.0,
-				NewValue:      120.0,
-				Rationale:     "Testing 20% price increase",
-			},
-		},
+	twin := &models.DigitalTwin{
+		ID:         "twin-1",
+		ProjectID:  "project-1",
+		OntologyID: "ontology-1",
+		Name:       "Factory Twin",
+		Status:     "active",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := service.store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to seed digital twin: %v", err)
 	}
 
-	if scenario.Name != "Price Increase Scenario" {
-		t.Errorf("Expected scenario name 'Price Increase Scenario', got '%s'", scenario.Name)
+	task, err := service.EnqueueSync(twin.ID)
+	if err != nil {
+		t.Fatalf("EnqueueSync returned error: %v", err)
 	}
-
-	if len(scenario.Modifications) != 1 {
-		t.Errorf("Expected 1 modification, got %d", len(scenario.Modifications))
+	if task.Type != models.WorkTaskTypeDigitalTwinUpdate {
+		t.Fatalf("expected digital_twin_update task type, got %s", task.Type)
 	}
-
-	mod := scenario.Modifications[0]
-	if mod.EntityType != "Product" {
-		t.Errorf("Expected entity type 'Product', got '%s'", mod.EntityType)
+	if task.ProjectID != twin.ProjectID {
+		t.Fatalf("expected task project %s, got %s", twin.ProjectID, task.ProjectID)
 	}
-
-	if mod.NewValue != 120.0 {
-		t.Errorf("Expected new value 120.0, got %v", mod.NewValue)
+	queuedTask, err := q.GetWorkTask(task.ID)
+	if err != nil {
+		t.Fatalf("expected queued task to be retrievable: %v", err)
 	}
-}
-
-// TestEntityModifications tests entity modification tracking
-func TestEntityModifications(t *testing.T) {
-	entity := &models.Entity{
-		ID:            "entity1",
-		DigitalTwinID: "twin1",
-		Type:          "User",
-		Attributes: map[string]interface{}{
-			"name": "John Doe",
-			"age":  30,
-		},
-		Modifications: make(map[string]interface{}),
-		IsModified:    false,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+	if queuedTask.Status != models.WorkTaskStatusQueued {
+		t.Fatalf("expected queued status, got %s", queuedTask.Status)
 	}
-
-	// Apply modification
-	entity.Modifications["age"] = 31
-	entity.Attributes["age"] = 31
-	entity.IsModified = true
-
-	if !entity.IsModified {
-		t.Error("Expected entity to be marked as modified")
+	updatedTwin, err := service.store.GetDigitalTwin(twin.ID)
+	if err != nil {
+		t.Fatalf("failed to reload digital twin: %v", err)
 	}
-
-	if entity.Modifications["age"] != 31 {
-		t.Errorf("Expected modified age to be 31, got %v", entity.Modifications["age"])
-	}
-
-	if entity.Attributes["age"] != 31 {
-		t.Errorf("Expected attribute age to be 31, got %v", entity.Attributes["age"])
+	if updatedTwin.Status != "syncing" {
+		t.Fatalf("expected twin status syncing, got %s", updatedTwin.Status)
 	}
 }

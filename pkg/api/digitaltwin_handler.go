@@ -193,14 +193,20 @@ func (h *DigitalTwinHandler) handleSyncDigitalTwin(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if err := h.service.SyncWithStorage(id); err != nil {
+	task, err := h.service.EnqueueSync(id)
+	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to sync digital twin: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "synced"})
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"work_task_id":    task.ID,
+		"digital_twin_id": id,
+		"status":          "queued",
+		"message":         "Digital twin sync has been queued as a work task",
+	})
 }
 
 // handleDigitalTwinEntities handles GET /api/digital-twins/{id}/entities

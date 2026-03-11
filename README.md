@@ -76,7 +76,7 @@ Mimir AIP consists of two binaries and an optional web frontend:
 | **Insight** | A persisted autonomous finding, such as an anomaly spike, trend break, or co-occurrence surge, generated from project storage data. |
 | **Review Item** | A persisted reviewable finding — currently used for cross-source link decisions — whose accepted or rejected outcome improves future scoring. |
 | **ML Model** | A model definition (type: decision tree, random forest, regression, or neural network) linked to an ontology. Training and inference are executed by workers. |
-| **Digital Twin** | A live in-memory graph of entities and their attributes, initialised from an ontology and synchronised from storage. Queryable via a built-in SPARQL engine. |
+| **Digital Twin** | A persisted ontology-backed entity graph initialised from an ontology and refreshed from storage on demand or via queued sync work. Supports constrained SPARQL-style querying, predictions, and in-memory what-if scenarios. |
 | **MCP** | [Model Context Protocol](https://modelcontextprotocol.io) — an open standard for exposing tools to AI agents. Mimir exposes MCP tools across the platform's core resources so agent workflows can configure and operate projects directly. |
 
 ---

@@ -1,30 +1,89 @@
 components:
     schemas:
-        ActionRequest:
+        Action:
             properties:
-                action_type:
-                    description: Type of action to apply
+                condition:
+                    $ref: '#/components/schemas/ActionCondition'
+                created_at:
+                    description: ISO-8601 creation timestamp
                     type: string
+                description:
+                    description: Description
+                    type: string
+                digital_twin_id:
+                    description: Owning digital twin ID
+                    type: string
+                enabled:
+                    description: Whether the action is active
+                    type: boolean
+                id:
+                    description: Action ID (UUID)
+                    type: string
+                last_triggered:
+                    description: ISO-8601 timestamp of the most recent trigger
+                    type: string
+                name:
+                    description: Action name
+                    type: string
+                trigger:
+                    $ref: '#/components/schemas/ActionTrigger'
+                trigger_count:
+                    description: Number of times the action has fired
+                    type: integer
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        ActionCondition:
+            properties:
+                attribute:
+                    description: Optional entity attribute for attribute-based conditions
+                    type: string
+                entity_type:
+                    description: Optional entity type filter
+                    type: string
+                model_id:
+                    description: Optional model ID for prediction-based conditions
+                    type: string
+                operator:
+                    description: gt | gte | lt | lte | eq | ne
+                    type: string
+                threshold:
+                    description: Comparison threshold value
+            required:
+                - operator
+                - threshold
+            type: object
+        ActionCreateRequest:
+            properties:
+                condition:
+                    $ref: '#/components/schemas/ActionCondition'
+                description:
+                    description: Description
+                    type: string
+                enabled:
+                    description: Whether the action starts enabled
+                    type: boolean
+                name:
+                    description: Action name
+                    type: string
+                trigger:
+                    $ref: '#/components/schemas/ActionTrigger'
+            required:
+                - name
+                - condition
+                - trigger
+            type: object
+        ActionTrigger:
+            properties:
                 parameters:
                     additionalProperties: true
                     type: object
+                pipeline_id:
+                    description: Pipeline ID to execute when the action fires
+                    type: string
             required:
-                - action_type
-            type: object
-        ActionResult:
-            properties:
-                action_id:
-                    description: Action ID
-                    type: string
-                applied_at:
-                    description: ISO-8601 timestamp
-                    type: string
-                result:
-                    additionalProperties: true
-                    type: object
-                status:
-                    description: Action status
-                    type: string
+                - pipeline_id
             type: object
         AnalysisRun:
             properties:
@@ -251,17 +310,19 @@ components:
             type: object
         DigitalTwin:
             properties:
+                config:
+                    $ref: '#/components/schemas/DigitalTwinConfig'
                 created_at:
                     description: ISO-8601 creation timestamp
                     type: string
                 description:
                     description: Description
                     type: string
-                entity_count:
-                    description: Number of entities in the graph
-                    type: integer
                 id:
                     description: Digital twin ID (UUID)
+                    type: string
+                last_sync_at:
+                    description: ISO-8601 timestamp of the most recent completed sync
                     type: string
                 metadata:
                     additionalProperties: true
@@ -276,14 +337,33 @@ components:
                     description: Owning project ID
                     type: string
                 status:
-                    description: initialising | active | syncing | error
+                    description: active | syncing | error
                     type: string
                 updated_at:
                     description: ISO-8601 last-updated timestamp
                     type: string
             type: object
+        DigitalTwinConfig:
+            properties:
+                custom_settings:
+                    additionalProperties:
+                        type: string
+                    type: object
+                enable_predictions:
+                    description: Whether prediction endpoints are enabled for this twin
+                    type: boolean
+                prediction_cache_ttl:
+                    description: Prediction cache TTL in seconds
+                    type: integer
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
+            type: object
         DigitalTwinCreateRequest:
             properties:
+                config:
+                    $ref: '#/components/schemas/DigitalTwinConfig'
                 description:
                     description: Description
                     type: string
@@ -298,18 +378,21 @@ components:
                     type: string
             required:
                 - project_id
+                - ontology_id
                 - name
             type: object
         DigitalTwinUpdateRequest:
             properties:
+                config:
+                    $ref: '#/components/schemas/DigitalTwinConfig'
                 description:
                     description: New description
                     type: string
                 name:
                     description: New name
                     type: string
-                ontology_id:
-                    description: New linked ontology ID
+                status:
+                    description: New status
                     type: string
             type: object
         Entity:
@@ -320,20 +403,53 @@ components:
                 computed_values:
                     additionalProperties: true
                     type: object
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                digital_twin_id:
+                    description: Owning digital twin ID
+                    type: string
                 id:
                     description: Entity ID (UUID)
                     type: string
-                last_updated:
-                    description: ISO-8601 last-updated timestamp
-                    type: string
+                is_modified:
+                    description: Whether the entity has in-memory modifications
+                    type: boolean
+                modifications:
+                    additionalProperties: true
+                    type: object
                 relationships:
                     items:
-                        description: Relationship to another entity
-                        type: object
+                        $ref: '#/components/schemas/EntityRelationship'
                     type: array
-                type:
-                    description: Entity type (from ontology)
+                source_data_id:
+                    description: Optional source CIR record ID
                     type: string
+                type:
+                    description: Entity type from the ontology
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        EntityRelationship:
+            properties:
+                properties:
+                    additionalProperties: true
+                    type: object
+                target_id:
+                    description: Target entity ID
+                    type: string
+                target_type:
+                    description: Target entity type
+                    type: string
+                type:
+                    description: Relationship type from the ontology
+                    type: string
+            required:
+                - type
+                - target_id
+                - target_type
             type: object
         ExternalStoragePlugin:
             properties:
@@ -934,6 +1050,51 @@ components:
                     description: Branch, tag, or commit SHA to update to
                     type: string
             type: object
+        Prediction:
+            properties:
+                cached_at:
+                    description: Prediction cache timestamp
+                    type: string
+                confidence:
+                    description: Prediction confidence [0,1]
+                    type: number
+                digital_twin_id:
+                    description: Owning digital twin ID
+                    type: string
+                entity_id:
+                    description: Optional entity ID
+                    type: string
+                entity_type:
+                    description: Optional entity type
+                    type: string
+                expires_at:
+                    description: Prediction cache expiry timestamp
+                    type: string
+                id:
+                    description: Prediction ID (UUID)
+                    type: string
+                input:
+                    additionalProperties: true
+                    type: object
+                metadata:
+                    additionalProperties: true
+                    type: object
+                model_id:
+                    description: Model ID
+                    type: string
+                output:
+                    description: Prediction output payload
+                prediction_type:
+                    description: point | batch | anomaly
+                    type: string
+            type: object
+        PredictionResult:
+            description: Single prediction response or batch prediction array depending on request shape.
+            oneOf:
+                - $ref: '#/components/schemas/Prediction'
+                - items:
+                    $ref: '#/components/schemas/Prediction'
+                  type: array
         Project:
             properties:
                 components:
@@ -1164,34 +1325,120 @@ components:
                     description: Update timestamp
                     type: string
             type: object
-        ScenarioRequest:
+        Scenario:
             properties:
+                base_state:
+                    description: current | historical
+                    type: string
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                created_by:
+                    description: Optional creator identity
+                    type: string
+                description:
+                    description: Description
+                    type: string
+                digital_twin_id:
+                    description: Owning digital twin ID
+                    type: string
+                id:
+                    description: Scenario ID (UUID)
+                    type: string
                 modifications:
                     items:
-                        description: Entity attribute modification
-                        type: object
+                        $ref: '#/components/schemas/ScenarioModification'
                     type: array
-                scenario_id:
-                    description: Optional scenario ID (generated if omitted)
+                name:
+                    description: Scenario name
                     type: string
+                predictions:
+                    items:
+                        $ref: '#/components/schemas/ScenarioPrediction'
+                    type: array
+                status:
+                    description: active | archived
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        ScenarioCreateRequest:
+            properties:
+                base_state:
+                    description: current | historical
+                    type: string
+                description:
+                    description: Description
+                    type: string
+                modifications:
+                    items:
+                        $ref: '#/components/schemas/ScenarioModification'
+                    type: array
+                name:
+                    description: Scenario name
+                    type: string
+                run_predictions:
+                    description: Whether predictions should be generated immediately
+                    type: boolean
             required:
+                - name
                 - modifications
             type: object
-        ScenarioResult:
+        ScenarioModification:
             properties:
-                created_at:
-                    description: ISO-8601 timestamp
+                attribute:
+                    description: Attribute name
                     type: string
-                entities:
-                    items:
-                        $ref: '#/components/schemas/Entity'
-                    type: array
-                predictions:
+                entity_id:
+                    description: Entity ID
+                    type: string
+                entity_type:
+                    description: Entity type
+                    type: string
+                new_value:
+                    description: New attribute value
+                original_value:
+                    description: Original attribute value
+                rationale:
+                    description: Optional explanation for the modification
+                    type: string
+            required:
+                - entity_type
+                - entity_id
+                - attribute
+                - original_value
+                - new_value
+            type: object
+        ScenarioPrediction:
+            properties:
+                confidence:
+                    description: Prediction confidence [0,1]
+                    type: number
+                entity_id:
+                    description: Optional entity ID
+                    type: string
+                entity_type:
+                    description: Optional entity type
+                    type: string
+                impact:
+                    description: Human-readable impact summary
+                    type: string
+                metadata:
                     additionalProperties: true
                     type: object
-                scenario_id:
-                    description: Scenario ID
+                model_id:
+                    description: Model ID
                     type: string
+                model_name:
+                    description: Model name
+                    type: string
+                prediction:
+                    description: Prediction payload
+            required:
+                - model_id
+                - model_name
+                - prediction
             type: object
         Schedule:
             properties:
@@ -1602,7 +1849,7 @@ paths:
             tags:
                 - Digital Twins
         post:
-            description: Creates a new digital twin and initialises its entity graph from the associated ontology.
+            description: Creates a persisted ontology-backed entity graph and initialises its starting entity set from the associated ontology.
             requestBody:
                 content:
                     application/json:
@@ -1712,7 +1959,7 @@ paths:
             tags:
                 - Digital Twins
         post:
-            description: Registers an action that can be applied to entities within the digital twin.
+            description: Registers a conditional pipeline trigger against digital twin attributes or prediction output.
             parameters:
                 - description: Digital twin ID
                   in: path
@@ -1938,7 +2185,7 @@ paths:
                 - Digital Twins
     /api/digital-twins/{id}/query:
         post:
-            description: Runs a SPARQL SELECT query against the twin's entity graph.
+            description: Runs the digital twin's supported SPARQL-style SELECT query subset against the persisted entity graph.
             parameters:
                 - description: Digital twin ID
                   in: path
@@ -2066,7 +2313,7 @@ paths:
                 - Digital Twins
     /api/digital-twins/{id}/sync:
         post:
-            description: Pulls the latest records from the twin's linked storage backends and refreshes the entity graph.
+            description: Enqueues background work to refresh the twin's entity graph from its configured storage backends.
             parameters:
                 - description: Digital twin ID
                   in: path
@@ -2075,19 +2322,26 @@ paths:
                   schema:
                     type: string
             responses:
-                "200":
+                "202":
                     content:
                         application/json:
                             schema:
                                 properties:
+                                    digital_twin_id:
+                                        description: Digital twin ID
+                                        type: string
+                                    message:
+                                        description: Human-readable queue message
+                                        type: string
                                     status:
-                                        description: '''synced'''
+                                        description: '''queued'''
+                                        type: string
+                                    work_task_id:
+                                        description: Queued work task ID
                                         type: string
                                 type: object
-                    description: 200 OK
-                "404":
-                    description: Resource not found
-            summary: Sync digital twin
+                    description: Accepted — processing in background
+            summary: Queue digital twin sync
             tags:
                 - Digital Twins
     /api/extraction/generate-ontology:
@@ -3754,7 +4008,7 @@ tags:
       name: Extraction
     - description: 'ML model lifecycle: create, train, infer, monitor'
       name: ML Models
-    - description: Live entity graphs with SPARQL querying and scenario analysis
+    - description: Persisted ontology-backed entity graphs with queued sync, constrained SPARQL querying, and in-memory scenario analysis
       name: Digital Twins
     - description: Work task queue (internal / worker-facing endpoints)
       name: Tasks

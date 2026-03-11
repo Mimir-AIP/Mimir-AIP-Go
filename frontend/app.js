@@ -1791,7 +1791,7 @@ function DigitalTwinsPage() {
 	const [showModal, setShowModal] = React.useState(false);
 	const [showActionModal, setShowActionModal] = React.useState(false);
 	const [showQueryModal, setShowQueryModal] = React.useState(false);
-	const [selectedTab, setSelectedTab] = React.useState('Digital Twins');
+	const [selectedTab, setSelectedTab] = React.useState('Entities');
 	const [selectedTwin, setSelectedTwin] = React.useState(null);
 	const [entities, setEntities] = React.useState([]);
 	const [scenarios, setScenarios] = React.useState([]);
@@ -1799,39 +1799,73 @@ function DigitalTwinsPage() {
 	const [queryResult, setQueryResult] = React.useState(null);
 	const [ontologies, setOntologies] = React.useState([]);
 	const [mlModels, setMlModels] = React.useState([]);
+	const [pipelines, setPipelines] = React.useState([]);
 	const [formData, setFormData] = React.useState({
 		name: '',
 		project_id: '',
 		ontology_id: '',
-		ml_model_id: '',
 		description: '',
 	});
 	const [actionForm, setActionForm] = React.useState({
 		name: '',
-		action_type: '',
+		description: '',
+		enabled: true,
+		model_id: '',
+		entity_type: '',
+		attribute: '',
+		operator: 'gt',
+		threshold: '0',
+		pipeline_id: '',
 		parameters: '{}',
 	});
 	const [queryForm, setQueryForm] = React.useState({
 		query: '',
 	});
 
-	// Default project_id and fetch related resources when activeProject changes
+	const resetActionForm = React.useCallback(() => {
+		setActionForm({
+			name: '',
+			description: '',
+			enabled: true,
+			model_id: '',
+			entity_type: '',
+			attribute: '',
+			operator: 'gt',
+			threshold: '0',
+			pipeline_id: '',
+			parameters: '{}',
+		});
+	}, []);
+
 	React.useEffect(() => {
-		if (activeProject) {
-			setFormData(prev => ({ ...prev, project_id: activeProject.id }));
-			apiCall(`/api/ontologies?project_id=${activeProject.id}`)
-				.then(data => setOntologies(data || []))
-				.catch(() => setOntologies([]));
-			apiCall(`/api/ml-models?project_id=${activeProject.id}`)
-				.then(data => setMlModels(data || []))
-				.catch(() => setMlModels([]));
+		if (!activeProject) {
+			setOntologies([]);
+			setMlModels([]);
+			setPipelines([]);
+			setFormData({ name: '', project_id: '', ontology_id: '', description: '' });
+			return;
 		}
+		setFormData(prev => ({ ...prev, project_id: activeProject.id }));
+		Promise.all([
+			apiCall(`/api/ontologies?project_id=${activeProject.id}`).catch(() => []),
+			apiCall(`/api/ml-models?project_id=${activeProject.id}`).catch(() => []),
+			apiCall(`/api/pipelines?project_id=${activeProject.id}`).catch(() => []),
+		]).then(([ontologyData, mlModelData, pipelineData]) => {
+			setOntologies(ontologyData || []);
+			setMlModels(mlModelData || []);
+			setPipelines(pipelineData || []);
+		});
 	}, [activeProject]);
 
 	const loadTwins = async () => {
+		const projectId = activeProject?.id || '';
+		if (!projectId) {
+			setTwins([]);
+			setLoading(false);
+			return;
+		}
 		setLoading(true);
 		try {
-			const projectId = activeProject?.id || '';
 			const data = await apiCall(`/api/digital-twins?project_id=${projectId}`);
 			setTwins(data || []);
 		} catch (error) {
@@ -1862,6 +1896,7 @@ function DigitalTwinsPage() {
 
 	React.useEffect(() => {
 		if (selectedTwin) {
+			setSelectedTab('Entities');
 			loadTwinDetails(selectedTwin.id);
 		}
 	}, [selectedTwin]);
@@ -1874,7 +1909,7 @@ function DigitalTwinsPage() {
 				body: JSON.stringify(formData),
 			});
 			setShowModal(false);
-			setFormData({ name: '', project_id: activeProject?.id || '', ontology_id: '', ml_model_id: '', description: '' });
+			setFormData({ name: '', project_id: activeProject?.id || '', ontology_id: '', description: '' });
 			loadTwins();
 		} catch (error) {
 			alert('Failed to create digital twin: ' + error.message);
@@ -1885,6 +1920,9 @@ function DigitalTwinsPage() {
 		if (!confirm('Delete this digital twin?')) return;
 		try {
 			await apiCall(`/api/digital-twins/${id}`, { method: 'DELETE' });
+			if (selectedTwin?.id === id) {
+				setSelectedTwin(null);
+			}
 			loadTwins();
 		} catch (error) {
 			alert('Failed to delete digital twin: ' + error.message);
@@ -1893,8 +1931,9 @@ function DigitalTwinsPage() {
 
 	const handleSync = async (id) => {
 		try {
-			await apiCall(`/api/digital-twins/${id}/sync`, { method: 'POST', body: JSON.stringify({}) });
-			alert('Sync started!');
+			const result = await apiCall(`/api/digital-twins/${id}/sync`, { method: 'POST', body: JSON.stringify({}) });
+			alert(result?.message || `Digital twin sync queued (${result?.work_task_id || 'work task created'})`);
+			loadTwins();
 		} catch (error) {
 			alert('Failed to sync digital twin: ' + error.message);
 		}
@@ -1903,16 +1942,38 @@ function DigitalTwinsPage() {
 	const handleCreateAction = async (e) => {
 		e.preventDefault();
 		try {
+			let parameters = {};
+			if (actionForm.parameters.trim()) {
+				parameters = JSON.parse(actionForm.parameters);
+			}
+			let threshold;
+			try {
+				threshold = JSON.parse(actionForm.threshold);
+			} catch {
+				threshold = actionForm.threshold;
+			}
 			const data = {
-				...actionForm,
-				parameters: JSON.parse(actionForm.parameters),
+				name: actionForm.name,
+				description: actionForm.description,
+				enabled: actionForm.enabled,
+				condition: {
+					operator: actionForm.operator,
+					threshold,
+					model_id: actionForm.model_id || undefined,
+					entity_type: actionForm.entity_type || undefined,
+					attribute: actionForm.attribute || undefined,
+				},
+				trigger: {
+					pipeline_id: actionForm.pipeline_id,
+					parameters,
+				},
 			};
 			await apiCall(`/api/digital-twins/${selectedTwin.id}/actions`, {
 				method: 'POST',
 				body: JSON.stringify(data),
 			});
 			setShowActionModal(false);
-			setActionForm({ name: '', action_type: '', parameters: '{}' });
+			resetActionForm();
 			loadTwinDetails(selectedTwin.id);
 		} catch (error) {
 			alert('Failed to create action: ' + error.message);
@@ -1945,6 +2006,15 @@ function DigitalTwinsPage() {
 	const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
 	const ontologyOptions = ontologies.map(o => ({ value: o.id, label: o.name }));
 	const mlModelOptions = mlModels.map(m => ({ value: m.id, label: m.name }));
+	const pipelineOptions = pipelines.map(p => ({ value: p.id, label: p.name }));
+	const operatorOptions = [
+		{ value: 'gt', label: 'Greater Than' },
+		{ value: 'gte', label: 'Greater Than or Equal' },
+		{ value: 'lt', label: 'Less Than' },
+		{ value: 'lte', label: 'Less Than or Equal' },
+		{ value: 'eq', label: 'Equals' },
+		{ value: 'ne', label: 'Not Equal' },
+	];
 
 	const twinColumns = [
 		{ key: 'id', label: 'ID' },
@@ -1952,7 +2022,7 @@ function DigitalTwinsPage() {
 		{ key: 'description', label: 'Description' },
 		{ key: 'project_id', label: 'Project ID' },
 		{ key: 'ontology_id', label: 'Ontology ID' },
-		{ key: 'ml_model_id', label: 'ML Model ID' },
+		{ key: 'last_sync_at', label: 'Last Sync', render: (row) => row.last_sync_at ? new Date(row.last_sync_at).toLocaleString() : 'Never' },
 		{
 			key: 'status',
 			label: 'Status',
@@ -1963,7 +2033,7 @@ function DigitalTwinsPage() {
 	const entityColumns = [
 		{ key: 'id', label: 'Entity ID' },
 		{ key: 'type', label: 'Type' },
-		{ key: 'properties', label: 'Properties', render: (row) => JSON.stringify(row.properties || {}).substring(0, 50) + '...' },
+		{ key: 'attributes', label: 'Attributes', render: (row) => JSON.stringify(row.attributes || {}).substring(0, 80) + '...' },
 		{ key: 'updated_at', label: 'Updated', render: (row) => new Date(row.updated_at).toLocaleString() },
 	];
 
@@ -1977,8 +2047,17 @@ function DigitalTwinsPage() {
 	const actionColumns = [
 		{ key: 'id', label: 'Action ID' },
 		{ key: 'name', label: 'Name' },
-		{ key: 'action_type', label: 'Type' },
-		{ key: 'status', label: 'Status', render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span> },
+		{ key: 'enabled', label: 'Enabled', render: (row) => row.enabled ? 'Yes' : 'No' },
+		{
+			key: 'condition',
+			label: 'Condition',
+			render: (row) => {
+				const condition = row.condition || {};
+				const scope = condition.attribute ? `${condition.entity_type || 'Any entity'}.${condition.attribute}` : (condition.model_id ? `Model ${condition.model_id}` : 'Condition');
+				return `${scope} ${condition.operator || ''} ${JSON.stringify(condition.threshold)}`;
+			}
+		},
+		{ key: 'pipeline_id', label: 'Trigger Pipeline', render: (row) => row.trigger?.pipeline_id || '—' },
 		{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleDateString() },
 	];
 
@@ -1997,6 +2076,7 @@ function DigitalTwinsPage() {
 							{selectedTwin.name} - Details
 						</h3>
 						<div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+							<Button label="Sync Twin" onClick={() => handleSync(selectedTwin.id)} variant="secondary" />
 							<Button label="+ New Action" onClick={() => setShowActionModal(true)} variant="secondary" />
 							<Button label="Query Twin" onClick={() => setShowQueryModal(true)} variant="secondary" />
 						</div>
@@ -2069,13 +2149,6 @@ function DigitalTwinsPage() {
 							options={ontologyOptions}
 							required
 						/>
-						<FormField
-							label="ML Model"
-							type="select"
-							value={formData.ml_model_id}
-							onChange={(v) => setFormData({ ...formData, ml_model_id: v })}
-							options={mlModelOptions}
-						/>
 					</div>
 					<FormField
 						label="Description"
@@ -2087,7 +2160,7 @@ function DigitalTwinsPage() {
 				</form>
 			</Modal>
 
-			<Modal open={showActionModal} onClose={() => setShowActionModal(false)} title="Create New Action">
+			<Modal open={showActionModal} onClose={() => { setShowActionModal(false); resetActionForm(); }} title="Create New Action">
 				<form onSubmit={handleCreateAction}>
 					<div className="form-grid">
 						<FormField
@@ -2097,19 +2170,71 @@ function DigitalTwinsPage() {
 							required
 						/>
 						<FormField
-							label="Action Type"
-							value={actionForm.action_type}
-							onChange={(v) => setActionForm({ ...actionForm, action_type: v })}
+							label="Trigger Pipeline"
+							type="select"
+							value={actionForm.pipeline_id}
+							onChange={(v) => setActionForm({ ...actionForm, pipeline_id: v })}
+							options={pipelineOptions}
 							required
 						/>
 					</div>
 					<FormField
-						label="Parameters (JSON)"
+						label="Description"
+						type="textarea"
+						value={actionForm.description}
+						onChange={(v) => setActionForm({ ...actionForm, description: v })}
+					/>
+					<div className="form-grid">
+						<FormField
+							label="Model (optional)"
+							type="select"
+							value={actionForm.model_id}
+							onChange={(v) => setActionForm({ ...actionForm, model_id: v })}
+							options={mlModelOptions}
+						/>
+						<FormField
+							label="Entity Type (optional)"
+							value={actionForm.entity_type}
+							onChange={(v) => setActionForm({ ...actionForm, entity_type: v })}
+							placeholder="e.g. User"
+						/>
+					</div>
+					<div className="form-grid">
+						<FormField
+							label="Attribute (optional)"
+							value={actionForm.attribute}
+							onChange={(v) => setActionForm({ ...actionForm, attribute: v })}
+							placeholder="e.g. temperature"
+						/>
+						<FormField
+							label="Operator"
+							type="select"
+							value={actionForm.operator}
+							onChange={(v) => setActionForm({ ...actionForm, operator: v })}
+							options={operatorOptions}
+							required
+						/>
+					</div>
+					<div className="form-grid">
+						<FormField
+							label="Threshold"
+							value={actionForm.threshold}
+							onChange={(v) => setActionForm({ ...actionForm, threshold: v })}
+							placeholder="0"
+							required
+						/>
+					</div>
+					<FormField
+						label="Trigger Parameters (JSON)"
 						type="textarea"
 						value={actionForm.parameters}
 						onChange={(v) => setActionForm({ ...actionForm, parameters: v })}
 						placeholder='{"key": "value"}'
 					/>
+					<label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+						<input type="checkbox" checked={actionForm.enabled} onChange={e => setActionForm({ ...actionForm, enabled: e.target.checked })} />
+						Enabled
+					</label>
 					<Button type="submit" label="Create Action" />
 				</form>
 			</Modal>
@@ -2117,11 +2242,11 @@ function DigitalTwinsPage() {
 			<Modal open={showQueryModal} onClose={() => setShowQueryModal(false)} title="Query Digital Twin">
 				<form onSubmit={handleQuery}>
 					<FormField
-						label="Query"
+						label="SPARQL SELECT Query"
 						type="textarea"
 						value={queryForm.query}
 						onChange={(v) => setQueryForm({ ...queryForm, query: v })}
-						placeholder="Enter your query..."
+						placeholder="SELECT ?entity ?type WHERE { ?entity a ?type } LIMIT 25"
 						required
 					/>
 					<Button type="submit" label="Execute Query" />

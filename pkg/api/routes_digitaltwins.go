@@ -13,7 +13,7 @@ func init() {
 	})
 	doc.Register("POST", "/api/digital-twins", doc.RouteDoc{
 		Summary:     "Create digital twin",
-		Description: "Creates a new digital twin and initialises its entity graph from the associated ontology.",
+		Description: "Creates a persisted ontology-backed entity graph and initialises its starting entity set from the associated ontology.",
 		Tags:        []string{"Digital Twins"},
 		RequestBody: doc.JsonBody(doc.Ref("DigitalTwinCreateRequest")),
 		Responses:   doc.R(doc.Created(doc.Ref("DigitalTwin")), doc.BadRequest()),
@@ -40,11 +40,16 @@ func init() {
 
 	// ── Sync ───────────────────────────────────────────────────────────────────
 	doc.Register("POST", "/api/digital-twins/{id}/sync", doc.RouteDoc{
-		Summary:     "Sync digital twin",
-		Description: "Pulls the latest records from the twin's linked storage backends and refreshes the entity graph.",
+		Summary:     "Queue digital twin sync",
+		Description: "Enqueues background work to refresh the twin's entity graph from its configured storage backends.",
 		Tags:        []string{"Digital Twins"},
 		Params:      []doc.Param{doc.PParam("id", "Digital twin ID")},
-		Responses:   doc.R(doc.OK(doc.Props(nil, doc.M{"status": doc.Str("'synced'")})), doc.NotFound()),
+		Responses: doc.Accepted(doc.Props(nil, doc.M{
+			"work_task_id":    doc.Str("Queued work task ID"),
+			"digital_twin_id": doc.Str("Digital twin ID"),
+			"status":          doc.Str("'queued'"),
+			"message":         doc.Str("Human-readable queue message"),
+		})),
 	})
 
 	// ── Entities ───────────────────────────────────────────────────────────────
@@ -88,7 +93,7 @@ func init() {
 	// ── SPARQL Query ───────────────────────────────────────────────────────────
 	doc.Register("POST", "/api/digital-twins/{id}/query", doc.RouteDoc{
 		Summary:     "Execute SPARQL query",
-		Description: "Runs a SPARQL SELECT query against the twin's entity graph.",
+		Description: "Runs the digital twin's supported SPARQL-style SELECT query subset against the persisted entity graph.",
 		Tags:        []string{"Digital Twins"},
 		Params:      []doc.Param{doc.PParam("id", "Digital twin ID")},
 		RequestBody: doc.JsonBody(doc.Ref("QueryRequest")),
@@ -148,7 +153,7 @@ func init() {
 	})
 	doc.Register("POST", "/api/digital-twins/{id}/actions", doc.RouteDoc{
 		Summary:     "Create action",
-		Description: "Registers an action that can be applied to entities within the digital twin.",
+		Description: "Registers a conditional pipeline trigger against digital twin attributes or prediction output.",
 		Tags:        []string{"Digital Twins"},
 		Params:      []doc.Param{doc.PParam("id", "Digital twin ID")},
 		RequestBody: doc.JsonBody(doc.Ref("ActionCreateRequest")),

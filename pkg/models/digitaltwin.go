@@ -5,12 +5,13 @@ import (
 	"time"
 )
 
-// DigitalTwin represents a digital twin instance for a project
-// It uses a hybrid storage approach: references CIR data + stores deltas
+// DigitalTwin represents a persisted ontology-backed entity graph for a project.
+// It is refreshed from storage on demand or via queued sync work rather than a live
+// continuously-updating runtime twin.
 type DigitalTwin struct {
 	ID          string                 `json:"id"`
 	ProjectID   string                 `json:"project_id"`
-	OntologyID  string                 `json:"ontology_id"` // Ontology blueprint
+	OntologyID  string                 `json:"ontology_id"`
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	Status      string                 `json:"status"` // active, syncing, error
@@ -21,15 +22,11 @@ type DigitalTwin struct {
 	LastSyncAt  *time.Time             `json:"last_sync_at,omitempty"`
 }
 
-// DigitalTwinConfig holds configuration for a digital twin
+// DigitalTwinConfig holds the supported runtime options for a digital twin.
 type DigitalTwinConfig struct {
-	StorageIDs         []string          `json:"storage_ids"`          // CIR data sources to reference
-	CacheTTL           int               `json:"cache_ttl"`            // Cache time-to-live in seconds
-	AutoSync           bool              `json:"auto_sync"`            // Automatically sync with storage changes
-	SyncInterval       int               `json:"sync_interval"`        // Sync interval in seconds
-	EnablePredictions  bool              `json:"enable_predictions"`   // Enable ML predictions
-	PredictionCacheTTL int               `json:"prediction_cache_ttl"` // Prediction cache TTL
-	IndexingStrategy   string            `json:"indexing_strategy"`    // "lazy" or "eager"
+	StorageIDs         []string          `json:"storage_ids"`
+	EnablePredictions  bool              `json:"enable_predictions"`
+	PredictionCacheTTL int               `json:"prediction_cache_ttl"`
 	CustomSettings     map[string]string `json:"custom_settings,omitempty"`
 }
 

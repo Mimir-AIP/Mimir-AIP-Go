@@ -435,12 +435,8 @@ func createDigitalTwin(t *testing.T, projectID, ontologyID string) map[string]in
 		Description: "Digital twin of the manufacturing floor",
 		Config: &models.DigitalTwinConfig{
 			StorageIDs:         []string{},
-			CacheTTL:           3600,
-			AutoSync:           true,
-			SyncInterval:       60,
 			EnablePredictions:  true,
 			PredictionCacheTTL: 300,
-			IndexingStrategy:   "lazy",
 		},
 	}
 

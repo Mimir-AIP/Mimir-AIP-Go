@@ -85,15 +85,11 @@ func (s *Service) CreateDigitalTwin(req *models.DigitalTwinCreateRequest) (*mode
 		UpdatedAt:   now,
 	}
 
-	// Set default config if not provided
+	// Set default config if not provided.
 	if twin.Config == nil {
 		twin.Config = &models.DigitalTwinConfig{
-			CacheTTL:           300, // 5 minutes
-			AutoSync:           false,
-			SyncInterval:       3600, // 1 hour
 			EnablePredictions:  true,
 			PredictionCacheTTL: 1800, // 30 minutes
-			IndexingStrategy:   "lazy",
 		}
 	}
 
@@ -174,6 +170,45 @@ func (s *Service) ListDigitalTwinsByProject(projectID string) ([]*models.Digital
 	return twins, nil
 }
 
+// EnqueueSync marks a twin as syncing and submits worker-backed sync work.
+func (s *Service) EnqueueSync(twinID string) (*models.WorkTask, error) {
+	if s.queue == nil {
+		return nil, fmt.Errorf("work queue is not configured")
+	}
+	twin, err := s.store.GetDigitalTwin(twinID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get digital twin: %w", err)
+	}
+	now := time.Now().UTC()
+	previousStatus := twin.Status
+	previousUpdatedAt := twin.UpdatedAt
+	twin.Status = "syncing"
+	twin.UpdatedAt = now
+	if err := s.store.SaveDigitalTwin(twin); err != nil {
+		return nil, fmt.Errorf("failed to update digital twin status: %w", err)
+	}
+	task := &models.WorkTask{
+		ID:          uuid.New().String(),
+		Type:        models.WorkTaskTypeDigitalTwinUpdate,
+		ProjectID:   twin.ProjectID,
+		Priority:    5,
+		Status:      models.WorkTaskStatusQueued,
+		SubmittedAt: now,
+		TaskSpec: models.TaskSpec{
+			ProjectID:  twin.ProjectID,
+			Parameters: map[string]any{"digital_twin_id": twinID},
+		},
+	}
+	if err := s.queue.Enqueue(task); err != nil {
+		twin.Status = previousStatus
+		twin.UpdatedAt = previousUpdatedAt
+		_ = s.store.SaveDigitalTwin(twin)
+		return nil, fmt.Errorf("failed to enqueue digital twin sync: %w", err)
+	}
+	return task, nil
+}
+
+
 // SyncWithStorage synchronizes digital twin entities with CIR data from storage.
 //
 // Entity resolution: when the same logical entity appears in multiple storage
@@ -193,12 +228,14 @@ func (s *Service) SyncWithStorage(twinID string) error {
 
 	ont, err := s.ontologyService.GetOntology(twin.OntologyID)
 	if err != nil {
+		s.markTwinSyncFailed(twin)
 		return fmt.Errorf("failed to get ontology: %w", err)
 	}
 
 	if twin.Config != nil && len(twin.Config.StorageIDs) > 0 {
 		for _, storageID := range twin.Config.StorageIDs {
 			if err := s.syncFromStorage(twin, ont, storageID); err != nil {
+				s.markTwinSyncFailed(twin)
 				return fmt.Errorf("failed to sync from storage %s: %w", storageID, err)
 			}
 		}
@@ -216,6 +253,7 @@ func (s *Service) SyncWithStorage(twinID string) error {
 	}
 
 	now := time.Now().UTC()
+	twin.Status = "active"
 	twin.LastSyncAt = &now
 	twin.UpdatedAt = now
 
@@ -225,6 +263,18 @@ func (s *Service) SyncWithStorage(twinID string) error {
 
 	return nil
 }
+
+func (s *Service) markTwinSyncFailed(twin *models.DigitalTwin) {
+	if twin == nil {
+		return
+	}
+	twin.Status = "error"
+	twin.UpdatedAt = time.Now().UTC()
+	if err := s.store.SaveDigitalTwin(twin); err != nil {
+		log.Printf("Warning: failed to persist digital twin sync failure for %s: %v", twin.ID, err)
+	}
+}
+
 
 // evaluateEntityActionsAfterSync runs attribute-based action evaluation
 // for every entity in the twin immediately after a sync.

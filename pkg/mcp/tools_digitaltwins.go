@@ -3,9 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -170,7 +168,7 @@ func registerDigitalTwinTools(s *server.MCPServer, m *MimirMCPServer) {
 	// sync_digital_twin
 	s.AddTool(
 		mcp.NewTool("sync_digital_twin",
-			mcp.WithDescription("Enqueue a digital twin sync job to update entities from storage; returns a work task ID"),
+			mcp.WithDescription("Queue a digital twin sync job and return the work task tracking details"),
 			mcp.WithString("id",
 				mcp.Required(),
 				mcp.Description("Digital twin ID to sync"),
@@ -181,30 +179,15 @@ func registerDigitalTwinTools(s *server.MCPServer, m *MimirMCPServer) {
 			if id == "" {
 				return mcp.NewToolResultError("id is required"), nil
 			}
-			twin, err := m.dtSvc.GetDigitalTwin(id)
+			task, err := m.dtSvc.EnqueueSync(id)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			taskID := uuid.New().String()
-			task := &models.WorkTask{
-				ID:          taskID,
-				Type:        models.WorkTaskTypeDigitalTwinUpdate,
-				ProjectID:   twin.ProjectID,
-				Priority:    5,
-				Status:      models.WorkTaskStatusQueued,
-				SubmittedAt: time.Now().UTC(),
-				TaskSpec: models.TaskSpec{
-					ProjectID:  twin.ProjectID,
-					Parameters: map[string]any{"digital_twin_id": id},
-				},
-			}
-			if err := m.queue.Enqueue(task); err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
 			data, _ := json.Marshal(map[string]string{
-				"task_id":         taskID,
+				"work_task_id":    task.ID,
 				"digital_twin_id": id,
 				"status":          "queued",
+				"message":         "Digital twin sync has been queued as a work task",
 			})
 			return mcp.NewToolResultText(string(data)), nil
 		},

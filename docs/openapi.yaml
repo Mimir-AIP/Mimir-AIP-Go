@@ -26,6 +26,46 @@ components:
                     description: Action status
                     type: string
             type: object
+        AnalysisRun:
+            properties:
+                algorithm_version:
+                    description: Detector/resolver algorithm version
+                    type: string
+                completed_at:
+                    description: Run completion timestamp
+                    type: string
+                coverage:
+                    additionalProperties: true
+                    type: object
+                created_at:
+                    description: Run creation timestamp
+                    type: string
+                error:
+                    description: Failure message, when status=failed
+                    type: string
+                id:
+                    description: Analysis run ID (UUID)
+                    type: string
+                kind:
+                    description: resolver | insights
+                    type: string
+                metrics:
+                    additionalProperties: true
+                    type: object
+                policy_version:
+                    description: Resolver policy version string
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                source_ids:
+                    items:
+                        type: string
+                    type: array
+                status:
+                    description: completed | failed
+                    type: string
+            type: object
         CIR:
             description: Common Internal Representation — the normalised record format used across all storage backends.
             properties:
@@ -79,6 +119,135 @@ components:
                     items:
                         $ref: '#/components/schemas/OrderByClause'
                     type: array
+            type: object
+        ConnectorField:
+            properties:
+                default:
+                    description: Optional default value
+                description:
+                    description: Field description
+                    type: string
+                label:
+                    description: Human-readable field label
+                    type: string
+                name:
+                    description: Field key
+                    type: string
+                options:
+                    items:
+                        $ref: '#/components/schemas/ConnectorFieldOption'
+                    type: array
+                required:
+                    description: Whether the field is required
+                    type: boolean
+                type:
+                    description: text | number | boolean | select
+                    type: string
+            required:
+                - name
+                - label
+                - type
+                - required
+            type: object
+        ConnectorFieldOption:
+            properties:
+                label:
+                    description: Display label
+                    type: string
+                value:
+                    description: Option value
+                    type: string
+            required:
+                - value
+                - label
+            type: object
+        ConnectorScheduleRequest:
+            properties:
+                cron_schedule:
+                    description: Cron expression for recurring runs
+                    type: string
+                enabled:
+                    description: Whether the schedule starts enabled
+                    type: boolean
+                name:
+                    description: Optional schedule name override
+                    type: string
+            required:
+                - cron_schedule
+            type: object
+        ConnectorSetupRequest:
+            properties:
+                description:
+                    description: Optional pipeline description
+                    type: string
+                kind:
+                    description: Connector template kind
+                    type: string
+                name:
+                    description: Pipeline name to create
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                schedule:
+                    $ref: '#/components/schemas/ConnectorScheduleRequest'
+                source_config:
+                    additionalProperties: true
+                    type: object
+                storage_id:
+                    description: Destination storage configuration ID
+                    type: string
+            required:
+                - project_id
+                - kind
+                - name
+                - storage_id
+                - source_config
+            type: object
+        ConnectorSetupResponse:
+            properties:
+                pipeline:
+                    $ref: '#/components/schemas/Pipeline'
+                schedule:
+                    $ref: '#/components/schemas/Schedule'
+                template:
+                    $ref: '#/components/schemas/ConnectorTemplate'
+            required:
+                - template
+                - pipeline
+            type: object
+        ConnectorTemplate:
+            properties:
+                category:
+                    description: database | http | feed | file
+                    type: string
+                description:
+                    description: What this connector does
+                    type: string
+                fields:
+                    items:
+                        $ref: '#/components/schemas/ConnectorField'
+                    type: array
+                kind:
+                    description: Template identifier
+                    type: string
+                label:
+                    description: Display name
+                    type: string
+                pipeline_type:
+                    description: Pipeline type created by this connector
+                    type: string
+                supports_schedule:
+                    description: Whether recurring execution is supported
+                    type: boolean
+            required:
+                - kind
+                - label
+                - description
+                - category
+                - pipeline_type
+                - supports_schedule
+                - fields
             type: object
         DigitalTwin:
             properties:
@@ -235,6 +404,125 @@ components:
                     type: boolean
                 ontology:
                     $ref: '#/components/schemas/Ontology'
+            type: object
+        IngestionHealthReport:
+            properties:
+                generated_at:
+                    description: Report generation timestamp
+                    type: string
+                overall_score:
+                    description: Project-level ingestion health score [0,1]
+                    type: number
+                project_id:
+                    description: Project ID
+                    type: string
+                recommendations:
+                    items:
+                        type: string
+                    type: array
+                sources:
+                    items:
+                        $ref: '#/components/schemas/IngestionHealthSource'
+                    type: array
+                status:
+                    description: healthy | warning | critical
+                    type: string
+            required:
+                - project_id
+                - generated_at
+                - overall_score
+                - status
+                - sources
+            type: object
+        IngestionHealthSource:
+            properties:
+                completeness_score:
+                    description: Completeness score [0,1]
+                    type: number
+                findings:
+                    items:
+                        type: string
+                    type: array
+                freshness_score:
+                    description: Freshness score [0,1]
+                    type: number
+                last_ingested_at:
+                    description: Latest ingestion timestamp in sample
+                    type: string
+                overall_score:
+                    description: Weighted ingestion health score [0,1]
+                    type: number
+                plugin_type:
+                    description: Storage backend plugin type
+                    type: string
+                sample_size:
+                    description: Number of sampled CIR records
+                    type: integer
+                schema_drift_score:
+                    description: Schema stability score [0,1], higher is better
+                    type: number
+                status:
+                    description: healthy | warning | critical
+                    type: string
+                storage_id:
+                    description: Storage config ID
+                    type: string
+            required:
+                - storage_id
+                - plugin_type
+                - sample_size
+                - freshness_score
+                - completeness_score
+                - schema_drift_score
+                - overall_score
+                - status
+            type: object
+        Insight:
+            properties:
+                confidence:
+                    description: Insight confidence [0,1]
+                    type: number
+                created_at:
+                    description: Creation timestamp
+                    type: string
+                evidence:
+                    additionalProperties: true
+                    type: object
+                explanation:
+                    description: Human-readable rationale
+                    type: string
+                id:
+                    description: Insight ID (UUID)
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                run_id:
+                    description: Analysis run that produced this insight
+                    type: string
+                severity:
+                    description: low | medium | high | critical
+                    type: string
+                status:
+                    description: Insight lifecycle state
+                    type: string
+                suggested_action:
+                    description: Suggested follow-up action
+                    type: string
+                type:
+                    description: anomaly_spike | trend_break | cooccurrence_surge | other generic detector type
+                    type: string
+                updated_at:
+                    description: Update timestamp
+                    type: string
+            type: object
+        InsightGenerateRequest:
+            properties:
+                project_id:
+                    description: Project ID
+                    type: string
+            required:
+                - project_id
             type: object
         MLModel:
             properties:
@@ -494,6 +782,39 @@ components:
                     description: ISO-8601 last-updated timestamp
                     type: string
             type: object
+        PipelineCheckpoint:
+            properties:
+                checkpoint:
+                    additionalProperties: true
+                    type: object
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                pipeline_id:
+                    description: Pipeline ID
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                scope:
+                    description: Optional checkpoint scope
+                    type: string
+                step_name:
+                    description: Pipeline step name
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+                version:
+                    description: Optimistic lock version
+                    type: integer
+            required:
+                - project_id
+                - pipeline_id
+                - step_name
+                - version
+                - checkpoint
+            type: object
         PipelineCreateRequest:
             properties:
                 description:
@@ -616,45 +937,25 @@ components:
         Project:
             properties:
                 components:
-                    properties:
-                        digital_twins:
-                            items:
-                                type: string
-                            type: array
-                        ml_models:
-                            items:
-                                type: string
-                            type: array
-                        ontologies:
-                            items:
-                                type: string
-                            type: array
-                        pipelines:
-                            items:
-                                type: string
-                            type: array
-                        storage:
-                            items:
-                                type: string
-                            type: array
-                    type: object
-                created_at:
-                    description: ISO-8601 creation timestamp
-                    type: string
+                    $ref: '#/components/schemas/ProjectComponents'
                 description:
                     description: Project description
                     type: string
                 id:
                     description: Project ID (UUID)
                     type: string
+                metadata:
+                    $ref: '#/components/schemas/ProjectMetadata'
                 name:
                     description: Project name
                     type: string
+                settings:
+                    $ref: '#/components/schemas/ProjectSettings'
                 status:
-                    description: active | archived
+                    description: active | archived | draft
                     type: string
-                updated_at:
-                    description: ISO-8601 last-updated timestamp
+                version:
+                    description: Project version
                     type: string
             type: object
         ProjectCloneRequest:
@@ -669,27 +970,198 @@ components:
                 - project_id
                 - name
             type: object
+        ProjectComponents:
+            properties:
+                digital_twins:
+                    items:
+                        type: string
+                    type: array
+                ml_models:
+                    items:
+                        type: string
+                    type: array
+                ontologies:
+                    items:
+                        type: string
+                    type: array
+                pipelines:
+                    items:
+                        type: string
+                    type: array
+                storage_configs:
+                    items:
+                        type: string
+                    type: array
+            type: object
         ProjectCreateRequest:
             properties:
+                components:
+                    $ref: '#/components/schemas/ProjectComponents'
                 description:
                     description: Project description
                     type: string
                 name:
                     description: Project name
                     type: string
+                settings:
+                    $ref: '#/components/schemas/ProjectSettings'
+                status:
+                    description: Optional initial status
+                    type: string
+                tags:
+                    items:
+                        type: string
+                    type: array
+                version:
+                    description: Optional semantic version
+                    type: string
             required:
                 - name
+            type: object
+        ProjectMetadata:
+            properties:
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                tags:
+                    items:
+                        type: string
+                    type: array
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        ProjectSettings:
+            properties:
+                environment:
+                    description: Environment label such as development or production
+                    type: string
+                onboarding_mode:
+                    description: guided | advanced
+                    type: string
+                timezone:
+                    description: Project timezone identifier
+                    type: string
             type: object
         ProjectUpdateRequest:
             properties:
                 description:
                     description: New description
                     type: string
-                name:
-                    description: New name
-                    type: string
+                settings:
+                    $ref: '#/components/schemas/ProjectSettings'
                 status:
                     description: New status
+                    type: string
+                tags:
+                    items:
+                        type: string
+                    type: array
+                version:
+                    description: New semantic version
+                    type: string
+            type: object
+        ResolverRunRequest:
+            properties:
+                project_id:
+                    description: Project ID
+                    type: string
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - project_id
+                - storage_ids
+            type: object
+        ReviewDecisionEvent:
+            properties:
+                decided_at:
+                    description: Decision timestamp
+                    type: string
+                decision:
+                    description: accept | reject
+                    type: string
+                previous_status:
+                    description: Review item status before the decision was applied
+                    type: string
+                rationale:
+                    description: Optional rationale captured with the decision
+                    type: string
+                reviewer:
+                    description: Reviewer identity, if provided
+                    type: string
+            required:
+                - decision
+                - decided_at
+            type: object
+        ReviewDecisionRequest:
+            properties:
+                decision:
+                    description: accept | reject
+                    type: string
+                rationale:
+                    description: Optional review rationale
+                    type: string
+                reviewer:
+                    description: Optional reviewer identifier
+                    type: string
+            required:
+                - decision
+            type: object
+        ReviewItem:
+            properties:
+                confidence:
+                    description: Finding confidence [0,1]
+                    type: number
+                created_at:
+                    description: Creation timestamp
+                    type: string
+                decision_history:
+                    items:
+                        $ref: '#/components/schemas/ReviewDecisionEvent'
+                    type: array
+                evidence:
+                    additionalProperties: true
+                    type: object
+                finding_key:
+                    description: Stable finding identity used for upsert/reopen semantics
+                    type: string
+                finding_type:
+                    description: cross_source_link or another finding category
+                    type: string
+                id:
+                    description: Review item ID (UUID)
+                    type: string
+                occurrence_count:
+                    description: How many resolver runs have observed this finding
+                    type: integer
+                payload:
+                    additionalProperties: true
+                    type: object
+                project_id:
+                    description: Owning project ID
+                    type: string
+                rationale:
+                    description: Human-readable explanation
+                    type: string
+                reviewed_at:
+                    description: Decision timestamp
+                    type: string
+                reviewer:
+                    description: Reviewer identity, if decided
+                    type: string
+                run_id:
+                    description: Most recent analysis run ID
+                    type: string
+                status:
+                    description: pending | accepted | rejected | auto_accepted
+                    type: string
+                suggested_decision:
+                    description: Suggested decision from the scoring policy
+                    type: string
+                updated_at:
+                    description: Update timestamp
                     type: string
             type: object
         ScenarioRequest:
@@ -726,7 +1198,7 @@ components:
                 created_at:
                     description: ISO-8601 creation timestamp
                     type: string
-                cron:
+                cron_schedule:
                     description: Cron expression (e.g. '0 * * * *')
                     type: string
                 enabled:
@@ -735,20 +1207,29 @@ components:
                 id:
                     description: Schedule ID (UUID)
                     type: string
+                last_run:
+                    description: ISO-8601 timestamp of the last run
+                    type: string
                 name:
                     description: Schedule name
                     type: string
-                pipeline_ids:
+                next_run:
+                    description: ISO-8601 timestamp of the next planned run
+                    type: string
+                pipelines:
                     items:
                         type: string
                     type: array
+                project_id:
+                    description: Owning project ID
+                    type: string
                 updated_at:
                     description: ISO-8601 last-updated timestamp
                     type: string
             type: object
         ScheduleCreateRequest:
             properties:
-                cron:
+                cron_schedule:
                     description: Cron expression
                     type: string
                 enabled:
@@ -757,18 +1238,22 @@ components:
                 name:
                     description: Schedule name
                     type: string
-                pipeline_ids:
+                pipelines:
                     items:
                         type: string
                     type: array
+                project_id:
+                    description: Owning project ID
+                    type: string
             required:
+                - project_id
                 - name
-                - cron
-                - pipeline_ids
+                - pipelines
+                - cron_schedule
             type: object
         ScheduleUpdateRequest:
             properties:
-                cron:
+                cron_schedule:
                     description: New cron expression
                     type: string
                 enabled:
@@ -777,7 +1262,7 @@ components:
                 name:
                     description: New name
                     type: string
-                pipeline_ids:
+                pipelines:
                     items:
                         type: string
                     type: array
@@ -1014,6 +1499,86 @@ info:
     version: 0.1.0
 openapi: 3.0.3
 paths:
+    /api/analysis/resolver:
+        post:
+            description: Detects cross-source links, persists a review queue for uncertain links, and records resolver calibration metrics.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ResolverRunRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                description: Resolver run result
+                                type: object
+                    description: Created
+                "400":
+                    description: Bad request — invalid input
+            summary: Run cross-source resolver analysis
+            tags:
+                - Analysis
+    /api/analysis/resolver/metrics:
+        get:
+            description: Returns high-confidence precision and prior resolver run metrics over time for one project.
+            parameters:
+                - description: Project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                description: Resolver metrics
+                                type: object
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+            summary: Get resolver precision metrics
+            tags:
+                - Analysis
+    /api/connectors:
+        get:
+            description: Returns the generic ingestion connector catalog used by guided onboarding and self-serve setup flows.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ConnectorTemplate'
+                                type: array
+                    description: 200 OK
+            summary: List bundled connector templates
+            tags:
+                - Connectors
+        post:
+            description: Creates a standard pipeline and optional schedule from a bundled connector template.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ConnectorSetupRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ConnectorSetupResponse'
+                    description: Created
+                "400":
+                    description: Bad request — invalid input
+            summary: Materialize a bundled connector
+            tags:
+                - Connectors
     /api/digital-twins:
         get:
             description: Returns all digital twins for a project.
@@ -1555,6 +2120,63 @@ paths:
             summary: Extract entities and generate ontology
             tags:
                 - Extraction
+    /api/insights:
+        get:
+            description: Lists persisted autonomous insights filtered by severity and confidence.
+            parameters:
+                - description: Project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Optional severity filter
+                  in: query
+                  name: severity
+                  required: false
+                  schema:
+                    type: string
+                - description: Optional minimum confidence filter
+                  in: query
+                  name: min_confidence
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Insight'
+                                type: array
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+            summary: List project insights
+            tags:
+                - Insights
+        post:
+            description: Runs generic anomaly, trend-break, and co-occurrence detectors for one project and persists the resulting insights.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InsightGenerateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                description: Insight generation result
+                                type: object
+                    description: Created
+                "400":
+                    description: Bad request — invalid input
+            summary: Generate project insights
+            tags:
+                - Insights
     /api/llm/models:
         get:
             description: Returns available models from the configured provider with TTL caching. Empty list when LLM not configured.
@@ -2086,6 +2708,81 @@ paths:
             summary: Update pipeline
             tags:
                 - Pipelines
+    /api/pipelines/{id}/checkpoints:
+        get:
+            description: Returns persisted connector checkpoint state for a pipeline step.
+            parameters:
+                - description: Pipeline ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Pipeline step name
+                  in: query
+                  name: step_name
+                  required: true
+                  schema:
+                    type: string
+                - description: Optional checkpoint scope
+                  in: query
+                  name: scope
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PipelineCheckpoint'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "404":
+                    description: Resource not found
+            summary: Get pipeline checkpoint
+            tags:
+                - Pipelines
+        put:
+            description: Persists connector checkpoint state for a pipeline step with optimistic versioning.
+            parameters:
+                - description: Pipeline ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Pipeline step name
+                  in: query
+                  name: step_name
+                  required: true
+                  schema:
+                    type: string
+                - description: Optional checkpoint scope
+                  in: query
+                  name: scope
+                  required: false
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PipelineCheckpoint'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PipelineCheckpoint'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+            summary: Save pipeline checkpoint
+            tags:
+                - Pipelines
     /api/pipelines/{id}/execute:
         post:
             description: Enqueues a pipeline for asynchronous execution by a worker.
@@ -2413,6 +3110,64 @@ paths:
             summary: Clone project
             tags:
                 - Projects
+    /api/reviews:
+        get:
+            description: Lists persisted pending or decided review items for one project.
+            parameters:
+                - description: Project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Optional review item status filter
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ReviewItem'
+                                type: array
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+            summary: List review queue items
+            tags:
+                - Analysis
+    /api/reviews/{id}/decision:
+        post:
+            description: Accepts or rejects one review item and persists the feedback for future resolver calibration.
+            parameters:
+                - description: Review item ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ReviewDecisionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ReviewItem'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+            summary: Decide a review item
+            tags:
+                - Analysis
     /api/schedules:
         get:
             description: ""
@@ -2748,6 +3503,30 @@ paths:
             summary: Delete CIR data
             tags:
                 - Storage
+    /api/storage/ingestion-health:
+        get:
+            description: Computes freshness, completeness, and schema drift scores across all active storage sources in a project.
+            parameters:
+                - description: Project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IngestionHealthReport'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "404":
+                    description: Resource not found
+            summary: Project ingestion health report
+            tags:
+                - Storage
     /api/storage/retrieve:
         post:
             description: Queries and returns CIR records from the specified storage backend.
@@ -2957,6 +3736,12 @@ tags:
       name: Pipelines
     - description: Cron-based pipeline triggers
       name: Schedules
+    - description: Bundled ingestion templates that materialize into pipelines and schedules
+      name: Connectors
+    - description: Cross-source resolution, review queues, and calibration metrics
+      name: Analysis
+    - description: Autonomous persisted findings generated from project storage data
+      name: Insights
     - description: Pipeline step executor plugins (Git-based, dynamic)
       name: Plugins
     - description: Storage backend configuration and CIR data operations

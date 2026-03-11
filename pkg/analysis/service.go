@@ -65,39 +65,9 @@ func (s *Service) RunResolver(projectID string, storageIDs []string) (*models.An
 		if decision == extraction.LinkReject {
 			continue
 		}
-		status := models.ReviewItemStatusPending
-		suggested := string(decision)
-		if decision == extraction.LinkAutoAccept {
-			status = models.ReviewItemStatusAutoAccepted
-			suggested = string(models.ReviewDecisionAccept)
-		}
-		item := &models.ReviewItem{
-			ID:                uuid.New().String(),
-			ProjectID:         projectID,
-			RunID:             run.ID,
-			FindingType:       "cross_source_link",
-			Status:            status,
-			SuggestedDecision: suggested,
-			Confidence:        link.Confidence,
-			Payload: map[string]any{
-				"storage_a":     link.StorageA,
-				"column_a":      link.ColumnA,
-				"entity_type_a": link.EntityTypeA,
-				"storage_b":     link.StorageB,
-				"column_b":      link.ColumnB,
-				"entity_type_b": link.EntityTypeB,
-			},
-			Evidence: map[string]any{
-				"value_overlap":      link.ValueOverlap,
-				"name_similarity":    link.NameSimilarity,
-				"shared_value_count": link.SharedValueCount,
-			},
-			Rationale: fmt.Sprintf("Detected cross-source candidate between %s.%s and %s.%s", link.EntityTypeA, link.ColumnA, link.EntityTypeB, link.ColumnB),
-			CreatedAt: now,
-			UpdatedAt: now,
-		}
-		if err := s.store.SaveReviewItem(item); err != nil {
-			return nil, nil, fmt.Errorf("failed to persist review item: %w", err)
+		item, err := s.buildReviewItem(projectID, run.ID, link, decision, now)
+		if err != nil {
+			return nil, nil, err
 		}
 		reviewItems = append(reviewItems, item)
 	}
@@ -113,8 +83,8 @@ func (s *Service) RunResolver(projectID string, storageIDs []string) (*models.An
 	metrics["pending_review_count"] = decisionCounts[string(extraction.LinkNeedsReview)]
 	metrics["auto_accepted_count"] = decisionCounts[string(extraction.LinkAutoAccept)]
 	run.Metrics = metrics
-	if err := s.store.SaveAnalysisRun(run); err != nil {
-		return nil, nil, fmt.Errorf("failed to persist analysis run: %w", err)
+	if err := s.store.SaveResolverRun(run, reviewItems); err != nil {
+		return nil, nil, fmt.Errorf("failed to persist resolver run: %w", err)
 	}
 	return run, reviewItems, nil
 }
@@ -142,6 +112,7 @@ func (s *Service) DecideReviewItem(id string, req *models.ReviewDecisionRequest)
 		return nil, err
 	}
 	now := time.Now().UTC()
+	previousStatus := item.Status
 	switch req.Decision {
 	case models.ReviewDecisionAccept:
 		item.Status = models.ReviewItemStatusAccepted
@@ -154,6 +125,16 @@ func (s *Service) DecideReviewItem(id string, req *models.ReviewDecisionRequest)
 	item.Reviewer = req.Reviewer
 	item.ReviewedAt = &now
 	item.UpdatedAt = now
+	item.DecisionHistory = append(item.DecisionHistory, models.ReviewDecisionEvent{
+		Decision:       req.Decision,
+		Reviewer:       req.Reviewer,
+		Rationale:      req.Rationale,
+		PreviousStatus: previousStatus,
+		DecidedAt:      now,
+	})
+	if item.OccurrenceCount < 1 {
+		item.OccurrenceCount = 1
+	}
 	if err := s.store.SaveReviewItem(item); err != nil {
 		return nil, fmt.Errorf("failed to persist review decision: %w", err)
 	}
@@ -213,6 +194,9 @@ func (s *Service) ResolverMetrics(projectID string) (map[string]any, error) {
 }
 
 func (s *Service) GenerateProjectInsights(projectID string) (*models.AnalysisRun, []*models.Insight, error) {
+	if projectID == "" {
+		return nil, nil, fmt.Errorf("project_id is required")
+	}
 	configs, err := s.storageService.GetProjectStorageConfigs(projectID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load project storage configs: %w", err)
@@ -239,13 +223,8 @@ func (s *Service) GenerateProjectInsights(projectID string) (*models.AnalysisRun
 	}
 	run.SourceIDs = sourceIDs
 	run.Metrics = map[string]any{"insight_count": len(insights)}
-	if err := s.store.SaveAnalysisRun(run); err != nil {
+	if err := s.store.SaveInsightRun(run, insights); err != nil {
 		return nil, nil, fmt.Errorf("failed to persist insight run: %w", err)
-	}
-	for _, insight := range insights {
-		if err := s.store.SaveInsight(insight); err != nil {
-			return nil, nil, fmt.Errorf("failed to persist insight: %w", err)
-		}
 	}
 	return run, insights, nil
 }
@@ -437,6 +416,86 @@ func selectCounts(buckets map[string]int, keys []string) []int {
 	}
 	return result
 }
+
+func (s *Service) buildReviewItem(projectID, runID string, link models.CrossSourceLink, decision extraction.LinkDecision, now time.Time) (*models.ReviewItem, error) {
+	findingKey := reviewFindingKey(link)
+	status := models.ReviewItemStatusPending
+	suggested := string(decision)
+	if decision == extraction.LinkAutoAccept {
+		status = models.ReviewItemStatusAutoAccepted
+		suggested = string(models.ReviewDecisionAccept)
+	}
+	payload := map[string]any{
+		"storage_a":     link.StorageA,
+		"column_a":      link.ColumnA,
+		"entity_type_a": link.EntityTypeA,
+		"storage_b":     link.StorageB,
+		"column_b":      link.ColumnB,
+		"entity_type_b": link.EntityTypeB,
+	}
+	evidence := map[string]any{
+		"value_overlap":      link.ValueOverlap,
+		"name_similarity":    link.NameSimilarity,
+		"shared_value_count": link.SharedValueCount,
+	}
+	rationale := fmt.Sprintf("Detected cross-source candidate between %s.%s and %s.%s", link.EntityTypeA, link.ColumnA, link.EntityTypeB, link.ColumnB)
+
+	existing, err := s.store.GetReviewItemByFindingKey(projectID, findingKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load existing review item: %w", err)
+	}
+	if existing == nil {
+		return &models.ReviewItem{
+			ID:                uuid.New().String(),
+			ProjectID:         projectID,
+			RunID:             runID,
+			FindingType:       "cross_source_link",
+			FindingKey:        findingKey,
+			Status:            status,
+			SuggestedDecision: suggested,
+			Confidence:        link.Confidence,
+			OccurrenceCount:   1,
+			Payload:           payload,
+			Evidence:          evidence,
+			Rationale:         rationale,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		}, nil
+	}
+
+	updated := *existing
+	occurrenceCount := existing.OccurrenceCount
+	if occurrenceCount < 1 {
+		occurrenceCount = 1
+	}
+	updated.RunID = runID
+	updated.Status = status
+	updated.SuggestedDecision = suggested
+	updated.Confidence = link.Confidence
+	updated.OccurrenceCount = occurrenceCount + 1
+	updated.Payload = payload
+	updated.Evidence = evidence
+	updated.Rationale = rationale
+	updated.UpdatedAt = now
+	return &updated, nil
+}
+
+func reviewFindingKey(link models.CrossSourceLink) string {
+	parts := []string{
+		strings.ToLower(strings.TrimSpace(link.StorageA)),
+		strings.ToLower(strings.TrimSpace(link.EntityTypeA)),
+		strings.ToLower(strings.TrimSpace(link.ColumnA)),
+		strings.ToLower(strings.TrimSpace(link.StorageB)),
+		strings.ToLower(strings.TrimSpace(link.EntityTypeB)),
+		strings.ToLower(strings.TrimSpace(link.ColumnB)),
+	}
+	left := strings.Join(parts[:3], "::")
+	right := strings.Join(parts[3:], "::")
+	ordered := []string{left, right}
+	sort.Strings(ordered)
+	return "cross_source_link::" + strings.Join(ordered, "::")
+}
+
 
 func meanStd(values []float64) (float64, float64) {
 	if len(values) == 0 {

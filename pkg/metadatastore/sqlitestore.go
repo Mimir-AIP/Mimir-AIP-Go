@@ -2339,16 +2339,30 @@ func (s *SQLiteStore) DeleteExternalLLMProvider(name string) error {
 
 // SaveAnalysisRun upserts a persisted analysis run.
 func (s *SQLiteStore) SaveAnalysisRun(run *models.AnalysisRun) error {
-	data, err := json.Marshal(run)
-	if err != nil {
-		return fmt.Errorf("failed to marshal analysis run: %w", err)
-	}
-	query := `
-		INSERT OR REPLACE INTO analysis_runs (id, project_id, kind, status, created_at, completed_at, data)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
+	return s.SaveResolverRun(run, nil)
+}
+
+// SaveResolverRun atomically persists one resolver run and its current review items.
+func (s *SQLiteStore) SaveResolverRun(run *models.AnalysisRun, items []*models.ReviewItem) error {
 	return s.retryOnBusy(func() error {
-		_, err := s.db.Exec(query, run.ID, run.ProjectID, run.Kind, run.Status, run.CreatedAt, run.CompletedAt, string(data))
-		return err
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to begin resolver transaction: %w", err)
+		}
+		if err := saveAnalysisRunTx(tx, run); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		for _, item := range items {
+			if err := saveReviewItemTx(tx, item); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit resolver transaction: %w", err)
+		}
+		return nil
 	}, 5)
 }
 
@@ -2387,20 +2401,10 @@ func (s *SQLiteStore) ListAnalysisRunsByProject(projectID string) ([]*models.Ana
 	return result, nil
 }
 
-// ── Review Items ───────────────────────────────────────────────────────────────
-
 // SaveReviewItem upserts a persisted review item.
 func (s *SQLiteStore) SaveReviewItem(item *models.ReviewItem) error {
-	data, err := json.Marshal(item)
-	if err != nil {
-		return fmt.Errorf("failed to marshal review item: %w", err)
-	}
-	query := `
-		INSERT OR REPLACE INTO review_items (id, project_id, run_id, finding_type, status, confidence, created_at, updated_at, data)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	return s.retryOnBusy(func() error {
-		_, err := s.db.Exec(query, item.ID, item.ProjectID, item.RunID, item.FindingType, item.Status, item.Confidence, item.CreatedAt, item.UpdatedAt, string(data))
-		return err
+		return saveReviewItemTx(s.db, item)
 	}, 5)
 }
 
@@ -2415,6 +2419,20 @@ func (s *SQLiteStore) GetReviewItem(id string) (*models.ReviewItem, error) {
 		return nil, fmt.Errorf("failed to unmarshal review item: %w", err)
 	}
 	return item, nil
+}
+
+// GetReviewItemByFindingKey retrieves the most recent persisted review item for one finding key.
+func (s *SQLiteStore) GetReviewItemByFindingKey(projectID, findingKey string) (*models.ReviewItem, error) {
+	items, err := s.ListReviewItems(projectID)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.FindingKey == findingKey {
+			return item, nil
+		}
+	}
+	return nil, nil
 }
 
 // ListReviewItems lists review items for a project ordered by recency.
@@ -2439,20 +2457,34 @@ func (s *SQLiteStore) ListReviewItems(projectID string) ([]*models.ReviewItem, e
 	return result, nil
 }
 
-// ── Insights ───────────────────────────────────────────────────────────────────
-
 // SaveInsight upserts a persisted insight.
 func (s *SQLiteStore) SaveInsight(insight *models.Insight) error {
-	data, err := json.Marshal(insight)
-	if err != nil {
-		return fmt.Errorf("failed to marshal insight: %w", err)
-	}
-	query := `
-		INSERT OR REPLACE INTO insights (id, project_id, run_id, type, severity, confidence, status, created_at, updated_at, data)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	return s.retryOnBusy(func() error {
-		_, err := s.db.Exec(query, insight.ID, insight.ProjectID, insight.RunID, insight.Type, insight.Severity, insight.Confidence, insight.Status, insight.CreatedAt, insight.UpdatedAt, string(data))
-		return err
+		return saveInsightTx(s.db, insight)
+	}, 5)
+}
+
+// SaveInsightRun atomically persists one insight run and all generated insights.
+func (s *SQLiteStore) SaveInsightRun(run *models.AnalysisRun, insights []*models.Insight) error {
+	return s.retryOnBusy(func() error {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to begin insight transaction: %w", err)
+		}
+		if err := saveAnalysisRunTx(tx, run); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		for _, insight := range insights {
+			if err := saveInsightTx(tx, insight); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit insight transaction: %w", err)
+		}
+		return nil
 	}, 5)
 }
 
@@ -2490,3 +2522,50 @@ func (s *SQLiteStore) ListInsightsByProject(projectID string) ([]*models.Insight
 	}
 	return result, nil
 }
+
+type sqlExecer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func saveAnalysisRunTx(exec sqlExecer, run *models.AnalysisRun) error {
+	data, err := json.Marshal(run)
+	if err != nil {
+		return fmt.Errorf("failed to marshal analysis run: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO analysis_runs (id, project_id, kind, status, created_at, completed_at, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
+	if _, err := exec.Exec(query, run.ID, run.ProjectID, run.Kind, run.Status, run.CreatedAt, run.CompletedAt, string(data)); err != nil {
+		return fmt.Errorf("failed to save analysis run: %w", err)
+	}
+	return nil
+}
+
+func saveReviewItemTx(exec sqlExecer, item *models.ReviewItem) error {
+	data, err := json.Marshal(item)
+	if err != nil {
+		return fmt.Errorf("failed to marshal review item: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO review_items (id, project_id, run_id, finding_type, status, confidence, created_at, updated_at, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if _, err := exec.Exec(query, item.ID, item.ProjectID, item.RunID, item.FindingType, item.Status, item.Confidence, item.CreatedAt, item.UpdatedAt, string(data)); err != nil {
+		return fmt.Errorf("failed to save review item: %w", err)
+	}
+	return nil
+}
+
+func saveInsightTx(exec sqlExecer, insight *models.Insight) error {
+	data, err := json.Marshal(insight)
+	if err != nil {
+		return fmt.Errorf("failed to marshal insight: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO insights (id, project_id, run_id, type, severity, confidence, status, created_at, updated_at, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if _, err := exec.Exec(query, insight.ID, insight.ProjectID, insight.RunID, insight.Type, insight.Severity, insight.Confidence, insight.Status, insight.CreatedAt, insight.UpdatedAt, string(data)); err != nil {
+		return fmt.Errorf("failed to save insight: %w", err)
+	}
+	return nil
+}
+

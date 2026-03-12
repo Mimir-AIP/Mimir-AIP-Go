@@ -7,10 +7,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/analysis"
 	"github.com/mimir-aip/mimir-aip-go/pkg/api"
+	automationpkg "github.com/mimir-aip/mimir-aip-go/pkg/automation"
 	"github.com/mimir-aip/mimir-aip-go/pkg/config"
 	"github.com/mimir-aip/mimir-aip-go/pkg/connectors"
 	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
@@ -21,6 +21,7 @@ import (
 	mcpserver "github.com/mimir-aip/mimir-aip-go/pkg/mcp"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
+	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
 	"github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
 	"github.com/mimir-aip/mimir-aip-go/pkg/plugins"
@@ -198,23 +199,23 @@ func main() {
 	extractionService := extraction.NewService(storageService).WithLLM(llmService)
 	analysisService := analysis.NewService(store, extractionService, storageService)
 	connectorService := connectors.NewService(pipelineService, schedulerService, storageService)
+	automationService := automationpkg.NewService(store)
 
 	// Initialize ML model service
 	mlmodelService := mlmodel.NewService(store, ontologyService, storageService, q)
 
-	// Initialize digital twin service
-	dtService := digitaltwin.NewService(store, ontologyService, storageService, mlmodelService, q)
+	// Initialize digital twin services
+	dtService := digitaltwin.NewService(store, automationService, ontologyService, storageService, mlmodelService, q)
+	twinProcessor := digitaltwin.NewProcessor(store, dtService, analysisService, q)
+	pipelineCompletionBridge := automationpkg.NewPipelineCompletionBridge()
+	pipelineCompletionBridge.RegisterListener(digitaltwin.NewAutomationListener(automationService, twinProcessor))
+	q.RegisterListener(pipelineCompletionBridge)
+	ensureDefaultTwinProcessingAutomations(dtService, automationService)
 
 	// Start prediction cache eviction background job
 	go dtService.StartCacheEviction(context.Background())
 
-	// Start persisted daily insight generation loop.
-	analysisService.StartInsightLoop(context.Background(), 24*time.Hour)
-
-	// Start background attribute-based action evaluation (every 5 minutes)
-	dtService.StartActionEvaluation(context.Background(), 5*time.Minute)
-
-	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, analysis, connectors, ML model, and digital twin services")
+	log.Println("Initialized project, pipeline, scheduler, storage, ontology, extraction, analysis, connectors, automation, ML model, and digital twin services")
 
 	// Start scheduler
 	schedulerService.Start()
@@ -296,15 +297,17 @@ func main() {
 	server.RegisterHandler("/api/ml-models/train", mlmodelHandler.HandleMLModelTraining)
 
 	// Register digital twin handlers
-	dtHandler := api.NewDigitalTwinHandler(dtService)
+	dtHandler := api.NewDigitalTwinHandler(dtService, twinProcessor, automationService)
+	twinProcessingHandler := api.NewTwinProcessingHandler(twinProcessor)
 	server.RegisterHandler("/api/digital-twins", dtHandler.HandleDigitalTwins)
 	server.RegisterHandler("/api/digital-twins/", dtHandler.HandleDigitalTwin)
+	server.RegisterWorkerHandler("/api/internal/twin-runs/", twinProcessingHandler.HandleInternalTwinRuns)
 
 	log.Println("Registered API handlers")
 
 	// Register MCP server at /mcp/ (SSE transport)
 	// Clients connect via: GET http://localhost:<port>/mcp/sse
-	mcpSrv := mcpserver.New(projectService, pipelineService, connectorService, analysisService, mlmodelService, dtService, storageService, ontologyService, extractionService, schedulerService, q)
+	mcpSrv := mcpserver.New(projectService, pipelineService, connectorService, automationService, analysisService, twinProcessor, mlmodelService, dtService, storageService, ontologyService, extractionService, schedulerService, q)
 	mcpHandler := mcpSrv.SSEHandler("http://localhost:" + cfg.Port)
 	server.RegisterHandler("/mcp/", func(w http.ResponseWriter, r *http.Request) {
 		mcpHandler.ServeHTTP(w, r)
@@ -329,4 +332,50 @@ func main() {
 	<-sigChan
 
 	log.Println("Shutting down orchestrator...")
+}
+
+func ensureDefaultTwinProcessingAutomations(dtService *digitaltwin.Service, automationService *automationpkg.Service) {
+	if dtService == nil || automationService == nil {
+		return
+	}
+	twins, err := dtService.ListDigitalTwins()
+	if err != nil {
+		log.Printf("Skipping twin automation backfill: %v", err)
+		return
+	}
+	for _, twin := range twins {
+		automations, err := automationService.ListByProject(twin.ProjectID)
+		if err != nil {
+			log.Printf("Skipping automation backfill for project %s: %v", twin.ProjectID, err)
+			continue
+		}
+		found := false
+		for _, automation := range automations {
+			if automation.TargetType == models.AutomationTargetTypeDigitalTwin &&
+				automation.TargetID == twin.ID &&
+				automation.TriggerType == models.AutomationTriggerTypePipelineCompleted &&
+				automation.ActionType == models.AutomationActionTypeProcessTwin {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		_, err = automationService.Create(&models.AutomationCreateRequest{
+			ProjectID:   twin.ProjectID,
+			Name:        twin.Name + " processing",
+			Description: "Default automation: process this twin after ingestion pipelines complete.",
+			TargetType:  models.AutomationTargetTypeDigitalTwin,
+			TargetID:    twin.ID,
+			TriggerType: models.AutomationTriggerTypePipelineCompleted,
+			TriggerConfig: map[string]any{
+				"pipeline_types": []string{string(models.PipelineTypeIngestion)},
+			},
+			ActionType: models.AutomationActionTypeProcessTwin,
+		})
+		if err != nil {
+			log.Printf("Failed to backfill default automation for twin %s: %v", twin.ID, err)
+		}
+	}
 }

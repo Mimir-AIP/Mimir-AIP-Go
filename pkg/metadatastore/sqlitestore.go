@@ -253,65 +253,117 @@ func (s *SQLiteStore) initSchema() error {
 		FOREIGN KEY (ontology_id) REFERENCES ontologies(id)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_digital_twins_project_id ON digital_twins(project_id);
-	CREATE INDEX IF NOT EXISTS idx_digital_twins_ontology_id ON digital_twins(ontology_id);
+CREATE INDEX IF NOT EXISTS idx_digital_twins_project_id ON digital_twins(project_id);
+CREATE INDEX IF NOT EXISTS idx_digital_twins_ontology_id ON digital_twins(ontology_id);
 
-	CREATE TABLE IF NOT EXISTS dt_entities (
-		id TEXT PRIMARY KEY,
-		twin_id TEXT NOT NULL,
-		entity_type TEXT NOT NULL,
-		source_data_id TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		data TEXT NOT NULL,
-		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS automations (
+	id TEXT PRIMARY KEY,
+	project_id TEXT NOT NULL,
+	target_type TEXT NOT NULL,
+	target_id TEXT NOT NULL,
+	enabled INTEGER NOT NULL DEFAULT 1,
+	trigger_type TEXT NOT NULL,
+	action_type TEXT NOT NULL,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	data TEXT NOT NULL,
+	FOREIGN KEY (project_id) REFERENCES projects(id)
+	);
+CREATE INDEX IF NOT EXISTS idx_automations_project_id ON automations(project_id);
+CREATE INDEX IF NOT EXISTS idx_automations_target_enabled ON automations(project_id, target_type, enabled);
+
+CREATE TABLE IF NOT EXISTS twin_processing_runs (
+	id TEXT PRIMARY KEY,
+	project_id TEXT NOT NULL,
+	twin_id TEXT NOT NULL,
+	status TEXT NOT NULL,
+	trigger_type TEXT NOT NULL,
+	automation_id TEXT,
+	requested_at DATETIME NOT NULL,
+	started_at DATETIME,
+	completed_at DATETIME,
+	data TEXT NOT NULL,
+	FOREIGN KEY (project_id) REFERENCES projects(id),
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE,
+	FOREIGN KEY (automation_id) REFERENCES automations(id)
+	);
+CREATE INDEX IF NOT EXISTS idx_twin_processing_runs_twin_requested_at ON twin_processing_runs(twin_id, requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_twin_processing_runs_twin_status ON twin_processing_runs(twin_id, status);
+
+CREATE TABLE IF NOT EXISTS alert_events (
+	id TEXT PRIMARY KEY,
+	project_id TEXT NOT NULL,
+	twin_id TEXT NOT NULL,
+	processing_run_id TEXT NOT NULL,
+	severity TEXT NOT NULL,
+	category TEXT NOT NULL,
+	created_at DATETIME NOT NULL,
+	triggered_export_pipeline_id TEXT,
+	triggered_work_task_id TEXT,
+	data TEXT NOT NULL,
+	FOREIGN KEY (project_id) REFERENCES projects(id),
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE,
+	FOREIGN KEY (processing_run_id) REFERENCES twin_processing_runs(id) ON DELETE CASCADE
+	);
+CREATE INDEX IF NOT EXISTS idx_alert_events_twin_created_at ON alert_events(twin_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alert_events_project_severity ON alert_events(project_id, severity, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS dt_entities (
+	id TEXT PRIMARY KEY,
+	twin_id TEXT NOT NULL,
+	entity_type TEXT NOT NULL,
+	source_data_id TEXT,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	data TEXT NOT NULL,
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_dt_entities_twin_id ON dt_entities(twin_id);
-	CREATE INDEX IF NOT EXISTS idx_dt_entities_type ON dt_entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_dt_entities_twin_id ON dt_entities(twin_id);
+CREATE INDEX IF NOT EXISTS idx_dt_entities_type ON dt_entities(entity_type);
 
-	CREATE TABLE IF NOT EXISTS dt_scenarios (
-		id TEXT PRIMARY KEY,
-		twin_id TEXT NOT NULL,
-		name TEXT NOT NULL,
-		description TEXT,
-		base_state TEXT NOT NULL,
-		status TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		data TEXT NOT NULL,
-		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS dt_scenarios (
+	id TEXT PRIMARY KEY,
+	twin_id TEXT NOT NULL,
+	name TEXT NOT NULL,
+	description TEXT,
+	base_state TEXT NOT NULL,
+	status TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	data TEXT NOT NULL,
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_dt_scenarios_twin_id ON dt_scenarios(twin_id);
+CREATE INDEX IF NOT EXISTS idx_dt_scenarios_twin_id ON dt_scenarios(twin_id);
 
-	CREATE TABLE IF NOT EXISTS dt_actions (
-		id TEXT PRIMARY KEY,
-		twin_id TEXT NOT NULL,
-		name TEXT NOT NULL,
-		enabled INTEGER NOT NULL DEFAULT 1,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		data TEXT NOT NULL,
-		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS dt_actions (
+	id TEXT PRIMARY KEY,
+	twin_id TEXT NOT NULL,
+	name TEXT NOT NULL,
+	enabled INTEGER NOT NULL DEFAULT 1,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	data TEXT NOT NULL,
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_dt_actions_twin_id ON dt_actions(twin_id);
+CREATE INDEX IF NOT EXISTS idx_dt_actions_twin_id ON dt_actions(twin_id);
 
-	CREATE TABLE IF NOT EXISTS dt_predictions (
-		id TEXT PRIMARY KEY,
-		twin_id TEXT NOT NULL,
-		entity_id TEXT NOT NULL,
-		model_id TEXT NOT NULL,
-		cached_until TEXT,
-		created_at TEXT NOT NULL,
-		data TEXT NOT NULL,
-		FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE,
-		FOREIGN KEY (entity_id) REFERENCES dt_entities(id) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS dt_predictions (
+	id TEXT PRIMARY KEY,
+	twin_id TEXT NOT NULL,
+	entity_id TEXT NOT NULL,
+	model_id TEXT NOT NULL,
+	cached_until TEXT,
+	created_at TEXT NOT NULL,
+	data TEXT NOT NULL,
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE,
+	FOREIGN KEY (entity_id) REFERENCES dt_entities(id) ON DELETE CASCADE
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_dt_predictions_twin_id ON dt_predictions(twin_id);
-	CREATE INDEX IF NOT EXISTS idx_dt_predictions_entity_id ON dt_predictions(entity_id);
-	CREATE INDEX IF NOT EXISTS idx_dt_predictions_cached_until ON dt_predictions(cached_until);
+CREATE INDEX IF NOT EXISTS idx_dt_predictions_twin_id ON dt_predictions(twin_id);
+CREATE INDEX IF NOT EXISTS idx_dt_predictions_entity_id ON dt_predictions(entity_id);
+CREATE INDEX IF NOT EXISTS idx_dt_predictions_cached_until ON dt_predictions(cached_until);
 
 	CREATE TABLE IF NOT EXISTS external_storage_plugins (
 		name TEXT PRIMARY KEY,
@@ -1746,6 +1798,278 @@ func (s *SQLiteStore) DeleteDigitalTwin(id string) error {
 	return nil
 }
 
+// SaveAutomation saves one explicit automation policy.
+func (s *SQLiteStore) SaveAutomation(automation *models.Automation) error {
+	data, err := json.Marshal(automation)
+	if err != nil {
+		return fmt.Errorf("failed to marshal automation: %w", err)
+	}
+	enabled := 0
+	if automation.Enabled {
+		enabled = 1
+	}
+	query := `
+		INSERT OR REPLACE INTO automations (
+			id, project_id, target_type, target_id, enabled, trigger_type, action_type, created_at, updated_at, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.db.Exec(query,
+		automation.ID,
+		automation.ProjectID,
+		automation.TargetType,
+		automation.TargetID,
+		enabled,
+		automation.TriggerType,
+		automation.ActionType,
+		automation.CreatedAt,
+		automation.UpdatedAt,
+		data,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to save automation: %w", err)
+	}
+	return nil
+}
+
+// GetAutomation retrieves one automation by ID.
+func (s *SQLiteStore) GetAutomation(id string) (*models.Automation, error) {
+	var data []byte
+	if err := s.db.QueryRow(`SELECT data FROM automations WHERE id = ?`, id).Scan(&data); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("automation not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get automation: %w", err)
+	}
+	automation := &models.Automation{}
+	if err := json.Unmarshal(data, automation); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal automation: %w", err)
+	}
+	return automation, nil
+}
+
+// ListAutomationsByProject lists automations for one project ordered by recency.
+func (s *SQLiteStore) ListAutomationsByProject(projectID string) ([]*models.Automation, error) {
+	rows, err := s.db.Query(`SELECT data FROM automations WHERE project_id = ? ORDER BY created_at DESC`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list automations: %w", err)
+	}
+	defer rows.Close()
+	automations := make([]*models.Automation, 0)
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan automation: %w", err)
+		}
+		automation := &models.Automation{}
+		if err := json.Unmarshal(data, automation); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal automation: %w", err)
+		}
+		automations = append(automations, automation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating automations: %w", err)
+	}
+	return automations, nil
+}
+
+// DeleteAutomation deletes one automation by ID.
+func (s *SQLiteStore) DeleteAutomation(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM automations WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("failed to delete automation: %w", err)
+	}
+	return nil
+}
+
+// SaveTwinProcessingRun upserts one persisted twin-processing run.
+func (s *SQLiteStore) SaveTwinProcessingRun(run *models.TwinProcessingRun) error {
+	data, err := json.Marshal(run)
+	if err != nil {
+		return fmt.Errorf("failed to marshal twin processing run: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO twin_processing_runs (
+			id, project_id, twin_id, status, trigger_type, automation_id, requested_at, started_at, completed_at, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.db.Exec(query,
+		run.ID,
+		run.ProjectID,
+		run.DigitalTwinID,
+		run.Status,
+		run.TriggerType,
+		nullableString(run.AutomationID),
+		run.RequestedAt,
+		run.StartedAt,
+		run.CompletedAt,
+		data,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to save twin processing run: %w", err)
+	}
+	return nil
+}
+
+// GetTwinProcessingRun retrieves one persisted twin-processing run by ID.
+func (s *SQLiteStore) GetTwinProcessingRun(id string) (*models.TwinProcessingRun, error) {
+	var data []byte
+	if err := s.db.QueryRow(`SELECT data FROM twin_processing_runs WHERE id = ?`, id).Scan(&data); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("twin processing run not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get twin processing run: %w", err)
+	}
+	run := &models.TwinProcessingRun{}
+	if err := json.Unmarshal(data, run); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal twin processing run: %w", err)
+	}
+	return run, nil
+}
+
+// GetActiveTwinProcessingRun retrieves the newest queued or running run for one twin.
+func (s *SQLiteStore) GetActiveTwinProcessingRun(twinID string) (*models.TwinProcessingRun, error) {
+	var data []byte
+	err := s.db.QueryRow(`
+		SELECT data FROM twin_processing_runs
+		WHERE twin_id = ? AND status IN (?, ?)
+		ORDER BY requested_at DESC LIMIT 1
+	`, twinID, models.TwinProcessingRunStatusQueued, models.TwinProcessingRunStatusRunning).Scan(&data)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get active twin processing run: %w", err)
+	}
+	run := &models.TwinProcessingRun{}
+	if err := json.Unmarshal(data, run); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal twin processing run: %w", err)
+	}
+	return run, nil
+}
+
+// ListTwinProcessingRunsByDigitalTwin lists persisted runs for one twin ordered by recency.
+func (s *SQLiteStore) ListTwinProcessingRunsByDigitalTwin(twinID string, limit int) ([]*models.TwinProcessingRun, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(`SELECT data FROM twin_processing_runs WHERE twin_id = ? ORDER BY requested_at DESC LIMIT ?`, twinID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list twin processing runs: %w", err)
+	}
+	defer rows.Close()
+	runs := make([]*models.TwinProcessingRun, 0)
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan twin processing run: %w", err)
+		}
+		run := &models.TwinProcessingRun{}
+		if err := json.Unmarshal(data, run); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal twin processing run: %w", err)
+		}
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating twin processing runs: %w", err)
+	}
+	return runs, nil
+}
+
+// DeleteTwinProcessingRun deletes one persisted run by ID.
+func (s *SQLiteStore) DeleteTwinProcessingRun(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM twin_processing_runs WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("failed to delete twin processing run: %w", err)
+	}
+	return nil
+}
+
+// SaveAlertEvent persists one append-only alert event.
+func (s *SQLiteStore) SaveAlertEvent(event *models.AlertEvent) error {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal alert event: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO alert_events (
+			id, project_id, twin_id, processing_run_id, severity, category, created_at, triggered_export_pipeline_id, triggered_work_task_id, data
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.db.Exec(query,
+		event.ID,
+		event.ProjectID,
+		event.DigitalTwinID,
+		event.ProcessingRunID,
+		event.Severity,
+		event.Category,
+		event.CreatedAt,
+		nullableString(event.TriggeredExportPipelineID),
+		nullableString(event.TriggeredWorkTaskID),
+		data,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to save alert event: %w", err)
+	}
+	return nil
+}
+
+// GetAlertEvent retrieves one persisted alert event by ID.
+func (s *SQLiteStore) GetAlertEvent(id string) (*models.AlertEvent, error) {
+	var data []byte
+	if err := s.db.QueryRow(`SELECT data FROM alert_events WHERE id = ?`, id).Scan(&data); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("alert event not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get alert event: %w", err)
+	}
+	event := &models.AlertEvent{}
+	if err := json.Unmarshal(data, event); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal alert event: %w", err)
+	}
+	return event, nil
+}
+
+// ListAlertEventsByDigitalTwin lists alert events for one twin ordered by recency.
+func (s *SQLiteStore) ListAlertEventsByDigitalTwin(twinID string, limit int) ([]*models.AlertEvent, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(`SELECT data FROM alert_events WHERE twin_id = ? ORDER BY created_at DESC LIMIT ?`, twinID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list alert events: %w", err)
+	}
+	defer rows.Close()
+	events := make([]*models.AlertEvent, 0)
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan alert event: %w", err)
+		}
+		event := &models.AlertEvent{}
+		if err := json.Unmarshal(data, event); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal alert event: %w", err)
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating alert events: %w", err)
+	}
+	return events, nil
+}
+
+// DeleteAlertEvent deletes one alert event by ID.
+func (s *SQLiteStore) DeleteAlertEvent(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM alert_events WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("failed to delete alert event: %w", err)
+	}
+	return nil
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
 // SaveEntity saves an entity to the database
 func (s *SQLiteStore) SaveEntity(entity *models.Entity) error {
 	data, err := json.Marshal(entity)
@@ -2568,4 +2892,3 @@ func saveInsightTx(exec sqlExecer, insight *models.Insight) error {
 	}
 	return nil
 }
-

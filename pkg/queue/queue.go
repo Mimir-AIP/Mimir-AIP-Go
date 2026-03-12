@@ -9,16 +9,21 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
-// Queue provides in-memory work task queue operations with priority support
-type Queue struct {
-	mu             sync.RWMutex
-	pq             *PriorityQueue
-	workTasks      map[string]*models.WorkTask
-	taskIndex      map[string]int // Maps task ID to index in priority queue
-	OnStatusChange func(task *models.WorkTask)
+// WorkTaskListener receives status-change events for work tasks.
+type WorkTaskListener interface {
+	OnWorkTaskStatusChanged(task *models.WorkTask)
 }
 
-// NewQueue creates a new in-memory queue instance
+// Queue provides in-memory work task queue operations with priority support.
+type Queue struct {
+	mu        sync.RWMutex
+	pq        *PriorityQueue
+	workTasks map[string]*models.WorkTask
+	taskIndex map[string]int // Maps task ID to index in priority queue
+	listeners []WorkTaskListener
+}
+
+// NewQueue creates a new in-memory queue instance.
 func NewQueue() (*Queue, error) {
 	pq := make(PriorityQueue, 0)
 	heap.Init(&pq)
@@ -27,7 +32,18 @@ func NewQueue() (*Queue, error) {
 		pq:        &pq,
 		workTasks: make(map[string]*models.WorkTask),
 		taskIndex: make(map[string]int),
+		listeners: make([]WorkTaskListener, 0),
 	}, nil
+}
+
+// RegisterListener registers a work-task status listener.
+func (q *Queue) RegisterListener(listener WorkTaskListener) {
+	if listener == nil {
+		return
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.listeners = append(q.listeners, listener)
 }
 
 // Enqueue adds a work task to the queue
@@ -89,11 +105,8 @@ func (q *Queue) GetWorkTask(taskID string) (*models.WorkTask, error) {
 	return task, nil
 }
 
-// UpdateWorkTaskStatus updates the status of a work task
+// UpdateWorkTaskStatus updates the status of a work task.
 func (q *Queue) UpdateWorkTaskStatus(taskID string, status models.WorkTaskStatus, errorMsg string) error {
-	var cb func(*models.WorkTask)
-	var taskSnapshot models.WorkTask
-
 	q.mu.Lock()
 	task, ok := q.workTasks[taskID]
 	if !ok {
@@ -114,16 +127,40 @@ func (q *Queue) UpdateWorkTaskStatus(taskID string, status models.WorkTaskStatus
 		task.CompletedAt = &now
 	}
 
-	if q.OnStatusChange != nil {
-		cb = q.OnStatusChange
-		taskSnapshot = *task
-	}
+	taskSnapshot := *task
+	listeners := append([]WorkTaskListener(nil), q.listeners...)
 	q.mu.Unlock()
 
-	// Fire callback outside the lock to avoid deadlocks
-	if cb != nil {
-		cb(&taskSnapshot)
+	q.notifyListeners(&taskSnapshot, listeners)
+	return nil
+}
+
+// ApplyWorkTaskResult stores a worker-reported result, updates task status, and notifies listeners.
+func (q *Queue) ApplyWorkTaskResult(taskID string, result *models.WorkTaskResult) error {
+	if result == nil {
+		return fmt.Errorf("work task result is required")
 	}
+	q.mu.Lock()
+	task, ok := q.workTasks[taskID]
+	if !ok {
+		q.mu.Unlock()
+		return fmt.Errorf("work task not found: %s", taskID)
+	}
+	task.Status = result.Status
+	task.OutputLocation = result.OutputLocation
+	task.ResultMetadata = cloneMap(result.Metadata)
+	task.ErrorMessage = result.ErrorMessage
+	now := time.Now()
+	switch result.Status {
+	case models.WorkTaskStatusExecuting:
+		task.StartedAt = &now
+	case models.WorkTaskStatusCompleted, models.WorkTaskStatusFailed, models.WorkTaskStatusTimeout, models.WorkTaskStatusCancelled:
+		task.CompletedAt = &now
+	}
+	taskSnapshot := *task
+	listeners := append([]WorkTaskListener(nil), q.listeners...)
+	q.mu.Unlock()
+	q.notifyListeners(&taskSnapshot, listeners)
 	return nil
 }
 
@@ -199,10 +236,9 @@ func (q *Queue) PeekNext() (*models.WorkTask, error) {
 // RequeueWithRetry re-queues a failed task if it has remaining retries, otherwise marks it failed.
 func (q *Queue) RequeueWithRetry(taskID string, reason string) error {
 	q.mu.Lock()
-	defer q.mu.Unlock()
-
 	task, ok := q.workTasks[taskID]
 	if !ok {
+		q.mu.Unlock()
 		return fmt.Errorf("work task not found: %s", taskID)
 	}
 
@@ -213,22 +249,48 @@ func (q *Queue) RequeueWithRetry(taskID string, reason string) error {
 		task.KubernetesJobName = ""
 		task.ErrorMessage = ""
 
-		// Re-add to priority queue with slightly lower priority to deprioritise retries
+		// Re-add to priority queue with slightly lower priority to deprioritise retries.
 		score := float64(time.Now().Unix())/float64(task.Priority+1) + float64(task.RetryCount)*60
 		item := &PriorityQueueItem{
 			TaskID:   task.ID,
 			Priority: score,
 		}
 		heap.Push(q.pq, item)
+
+		taskSnapshot := *task
+		listeners := append([]WorkTaskListener(nil), q.listeners...)
+		q.mu.Unlock()
+		q.notifyListeners(&taskSnapshot, listeners)
 		return nil
 	}
 
-	// Exhausted retries — mark permanently failed
+	// Exhausted retries — mark permanently failed.
 	now := time.Now()
 	task.Status = models.WorkTaskStatusFailed
 	task.CompletedAt = &now
 	task.ErrorMessage = fmt.Sprintf("failed after %d retries: %s", task.RetryCount, reason)
+	taskSnapshot := *task
+	listeners := append([]WorkTaskListener(nil), q.listeners...)
+	q.mu.Unlock()
+	q.notifyListeners(&taskSnapshot, listeners)
 	return nil
+}
+
+func (q *Queue) notifyListeners(task *models.WorkTask, listeners []WorkTaskListener) {
+	for _, listener := range listeners {
+		listener.OnWorkTaskStatusChanged(task)
+	}
+}
+
+func cloneMap(values map[string]any) map[string]any {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 // Close closes the queue (no-op for in-memory implementation)

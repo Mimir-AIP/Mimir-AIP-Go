@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	automationpkg "github.com/mimir-aip/mimir-aip-go/pkg/automation"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -17,36 +18,39 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
-// Service manages digital twin operations
+// Service manages digital twin operations.
 type Service struct {
-	store           metadatastore.MetadataStore
-	ontologyService *ontology.Service
-	storageService  *storage.Service
-	mlService       *mlmodel.Service
-	queue           *queue.Queue
-	inferenceEngine *InferenceEngine
-	sparqlEngine    *SPARQLEngine
-	scenarioManager *ScenarioManager
-	actionManager   *ActionManager
+	store             metadatastore.MetadataStore
+	automationService *automationpkg.Service
+	ontologyService   *ontology.Service
+	storageService    *storage.Service
+	mlService         *mlmodel.Service
+	queue             *queue.Queue
+	inferenceEngine   *InferenceEngine
+	sparqlEngine      *SPARQLEngine
+	scenarioManager   *ScenarioManager
+	actionManager     *ActionManager
 }
 
-// NewService creates a new digital twin service
+// NewService creates a new digital twin service.
 func NewService(
 	store metadatastore.MetadataStore,
+	automationService *automationpkg.Service,
 	ontologyService *ontology.Service,
 	storageService *storage.Service,
 	mlService *mlmodel.Service,
 	q *queue.Queue,
 ) *Service {
 	s := &Service{
-		store:           store,
-		ontologyService: ontologyService,
-		storageService:  storageService,
-		mlService:       mlService,
-		queue:           q,
+		store:             store,
+		automationService: automationService,
+		ontologyService:   ontologyService,
+		storageService:    storageService,
+		mlService:         mlService,
+		queue:             q,
 	}
 
-	// Initialize sub-components
+	// Initialize sub-components.
 	s.inferenceEngine = NewInferenceEngine(mlService, store)
 	s.sparqlEngine = NewSPARQLEngine(store, ontologyService)
 	s.scenarioManager = NewScenarioManager(store, s.inferenceEngine)
@@ -97,12 +101,50 @@ func (s *Service) CreateDigitalTwin(req *models.DigitalTwinCreateRequest) (*mode
 		return nil, fmt.Errorf("failed to save digital twin: %w", err)
 	}
 
-	// Initialize from ontology (populate entities from ontology blueprint)
+	if err := s.ensureDefaultProcessingAutomation(twin); err != nil {
+		return nil, err
+	}
+
+	// Initialize from ontology (populate entities from ontology blueprint).
 	if err := s.initializeFromOntology(twin, ont); err != nil {
 		return nil, fmt.Errorf("failed to initialize from ontology: %w", err)
 	}
 
 	return twin, nil
+}
+
+func (s *Service) ensureDefaultProcessingAutomation(twin *models.DigitalTwin) error {
+	if s.automationService == nil || twin == nil {
+		return nil
+	}
+	automations, err := s.automationService.ListByProject(twin.ProjectID)
+	if err != nil {
+		return fmt.Errorf("failed to list project automations: %w", err)
+	}
+	for _, automation := range automations {
+		if automation.TargetType == models.AutomationTargetTypeDigitalTwin &&
+			automation.TargetID == twin.ID &&
+			automation.TriggerType == models.AutomationTriggerTypePipelineCompleted &&
+			automation.ActionType == models.AutomationActionTypeProcessTwin {
+			return nil
+		}
+	}
+	_, err = s.automationService.Create(&models.AutomationCreateRequest{
+		ProjectID:   twin.ProjectID,
+		Name:        twin.Name + " processing",
+		Description: "Default automation: process this twin after ingestion pipelines complete.",
+		TargetType:  models.AutomationTargetTypeDigitalTwin,
+		TargetID:    twin.ID,
+		TriggerType: models.AutomationTriggerTypePipelineCompleted,
+		TriggerConfig: map[string]any{
+			"pipeline_types": []string{string(models.PipelineTypeIngestion)},
+		},
+		ActionType: models.AutomationActionTypeProcessTwin,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create default twin processing automation: %w", err)
+	}
+	return nil
 }
 
 // GetDigitalTwin retrieves a digital twin by ID
@@ -189,7 +231,7 @@ func (s *Service) EnqueueSync(twinID string) (*models.WorkTask, error) {
 	}
 	task := &models.WorkTask{
 		ID:          uuid.New().String(),
-		Type:        models.WorkTaskTypeDigitalTwinUpdate,
+		Type:        models.WorkTaskTypeDigitalTwinProcessing,
 		ProjectID:   twin.ProjectID,
 		Priority:    5,
 		Status:      models.WorkTaskStatusQueued,
@@ -207,7 +249,6 @@ func (s *Service) EnqueueSync(twinID string) (*models.WorkTask, error) {
 	}
 	return task, nil
 }
-
 
 // SyncWithStorage synchronizes digital twin entities with CIR data from storage.
 //
@@ -247,11 +288,6 @@ func (s *Service) SyncWithStorage(twinID string) error {
 		fmt.Printf("Warning: failed to wire cross-type relationships for twin %s: %v\n", twin.ID, err)
 	}
 
-	// Evaluate attribute-based actions against the freshly synced entities.
-	if err := s.evaluateEntityActionsAfterSync(twin.ID); err != nil {
-		fmt.Printf("Warning: failed to evaluate entity actions after sync for twin %s: %v\n", twin.ID, err)
-	}
-
 	now := time.Now().UTC()
 	twin.Status = "active"
 	twin.LastSyncAt = &now
@@ -272,63 +308,6 @@ func (s *Service) markTwinSyncFailed(twin *models.DigitalTwin) {
 	twin.UpdatedAt = time.Now().UTC()
 	if err := s.store.SaveDigitalTwin(twin); err != nil {
 		log.Printf("Warning: failed to persist digital twin sync failure for %s: %v", twin.ID, err)
-	}
-}
-
-
-// evaluateEntityActionsAfterSync runs attribute-based action evaluation
-// for every entity in the twin immediately after a sync.
-func (s *Service) evaluateEntityActionsAfterSync(twinID string) error {
-	entities, err := s.store.ListEntitiesByDigitalTwin(twinID)
-	if err != nil {
-		return err
-	}
-	for _, entity := range entities {
-		if err := s.actionManager.EvaluateEntityActions(twinID, entity); err != nil {
-			log.Printf("Warning: entity action evaluation failed for entity %s: %v", entity.ID, err)
-		}
-	}
-	return nil
-}
-
-// StartActionEvaluation starts a background goroutine that periodically re-evaluates
-// attribute-based actions for all active digital twins. This provides automatic
-// alerting even when no explicit predict call or manual sync is triggered.
-//
-// The interval controls how often the evaluation runs; a sensible default is 5 minutes.
-func (s *Service) StartActionEvaluation(ctx context.Context, interval time.Duration) {
-	if interval <= 0 {
-		interval = 5 * time.Minute
-	}
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.runBackgroundActionEvaluation()
-			}
-		}
-	}()
-}
-
-// runBackgroundActionEvaluation iterates all active twins and evaluates
-// attribute-based actions against their current entity state.
-func (s *Service) runBackgroundActionEvaluation() {
-	twins, err := s.store.ListDigitalTwins()
-	if err != nil {
-		log.Printf("Background action evaluation: failed to list digital twins: %v", err)
-		return
-	}
-	for _, twin := range twins {
-		if twin.Status != "active" {
-			continue
-		}
-		if err := s.evaluateEntityActionsAfterSync(twin.ID); err != nil {
-			log.Printf("Background action evaluation: twin %s: %v", twin.ID, err)
-		}
 	}
 }
 

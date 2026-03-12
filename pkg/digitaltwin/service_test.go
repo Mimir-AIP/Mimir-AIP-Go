@@ -22,7 +22,7 @@ func setupDigitalTwinService(t *testing.T) (*Service, *queue.Queue, func()) {
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}
-	service := NewService(store, ontology.NewService(store), storage.NewService(store), nil, q)
+	service := NewService(store, nil, ontology.NewService(store), storage.NewService(store), nil, q)
 	return service, q, func() {
 		_ = q.Close()
 		_ = store.Close()
@@ -51,8 +51,8 @@ func TestEnqueueSyncQueuesWorkAndMarksTwinSyncing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnqueueSync returned error: %v", err)
 	}
-	if task.Type != models.WorkTaskTypeDigitalTwinUpdate {
-		t.Fatalf("expected digital_twin_update task type, got %s", task.Type)
+	if task.Type != models.WorkTaskTypeDigitalTwinProcessing {
+		t.Fatalf("expected digital_twin_processing task type, got %s", task.Type)
 	}
 	if task.ProjectID != twin.ProjectID {
 		t.Fatalf("expected task project %s, got %s", twin.ProjectID, task.ProjectID)

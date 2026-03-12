@@ -19,7 +19,7 @@ func registerTaskTools(s *server.MCPServer, m *MimirMCPServer) {
 				mcp.Description("Filter by task status: queued, scheduled, spawned, executing, completed, failed, timeout, cancelled"),
 			),
 			mcp.WithString("type",
-				mcp.Description("Filter by task type: pipeline_execution, ml_training, ml_inference, digital_twin_update"),
+				mcp.Description("Filter by task type: pipeline_execution, ml_training, ml_inference, digital_twin_processing"),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -122,9 +122,9 @@ func registerTaskTools(s *server.MCPServer, m *MimirMCPServer) {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			data, _ := json.Marshal(map[string]any{
-				"task":    task,
+				"task":      task,
 				"timed_out": true,
-				"message": "task did not reach a terminal state within the timeout",
+				"message":   "task did not reach a terminal state within the timeout",
 			})
 			return mcp.NewToolResultText(string(data)), nil
 		},

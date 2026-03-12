@@ -6,10 +6,10 @@ import "time"
 type WorkTaskType string
 
 const (
-	WorkTaskTypePipelineExecution WorkTaskType = "pipeline_execution"
-	WorkTaskTypeMLTraining        WorkTaskType = "ml_training"
-	WorkTaskTypeMLInference       WorkTaskType = "ml_inference"
-	WorkTaskTypeDigitalTwinUpdate WorkTaskType = "digital_twin_update"
+	WorkTaskTypePipelineExecution     WorkTaskType = "pipeline_execution"
+	WorkTaskTypeMLTraining            WorkTaskType = "ml_training"
+	WorkTaskTypeMLInference           WorkTaskType = "ml_inference"
+	WorkTaskTypeDigitalTwinProcessing WorkTaskType = "digital_twin_processing"
 )
 
 // WorkTaskStatus represents the current status of a work task
@@ -49,7 +49,7 @@ type TaskSpec struct {
 	PreferredCluster string                 `json:"preferred_cluster,omitempty"` // optional cluster affinity; empty = auto
 }
 
-// WorkTask represents an infrastructure work unit to be executed by a worker
+// WorkTask represents an infrastructure work unit to be executed by a worker.
 type WorkTask struct {
 	ID                   string               `json:"worktask_id"`
 	Type                 WorkTaskType         `json:"type"`
@@ -62,6 +62,8 @@ type WorkTask struct {
 	TaskSpec             TaskSpec             `json:"task_spec"`
 	ResourceRequirements ResourceRequirements `json:"resource_requirements"`
 	DataAccess           DataAccess           `json:"data_access"`
+	OutputLocation       string               `json:"output_location,omitempty"`
+	ResultMetadata       map[string]any       `json:"result_metadata,omitempty"`
 	ErrorMessage         string               `json:"error_message,omitempty"`
 	KubernetesJobName    string               `json:"kubernetes_job_name,omitempty"`
 	ClusterName          string               `json:"cluster_name,omitempty"` // cluster this task was dispatched to

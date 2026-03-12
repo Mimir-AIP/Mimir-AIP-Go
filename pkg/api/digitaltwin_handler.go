@@ -4,21 +4,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
+	automationpkg "github.com/mimir-aip/mimir-aip-go/pkg/automation"
 	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
-// DigitalTwinHandler handles digital twin HTTP requests
+// DigitalTwinHandler handles digital twin HTTP requests.
 type DigitalTwinHandler struct {
-	service *digitaltwin.Service
+	service           *digitaltwin.Service
+	processor         *digitaltwin.Processor
+	automationService *automationpkg.Service
 }
 
-// NewDigitalTwinHandler creates a new digital twin handler
-func NewDigitalTwinHandler(service *digitaltwin.Service) *DigitalTwinHandler {
+// NewDigitalTwinHandler creates a new digital twin handler.
+func NewDigitalTwinHandler(service *digitaltwin.Service, processor *digitaltwin.Processor, automationService *automationpkg.Service) *DigitalTwinHandler {
 	return &DigitalTwinHandler{
-		service: service,
+		service:           service,
+		processor:         processor,
+		automationService: automationService,
 	}
 }
 
@@ -82,6 +88,23 @@ func (h *DigitalTwinHandler) HandleDigitalTwin(w http.ResponseWriter, r *http.Re
 				h.handleDigitalTwinActions(w, r, twinID)
 			} else {
 				h.handleDigitalTwinAction(w, r, twinID, parts[2])
+			}
+			return
+		case "runs":
+			if len(parts) == 2 {
+				h.handleDigitalTwinRuns(w, r, twinID)
+			} else {
+				h.handleDigitalTwinRun(w, r, twinID, parts[2])
+			}
+			return
+		case "alerts":
+			h.handleDigitalTwinAlerts(w, r, twinID)
+			return
+		case "automations":
+			if len(parts) == 2 {
+				h.handleDigitalTwinAutomations(w, r, twinID)
+			} else {
+				h.handleDigitalTwinAutomation(w, r, twinID, parts[2])
 			}
 			return
 		}
@@ -369,6 +392,161 @@ func (h *DigitalTwinHandler) handleDigitalTwinPredict(w http.ResponseWriter, r *
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(prediction)
 	}
+}
+
+func (h *DigitalTwinHandler) handleDigitalTwinRuns(w http.ResponseWriter, r *http.Request, twinID string) {
+	switch r.Method {
+	case http.MethodGet:
+		limit := parsePositiveInt(r.URL.Query().Get("limit"), 50)
+		runs, err := h.processor.ListRuns(twinID, limit)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to list twin processing runs: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(runs)
+	case http.MethodPost:
+		run, err := h.processor.RequestRun(twinID, &models.TwinProcessingRunCreateRequest{
+			TriggerType: models.TwinProcessingTriggerTypeManual,
+			TriggerRef:  "api/manual",
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to queue twin processing run: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(run)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *DigitalTwinHandler) handleDigitalTwinRun(w http.ResponseWriter, r *http.Request, twinID, runID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	run, err := h.processor.GetRun(twinID, runID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get twin processing run: %v", err), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(run)
+}
+
+func (h *DigitalTwinHandler) handleDigitalTwinAlerts(w http.ResponseWriter, r *http.Request, twinID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	limit := parsePositiveInt(r.URL.Query().Get("limit"), 100)
+	alerts, err := h.processor.ListAlerts(twinID, limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list alert events: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(alerts)
+}
+
+func (h *DigitalTwinHandler) handleDigitalTwinAutomations(w http.ResponseWriter, r *http.Request, twinID string) {
+	twin, err := h.service.GetDigitalTwin(twinID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), http.StatusNotFound)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		automations, err := h.automationService.ListByProject(twin.ProjectID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to list automations: %v", err), http.StatusInternalServerError)
+			return
+		}
+		filtered := make([]*models.Automation, 0)
+		for _, automation := range automations {
+			if automation.TargetType == models.AutomationTargetTypeDigitalTwin && automation.TargetID == twinID {
+				filtered = append(filtered, automation)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(filtered)
+	case http.MethodPost:
+		var req models.AutomationCreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		req.ProjectID = twin.ProjectID
+		req.TargetType = models.AutomationTargetTypeDigitalTwin
+		req.TargetID = twinID
+		if req.TriggerType == "" {
+			req.TriggerType = models.AutomationTriggerTypePipelineCompleted
+		}
+		if req.ActionType == "" {
+			req.ActionType = models.AutomationActionTypeProcessTwin
+		}
+		automation, err := h.automationService.Create(&req)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create automation: %v", err), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(automation)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *DigitalTwinHandler) handleDigitalTwinAutomation(w http.ResponseWriter, r *http.Request, twinID, automationID string) {
+	automation, err := h.automationService.Get(automationID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get automation: %v", err), http.StatusNotFound)
+		return
+	}
+	if automation.TargetType != models.AutomationTargetTypeDigitalTwin || automation.TargetID != twinID {
+		http.Error(w, "Automation does not belong to this digital twin", http.StatusNotFound)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(automation)
+	case http.MethodPut:
+		var req models.AutomationUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		updated, err := h.automationService.Update(automationID, &req)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to update automation: %v", err), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(updated)
+	case http.MethodDelete:
+		if err := h.automationService.Delete(automationID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to delete automation: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func parsePositiveInt(raw string, fallback int) int {
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }
 
 // handleDigitalTwinScenarios handles GET/POST /api/digital-twins/{id}/scenarios

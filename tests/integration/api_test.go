@@ -190,7 +190,7 @@ func TestMultipleWorkTaskSubmissions(t *testing.T) {
 		models.WorkTaskTypePipelineExecution,
 		models.WorkTaskTypeMLTraining,
 		models.WorkTaskTypeMLInference,
-		models.WorkTaskTypeDigitalTwinUpdate,
+		models.WorkTaskTypeDigitalTwinProcessing,
 	}
 
 	submittedTasks := make([]string, 0)

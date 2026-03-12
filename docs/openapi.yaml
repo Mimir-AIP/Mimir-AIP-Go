@@ -85,6 +85,55 @@ components:
             required:
                 - pipeline_id
             type: object
+        AlertEvent:
+            properties:
+                automation_id:
+                    description: Automation that emitted the alert
+                    type: string
+                category:
+                    description: Alert category
+                    type: string
+                created_at:
+                    description: Alert event timestamp
+                    type: string
+                digital_twin_id:
+                    description: Owning digital twin ID
+                    type: string
+                entity_refs:
+                    items:
+                        type: string
+                    type: array
+                id:
+                    description: Alert event ID (UUID)
+                    type: string
+                message:
+                    description: Alert message
+                    type: string
+                ontology_context:
+                    additionalProperties: true
+                    type: object
+                processing_run_id:
+                    description: Processing run that emitted the alert
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                severity:
+                    description: low | medium | high | critical
+                    type: string
+                source_insight_id:
+                    description: Optional source insight ID
+                    type: string
+                title:
+                    description: Alert title
+                    type: string
+                triggered_export_pipeline_id:
+                    description: Export pipeline triggered by this alert, if any
+                    type: string
+                triggered_work_task_id:
+                    description: Triggered export work task ID, if any
+                    type: string
+            type: object
         AnalysisRun:
             properties:
                 algorithm_version:
@@ -123,6 +172,113 @@ components:
                     type: array
                 status:
                     description: completed | failed
+                    type: string
+            type: object
+        Automation:
+            properties:
+                action_config:
+                    additionalProperties: true
+                    type: object
+                action_type:
+                    description: process_twin | trigger_export_pipeline
+                    type: string
+                condition_config:
+                    additionalProperties: true
+                    type: object
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                description:
+                    description: Description
+                    type: string
+                enabled:
+                    description: Whether the automation is active
+                    type: boolean
+                id:
+                    description: Automation ID (UUID)
+                    type: string
+                name:
+                    description: Automation name
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                target_id:
+                    description: Target resource ID
+                    type: string
+                target_type:
+                    description: pipeline | digital_twin
+                    type: string
+                trigger_config:
+                    additionalProperties: true
+                    type: object
+                trigger_type:
+                    description: pipeline_completed | manual
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        AutomationCreateRequest:
+            properties:
+                action_config:
+                    additionalProperties: true
+                    type: object
+                action_type:
+                    description: process_twin | trigger_export_pipeline
+                    type: string
+                condition_config:
+                    additionalProperties: true
+                    type: object
+                description:
+                    description: Description
+                    type: string
+                enabled:
+                    description: Whether the automation starts enabled
+                    type: boolean
+                name:
+                    description: Automation name
+                    type: string
+                target_id:
+                    description: Target resource ID (overridden for twin-scoped routes)
+                    type: string
+                target_type:
+                    description: pipeline | digital_twin (overridden for twin-scoped routes)
+                    type: string
+                trigger_config:
+                    additionalProperties: true
+                    type: object
+                trigger_type:
+                    description: pipeline_completed | manual
+                    type: string
+            required:
+                - name
+            type: object
+        AutomationUpdateRequest:
+            properties:
+                action_config:
+                    additionalProperties: true
+                    type: object
+                action_type:
+                    description: process_twin | trigger_export_pipeline
+                    type: string
+                condition_config:
+                    additionalProperties: true
+                    type: object
+                description:
+                    description: Description
+                    type: string
+                enabled:
+                    description: Whether the automation is active
+                    type: boolean
+                name:
+                    description: Automation name
+                    type: string
+                trigger_config:
+                    additionalProperties: true
+                    type: object
+                trigger_type:
+                    description: pipeline_completed | manual
                     type: string
             type: object
         CIR:
@@ -1654,6 +1810,85 @@ components:
                 - query
                 - updates
             type: object
+        TwinProcessingRun:
+            properties:
+                automation_id:
+                    description: Automation that requested the run
+                    type: string
+                completed_at:
+                    description: Run completion timestamp
+                    type: string
+                digital_twin_id:
+                    description: Owning digital twin ID
+                    type: string
+                error:
+                    description: Failure summary, when status=failed
+                    type: string
+                id:
+                    description: Twin processing run ID (UUID)
+                    type: string
+                metrics:
+                    additionalProperties: true
+                    type: object
+                project_id:
+                    description: Owning project ID
+                    type: string
+                requested_at:
+                    description: Run request timestamp
+                    type: string
+                rerun_requested:
+                    description: Whether a follow-up coalesced rerun is required
+                    type: boolean
+                stage_states:
+                    additionalProperties:
+                        type: object
+                    type: object
+                started_at:
+                    description: Run start timestamp
+                    type: string
+                status:
+                    description: queued | running | completed | failed | superseded
+                    type: string
+                superseded_by_run_id:
+                    description: Follow-up run queued after coalescing
+                    type: string
+                trigger_ref:
+                    description: Upstream work task or manual trigger reference
+                    type: string
+                trigger_type:
+                    description: manual | pipeline_completed
+                    type: string
+            type: object
+        TwinProcessingRunCreateRequest:
+            properties:
+                automation_id:
+                    description: Automation that requested the run
+                    type: string
+                trigger_ref:
+                    description: Upstream trigger reference
+                    type: string
+                trigger_type:
+                    description: manual | pipeline_completed
+                    type: string
+            type: object
+        TwinProcessingStageState:
+            properties:
+                completed_at:
+                    description: Stage completion timestamp
+                    type: string
+                error:
+                    description: Stage error, if any
+                    type: string
+                metrics:
+                    additionalProperties: true
+                    type: object
+                started_at:
+                    description: Stage start timestamp
+                    type: string
+                status:
+                    description: queued | running | completed | failed | skipped
+                    type: string
+            type: object
         WorkTask:
             properties:
                 completed_at:
@@ -1668,6 +1903,9 @@ components:
                 max_retries:
                     description: Maximum retry attempts
                     type: integer
+                output_location:
+                    description: Worker output location, if any
+                    type: string
                 priority:
                     description: Task priority (higher = processed first)
                     type: integer
@@ -1675,6 +1913,9 @@ components:
                     description: Owning project ID
                     type: string
                 resource_requirements:
+                    additionalProperties: true
+                    type: object
+                result_metadata:
                     additionalProperties: true
                     type: object
                 retry_count:
@@ -1693,7 +1934,7 @@ components:
                     additionalProperties: true
                     type: object
                 type:
-                    description: pipeline_execution | ml_training | ml_inference | digital_twin_update
+                    description: pipeline_execution | ml_training | ml_inference | digital_twin_processing
                     type: string
             type: object
         WorkTaskResult:
@@ -1701,9 +1942,12 @@ components:
                 error_message:
                     description: Error message if failed
                     type: string
-                result:
+                metadata:
                     additionalProperties: true
                     type: object
+                output_location:
+                    description: Worker output location, if any
+                    type: string
                 status:
                     description: completed | failed
                     type: string
@@ -2036,6 +2280,173 @@ paths:
             summary: Get action
             tags:
                 - Digital Twins
+    /api/digital-twins/{id}/alerts:
+        get:
+            description: Returns append-only alert events emitted during twin processing.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Optional maximum number of alerts to return
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/AlertEvent'
+                                type: array
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: List alert events
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/automations:
+        get:
+            description: Lists explicit automations scoped to this digital twin.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Automation'
+                                type: array
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: List twin automations
+            tags:
+                - Digital Twins
+        post:
+            description: Creates an explicit automation scoped to this digital twin. Target metadata is derived from the route.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AutomationCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Automation'
+                    description: Created
+                "400":
+                    description: Bad request — invalid input
+            summary: Create twin automation
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/automations/{automationId}:
+        delete:
+            description: ""
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Automation ID
+                  in: path
+                  name: automationId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Resource not found
+            summary: Delete twin automation
+            tags:
+                - Digital Twins
+        get:
+            description: ""
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Automation ID
+                  in: path
+                  name: automationId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Automation'
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Get twin automation
+            tags:
+                - Digital Twins
+        put:
+            description: ""
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Automation ID
+                  in: path
+                  name: automationId
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AutomationUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Automation'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "404":
+                    description: Resource not found
+            summary: Update twin automation
+            tags:
+                - Digital Twins
     /api/digital-twins/{id}/entities:
         get:
             description: ""
@@ -2209,6 +2620,83 @@ paths:
                 "400":
                     description: Bad request — invalid input
             summary: Execute SPARQL query
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/runs:
+        get:
+            description: Returns the most recent explicit twin processing runs for this digital twin.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Optional maximum number of runs to return
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TwinProcessingRun'
+                                type: array
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: List twin processing runs
+            tags:
+                - Digital Twins
+        post:
+            description: Queues one explicit twin processing run using the current twin storage scope and automation stages.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "202":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TwinProcessingRun'
+                    description: Accepted — processing in background
+            summary: Queue twin processing run
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/runs/{runId}:
+        get:
+            description: ""
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Twin processing run ID
+                  in: path
+                  name: runId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TwinProcessingRun'
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Get twin processing run
             tags:
                 - Digital Twins
     /api/digital-twins/{id}/scenarios:
@@ -4008,7 +4496,7 @@ tags:
       name: Extraction
     - description: 'ML model lifecycle: create, train, infer, monitor'
       name: ML Models
-    - description: Persisted ontology-backed entity graphs with queued sync, constrained SPARQL querying, and in-memory scenario analysis
+    - description: Ontology-backed operational workspaces with explicit processing runs, alert events, automations, query, and scenario analysis
       name: Digital Twins
     - description: Work task queue (internal / worker-facing endpoints)
       name: Tasks

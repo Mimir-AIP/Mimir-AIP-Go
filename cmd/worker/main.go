@@ -76,7 +76,7 @@ func executeWorkTask(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		return executeMLTraining(task)
 	case models.WorkTaskTypeMLInference:
 		return executeMLInference(task)
-	case models.WorkTaskTypeDigitalTwinUpdate:
+	case models.WorkTaskTypeDigitalTwinProcessing:
 		return executeDigitalTwinUpdate(task)
 	default:
 		return nil, fmt.Errorf("unknown work task type: %s", task.Type)
@@ -1015,56 +1015,49 @@ func workerRunInference(modelType string, parameters map[string]any, features []
 	}
 }
 
-// executeDigitalTwinUpdate triggers a storage sync on the specified digital twin
+// executeDigitalTwinUpdate executes one explicit twin-processing run using only
+// task parameters persisted by the orchestrator. Workers remain stateless.
 func executeDigitalTwinUpdate(task *models.WorkTask) (*models.WorkTaskResult, error) {
-	log.Printf("Updating digital twin for project: %s", task.ProjectID)
+	log.Printf("Executing digital twin processing for project: %s", task.ProjectID)
 
 	orchestratorURL := getOrchestratorURL()
-
-	// Get digital twin ID from task parameters
+	runID, _ := task.TaskSpec.Parameters["processing_run_id"].(string)
 	twinID, _ := task.TaskSpec.Parameters["digital_twin_id"].(string)
+	if runID == "" {
+		return nil, fmt.Errorf("processing_run_id not specified in task parameters")
+	}
 	if twinID == "" {
 		return nil, fmt.Errorf("digital_twin_id not specified in task parameters")
 	}
 
-	// Trigger sync via orchestrator API
-	syncURL := fmt.Sprintf("%s/api/digital-twins/%s/sync", orchestratorURL, twinID)
-	resp, err := http.Post(syncURL, "application/json", nil)
+	executeURL := fmt.Sprintf("%s/api/internal/twin-runs/%s/execute", orchestratorURL, runID)
+	resp, err := http.Post(executeURL, "application/json", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to trigger sync: %w", err)
+		return nil, fmt.Errorf("failed to execute twin processing run: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return nil, fmt.Errorf("sync request failed: status %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("twin processing run execution failed: status %d", resp.StatusCode)
 	}
 
-	// Verify by reading back the twin status
-	twinURL := fmt.Sprintf("%s/api/digital-twins/%s", orchestratorURL, twinID)
-	twinResp, err := http.Get(twinURL)
-	entitiesUpdated := 0
-	if err == nil {
-		defer twinResp.Body.Close()
-		var twin models.DigitalTwin
-		if json.NewDecoder(twinResp.Body).Decode(&twin) == nil {
-			if twin.Metadata != nil {
-				if n, ok := twin.Metadata["entities_synced"].(float64); ok {
-					entitiesUpdated = int(n)
-				}
-			}
-		}
+	var run models.TwinProcessingRun
+	if err := json.NewDecoder(resp.Body).Decode(&run); err != nil {
+		return nil, fmt.Errorf("failed to decode twin processing run: %w", err)
 	}
 
-	log.Printf("Digital twin %s sync complete – %d entities updated", twinID, entitiesUpdated)
-
+	outputLocation := fmt.Sprintf("/tmp/digital-twins/%s/runs/%s", twinID, runID)
+	log.Printf("Digital twin processing run %s completed with status %s", runID, run.Status)
 	return &models.WorkTaskResult{
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
-		OutputLocation: fmt.Sprintf("/tmp/digital-twins/%s/", twinID),
+		OutputLocation: outputLocation,
 		Metadata: map[string]any{
-			"project_id":       task.ProjectID,
-			"digital_twin_id":  twinID,
-			"entities_updated": entitiesUpdated,
+			"project_id":        task.ProjectID,
+			"digital_twin_id":   twinID,
+			"processing_run_id": runID,
+			"run_status":        run.Status,
+			"trigger_type":      run.TriggerType,
+			"insight_count":     run.Metrics["insight_count"],
 		},
 	}, nil
 }

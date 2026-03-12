@@ -89,6 +89,25 @@ type MetadataStore interface {
 	ListDigitalTwinsByProject(projectID string) ([]*models.DigitalTwin, error)
 	DeleteDigitalTwin(id string) error
 
+	// Automation operations
+	SaveAutomation(automation *models.Automation) error
+	GetAutomation(id string) (*models.Automation, error)
+	ListAutomationsByProject(projectID string) ([]*models.Automation, error)
+	DeleteAutomation(id string) error
+
+	// Twin processing run operations
+	SaveTwinProcessingRun(run *models.TwinProcessingRun) error
+	GetTwinProcessingRun(id string) (*models.TwinProcessingRun, error)
+	GetActiveTwinProcessingRun(twinID string) (*models.TwinProcessingRun, error)
+	ListTwinProcessingRunsByDigitalTwin(twinID string, limit int) ([]*models.TwinProcessingRun, error)
+	DeleteTwinProcessingRun(id string) error
+
+	// Alert event operations
+	SaveAlertEvent(event *models.AlertEvent) error
+	GetAlertEvent(id string) (*models.AlertEvent, error)
+	ListAlertEventsByDigitalTwin(twinID string, limit int) ([]*models.AlertEvent, error)
+	DeleteAlertEvent(id string) error
+
 	// Digital Twin Entity operations
 	SaveEntity(entity *models.Entity) error
 	GetEntity(id string) (*models.Entity, error)

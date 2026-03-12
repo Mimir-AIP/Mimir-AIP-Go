@@ -52,6 +52,87 @@ func init() {
 		})),
 	})
 
+	// ── Runs / Alerts / Automations ─────────────────────────────────────────────
+	doc.Register("GET", "/api/digital-twins/{id}/runs", doc.RouteDoc{
+		Summary:     "List twin processing runs",
+		Description: "Returns the most recent explicit twin processing runs for this digital twin.",
+		Tags:        []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.QParam("limit", "Optional maximum number of runs to return", false),
+		},
+		Responses: doc.R(doc.OK(doc.ArrOf("TwinProcessingRun")), doc.NotFound()),
+	})
+	doc.Register("POST", "/api/digital-twins/{id}/runs", doc.RouteDoc{
+		Summary:     "Queue twin processing run",
+		Description: "Queues one explicit twin processing run using the current twin storage scope and automation stages.",
+		Tags:        []string{"Digital Twins"},
+		Params:      []doc.Param{doc.PParam("id", "Digital twin ID")},
+		Responses:   doc.Accepted(doc.Ref("TwinProcessingRun")),
+	})
+	doc.Register("GET", "/api/digital-twins/{id}/runs/{runId}", doc.RouteDoc{
+		Summary: "Get twin processing run",
+		Tags:    []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.PParam("runId", "Twin processing run ID"),
+		},
+		Responses: doc.R(doc.OK(doc.Ref("TwinProcessingRun")), doc.NotFound()),
+	})
+	doc.Register("GET", "/api/digital-twins/{id}/alerts", doc.RouteDoc{
+		Summary:     "List alert events",
+		Description: "Returns append-only alert events emitted during twin processing.",
+		Tags:        []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.QParam("limit", "Optional maximum number of alerts to return", false),
+		},
+		Responses: doc.R(doc.OK(doc.ArrOf("AlertEvent")), doc.NotFound()),
+	})
+	doc.Register("GET", "/api/digital-twins/{id}/automations", doc.RouteDoc{
+		Summary:     "List twin automations",
+		Description: "Lists explicit automations scoped to this digital twin.",
+		Tags:        []string{"Digital Twins"},
+		Params:      []doc.Param{doc.PParam("id", "Digital twin ID")},
+		Responses:   doc.R(doc.OK(doc.ArrOf("Automation")), doc.NotFound()),
+	})
+	doc.Register("POST", "/api/digital-twins/{id}/automations", doc.RouteDoc{
+		Summary:     "Create twin automation",
+		Description: "Creates an explicit automation scoped to this digital twin. Target metadata is derived from the route.",
+		Tags:        []string{"Digital Twins"},
+		Params:      []doc.Param{doc.PParam("id", "Digital twin ID")},
+		RequestBody: doc.JsonBody(doc.Ref("AutomationCreateRequest")),
+		Responses:   doc.R(doc.Created(doc.Ref("Automation")), doc.BadRequest()),
+	})
+	doc.Register("GET", "/api/digital-twins/{id}/automations/{automationId}", doc.RouteDoc{
+		Summary: "Get twin automation",
+		Tags:    []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.PParam("automationId", "Automation ID"),
+		},
+		Responses: doc.R(doc.OK(doc.Ref("Automation")), doc.NotFound()),
+	})
+	doc.Register("PUT", "/api/digital-twins/{id}/automations/{automationId}", doc.RouteDoc{
+		Summary: "Update twin automation",
+		Tags:    []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.PParam("automationId", "Automation ID"),
+		},
+		RequestBody: doc.JsonBody(doc.Ref("AutomationUpdateRequest")),
+		Responses:   doc.R(doc.OK(doc.Ref("Automation")), doc.BadRequest(), doc.NotFound()),
+	})
+	doc.Register("DELETE", "/api/digital-twins/{id}/automations/{automationId}", doc.RouteDoc{
+		Summary: "Delete twin automation",
+		Tags:    []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.PParam("automationId", "Automation ID"),
+		},
+		Responses: doc.R(doc.NoContent(), doc.NotFound()),
+	})
+
 	// ── Entities ───────────────────────────────────────────────────────────────
 	doc.Register("GET", "/api/digital-twins/{id}/entities", doc.RouteDoc{
 		Summary:   "List entities",

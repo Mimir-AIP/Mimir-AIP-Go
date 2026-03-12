@@ -6,6 +6,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/mimir-aip/mimir-aip-go/pkg/analysis"
+	automationpkg "github.com/mimir-aip/mimir-aip-go/pkg/automation"
 	"github.com/mimir-aip/mimir-aip-go/pkg/connectors"
 	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/extraction"
@@ -23,7 +24,9 @@ type MimirMCPServer struct {
 	projectSvc    *project.Service
 	pipelineSvc   *pipeline.Service
 	connectorSvc  *connectors.Service
+	automationSvc *automationpkg.Service
 	analysisSvc   *analysis.Service
+	twinProcessor *digitaltwin.Processor
 	mlSvc         *mlmodel.Service
 	dtSvc         *digitaltwin.Service
 	storageSvc    *storage.Service
@@ -38,7 +41,9 @@ func New(
 	projectSvc *project.Service,
 	pipelineSvc *pipeline.Service,
 	connectorSvc *connectors.Service,
+	automationSvc *automationpkg.Service,
 	analysisSvc *analysis.Service,
+	twinProcessor *digitaltwin.Processor,
 	mlSvc *mlmodel.Service,
 	dtSvc *digitaltwin.Service,
 	storageSvc *storage.Service,
@@ -51,7 +56,9 @@ func New(
 		projectSvc:    projectSvc,
 		pipelineSvc:   pipelineSvc,
 		connectorSvc:  connectorSvc,
+		automationSvc: automationSvc,
 		analysisSvc:   analysisSvc,
+		twinProcessor: twinProcessor,
 		mlSvc:         mlSvc,
 		dtSvc:         dtSvc,
 		storageSvc:    storageSvc,

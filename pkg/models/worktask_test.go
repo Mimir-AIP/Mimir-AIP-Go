@@ -46,7 +46,7 @@ func TestWorkTaskTypes(t *testing.T) {
 		WorkTaskTypePipelineExecution,
 		WorkTaskTypeMLTraining,
 		WorkTaskTypeMLInference,
-		WorkTaskTypeDigitalTwinUpdate,
+		WorkTaskTypeDigitalTwinProcessing,
 	}
 
 	for _, taskType := range taskTypes {

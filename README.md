@@ -76,7 +76,7 @@ Mimir AIP consists of two binaries and an optional web frontend:
 | **Insight** | A persisted autonomous finding, such as an anomaly spike, trend break, or co-occurrence surge, generated from project storage data. |
 | **Review Item** | A persisted reviewable finding — currently used for cross-source link decisions — whose accepted or rejected outcome improves future scoring. |
 | **ML Model** | A model definition (type: decision tree, random forest, regression, or neural network) linked to an ontology. Training and inference are executed by workers. |
-| **Digital Twin** | A persisted ontology-backed entity graph initialised from an ontology and refreshed from storage on demand or via queued sync work. Supports constrained SPARQL-style querying, predictions, and in-memory what-if scenarios. |
+| **Digital Twin** | A persisted ontology-backed operational workspace initialised from an ontology and fed by explicit project storage sources. Supports entity understanding, insights, alert events, explicit automations, constrained SPARQL-style querying, predictions, and in-memory what-if scenarios. |
 | **MCP** | [Model Context Protocol](https://modelcontextprotocol.io) — an open standard for exposing tools to AI agents. Mimir exposes MCP tools across the platform's core resources so agent workflows can configure and operate projects directly. |
 
 ---
@@ -87,8 +87,8 @@ Mimir AIP consists of two binaries and an optional web frontend:
 2. Define a **Storage Config** for where normalised CIR data should land.
 3. Create a **Pipeline** manually, or materialise one from a bundled **Connector Template**; add a **Schedule** if the source should run incrementally.
 4. Generate or refine an **Ontology** from stored data and cross-source extraction results.
-5. Train **ML Models** and initialise or sync **Digital Twins** against the ontology and storage-backed project data.
-6. Use the **Insights & Review** surfaces to monitor ingestion behaviour, inspect autonomous findings, and calibrate cross-source link confidence over time.
+5. Train **ML Models** and use the **Digital Twin** workspace to process ontology-grounded project state as new ingestion data arrives.
+6. Use the twin's **Insights**, **Alert Events**, and **Automations** to understand anomalies, trigger export actions, and drive resilient responses.
 
 ---
 
@@ -219,7 +219,7 @@ helm install mimir-aip ./helm/mimir-aip \
 
 ## MCP Integration
 
-Mimir AIP exposes 64 MCP tools over a Server-Sent Events (SSE) transport at `/mcp/sse`. Any MCP-compatible client can connect.
+Mimir AIP exposes 68 MCP tools over a Server-Sent Events (SSE) transport at `/mcp/sse`. Any MCP-compatible client can connect.
 
 ### Claude Code
 
@@ -249,7 +249,7 @@ Then start a Claude Code session — the full Mimir toolset will be available au
 | Analysis | 4 | Run resolver analysis, inspect metrics, list reviews, decide findings |
 | Insights | 2 | List and generate autonomous insights |
 | ML Models | 8 | CRUD, train, infer, recommend, monitor |
-| Digital Twins | 7 | CRUD, sync, SPARQL query |
+| Digital Twins | 11 | CRUD, process runs, alerts, automations, query |
 | Ontologies | 8 | CRUD, generate from text, extract from storage, inspect ontology text |
 | Storage | 10 | Config CRUD, store/retrieve/update/delete data, health and ingestion health |
 | Tasks | 3 | List, get, cancel work tasks |

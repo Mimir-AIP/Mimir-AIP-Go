@@ -39,8 +39,8 @@ type RouteDoc struct {
 	Description string
 	Tags        []string
 	Params      []Param
-	RequestBody M              // nil → no request body
-	Responses   map[string]M   // HTTP status string → response object
+	RequestBody M            // nil → no request body
+	Responses   map[string]M // HTTP status string → response object
 }
 
 // Route is a fully described API endpoint stored in the registry.
@@ -119,7 +119,7 @@ func GenerateSpec() (string, error) {
 			M{"name": "Ontologies", "description": "OWL/Turtle vocabulary management"},
 			M{"name": "Extraction", "description": "Entity extraction and ontology generation from storage data"},
 			M{"name": "ML Models", "description": "ML model lifecycle: create, train, infer, monitor"},
-			M{"name": "Digital Twins", "description": "Persisted ontology-backed entity graphs with queued sync, constrained SPARQL querying, and in-memory scenario analysis"},
+			M{"name": "Digital Twins", "description": "Ontology-backed operational workspaces with explicit processing runs, alert events, automations, query, and scenario analysis"},
 			M{"name": "Tasks", "description": "Work task queue (internal / worker-facing endpoints)"},
 		},
 		"paths":      paths,

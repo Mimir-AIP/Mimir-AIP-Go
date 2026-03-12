@@ -15,6 +15,20 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/ws"
 )
 
+type taskBroadcastListener struct {
+	hub *ws.Hub
+}
+
+func (l taskBroadcastListener) OnWorkTaskStatusChanged(task *models.WorkTask) {
+	data, err := json.Marshal(map[string]interface{}{
+		"event": "task_update",
+		"task":  task,
+	})
+	if err == nil {
+		l.hub.Broadcast(data)
+	}
+}
+
 // Server provides HTTP API endpoints
 type Server struct {
 	queue           *queue.Queue
@@ -30,16 +44,8 @@ func NewServer(q *queue.Queue, port string, workerAuthToken string) *Server {
 	hub := ws.NewHub()
 	go hub.Run()
 
-	// Wire queue status-change events to the WebSocket hub
-	q.OnStatusChange = func(task *models.WorkTask) {
-		data, err := json.Marshal(map[string]interface{}{
-			"event": "task_update",
-			"task":  task,
-		})
-		if err == nil {
-			hub.Broadcast(data)
-		}
-	}
+	// Wire queue status-change events to the WebSocket hub.
+	q.RegisterListener(taskBroadcastListener{hub: hub})
 
 	s := &Server{
 		queue:           q,
@@ -81,9 +87,14 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/openapi.yaml", s.handleOpenAPISpec)
 }
 
-// RegisterHandler adds a custom handler to the server
+// RegisterHandler adds a custom public handler to the server.
 func (s *Server) RegisterHandler(path string, handler http.HandlerFunc) {
 	s.mux.HandleFunc(path, handler)
+}
+
+// RegisterWorkerHandler adds a worker-auth-protected handler to the server.
+func (s *Server) RegisterWorkerHandler(path string, handler http.HandlerFunc) {
+	s.mux.HandleFunc(path, s.workerAuthMiddleware(handler))
 }
 
 // Start starts the HTTP server
@@ -166,7 +177,7 @@ func (s *Server) handleWorkTaskSubmission(w http.ResponseWriter, r *http.Request
 		switch task.Type {
 		case models.WorkTaskTypeMLTraining:
 			task.MaxRetries = 2
-		case models.WorkTaskTypePipelineExecution, models.WorkTaskTypeMLInference, models.WorkTaskTypeDigitalTwinUpdate:
+		case models.WorkTaskTypePipelineExecution, models.WorkTaskTypeMLInference, models.WorkTaskTypeDigitalTwinProcessing:
 			task.MaxRetries = 3
 		default:
 			task.MaxRetries = 3
@@ -206,10 +217,10 @@ func (s *Server) handleWorkTaskList(w http.ResponseWriter, r *http.Request) {
 
 // MetricsResponse is the JSON shape returned by GET /api/metrics.
 type MetricsResponse struct {
-	Queue         QueueMetrics       `json:"queue"`
-	TasksByStatus map[string]int     `json:"tasks_by_status"`
-	TasksByType   map[string]int     `json:"tasks_by_type"`
-	Timestamp     time.Time          `json:"timestamp"`
+	Queue         QueueMetrics   `json:"queue"`
+	TasksByStatus map[string]int `json:"tasks_by_status"`
+	TasksByType   map[string]int `json:"tasks_by_type"`
+	Timestamp     time.Time      `json:"timestamp"`
 }
 
 // QueueMetrics contains queue depth information.
@@ -305,7 +316,7 @@ func (s *Server) handleWorkTaskUpdate(w http.ResponseWriter, r *http.Request, ta
 		}
 	}
 
-	if err := s.queue.UpdateWorkTaskStatus(taskID, result.Status, result.ErrorMessage); err != nil {
+	if err := s.queue.ApplyWorkTaskResult(taskID, &result); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to update work task status: %v", err), http.StatusInternalServerError)
 		return
 	}

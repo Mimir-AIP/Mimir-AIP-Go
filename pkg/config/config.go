@@ -80,10 +80,10 @@ func getEnv(key, defaultValue string) string {
 // '{"ml_training":5,"pipeline_execution":20}'. Falls back to safe defaults.
 func getEnvAsConcurrencyLimits(key string) map[string]int {
 	defaults := map[string]int{
-		"ml_training":        5,
-		"ml_inference":       10,
-		"pipeline_execution": 20,
-		"digital_twin_update": 10,
+		"ml_training":             5,
+		"ml_inference":            10,
+		"pipeline_execution":      20,
+		"digital_twin_processing": 10,
 	}
 	raw := os.Getenv(key)
 	if raw == "" {

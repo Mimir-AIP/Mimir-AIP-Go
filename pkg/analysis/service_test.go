@@ -239,3 +239,50 @@ func TestDecideReviewItemAppendsDecisionHistory(t *testing.T) {
 		t.Fatalf("expected reviewer and rationale to be persisted")
 	}
 }
+
+func TestGenerateInsightsForStorageIDsUsesOnlyScopedSources(t *testing.T) {
+	service, storageSvc, cleanup := setupAnalysisService(t)
+	defer cleanup()
+
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	scopedSample := make([]*models.CIR, 0)
+	for dayOffset := 4; dayOffset >= 1; dayOffset-- {
+		ts := now.AddDate(0, 0, -dayOffset)
+		scopedSample = append(scopedSample, &models.CIR{Version: models.CIRVersion, Source: models.CIRSource{Type: models.SourceTypeDatabase, URI: "db://scoped", Timestamp: ts, Format: models.DataFormatJSON}, Data: map[string]any{"event_id": dayOffset, "severity": "high", "region": "north"}})
+	}
+	for i := 0; i < 6; i++ {
+		scopedSample = append(scopedSample, &models.CIR{Version: models.CIRVersion, Source: models.CIRSource{Type: models.SourceTypeDatabase, URI: "db://scoped", Timestamp: now, Format: models.DataFormatJSON}, Data: map[string]any{"event_id": i + 10, "severity": "high", "signal": "spike"}})
+	}
+	nonScopedSample := []*models.CIR{{Version: models.CIRVersion, Source: models.CIRSource{Type: models.SourceTypeDatabase, URI: "db://other", Timestamp: now, Format: models.DataFormatJSON}, Data: map[string]any{"event_id": 999, "severity": "low"}}}
+
+	storageSvc.RegisterPlugin("scoped-sample", &testStoragePlugin{sample: scopedSample})
+	storageSvc.RegisterPlugin("other-sample", &testStoragePlugin{sample: nonScopedSample})
+	scopedCfg, err := storageSvc.CreateStorageConfig("project-insights", "scoped-sample", map[string]any{"connection_string": "mock://scoped"})
+	if err != nil {
+		t.Fatalf("failed to create scoped storage config: %v", err)
+	}
+	otherCfg, err := storageSvc.CreateStorageConfig("project-insights", "other-sample", map[string]any{"connection_string": "mock://other"})
+	if err != nil {
+		t.Fatalf("failed to create secondary storage config: %v", err)
+	}
+
+	run, insights, err := service.GenerateInsightsForStorageIDs("project-insights", []string{scopedCfg.ID})
+	if err != nil {
+		t.Fatalf("GenerateInsightsForStorageIDs returned error: %v", err)
+	}
+	if len(insights) == 0 {
+		t.Fatal("expected scoped insight generation to produce insights")
+	}
+	if len(run.SourceIDs) != 1 || run.SourceIDs[0] != scopedCfg.ID {
+		t.Fatalf("expected run to include only scoped storage id %s, got %#v", scopedCfg.ID, run.SourceIDs)
+	}
+	persisted, err := service.ListInsights("project-insights", "", 0)
+	if err != nil {
+		t.Fatalf("failed to list persisted insights: %v", err)
+	}
+	for _, insight := range persisted {
+		if insight.Evidence["storage_id"] == otherCfg.ID {
+			t.Fatalf("expected unscoped storage %s to be excluded, found in insight %#v", otherCfg.ID, insight)
+		}
+	}
+}

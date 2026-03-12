@@ -160,7 +160,7 @@ func (p *Processor) ExecuteRun(runID string) (*models.TwinProcessingRun, error) 
 	markStageCompleted(run, "sync", time.Now().UTC(), nil)
 
 	markStageRunning(run, "insights", time.Now().UTC())
-	insightRun, insights, err := p.analysisService.GenerateProjectInsights(run.ProjectID)
+	insightRun, insights, err := p.analysisService.GenerateInsightsForStorageIDs(run.ProjectID, p.twinService.storageIDsForTwin(run.DigitalTwinID))
 	if err != nil {
 		return p.failRun(run, "insights", err)
 	}

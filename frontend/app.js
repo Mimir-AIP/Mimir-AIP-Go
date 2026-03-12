@@ -2163,7 +2163,7 @@ function DigitalTwinsPage() {
 						<p style={{ color: 'var(--text-secondary)', margin: 0 }}>{selectedTwin.description || 'Ontology-grounded operational workspace for this project.'}</p>
 						<div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
 							<Button label="Process Twin" onClick={() => handleProcessTwin(selectedTwin.id)} variant="secondary" />
-							<Button label="Sync Sources" onClick={() => handleSync(selectedTwin.id)} variant="secondary" />
+							<Button label="Queue Source Sync" onClick={() => handleSync(selectedTwin.id)} variant="secondary" />
 							<Button label="+ New Automation" onClick={() => setShowAutomationModal(true)} variant="secondary" />
 							<Button label="+ New Action" onClick={() => setShowActionModal(true)} variant="secondary" />
 							<Button label="Query Twin" onClick={() => setShowQueryModal(true)} variant="secondary" />
@@ -2187,6 +2187,7 @@ function DigitalTwinsPage() {
 								<div><strong>Ontology:</strong> {selectedTwin.ontology_id}</div>
 								<div><strong>Last Sync:</strong> {selectedTwin.last_sync_at ? new Date(selectedTwin.last_sync_at).toLocaleString() : 'Never'}</div>
 								<div><strong>Configured Storage Sources:</strong> {selectedTwin.config?.storage_ids?.length || 0}</div>
+								<div style={{ marginTop: '10px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Process Twin runs the full workflow: sync scoped sources, generate insights, evaluate alert events, and trigger configured export actions. Queue Source Sync refreshes source-backed entities only.</div>
 							</div>
 							<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '10px' }}>
 								<h3 style={{ marginTop: 0 }}>Latest Processing Run</h3>
@@ -2235,7 +2236,7 @@ function DigitalTwinsPage() {
 						<Table columns={twinColumns} data={twins} actions={(row) => <>
 							<Button label="View" onClick={() => setSelectedTwin(row)} variant="secondary" />
 							<Button label="Process" onClick={() => handleProcessTwin(row.id)} variant="secondary" />
-							<Button label="Sync" onClick={() => handleSync(row.id)} variant="secondary" />
+							<Button label="Sync Sources" onClick={() => handleSync(row.id)} variant="secondary" />
 							<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
 						</>} />
 					)}

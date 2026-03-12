@@ -1,7 +1,6 @@
 package analysis
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -194,12 +193,24 @@ func (s *Service) ResolverMetrics(projectID string) (map[string]any, error) {
 }
 
 func (s *Service) GenerateProjectInsights(projectID string) (*models.AnalysisRun, []*models.Insight, error) {
-	if projectID == "" {
-		return nil, nil, fmt.Errorf("project_id is required")
-	}
 	configs, err := s.storageService.GetProjectStorageConfigs(projectID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load project storage configs: %w", err)
+	}
+	storageIDs := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		storageIDs = append(storageIDs, cfg.ID)
+	}
+	return s.GenerateInsightsForStorageIDs(projectID, storageIDs)
+}
+
+func (s *Service) GenerateInsightsForStorageIDs(projectID string, storageIDs []string) (*models.AnalysisRun, []*models.Insight, error) {
+	if projectID == "" {
+		return nil, nil, fmt.Errorf("project_id is required")
+	}
+	configs, err := s.resolveStorageConfigs(projectID, storageIDs)
+	if err != nil {
+		return nil, nil, err
 	}
 	now := time.Now().UTC()
 	run := &models.AnalysisRun{
@@ -229,6 +240,32 @@ func (s *Service) GenerateProjectInsights(projectID string) (*models.AnalysisRun
 	return run, insights, nil
 }
 
+func (s *Service) resolveStorageConfigs(projectID string, storageIDs []string) ([]*models.StorageConfig, error) {
+	if len(storageIDs) == 0 {
+		return []*models.StorageConfig{}, nil
+	}
+	configs := make([]*models.StorageConfig, 0, len(storageIDs))
+	seen := make(map[string]struct{}, len(storageIDs))
+	for _, storageID := range storageIDs {
+		if storageID == "" {
+			continue
+		}
+		if _, ok := seen[storageID]; ok {
+			continue
+		}
+		seen[storageID] = struct{}{}
+		cfg, err := s.storageService.GetStorageConfig(storageID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load storage config %s: %w", storageID, err)
+		}
+		if cfg.ProjectID != projectID {
+			return nil, fmt.Errorf("storage config %s belongs to project %s, not %s", storageID, cfg.ProjectID, projectID)
+		}
+		configs = append(configs, cfg)
+	}
+	return configs, nil
+}
+
 func (s *Service) ListInsights(projectID, severity string, minConfidence float64) ([]*models.Insight, error) {
 	insights, err := s.store.ListInsightsByProject(projectID)
 	if err != nil {
@@ -245,33 +282,6 @@ func (s *Service) ListInsights(projectID, severity string, minConfidence float64
 		filtered = append(filtered, insight)
 	}
 	return filtered, nil
-}
-
-func (s *Service) StartInsightLoop(ctx context.Context, interval time.Duration) {
-	if interval <= 0 {
-		interval = 24 * time.Hour
-	}
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				projects, err := s.store.ListProjects()
-				if err != nil {
-					continue
-				}
-				for _, project := range projects {
-					if project.Status != models.ProjectStatusActive {
-						continue
-					}
-					_, _, _ = s.GenerateProjectInsights(project.ID)
-				}
-			}
-		}
-	}()
 }
 
 func (s *Service) adjustedLinkPolicy(projectID string) (extraction.LinkPolicy, map[string]any, error) {
@@ -495,7 +505,6 @@ func reviewFindingKey(link models.CrossSourceLink) string {
 	sort.Strings(ordered)
 	return "cross_source_link::" + strings.Join(ordered, "::")
 }
-
 
 func meanStd(values []float64) (float64, float64) {
 	if len(values) == 0 {

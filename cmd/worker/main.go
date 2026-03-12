@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -18,6 +19,24 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 	"github.com/mimir-aip/mimir-aip-go/pkg/plugins"
 )
+
+func getWorkerAuthToken() string {
+	return os.Getenv("WORKER_AUTH_TOKEN")
+}
+
+func doOrchestratorRequest(method, url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token := getWorkerAuthToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return http.DefaultClient.Do(req)
+}
 
 func getOrchestratorURL() string {
 	if url := os.Getenv("ORCHESTRATOR_URL"); url != "" {
@@ -56,13 +75,13 @@ func main() {
 	if err != nil {
 		log.Printf("Work task execution failed: %v", err)
 		// Report failure
-		reportWorkTaskCompletion(orchestratorURL, taskID, models.WorkTaskStatusFailed, "", err.Error())
+		reportWorkTaskCompletion(orchestratorURL, taskID, models.WorkTaskStatusFailed, "", err.Error(), nil)
 		os.Exit(1)
 	}
 
 	// Report success
 	log.Printf("Work task %s completed successfully", taskID)
-	reportWorkTaskCompletion(orchestratorURL, taskID, models.WorkTaskStatusCompleted, result.OutputLocation, "")
+	reportWorkTaskCompletion(orchestratorURL, taskID, models.WorkTaskStatusCompleted, result.OutputLocation, "", result.Metadata)
 }
 
 // executeWorkTask executes the work task based on its type
@@ -77,7 +96,7 @@ func executeWorkTask(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	case models.WorkTaskTypeMLInference:
 		return executeMLInference(task)
 	case models.WorkTaskTypeDigitalTwinProcessing:
-		return executeDigitalTwinUpdate(task)
+		return executeDigitalTwinProcessing(task)
 	default:
 		return nil, fmt.Errorf("unknown work task type: %s", task.Type)
 	}
@@ -1015,9 +1034,9 @@ func workerRunInference(modelType string, parameters map[string]any, features []
 	}
 }
 
-// executeDigitalTwinUpdate executes one explicit twin-processing run using only
+// executeDigitalTwinProcessing executes one explicit twin-processing run using only
 // task parameters persisted by the orchestrator. Workers remain stateless.
-func executeDigitalTwinUpdate(task *models.WorkTask) (*models.WorkTaskResult, error) {
+func executeDigitalTwinProcessing(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Executing digital twin processing for project: %s", task.ProjectID)
 
 	orchestratorURL := getOrchestratorURL()
@@ -1031,7 +1050,7 @@ func executeDigitalTwinUpdate(task *models.WorkTask) (*models.WorkTaskResult, er
 	}
 
 	executeURL := fmt.Sprintf("%s/api/internal/twin-runs/%s/execute", orchestratorURL, runID)
-	resp, err := http.Post(executeURL, "application/json", nil)
+	resp, err := doOrchestratorRequest(http.MethodPost, executeURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute twin processing run: %w", err)
 	}
@@ -1065,7 +1084,7 @@ func executeDigitalTwinUpdate(task *models.WorkTask) (*models.WorkTaskResult, er
 // getWorkTaskFromAPI fetches a work task from the orchestrator API
 func getWorkTaskFromAPI(orchestratorURL, taskID string) (*models.WorkTask, error) {
 	url := fmt.Sprintf("%s/api/worktasks/%s", orchestratorURL, taskID)
-	resp, err := http.Get(url)
+	resp, err := doOrchestratorRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch work task: %w", err)
 	}
@@ -1097,7 +1116,7 @@ func updateWorkTaskStatus(orchestratorURL, taskID string, status models.WorkTask
 	}
 
 	url := fmt.Sprintf("%s/api/worktasks/%s", orchestratorURL, taskID)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(resultJSON))
+	resp, err := doOrchestratorRequest(http.MethodPost, url, bytes.NewBuffer(resultJSON))
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
 	}
@@ -1110,12 +1129,13 @@ func updateWorkTaskStatus(orchestratorURL, taskID string, status models.WorkTask
 	return nil
 }
 
-// reportWorkTaskCompletion reports work task completion to the orchestrator
-func reportWorkTaskCompletion(orchestratorURL, taskID string, status models.WorkTaskStatus, outputLocation, errorMsg string) {
+// reportWorkTaskCompletion reports work task completion to the orchestrator.
+func reportWorkTaskCompletion(orchestratorURL, taskID string, status models.WorkTaskStatus, outputLocation, errorMsg string, metadata map[string]any) {
 	result := models.WorkTaskResult{
 		WorkTaskID:     taskID,
 		Status:         status,
 		OutputLocation: outputLocation,
+		Metadata:       metadata,
 		ErrorMessage:   errorMsg,
 	}
 
@@ -1126,7 +1146,7 @@ func reportWorkTaskCompletion(orchestratorURL, taskID string, status models.Work
 	}
 
 	url := fmt.Sprintf("%s/api/worktasks/%s", orchestratorURL, taskID)
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(resultJSON))
+	resp, err := doOrchestratorRequest(http.MethodPost, url, bytes.NewBuffer(resultJSON))
 	if err != nil {
 		log.Printf("Failed to report work task completion: %v", err)
 		return

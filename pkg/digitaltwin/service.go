@@ -147,7 +147,15 @@ func (s *Service) ensureDefaultProcessingAutomation(twin *models.DigitalTwin) er
 	return nil
 }
 
-// GetDigitalTwin retrieves a digital twin by ID
+func (s *Service) storageIDsForTwin(twinID string) []string {
+	twin, err := s.store.GetDigitalTwin(twinID)
+	if err != nil || twin == nil || twin.Config == nil {
+		return nil
+	}
+	return append([]string(nil), twin.Config.StorageIDs...)
+}
+
+// GetDigitalTwin retrieves a digital twin by ID.
 func (s *Service) GetDigitalTwin(id string) (*models.DigitalTwin, error) {
 	twin, err := s.store.GetDigitalTwin(id)
 	if err != nil {

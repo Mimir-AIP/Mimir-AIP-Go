@@ -11,16 +11,40 @@
 </head>
 <body>
 	<div id="root"></div>
-	
-	<!-- React and Babel for in-browser JSX transformation -->
+
 	<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 	<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 	<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-	
-	<!-- Chart.js for graphs -->
 	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-	
-	<!-- Main application -->
+
+	<script type="text/babel" src="lib/api.js"></script>
+	<script type="text/babel" src="lib/helpers.js"></script>
+	<script type="text/babel" src="context/ProjectContext.js"></script>
+	<script type="text/babel" src="hooks/useProjectContext.js"></script>
+	<script type="text/babel" src="hooks/useTaskWebSocket.js"></script>
+
+	<script type="text/babel" src="components/primitives/Tabs.js"></script>
+	<script type="text/babel" src="components/primitives/FormField.js"></script>
+	<script type="text/babel" src="components/primitives/Table.js"></script>
+	<script type="text/babel" src="components/primitives/Button.js"></script>
+	<script type="text/babel" src="components/primitives/Modal.js"></script>
+	<script type="text/babel" src="components/primitives/Graph.js"></script>
+
+	<script type="text/babel" src="components/pipelines/CronBuilder.js"></script>
+	<script type="text/babel" src="components/pipelines/StepParamFields.js"></script>
+	<script type="text/babel" src="components/pipelines/StepBuilder.js"></script>
+	<script type="text/babel" src="components/connectors/ConnectorFieldInput.js"></script>
+	<script type="text/babel" src="components/connectors/GuidedOnboardingPanel.js"></script>
+
+	<script type="text/babel" src="pages/ProjectsPage.js"></script>
+	<script type="text/babel" src="pages/PipelinesPage.js"></script>
+	<script type="text/babel" src="pages/OntologiesPage.js"></script>
+	<script type="text/babel" src="pages/MLModelsPage.js"></script>
+	<script type="text/babel" src="pages/DigitalTwinsPage.js"></script>
+	<script type="text/babel" src="pages/StoragePage.js"></script>
+	<script type="text/babel" src="pages/InsightsReviewPage.js"></script>
+	<script type="text/babel" src="pages/PluginsPage.js"></script>
+	<script type="text/babel" src="pages/WorkTasksPage.js"></script>
 	<script type="text/babel" src="app.js"></script>
 </body>
 </html>

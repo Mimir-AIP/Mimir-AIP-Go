@@ -42,6 +42,10 @@ func (m *ActionManager) ListEnabledActions(twinID string) ([]*models.Action, err
 // CreateAction creates a new conditional action
 func (m *ActionManager) CreateAction(twin *models.DigitalTwin, req *models.ActionCreateRequest) (*models.Action, error) {
 	now := time.Now().UTC()
+	trigger := *req.Trigger
+	if trigger.ApprovalMode == "" {
+		trigger.ApprovalMode = models.ActionApprovalModeAutomatic
+	}
 	action := &models.Action{
 		ID:            uuid.New().String(),
 		DigitalTwinID: twin.ID,
@@ -49,7 +53,7 @@ func (m *ActionManager) CreateAction(twin *models.DigitalTwin, req *models.Actio
 		Description:   req.Description,
 		Enabled:       req.Enabled,
 		Condition:     req.Condition,
-		Trigger:       req.Trigger,
+		Trigger:       &trigger,
 		TriggerCount:  0,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -196,18 +200,69 @@ func (m *ActionManager) compareFloats(value float64, operator string, threshold 
 	}
 }
 
-// TriggerAction triggers an action by submitting an export pipeline execution task.
+// TriggerAction triggers an automatic action by submitting an export pipeline execution task.
 func (m *ActionManager) TriggerAction(action *models.Action, extraParameters map[string]any) (*models.WorkTask, error) {
 	if action == nil || action.Trigger == nil {
 		return nil, fmt.Errorf("action trigger is required")
+	}
+	if action.Trigger.ApprovalMode == models.ActionApprovalModeManual {
+		return nil, fmt.Errorf("action %s requires manual approval", action.ID)
 	}
 	twin, err := m.store.GetDigitalTwin(action.DigitalTwinID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get digital twin for action %s: %w", action.ID, err)
 	}
-	pipeline, err := m.store.GetPipeline(action.Trigger.PipelineID)
+	workTask, err := m.enqueuePipelineExecution(twin, action.Trigger.PipelineID, action.Trigger.Parameters, extraParameters)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get action pipeline %s: %w", action.Trigger.PipelineID, err)
+		return nil, err
+	}
+	now := time.Now().UTC()
+	if err := m.markActionTriggered(action.ID, &now); err != nil {
+		return nil, err
+	}
+	return workTask, nil
+}
+
+// TriggerApprovedAlertEvent executes a previously approved pending alert export.
+func (m *ActionManager) TriggerApprovedAlertEvent(alert *models.AlertEvent) (*models.WorkTask, error) {
+	if alert == nil {
+		return nil, fmt.Errorf("alert event is required")
+	}
+	if alert.RequestedExportPipelineID == "" {
+		return nil, fmt.Errorf("alert %s has no requested export pipeline", alert.ID)
+	}
+	twin, err := m.store.GetDigitalTwin(alert.DigitalTwinID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get digital twin for alert %s: %w", alert.ID, err)
+	}
+	workTask, err := m.enqueuePipelineExecution(twin, alert.RequestedExportPipelineID, alert.RequestedTriggerParams, map[string]any{
+		"alert_id":          alert.ID,
+		"processing_run_id": alert.ProcessingRunID,
+		"digital_twin_id":   alert.DigitalTwinID,
+		"approval_status":   string(alert.ApprovalStatus),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if alert.ActionID != "" {
+		now := time.Now().UTC()
+		if err := m.markActionTriggered(alert.ActionID, &now); err != nil {
+			return nil, err
+		}
+	}
+	return workTask, nil
+}
+
+func (m *ActionManager) enqueuePipelineExecution(twin *models.DigitalTwin, pipelineID string, baseParameters map[string]any, extraParameters map[string]any) (*models.WorkTask, error) {
+	if twin == nil {
+		return nil, fmt.Errorf("digital twin is required")
+	}
+	if pipelineID == "" {
+		return nil, fmt.Errorf("pipeline id is required")
+	}
+	pipeline, err := m.store.GetPipeline(pipelineID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get action pipeline %s: %w", pipelineID, err)
 	}
 	if pipeline.ProjectID != twin.ProjectID {
 		return nil, fmt.Errorf("action pipeline %s belongs to project %s, not %s", pipeline.ID, pipeline.ProjectID, twin.ProjectID)
@@ -215,8 +270,8 @@ func (m *ActionManager) TriggerAction(action *models.Action, extraParameters map
 	if pipeline.Type != models.PipelineTypeOutput {
 		return nil, fmt.Errorf("action pipeline %s must be an output pipeline", pipeline.ID)
 	}
-	parameters := make(map[string]any, len(action.Trigger.Parameters)+len(extraParameters))
-	for key, value := range action.Trigger.Parameters {
+	parameters := make(map[string]any, len(baseParameters)+len(extraParameters))
+	for key, value := range baseParameters {
 		parameters[key] = value
 	}
 	for key, value := range extraParameters {
@@ -231,21 +286,31 @@ func (m *ActionManager) TriggerAction(action *models.Action, extraParameters map
 		ProjectID:   twin.ProjectID,
 		TaskSpec: models.TaskSpec{
 			ProjectID:  twin.ProjectID,
-			PipelineID: action.Trigger.PipelineID,
+			PipelineID: pipelineID,
 			Parameters: parameters,
 		},
 	}
 	if err := m.queue.Enqueue(workTask); err != nil {
 		return nil, fmt.Errorf("failed to enqueue pipeline execution: %w", err)
 	}
-	now := time.Now().UTC()
-	action.LastTriggered = &now
-	action.TriggerCount++
-	action.UpdatedAt = now
-	if err := m.store.SaveAction(action); err != nil {
-		return nil, fmt.Errorf("failed to update action: %w", err)
-	}
 	return workTask, nil
+}
+
+func (m *ActionManager) markActionTriggered(actionID string, at *time.Time) error {
+	if actionID == "" || at == nil {
+		return nil
+	}
+	action, err := m.store.GetAction(actionID)
+	if err != nil {
+		return fmt.Errorf("failed to reload action %s: %w", actionID, err)
+	}
+	action.LastTriggered = at
+	action.TriggerCount++
+	action.UpdatedAt = *at
+	if err := m.store.SaveAction(action); err != nil {
+		return fmt.Errorf("failed to update action %s: %w", actionID, err)
+	}
+	return nil
 }
 
 // toFloat64 converts an interface{} to float64

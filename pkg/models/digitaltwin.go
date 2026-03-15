@@ -131,10 +131,19 @@ type ActionCondition struct {
 	EntityType string      `json:"entity_type,omitempty"` // Entity type to monitor
 }
 
-// ActionTrigger defines what happens when condition is met
+// ActionApprovalMode controls whether a matched action executes immediately or waits for a human decision.
+type ActionApprovalMode string
+
+const (
+	ActionApprovalModeAutomatic ActionApprovalMode = "automatic"
+	ActionApprovalModeManual    ActionApprovalMode = "manual"
+)
+
+// ActionTrigger defines what happens when condition is met.
 type ActionTrigger struct {
-	PipelineID string                 `json:"pipeline_id"`          // Pipeline to execute
-	Parameters map[string]interface{} `json:"parameters,omitempty"` // Pipeline parameters
+	PipelineID   string                 `json:"pipeline_id"`
+	Parameters   map[string]interface{} `json:"parameters,omitempty"`    // Pipeline parameters
+	ApprovalMode ActionApprovalMode     `json:"approval_mode,omitempty"` // automatic | manual; defaults to automatic
 }
 
 // QueryResult represents the result of a SPARQL query
@@ -291,6 +300,11 @@ func (r *ActionCreateRequest) Validate() error {
 	}
 	if r.Trigger.PipelineID == "" {
 		return fmt.Errorf("trigger pipeline_id is required")
+	}
+	switch r.Trigger.ApprovalMode {
+	case "", ActionApprovalModeAutomatic, ActionApprovalModeManual:
+	default:
+		return fmt.Errorf("trigger approval_mode must be automatic or manual")
 	}
 	return nil
 }

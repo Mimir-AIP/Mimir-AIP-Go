@@ -76,7 +76,7 @@ Mimir AIP consists of two binaries and an optional web frontend:
 | **Insight** | A persisted autonomous finding, such as an anomaly spike, trend break, or co-occurrence surge, generated from project storage data. |
 | **Review Item** | A persisted reviewable finding — currently used for cross-source link decisions — whose accepted or rejected outcome improves future scoring. |
 | **ML Model** | A model definition (type: decision tree, random forest, regression, or neural network) linked to an ontology. Training and inference are executed by workers. |
-| **Digital Twin** | A persisted ontology-backed operational workspace initialised from an ontology and fed by explicit project storage sources. Supports entity understanding, insights, alert events, explicit automations, constrained SPARQL-style querying, predictions, and in-memory what-if scenarios. |
+| **Digital Twin** | A persisted ontology-backed operational workspace initialised from an ontology and fed by explicit project storage sources. Supports entity understanding, insights, alert events, manual-or-automatic export approvals, explicit automations, constrained SPARQL-style querying, predictions, and in-memory what-if scenarios. |
 | **MCP** | [Model Context Protocol](https://modelcontextprotocol.io) — an open standard for exposing tools to AI agents. Mimir exposes MCP tools across the platform's core resources so agent workflows can configure and operate projects directly. |
 
 ---
@@ -88,7 +88,7 @@ Mimir AIP consists of two binaries and an optional web frontend:
 3. Create a **Pipeline** manually, or materialise one from a bundled **Connector Template**; add a **Schedule** if the source should run incrementally.
 4. Generate or refine an **Ontology** from stored data and cross-source extraction results.
 5. Train **ML Models** and use the **Digital Twin** workspace to process ontology-grounded project state as new ingestion data arrives.
-6. Use the twin's **Insights**, **Alert Events**, and **Automations** to understand anomalies, trigger export actions, and drive resilient responses.
+6. Use the twin's **Insights**, **Alert Events**, and **Automations** to understand anomalies, queue manual export approvals when required, or trigger export actions automatically for resilient responses.
 
 ---
 

@@ -48,6 +48,53 @@ func (p *Processor) ListAlerts(twinID string, limit int) ([]*models.AlertEvent, 
 	return p.store.ListAlertEventsByDigitalTwin(twinID, limit)
 }
 
+func (p *Processor) ReviewAlert(twinID, alertID string, req *models.AlertApprovalRequest) (*models.AlertEvent, error) {
+	if twinID == "" {
+		return nil, fmt.Errorf("digital_twin_id is required")
+	}
+	if alertID == "" {
+		return nil, fmt.Errorf("alert_id is required")
+	}
+	if req == nil {
+		return nil, fmt.Errorf("alert approval request is required")
+	}
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	alert, err := p.store.GetAlertEvent(alertID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get alert event: %w", err)
+	}
+	if alert.DigitalTwinID != twinID {
+		return nil, fmt.Errorf("alert event %s does not belong to digital twin %s", alertID, twinID)
+	}
+	if alert.ApprovalStatus != models.AlertApprovalStatusPending {
+		return nil, fmt.Errorf("alert event %s is not awaiting approval", alertID)
+	}
+	resolvedAt := time.Now().UTC()
+	alert.ApprovalResolvedAt = &resolvedAt
+	alert.ApprovalActor = req.Actor
+	alert.ApprovalNote = req.Note
+	switch req.Decision {
+	case models.AlertApprovalDecisionApprove:
+		workTask, err := p.twinService.actionManager.TriggerApprovedAlertEvent(alert)
+		if err != nil {
+			return nil, err
+		}
+		alert.ApprovalStatus = models.AlertApprovalStatusApproved
+		alert.TriggeredExportPipelineID = alert.RequestedExportPipelineID
+		alert.TriggeredWorkTaskID = workTask.ID
+	case models.AlertApprovalDecisionReject:
+		alert.ApprovalStatus = models.AlertApprovalStatusRejected
+	default:
+		return nil, fmt.Errorf("unsupported approval decision %q", req.Decision)
+	}
+	if err := p.store.SaveAlertEvent(alert); err != nil {
+		return nil, fmt.Errorf("failed to persist reviewed alert event: %w", err)
+	}
+	return alert, nil
+}
+
 func (p *Processor) RequestRun(twinID string, req *models.TwinProcessingRunCreateRequest) (*models.TwinProcessingRun, error) {
 	if twinID == "" {
 		return nil, fmt.Errorf("digital_twin_id is required")
@@ -174,13 +221,15 @@ func (p *Processor) ExecuteRun(runID string) (*models.TwinProcessingRun, error) 
 		return p.failRun(run, "alerts", err)
 	}
 	markStageCompleted(run, "alerts", time.Now().UTC(), map[string]any{
-		"alert_count": alertResult.AlertCount,
+		"alert_count":            alertResult.AlertCount,
+		"pending_approval_count": alertResult.PendingApprovalCount,
 	})
 
 	markStageRunning(run, "actions", time.Now().UTC())
 	markStageCompleted(run, "actions", time.Now().UTC(), map[string]any{
 		"triggered_action_count": alertResult.TriggeredActionCount,
 		"action_error_count":     alertResult.ActionErrorCount,
+		"pending_approval_count": alertResult.PendingApprovalCount,
 	})
 
 	completedAt := time.Now().UTC()
@@ -191,6 +240,7 @@ func (p *Processor) ExecuteRun(runID string) (*models.TwinProcessingRun, error) 
 	run.Metrics["alert_count"] = alertResult.AlertCount
 	run.Metrics["triggered_action_count"] = alertResult.TriggeredActionCount
 	run.Metrics["action_error_count"] = alertResult.ActionErrorCount
+	run.Metrics["pending_approval_count"] = alertResult.PendingApprovalCount
 	if err := p.store.SaveTwinProcessingRun(run); err != nil {
 		return nil, fmt.Errorf("failed to persist completed twin processing run: %w", err)
 	}
@@ -278,6 +328,7 @@ type alertEvaluationResult struct {
 	AlertCount           int
 	TriggeredActionCount int
 	ActionErrorCount     int
+	PendingApprovalCount int
 }
 
 func (p *Processor) evaluateAlertEvents(run *models.TwinProcessingRun) (*alertEvaluationResult, error) {
@@ -295,12 +346,14 @@ func (p *Processor) evaluateAlertEvents(run *models.TwinProcessingRun) (*alertEv
 			if !p.twinService.actionManager.MatchesEntityAction(action, entity) {
 				continue
 			}
+			now := time.Now().UTC()
 			alert := &models.AlertEvent{
 				ID:              uuid.New().String(),
 				ProjectID:       run.ProjectID,
 				DigitalTwinID:   run.DigitalTwinID,
 				ProcessingRunID: run.ID,
 				AutomationID:    run.AutomationID,
+				ActionID:        action.ID,
 				Severity:        alertSeverityForAction(action),
 				Category:        alertCategoryForAction(action),
 				Title:           alertTitleForAction(action, entity),
@@ -311,27 +364,37 @@ func (p *Processor) evaluateAlertEvents(run *models.TwinProcessingRun) (*alertEv
 					"attribute":   action.Condition.Attribute,
 					"operator":    action.Condition.Operator,
 				},
-				EntityRefs: []string{entity.ID},
-				CreatedAt:  time.Now().UTC(),
+				EntityRefs:                []string{entity.ID},
+				RequestedExportPipelineID: action.Trigger.PipelineID,
+				RequestedTriggerParams:    cloneMap(action.Trigger.Parameters),
+				CreatedAt:                 now,
 			}
-			workTask, triggerErr := p.twinService.actionManager.TriggerAction(action, map[string]any{
-				"alert_id":          alert.ID,
-				"processing_run_id": run.ID,
-				"digital_twin_id":   run.DigitalTwinID,
-				"entity_id":         entity.ID,
-				"entity_type":       entity.Type,
-				"alert_title":       alert.Title,
-				"alert_message":     alert.Message,
-				"alert_severity":    alert.Severity,
-				"alert_category":    alert.Category,
-			})
-			if triggerErr != nil {
-				result.ActionErrorCount++
-				alert.Message = fmt.Sprintf("%s Trigger failed: %v", alert.Message, triggerErr)
+			if action.Trigger.ApprovalMode == models.ActionApprovalModeManual {
+				alert.ApprovalStatus = models.AlertApprovalStatusPending
+				alert.ApprovalRequestedAt = &now
+				alert.Message = fmt.Sprintf("%s Awaiting manual approval.", alert.Message)
+				result.PendingApprovalCount++
 			} else {
-				result.TriggeredActionCount++
-				alert.TriggeredExportPipelineID = action.Trigger.PipelineID
-				alert.TriggeredWorkTaskID = workTask.ID
+				alert.ApprovalStatus = models.AlertApprovalStatusNotRequired
+				workTask, triggerErr := p.twinService.actionManager.TriggerAction(action, map[string]any{
+					"alert_id":          alert.ID,
+					"processing_run_id": run.ID,
+					"digital_twin_id":   run.DigitalTwinID,
+					"entity_id":         entity.ID,
+					"entity_type":       entity.Type,
+					"alert_title":       alert.Title,
+					"alert_message":     alert.Message,
+					"alert_severity":    alert.Severity,
+					"alert_category":    alert.Category,
+				})
+				if triggerErr != nil {
+					result.ActionErrorCount++
+					alert.Message = fmt.Sprintf("%s Trigger failed: %v", alert.Message, triggerErr)
+				} else {
+					result.TriggeredActionCount++
+					alert.TriggeredExportPipelineID = action.Trigger.PipelineID
+					alert.TriggeredWorkTaskID = workTask.ID
+				}
 			}
 			if err := p.store.SaveAlertEvent(alert); err != nil {
 				return nil, fmt.Errorf("failed to persist alert event: %w", err)
@@ -340,6 +403,17 @@ func (p *Processor) evaluateAlertEvents(run *models.TwinProcessingRun) (*alertEv
 		}
 	}
 	return result, nil
+}
+
+func cloneMap(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func alertSeverityForAction(action *models.Action) models.AlertSeverity {

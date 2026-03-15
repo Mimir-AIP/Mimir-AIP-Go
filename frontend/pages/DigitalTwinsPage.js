@@ -42,6 +42,7 @@
 			operator: 'gt',
 			threshold: '0',
 			pipeline_id: '',
+			approval_mode: 'automatic',
 			parameters: '{"alert_severity":"high"}',
 		});
 		const [automationForm, setAutomationForm] = React.useState({
@@ -64,6 +65,7 @@
 				operator: 'gt',
 				threshold: '0',
 				pipeline_id: '',
+				approval_mode: 'automatic',
 				parameters: '{"alert_severity":"high"}',
 			});
 		}, []);
@@ -219,6 +221,7 @@
 					},
 					trigger: {
 						pipeline_id: actionForm.pipeline_id,
+						approval_mode: actionForm.approval_mode,
 						parameters,
 					},
 				};
@@ -274,6 +277,19 @@
 			}
 		};
 
+		const handleReviewAlert = async (alertId, decision) => {
+			const note = decision === 'approve' ? 'Approved from Digital Twin workspace' : 'Rejected from Digital Twin workspace';
+			try {
+				await apiCall(`/api/digital-twins/${selectedTwin.id}/alerts/${alertId}/approval`, {
+					method: 'POST',
+					body: JSON.stringify({ decision, actor: 'frontend', note }),
+				});
+				loadTwinDetails(selectedTwin.id);
+			} catch (error) {
+				alert(`Failed to ${decision} alert action: ` + error.message);
+			}
+		};
+
 		const handleQuery = async (e) => {
 			e.preventDefault();
 			try {
@@ -299,6 +315,12 @@
 			{ value: 'eq', label: 'Equals' },
 			{ value: 'ne', label: 'Not Equal' },
 		];
+		const approvalModeOptions = [
+			{ value: 'automatic', label: 'Automatic export' },
+			{ value: 'manual', label: 'Manual approval required' },
+		];
+		const approvalBadgeClass = (status) => status === 'approved' || status === 'not_required' ? 'status-active' : status === 'rejected' ? 'status-failed' : 'status-pending';
+		const pendingApprovals = alerts.filter(alert => alert.approval_status === 'pending').length;
 
 		const latestRun = runs[0];
 		const latestAlert = alerts[0];
@@ -306,7 +328,7 @@
 			{ label: 'Entities', value: entities.length, tone: 'var(--accent)' },
 			{ label: 'Insights', value: insights.length, tone: '#4cc9f0' },
 			{ label: 'Alert Events', value: alerts.length, tone: '#ff7b72' },
-			{ label: 'Automations', value: automations.length, tone: '#7ee787' },
+			{ label: 'Pending Approvals', value: pendingApprovals, tone: '#34d399' },
 		];
 
 		const twinColumns = [
@@ -335,6 +357,7 @@
 			{ key: 'enabled', label: 'Enabled', render: (row) => row.enabled ? 'Yes' : 'No' },
 			{ key: 'condition', label: 'Condition', render: (row) => { const condition = row.condition || {}; const scope = condition.attribute ? `${condition.entity_type || 'Any entity'}.${condition.attribute}` : (condition.model_id ? `Model ${condition.model_id}` : 'Condition'); return `${scope} ${condition.operator || ''} ${JSON.stringify(condition.threshold)}`; } },
 			{ key: 'pipeline_id', label: 'Trigger Pipeline', render: (row) => row.trigger?.pipeline_id || '—' },
+			{ key: 'approval_mode', label: 'Execution', render: (row) => row.trigger?.approval_mode === 'manual' ? 'Manual approval' : 'Automatic' },
 			{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleDateString() },
 		];
 		const insightColumns = [
@@ -346,10 +369,12 @@
 		];
 		const alertColumns = [
 			{ key: 'severity', label: 'Severity', render: (row) => <span className={`status-badge status-${row.severity}`}>{row.severity}</span> },
+			{ key: 'approval_status', label: 'Approval', render: (row) => <span className={`status-badge ${approvalBadgeClass(row.approval_status)}`}>{row.approval_status || 'not_required'}</span> },
 			{ key: 'category', label: 'Category' },
 			{ key: 'title', label: 'Title' },
 			{ key: 'message', label: 'Message' },
-			{ key: 'triggered_export_pipeline_id', label: 'Export Pipeline', render: (row) => row.triggered_export_pipeline_id || '—' },
+			{ key: 'requested_export_pipeline_id', label: 'Requested Pipeline', render: (row) => row.requested_export_pipeline_id || '—' },
+			{ key: 'triggered_export_pipeline_id', label: 'Triggered Pipeline', render: (row) => row.triggered_export_pipeline_id || '—' },
 			{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleString() },
 		];
 		const runColumns = [
@@ -359,6 +384,7 @@
 			{ key: 'completed_at', label: 'Completed', render: (row) => row.completed_at ? new Date(row.completed_at).toLocaleString() : '—' },
 			{ key: 'insight_count', label: 'Insights', render: (row) => row.metrics?.insight_count ?? '—' },
 			{ key: 'alert_count', label: 'Alerts', render: (row) => row.metrics?.alert_count ?? '—' },
+			{ key: 'pending_approval_count', label: 'Pending Approvals', render: (row) => row.metrics?.pending_approval_count ?? 0 },
 			{ key: 'triggered_action_count', label: 'Triggered Actions', render: (row) => row.metrics?.triggered_action_count ?? '—' },
 		];
 		const automationColumns = [
@@ -402,32 +428,36 @@
 
 						{selectedTab === 'Overview' && (
 							<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-								<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '10px' }}>
-									<h3 style={{ marginTop: 0 }}>Current State</h3>
-									<div><strong>Status:</strong> {selectedTwin.status}</div>
-									<div><strong>Ontology:</strong> {selectedTwin.ontology_id}</div>
-									<div><strong>Last Sync:</strong> {selectedTwin.last_sync_at ? new Date(selectedTwin.last_sync_at).toLocaleString() : 'Never'}</div>
-									<div><strong>Configured Storage Sources:</strong> {selectedTwin.config?.storage_ids?.length || 0}</div>
-									<div style={{ marginTop: '10px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Process Twin runs the full workflow: sync scoped sources, generate insights, evaluate alert events, and trigger configured export actions. Queue Source Sync refreshes source-backed entities only.</div>
-								</div>
-								<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '10px' }}>
-									<h3 style={{ marginTop: 0 }}>Latest Processing Run</h3>
-									{latestRun ? <>
-										<div><strong>Status:</strong> {latestRun.status}</div>
-										<div><strong>Trigger:</strong> {latestRun.trigger_type}</div>
-										<div><strong>Requested:</strong> {new Date(latestRun.requested_at).toLocaleString()}</div>
-										<div><strong>Insights:</strong> {latestRun.metrics?.insight_count ?? 0}</div>
-										<div><strong>Alerts:</strong> {latestRun.metrics?.alert_count ?? 0}</div>
-									</> : <div style={{ color: 'var(--text-secondary)' }}>No processing runs yet.</div>}
-								</div>
-								<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '10px' }}>
-									<h3 style={{ marginTop: 0 }}>Latest Alert Event</h3>
-									{latestAlert ? <>
-										<div><strong>Severity:</strong> {latestAlert.severity}</div>
-										<div><strong>Title:</strong> {latestAlert.title}</div>
-										<div><strong>Created:</strong> {new Date(latestAlert.created_at).toLocaleString()}</div>
-									</> : <div style={{ color: 'var(--text-secondary)' }}>No alert events emitted yet.</div>}
-								</div>
+							<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '10px' }}>
+								<h3 style={{ marginTop: 0 }}>Current State</h3>
+								<div><strong>Status:</strong> {selectedTwin.status}</div>
+								<div><strong>Ontology:</strong> {selectedTwin.ontology_id}</div>
+								<div><strong>Last Sync:</strong> {selectedTwin.last_sync_at ? new Date(selectedTwin.last_sync_at).toLocaleString() : 'Never'}</div>
+								<div><strong>Configured Storage Sources:</strong> {selectedTwin.config?.storage_ids?.length || 0}</div>
+								<div><strong>Pending Manual Approvals:</strong> {pendingApprovals}</div>
+								<div style={{ marginTop: '10px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Process Twin runs the full workflow: sync scoped sources, generate insights, evaluate alert events, and either trigger export actions automatically or queue them for approval. Queue Source Sync refreshes source-backed entities only.</div>
+							</div>
+							<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '10px' }}>
+								<h3 style={{ marginTop: 0 }}>Latest Processing Run</h3>
+								{latestRun ? <>
+									<div><strong>Status:</strong> {latestRun.status}</div>
+									<div><strong>Trigger:</strong> {latestRun.trigger_type}</div>
+									<div><strong>Requested:</strong> {new Date(latestRun.requested_at).toLocaleString()}</div>
+									<div><strong>Insights:</strong> {latestRun.metrics?.insight_count ?? 0}</div>
+									<div><strong>Alerts:</strong> {latestRun.metrics?.alert_count ?? 0}</div>
+									<div><strong>Pending Approvals:</strong> {latestRun.metrics?.pending_approval_count ?? 0}</div>
+								</> : <div style={{ color: 'var(--text-secondary)' }}>No processing runs yet.</div>}
+							</div>
+							<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '10px' }}>
+								<h3 style={{ marginTop: 0 }}>Latest Alert Event</h3>
+								{latestAlert ? <>
+									<div><strong>Severity:</strong> {latestAlert.severity}</div>
+									<div><strong>Title:</strong> {latestAlert.title}</div>
+									<div><strong>Approval:</strong> <span className={`status-badge ${approvalBadgeClass(latestAlert.approval_status)}`}>{latestAlert.approval_status || 'not_required'}</span></div>
+									<div><strong>Requested Pipeline:</strong> {latestAlert.requested_export_pipeline_id || '—'}</div>
+									<div><strong>Created:</strong> {new Date(latestAlert.created_at).toLocaleString()}</div>
+								</> : <div style={{ color: 'var(--text-secondary)' }}>No alert events emitted yet.</div>}
+							</div>
 							</div>
 						)}
 
@@ -436,7 +466,10 @@
 						{selectedTab === 'Insights' ? (
 							<Table columns={insightColumns} data={insights} />
 						) : selectedTab === 'Alerts' ? (
-							<Table columns={alertColumns} data={alerts} />
+							<Table columns={alertColumns} data={alerts} actions={(row) => row.approval_status === 'pending' ? <>
+								<Button label="Approve" onClick={() => handleReviewAlert(row.id, 'approve')} variant="secondary" />
+								<Button label="Reject" onClick={() => handleReviewAlert(row.id, 'reject')} variant="danger" />
+							</> : null} />
 						) : selectedTab === 'Automations' ? (
 							<Table columns={automationColumns} data={automations} actions={(row) => <Button label="Delete" onClick={() => handleDeleteAutomation(row.id)} variant="danger" />} />
 						) : selectedTab === 'Entities' ? (
@@ -509,7 +542,10 @@
 							<FormField label="Attribute (optional)" value={actionForm.attribute} onChange={(v) => setActionForm({ ...actionForm, attribute: v })} placeholder="e.g. stock_level" />
 							<FormField label="Operator" type="select" value={actionForm.operator} onChange={(v) => setActionForm({ ...actionForm, operator: v })} options={operatorOptions} required />
 						</div>
-						<FormField label="Threshold" value={actionForm.threshold} onChange={(v) => setActionForm({ ...actionForm, threshold: v })} placeholder="0" required />
+						<div className="form-grid">
+							<FormField label="Threshold" value={actionForm.threshold} onChange={(v) => setActionForm({ ...actionForm, threshold: v })} placeholder="0" required />
+							<FormField label="Execution Mode" type="select" value={actionForm.approval_mode} onChange={(v) => setActionForm({ ...actionForm, approval_mode: v })} options={approvalModeOptions} required />
+						</div>
 						<FormField label="Trigger Parameters (JSON)" type="textarea" value={actionForm.parameters} onChange={(v) => setActionForm({ ...actionForm, parameters: v })} placeholder='{"alert_severity":"high","alert_category":"stockout"}' />
 						<label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
 							<input type="checkbox" checked={actionForm.enabled} onChange={e => setActionForm({ ...actionForm, enabled: e.target.checked })} />

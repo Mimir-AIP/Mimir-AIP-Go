@@ -98,7 +98,13 @@ func (h *DigitalTwinHandler) HandleDigitalTwin(w http.ResponseWriter, r *http.Re
 			}
 			return
 		case "alerts":
-			h.handleDigitalTwinAlerts(w, r, twinID)
+			if len(parts) == 2 {
+				h.handleDigitalTwinAlerts(w, r, twinID)
+			} else if len(parts) == 4 && parts[3] == "approval" {
+				h.handleDigitalTwinAlertApproval(w, r, twinID, parts[2])
+			} else {
+				http.Error(w, "Alert route not found", http.StatusNotFound)
+			}
 			return
 		case "automations":
 			if len(parts) == 2 {
@@ -449,6 +455,29 @@ func (h *DigitalTwinHandler) handleDigitalTwinAlerts(w http.ResponseWriter, r *h
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(alerts)
+}
+
+func (h *DigitalTwinHandler) handleDigitalTwinAlertApproval(w http.ResponseWriter, r *http.Request, twinID, alertID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req models.AlertApprovalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := req.Validate(); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+	alert, err := h.processor.ReviewAlert(twinID, alertID, &req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to review alert event: %v", err), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(alert)
 }
 
 func (h *DigitalTwinHandler) handleDigitalTwinAutomations(w http.ResponseWriter, r *http.Request, twinID string) {

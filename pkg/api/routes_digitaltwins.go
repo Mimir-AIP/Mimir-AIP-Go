@@ -89,6 +89,18 @@ func init() {
 		},
 		Responses: doc.R(doc.OK(doc.ArrOf("AlertEvent")), doc.NotFound()),
 	})
+	doc.Register("POST", "/api/digital-twins/{id}/alerts/{alertId}/approval", doc.RouteDoc{
+		Summary:     "Review pending alert action",
+		Description: "Applies an approve/reject decision to one alert event that is awaiting manual export approval.",
+		Tags:        []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.PParam("alertId", "Alert event ID"),
+		},
+		RequestBody: doc.JsonBody(doc.Ref("AlertApprovalRequest")),
+		Responses:   doc.R(doc.OK(doc.Ref("AlertEvent")), doc.BadRequest(), doc.NotFound()),
+	})
+
 	doc.Register("GET", "/api/digital-twins/{id}/automations", doc.RouteDoc{
 		Summary:     "List twin automations",
 		Description: "Lists explicit automations scoped to this digital twin.",

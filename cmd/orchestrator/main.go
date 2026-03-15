@@ -232,7 +232,8 @@ func main() {
 	server := api.NewServer(q, cfg.Port, cfg.WorkerAuthToken)
 
 	// Register project handlers
-	projectHandler := api.NewProjectHandler(projectService)
+	projectStateProvider := api.NewProjectStateProvider(store, q)
+	projectHandler := api.NewProjectHandler(projectService, projectStateProvider)
 	server.RegisterHandler("/api/projects", projectHandler.HandleProjects)
 	server.RegisterHandler("/api/projects/", projectHandler.HandleProject)
 	server.RegisterHandler("/api/projects/clone", projectHandler.HandleProjectClone)

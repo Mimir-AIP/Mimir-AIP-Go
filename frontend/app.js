@@ -8,6 +8,7 @@
 
 	const { apiCall } = root.lib;
 	const { ProjectContext } = root.context;
+	const { useProjectStateSummary } = root.hooks;
 	const {
 		ProjectsPage,
 		PipelinesPage,
@@ -46,6 +47,8 @@
 
 		const activeProject = projects.find(project => project.id === activeProjectId) || null;
 		const setActiveProject = React.useCallback((project) => setActiveProjectId(project?.id || ''), []);
+		const { summary } = useProjectStateSummary(activeProject?.id || '');
+
 		const pages = ['Projects', 'Pipelines', 'Ontologies', 'ML Models', 'Digital Twins', 'Storage', 'Insights & Review', 'Plugins', 'Work Queue'];
 		const pageComponents = {
 			Projects: ProjectsPage,
@@ -65,6 +68,7 @@
 		};
 
 		const PageComponent = pageComponents[currentPage] || ProjectsPage;
+		const sectionState = summary?.sections || {};
 
 		return (
 			<div className="app-shell">
@@ -84,9 +88,18 @@
 					{sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 					<aside className={`app-sidebar${sidebarOpen ? ' is-open' : ''}`}>
 						<nav className="sidebar-nav">
-							{pages.map(page => (
-								<button key={page} className={`nav-item${currentPage === page ? ' active' : ''}`} onClick={() => navigate(page)}>{page}</button>
-							))}
+							{pages.map(page => {
+								const navState = sectionState[page] || { status: 'inactive', detail: activeProject ? 'Awaiting state snapshot' : 'Select a project' };
+								return (
+									<button key={page} className={`nav-item${currentPage === page ? ' active' : ''}`} onClick={() => navigate(page)}>
+										<span className={`nav-status-indicator status-${navState.status}${navState.pulse ? ' is-pulsing' : ''}`} aria-hidden="true" />
+										<span className="nav-item-text">
+											<span className="nav-item-label">{page}</span>
+											<span className="nav-item-detail">{navState.detail || 'Idle'}</span>
+										</span>
+									</button>
+								);
+							})}
 							<div className="sidebar-project-selector">
 								<label>Working Project</label>
 								<select value={activeProjectId ?? ''} onChange={e => setActiveProjectId(e.target.value)}>

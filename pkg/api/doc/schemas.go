@@ -38,6 +38,20 @@ func init() {
 			"components":  Ref("ProjectComponents"),
 			"settings":    Ref("ProjectSettings"),
 		}),
+		"ProjectSectionState": Props(nil, M{
+			"status": Str("inactive | in_progress | complete | error | attention"),
+			"detail": Str("Human-readable state detail"),
+			"count":  Int("Associated item count"),
+			"pulse":  Bool("Whether the frontend should animate the indicator"),
+		}),
+		"ProjectStateSummary": Props([]string{"project_id", "generated_at", "sections"}, M{
+			"project_id":   Str("Project ID"),
+			"generated_at": Str("Snapshot timestamp"),
+			"queue_length": Int("Current queue depth across all tasks"),
+			"active_tasks": Int("Number of active tasks for the project"),
+			"sections":     ObjMap("ProjectSectionState"),
+		}),
+
 		"ProjectCreateRequest": Props([]string{"name"}, M{
 			"name":        Str("Project name"),
 			"description": Str("Project description"),

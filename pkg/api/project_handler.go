@@ -13,13 +13,15 @@ import (
 
 // ProjectHandler handles project-related HTTP requests
 type ProjectHandler struct {
-	service *project.Service
+	service       *project.Service
+	stateProvider *ProjectStateProvider
 }
 
 // NewProjectHandler creates a new project handler
-func NewProjectHandler(service *project.Service) *ProjectHandler {
+func NewProjectHandler(service *project.Service, stateProvider *ProjectStateProvider) *ProjectHandler {
 	return &ProjectHandler{
-		service: service,
+		service:       service,
+		stateProvider: stateProvider,
 	}
 }
 
@@ -38,12 +40,20 @@ func (h *ProjectHandler) HandleProjects(w http.ResponseWriter, r *http.Request) 
 // HandleProject handles individual project operations and component associations.
 // Routes:
 //   - GET/PUT/DELETE /api/projects/{id}
-//   - POST/DELETE    /api/projects/{id}/{componentType}/{componentId}
+//   - GET             /api/projects/{id}/state-summary
+//   - POST/DELETE     /api/projects/{id}/{componentType}/{componentId}
 func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 	// Parse path segments after /api/projects/
 	trimmed := strings.TrimPrefix(r.URL.Path, "/api/projects/")
 	parts := strings.SplitN(trimmed, "/", 3)
-
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, "Project ID required", http.StatusBadRequest)
+		return
+	}
+	if len(parts) >= 2 && parts[1] == "state-summary" {
+		h.handleStateSummary(w, r, parts[0])
+		return
+	}
 	// Three segments means component association route
 	if len(parts) >= 3 && parts[2] != "" {
 		h.HandleProjectComponent(w, r)
@@ -143,6 +153,23 @@ func (h *ProjectHandler) handleGet(w http.ResponseWriter, r *http.Request, proje
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(project)
+}
+func (h *ProjectHandler) handleStateSummary(w http.ResponseWriter, r *http.Request, projectID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.stateProvider == nil {
+		http.Error(w, "Project state summary is not configured", http.StatusNotImplemented)
+		return
+	}
+	summary, err := h.stateProvider.Summary(projectID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load project state summary: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(summary)
 }
 
 // handleUpdate updates a project

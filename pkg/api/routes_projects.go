@@ -46,6 +46,14 @@ func init() {
 		Params:      []doc.Param{doc.PParam("id", "Project ID")},
 		Responses:   doc.R(doc.NoContent(), doc.NotFound()),
 	})
+	doc.Register("GET", "/api/projects/{id}/state-summary", doc.RouteDoc{
+		Summary:     "Get project state summary",
+		Description: "Returns a project-scoped backend activity summary for frontend section indicators.",
+		Tags:        []string{"Projects"},
+		Params:      []doc.Param{doc.PParam("id", "Project ID")},
+		Responses:   doc.R(doc.OK(doc.Ref("ProjectStateSummary")), doc.NotFound()),
+	})
+
 	doc.Register("POST", "/api/projects/{id}/{componentType}/{componentId}", doc.RouteDoc{
 		Summary:     "Add component to project",
 		Description: "Associates a pipeline, ontology, ML model, digital twin, or storage config with a project.",

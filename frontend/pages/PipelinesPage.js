@@ -1,17 +1,37 @@
 (() => {
 	const root = window.MimirApp = window.MimirApp || {};
 	const pages = root.pages = root.pages || {};
-	const { apiCall } = root.lib;
+	const { apiCall, notify, confirmAction } = root.lib;
 	const { ProjectContext } = root.context;
 	const { useTaskWebSocket } = root.hooks;
 	const { Button, FormField, Modal, Table, Tabs } = root.components.primitives;
 	const { CronBuilder, StepBuilder } = root.components.pipelines;
+
+	function summarizeExecutionState(status) {
+		switch (status) {
+		case 'queued':
+		case 'scheduled':
+		case 'spawned':
+			return { label: 'Queued', className: 'status-pending' };
+		case 'executing':
+			return { label: 'Running', className: 'status-running' };
+		case 'completed':
+			return { label: 'Completed', className: 'status-completed' };
+		case 'failed':
+		case 'timeout':
+		case 'cancelled':
+			return { label: 'Failed', className: 'status-failed' };
+		default:
+			return null;
+		}
+	}
 
 	pages.PipelinesPage = function PipelinesPage() {
 		const { activeProject, projects } = React.useContext(ProjectContext);
 		const [pipelines, setPipelines] = React.useState([]);
 		const [schedules, setSchedules] = React.useState([]);
 		const [loading, setLoading] = React.useState(true);
+		const [loadError, setLoadError] = React.useState('');
 		const [showPipelineModal, setShowPipelineModal] = React.useState(false);
 		const [showScheduleModal, setShowScheduleModal] = React.useState(false);
 		const [selectedTab, setSelectedTab] = React.useState('Pipelines');
@@ -38,37 +58,40 @@
 			}
 		}, [activeProject?.id]);
 
-		useTaskWebSocket((task) => {
-			if (task.type !== 'pipeline_execution') return;
-			const pid = task.task_spec && task.task_spec.pipeline_id;
-			if (!pid) return;
-			if (task.status === 'completed') setExecutionStatus(prev => ({ ...prev, [pid]: 'done' }));
-			if (task.status === 'failed') setExecutionStatus(prev => ({ ...prev, [pid]: 'error' }));
-		});
-
-		const loadData = async () => {
+		const loadData = React.useCallback(async () => {
 			setLoading(true);
+			setLoadError('');
 			try {
+				const projectQuery = activeProject?.id ? `?project_id=${activeProject.id}` : '';
 				const [pipelinesData, schedulesData] = await Promise.all([
-					apiCall('/api/pipelines'),
-					apiCall('/api/schedules'),
+					apiCall(`/api/pipelines${projectQuery}`),
+					apiCall(`/api/schedules${projectQuery}`),
 				]);
 				setPipelines(pipelinesData || []);
 				setSchedules(schedulesData || []);
 			} catch (error) {
-				console.error('Failed to load data:', error);
+				setLoadError(error.message || 'Failed to load pipelines and schedules.');
 				setPipelines([]);
 				setSchedules([]);
+			} finally {
+				setLoading(false);
 			}
-			setLoading(false);
-		};
+		}, [activeProject?.id]);
 
 		React.useEffect(() => {
 			loadData();
-		}, []);
+		}, [loadData]);
 
-		const filteredPipelines = activeProject?.id ? pipelines.filter(pipeline => pipeline.project_id === activeProject.id) : pipelines;
-		const filteredSchedules = activeProject?.id ? schedules.filter(schedule => schedule.project_id === activeProject.id) : schedules;
+		useTaskWebSocket(React.useCallback((task) => {
+			if (task.type !== 'pipeline_execution') return;
+			const pipelineId = task.task_spec?.pipeline_id;
+			if (!pipelineId) return;
+			if (activeProject?.id && task.project_id !== activeProject.id) return;
+			setExecutionStatus(prev => ({ ...prev, [pipelineId]: task.status }));
+			if (['completed', 'failed', 'timeout', 'cancelled'].includes(task.status)) {
+				loadData();
+			}
+		}, [activeProject?.id, loadData]));
 
 		const handlePipelineSubmit = async (e) => {
 			e.preventDefault();
@@ -82,9 +105,10 @@
 				});
 				setShowPipelineModal(false);
 				setPipelineForm({ name: '', description: '', project_id: activeProject?.id || '', type: 'ingestion', steps: '[]' });
+				notify({ tone: 'success', message: 'Pipeline created.' });
 				loadData();
 			} catch (error) {
-				alert('Failed to create pipeline: ' + error.message);
+				notify({ tone: 'error', message: `Failed to create pipeline: ${error.message}` });
 			}
 		};
 
@@ -100,44 +124,55 @@
 				});
 				setShowScheduleModal(false);
 				setScheduleForm({ name: '', pipelines: [], project_id: activeProject?.id || '', cron_schedule: '', enabled: true });
+				notify({ tone: 'success', message: 'Recurring job created.' });
 				loadData();
 			} catch (error) {
-				alert('Failed to create schedule: ' + error.message);
+				notify({ tone: 'error', message: `Failed to create schedule: ${error.message}` });
 			}
 		};
 
 		const handleDeletePipeline = async (id) => {
-			if (!confirm('Delete this pipeline?')) return;
+			const confirmed = await confirmAction({
+				title: 'Delete pipeline',
+				message: 'Delete this pipeline? This removes it from future runs.',
+				confirmLabel: 'Delete pipeline',
+				variant: 'danger',
+			});
+			if (!confirmed) return;
 			try {
 				await apiCall(`/api/pipelines/${id}`, { method: 'DELETE' });
+				notify({ tone: 'success', message: 'Pipeline deleted.' });
 				loadData();
 			} catch (error) {
-				alert('Failed to delete pipeline: ' + error.message);
+				notify({ tone: 'error', message: `Failed to delete pipeline: ${error.message}` });
 			}
 		};
 
 		const handleDeleteSchedule = async (id) => {
-			if (!confirm('Delete this schedule?')) return;
+			const confirmed = await confirmAction({
+				title: 'Delete recurring job',
+				message: 'Delete this recurring job? Future scheduled runs will stop.',
+				confirmLabel: 'Delete job',
+				variant: 'danger',
+			});
+			if (!confirmed) return;
 			try {
 				await apiCall(`/api/schedules/${id}`, { method: 'DELETE' });
+				notify({ tone: 'success', message: 'Recurring job deleted.' });
 				loadData();
 			} catch (error) {
-				alert('Failed to delete schedule: ' + error.message);
+				notify({ tone: 'error', message: `Failed to delete schedule: ${error.message}` });
 			}
 		};
 
 		const handleExecutePipeline = async (id) => {
-			setExecutionStatus(prev => ({ ...prev, [id]: 'running' }));
+			setExecutionStatus(prev => ({ ...prev, [id]: 'queued' }));
 			try {
-				await apiCall(`/api/pipelines/${id}/execute`, { method: 'POST', body: JSON.stringify({}) });
-				setExecutionStatus(prev => ({ ...prev, [id]: 'done' }));
-				setTimeout(() => setExecutionStatus(prev => {
-					const next = { ...prev };
-					delete next[id];
-					return next;
-				}), 5000);
-			} catch {
-				setExecutionStatus(prev => ({ ...prev, [id]: 'error' }));
+				const result = await apiCall(`/api/pipelines/${id}/execute`, { method: 'POST', body: JSON.stringify({}) });
+				notify({ tone: 'success', message: result?.message || 'Pipeline execution queued.' });
+			} catch (error) {
+				setExecutionStatus(prev => ({ ...prev, [id]: 'failed' }));
+				notify({ tone: 'error', message: `Failed to queue pipeline: ${error.message}` });
 			}
 		};
 
@@ -145,6 +180,19 @@
 		const schedulePipelineOptions = pipelines
 			.filter(pipeline => !scheduleForm.project_id || pipeline.project_id === scheduleForm.project_id)
 			.map(pipeline => ({ value: pipeline.id, label: pipeline.name }));
+
+		const renderPipelineActions = (row) => {
+			const execution = summarizeExecutionState(executionStatus[row.id]);
+			return (
+				<>
+					{execution ? <span className={`status-badge ${execution.className}`}>{execution.label}</span> : <Button label="Execute" onClick={() => handleExecutePipeline(row.id)} variant="secondary" />}
+					<Button label="Delete" onClick={() => handleDeletePipeline(row.id)} variant="danger" />
+				</>
+			);
+		};
+
+		const renderScheduleActions = (row) => <Button label="Delete" onClick={() => handleDeleteSchedule(row.id)} variant="danger" />;
+
 
 		const pipelineColumns = [
 			{ key: 'id', label: 'ID' },
@@ -157,7 +205,7 @@
 		const scheduleColumns = [
 			{ key: 'id', label: 'ID' },
 			{ key: 'name', label: 'Name' },
-			{ key: 'pipelines', label: 'Pipelines', render: (row) => Array.isArray(row.pipelines) && row.pipelines.length > 0 ? row.pipelines.join(', ') : '-' },
+			{ key: 'pipelines', label: 'Pipelines', render: (row) => Array.isArray(row.pipelines) && row.pipelines.length > 0 ? row.pipelines.join(', ') : '—' },
 			{ key: 'cron_schedule', label: 'Cron Schedule' },
 			{
 				key: 'enabled',
@@ -171,42 +219,36 @@
 			<div className="content-section">
 				<div className="section-header">
 					<h2>Pipelines & Schedules</h2>
-					<div style={{ display: 'flex', gap: '8px' }}>
+					<div className="inline-actions">
 						<Button label="+ New Pipeline" onClick={() => setShowPipelineModal(true)} />
 						<Button label="+ New Schedule" onClick={() => setShowScheduleModal(true)} variant="secondary" />
 					</div>
 				</div>
-				{activeProject && (
-					<div style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Filtering to project: <strong style={{ color: 'var(--accent)' }}>{activeProject.name}</strong></div>
-				)}
+
+				{activeProject ? (
+					<div className="page-notice"><strong>Project scope:</strong> showing pipelines and schedules for {activeProject.name}.</div>
+				) : null}
+				{loadError ? <div className="error-message">{loadError}</div> : null}
 
 				<Tabs tabs={['Pipelines', 'Recurring Jobs']} activeTab={selectedTab} onTabChange={setSelectedTab} />
 
 				{loading ? (
-					<div className="loading">Loading...</div>
+					<div className="loading">Loading pipelines and schedules…</div>
 				) : selectedTab === 'Pipelines' ? (
 					<Table
+						caption="Project pipelines"
 						columns={pipelineColumns}
-						data={filteredPipelines}
-						actions={(row) => (
-							<>
-								{executionStatus[row.id] === 'running'
-									? <span className="status-badge status-pending">Running…</span>
-									: executionStatus[row.id] === 'done'
-									? <span className="status-badge status-active">Done ✓</span>
-									: executionStatus[row.id] === 'error'
-									? <span className="status-badge status-failed">Error</span>
-									: <Button label="Execute" onClick={() => handleExecutePipeline(row.id)} variant="secondary" />
-								}
-								<Button label="Delete" onClick={() => handleDeletePipeline(row.id)} variant="danger" />
-							</>
-						)}
+						data={pipelines}
+						emptyState={activeProject ? 'No pipelines exist for this project yet.' : 'Select a project or create a pipeline to get started.'}
+						actions={renderPipelineActions}
 					/>
 				) : (
 					<Table
+						caption="Recurring jobs"
 						columns={scheduleColumns}
-						data={filteredSchedules}
-						actions={(row) => <Button label="Delete" onClick={() => handleDeleteSchedule(row.id)} variant="danger" />}
+						data={schedules}
+						emptyState={activeProject ? 'No recurring jobs exist for this project yet.' : 'Select a project or create a recurring job to see it here.'}
+						actions={renderScheduleActions}
 					/>
 				)}
 
@@ -246,7 +288,7 @@
 								<CronBuilder value={scheduleForm.cron_schedule} onChange={v => setScheduleForm({ ...scheduleForm, cron_schedule: v })} />
 							</div>
 						</div>
-						<label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+						<label className="checkbox-row">
 							<input type="checkbox" checked={scheduleForm.enabled} onChange={e => setScheduleForm({ ...scheduleForm, enabled: e.target.checked })} />
 							Enabled
 						</label>

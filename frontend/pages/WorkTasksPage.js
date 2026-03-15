@@ -1,31 +1,36 @@
 (() => {
 	const root = window.MimirApp = window.MimirApp || {};
 	const pages = root.pages = root.pages || {};
-	const { apiCall } = root.lib;
+	const { apiCall, notify } = root.lib;
 	const { useTaskWebSocket } = root.hooks;
 	const { Button, Table } = root.components.primitives;
+
+	function isQueuedOrActive(status) {
+		return ['queued', 'scheduled', 'spawned', 'executing'].includes(status);
+	}
 
 	pages.WorkTasksPage = function WorkTasksPage() {
 		const [tasks, setTasks] = React.useState([]);
 		const [loading, setLoading] = React.useState(true);
-		const [queueLength, setQueueLength] = React.useState(0);
+		const [loadError, setLoadError] = React.useState('');
 
-		const loadTasks = async () => {
+		const loadTasks = React.useCallback(async () => {
 			setLoading(true);
+			setLoadError('');
 			try {
 				const data = await apiCall('/api/worktasks');
 				setTasks(data.tasks || []);
-				setQueueLength(data.queue_length || 0);
 			} catch (error) {
-				console.error('Failed to load work tasks:', error);
+				setLoadError(error.message || 'Failed to load work tasks.');
 				setTasks([]);
+			} finally {
+				setLoading(false);
 			}
-			setLoading(false);
-		};
+		}, []);
 
-		useTaskWebSocket((updatedTask) => {
+		useTaskWebSocket(React.useCallback((updatedTask) => {
 			setTasks((prev) => {
-				const idx = prev.findIndex((t) => t.worktask_id === updatedTask.worktask_id);
+				const idx = prev.findIndex((task) => task.id === updatedTask.id);
 				if (idx >= 0) {
 					const next = [...prev];
 					next[idx] = updatedTask;
@@ -33,42 +38,41 @@
 				}
 				return [updatedTask, ...prev];
 			});
-		});
+		}, []));
 
 		React.useEffect(() => {
 			loadTasks();
-		}, []);
+		}, [loadTasks]);
 
+		const queueLength = tasks.filter(task => isQueuedOrActive(task.status)).length;
 		const columns = [
 			{ key: 'id', label: 'Task ID' },
 			{ key: 'type', label: 'Type' },
 			{ key: 'priority', label: 'Priority' },
-			{
-				key: 'status',
-				label: 'Status',
-				render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span>
-			},
+			{ key: 'status', label: 'Status', render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span> },
 			{ key: 'project_id', label: 'Project ID' },
-			{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleString() },
-			{ key: 'updated_at', label: 'Updated', render: (row) => new Date(row.updated_at).toLocaleString() },
+			{ key: 'submitted_at', label: 'Submitted', render: (row) => new Date(row.submitted_at || row.created_at).toLocaleString() },
+			{ key: 'completed_at', label: 'Completed', render: (row) => row.completed_at ? new Date(row.completed_at).toLocaleString() : '—' },
 		];
 
 		return (
 			<div className="content-section">
 				<div className="section-header">
 					<h2>Work Queue</h2>
-					<div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-						<span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>
-							Queue Length: {queueLength}
-						</span>
+					<div className="inline-actions">
+						<span className="status-badge status-pending">{queueLength} queued/active</span>
 						<Button label="Refresh" onClick={loadTasks} variant="secondary" />
 					</div>
 				</div>
 
+				{loadError ? (
+					<div className="error-message">{loadError}</div>
+				) : null}
+
 				{loading ? (
-					<div className="loading">Loading work tasks...</div>
+					<div className="loading">Loading work tasks…</div>
 				) : (
-					<Table columns={columns} data={tasks} />
+					<Table caption="Work queue tasks" columns={columns} data={tasks} emptyState="No work tasks have been submitted yet." />
 				)}
 			</div>
 		);

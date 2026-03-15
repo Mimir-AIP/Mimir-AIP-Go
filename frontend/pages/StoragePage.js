@@ -1,7 +1,7 @@
 (() => {
 	const root = window.MimirApp = window.MimirApp || {};
 	const pages = root.pages = root.pages || {};
-	const { apiCall, deriveStorageConfigLabel, renderConfigPreview } = root.lib;
+	const { apiCall, deriveStorageConfigLabel, renderConfigPreview, notify, confirmAction } = root.lib;
 	const { ProjectContext } = root.context;
 	const { Button, FormField, Modal, Table } = root.components.primitives;
 
@@ -9,13 +9,10 @@
 		const { activeProject, projects } = React.useContext(ProjectContext);
 		const [configs, setConfigs] = React.useState([]);
 		const [loading, setLoading] = React.useState(true);
+		const [loadError, setLoadError] = React.useState('');
 		const [showModal, setShowModal] = React.useState(false);
 		const [healthStatus, setHealthStatus] = React.useState({});
-		const [formData, setFormData] = React.useState({
-			project_id: '',
-			plugin_type: 'filesystem',
-			config: '{}',
-		});
+		const [formData, setFormData] = React.useState({ project_id: '', plugin_type: 'filesystem', config: '{}' });
 
 		React.useEffect(() => {
 			if (activeProject?.id) {
@@ -23,22 +20,24 @@
 			}
 		}, [activeProject?.id]);
 
-		const loadConfigs = async () => {
+		const loadConfigs = React.useCallback(async () => {
 			setLoading(true);
+			setLoadError('');
 			try {
 				const projectId = activeProject?.id || '';
 				const data = await apiCall(`/api/storage/configs?project_id=${projectId}`);
 				setConfigs(data || []);
 			} catch (error) {
-				console.error('Failed to load storage configs:', error);
 				setConfigs([]);
+				setLoadError(error.message || 'Failed to load storage configurations.');
+			} finally {
+				setLoading(false);
 			}
-			setLoading(false);
-		};
+		}, [activeProject?.id]);
 
 		React.useEffect(() => {
 			loadConfigs();
-		}, [activeProject?.id]);
+		}, [loadConfigs]);
 
 		const handleSubmit = async (e) => {
 			e.preventDefault();
@@ -53,19 +52,27 @@
 				});
 				setShowModal(false);
 				setFormData({ project_id: activeProject?.id || '', plugin_type: 'filesystem', config: '{}' });
+				notify({ tone: 'success', message: 'Storage configuration created.' });
 				loadConfigs();
 			} catch (error) {
-				alert('Failed to create storage config: ' + error.message);
+				notify({ tone: 'error', message: `Failed to create storage config: ${error.message}` });
 			}
 		};
 
 		const handleDelete = async (id) => {
-			if (!confirm('Delete this storage config?')) return;
+			const confirmed = await confirmAction({
+				title: 'Delete storage configuration',
+				message: 'Delete this storage configuration? Dependent ingestion or analysis flows may fail until it is replaced.',
+				confirmLabel: 'Delete config',
+				variant: 'danger',
+			});
+			if (!confirmed) return;
 			try {
 				await apiCall(`/api/storage/configs/${id}`, { method: 'DELETE' });
+				notify({ tone: 'success', message: 'Storage configuration deleted.' });
 				loadConfigs();
 			} catch (error) {
-				alert('Failed to delete storage config: ' + error.message);
+				notify({ tone: 'error', message: `Failed to delete storage config: ${error.message}` });
 			}
 		};
 
@@ -73,11 +80,14 @@
 			setHealthStatus(prev => ({ ...prev, [id]: 'checking' }));
 			try {
 				const result = await apiCall(`/api/storage/health?config_id=${id}`);
-				setHealthStatus(prev => ({ ...prev, [id]: result.healthy ? 'ok' : 'error' }));
-			} catch {
+				const status = result.healthy ? 'ok' : 'error';
+				setHealthStatus(prev => ({ ...prev, [id]: status }));
+				notify({ tone: status === 'ok' ? 'success' : 'error', message: status === 'ok' ? 'Storage connection healthy.' : 'Storage connection failed health check.' });
+			} catch (error) {
 				setHealthStatus(prev => ({ ...prev, [id]: 'error' }));
+				notify({ tone: 'error', message: `Storage health check failed: ${error.message}` });
 			}
-			setTimeout(() => setHealthStatus(prev => {
+			window.setTimeout(() => setHealthStatus(prev => {
 				const next = { ...prev };
 				delete next[id];
 				return next;
@@ -90,11 +100,7 @@
 			{ key: 'label', label: 'Label', render: row => deriveStorageConfigLabel(row) },
 			{ key: 'plugin_type', label: 'Plugin Type' },
 			{ key: 'project_id', label: 'Project ID' },
-			{
-				key: 'config',
-				label: 'Config',
-				render: row => <pre style={{ margin: 0, fontSize: '0.75rem', maxWidth: '320px', whiteSpace: 'pre-wrap' }}>{renderConfigPreview(row.config)}</pre>
-			},
+			{ key: 'config', label: 'Config', render: row => <pre style={{ margin: 0, fontSize: '0.75rem', maxWidth: '320px', whiteSpace: 'pre-wrap' }}>{renderConfigPreview(row.config)}</pre> },
 			{ key: 'created_at', label: 'Created', render: row => new Date(row.created_at).toLocaleDateString() },
 		];
 
@@ -104,19 +110,22 @@
 					<h2>Storage Configurations</h2>
 					<Button label="+ New Storage Config" onClick={() => setShowModal(true)} />
 				</div>
-				{activeProject && <div style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Showing storage for <strong style={{ color: 'var(--accent)' }}>{activeProject.name}</strong>.</div>}
+				{activeProject ? <div className="page-notice"><strong>Project scope:</strong> showing storage for {activeProject.name}.</div> : null}
+				{loadError ? <div className="error-message">{loadError}</div> : null}
 
 				{loading ? (
-					<div className="loading">Loading storage configurations...</div>
+					<div className="loading">Loading storage configurations…</div>
 				) : (
 					<Table
+						caption="Storage configurations"
 						columns={columns}
 						data={configs}
+						emptyState={activeProject ? 'No storage configurations exist for this project yet.' : 'Select a project to inspect storage configurations.'}
 						actions={(row) => (
 							<>
-								{healthStatus[row.id] === 'checking' && <span style={{ color: 'var(--accent)' }}>Checking…</span>}
-								{healthStatus[row.id] === 'ok' && <span style={{ color: '#22c55e' }}>✓ Connected</span>}
-								{healthStatus[row.id] === 'error' && <span style={{ color: '#ef4444' }}>✗ Failed</span>}
+								{healthStatus[row.id] === 'checking' ? <span className="status-badge status-pending">Checking</span> : null}
+								{healthStatus[row.id] === 'ok' ? <span className="status-badge status-active">Connected</span> : null}
+								{healthStatus[row.id] === 'error' ? <span className="status-badge status-failed">Failed</span> : null}
 								<Button label="Test Connection" onClick={() => handleCheckHealth(row.id)} variant="secondary" />
 								<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
 							</>

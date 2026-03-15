@@ -1,13 +1,14 @@
 (() => {
 	const root = window.MimirApp = window.MimirApp || {};
 	const connectors = (((root.components = root.components || {}).connectors = root.components.connectors || {}));
-	const { apiCall, deriveStorageConfigLabel } = root.lib;
+	const { apiCall, deriveStorageConfigLabel, notify } = root.lib;
 	const { Button, FormField } = root.components.primitives;
 	const { ConnectorFieldInput } = connectors;
 	const { CronBuilder } = root.components.pipelines;
 
 	connectors.GuidedOnboardingPanel = function GuidedOnboardingPanel({ project }) {
 		const [loading, setLoading] = React.useState(false);
+		const [loadError, setLoadError] = React.useState('');
 		const [templates, setTemplates] = React.useState([]);
 		const [storageConfigs, setStorageConfigs] = React.useState([]);
 		const [selectedKind, setSelectedKind] = React.useState('');
@@ -29,9 +30,11 @@
 				setTemplates([]);
 				setStorageConfigs([]);
 				setSelectedKind('');
+				setLoadError('');
 				return;
 			}
 			setLoading(true);
+			setLoadError('');
 			try {
 				const [connectorData, storageData] = await Promise.all([
 					apiCall('/api/connectors'),
@@ -47,11 +50,12 @@
 					storage_id: nextStorageConfigs.some(cfg => cfg.id === prev.storage_id) ? prev.storage_id : (nextStorageConfigs[0]?.id || ''),
 				}));
 			} catch (error) {
-				console.error('Failed to load guided onboarding data:', error);
+				setLoadError(error.message || 'Failed to load guided onboarding data.');
 				setTemplates([]);
 				setStorageConfigs([]);
+			} finally {
+				setLoading(false);
 			}
-			setLoading(false);
 		}, [project?.id]);
 
 		React.useEffect(() => {
@@ -93,11 +97,8 @@
 						enabled: formData.enabled,
 					};
 				}
-				const result = await apiCall('/api/connectors', {
-					method: 'POST',
-					body: JSON.stringify(payload),
-				});
-				alert(`Connector created: ${result?.pipeline?.name || formData.name}`);
+				const result = await apiCall('/api/connectors', { method: 'POST', body: JSON.stringify(payload) });
+				notify({ tone: 'success', message: `Connector created: ${result?.pipeline?.name || formData.name}` });
 				setFormData(prev => ({
 					...prev,
 					name: '',
@@ -110,22 +111,22 @@
 				}));
 				await loadGuidedOptions();
 			} catch (error) {
-				alert('Failed to create connector: ' + error.message);
+				notify({ tone: 'error', message: `Failed to create connector: ${error.message}` });
 			}
 		};
 
 		if (!project?.id) {
 			return <div className="empty-state">Choose a project to start guided onboarding.</div>;
 		}
-
 		if (loading) {
-			return <div className="loading">Loading guided onboarding...</div>;
+			return <div className="loading">Loading guided onboarding…</div>;
 		}
-
+		if (loadError) {
+			return <div className="error-message">{loadError}</div>;
+		}
 		if (templates.length === 0) {
-			return <div className="empty-state">No connector templates are available from /api/connectors.</div>;
+			return <div className="empty-state">No connector templates are available right now.</div>;
 		}
-
 		if (storageConfigs.length === 0) {
 			return <div className="empty-state">Create a storage configuration first, then return here to materialize a connector.</div>;
 		}
@@ -150,13 +151,13 @@
 						required
 					/>
 				</div>
-				{activeTemplate && (
-					<div style={{ marginBottom: '16px', padding: '12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px' }}>
-						<div style={{ color: 'var(--accent)', fontWeight: 'bold', marginBottom: '4px' }}>{activeTemplate.label}</div>
-						<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>{activeTemplate.description}</div>
-						<div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Creates a {activeTemplate.pipeline_type} pipeline{activeTemplate.supports_schedule ? ' with optional recurring schedule.' : '.'}</div>
+				{activeTemplate ? (
+					<div className="section-panel section-panel--neutral">
+						<div className="section-panel-copy"><strong>{activeTemplate.label}</strong></div>
+						<p className="section-panel-copy">{activeTemplate.description}</p>
+						<p className="section-panel-copy">Creates a {activeTemplate.pipeline_type} pipeline{activeTemplate.supports_schedule ? ' with an optional recurring schedule.' : '.'}</p>
 					</div>
-				)}
+				) : null}
 				<div className="form-grid">
 					<FormField label="Pipeline Name" value={formData.name} onChange={v => setFormData({ ...formData, name: v })} required />
 					<FormField label="Description" value={formData.description} onChange={v => setFormData({ ...formData, description: v })} />
@@ -172,13 +173,13 @@
 						</div>
 					))}
 				</div>
-				{activeTemplate?.supports_schedule && (
-					<div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
-						<label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+				{activeTemplate?.supports_schedule ? (
+					<div className="section-panel section-panel--neutral">
+						<label className="checkbox-row">
 							<input type="checkbox" checked={formData.create_schedule} onChange={e => setFormData({ ...formData, create_schedule: e.target.checked })} />
 							Create a recurring schedule now
 						</label>
-						{formData.create_schedule && (
+						{formData.create_schedule ? (
 							<>
 								<div className="form-grid">
 									<FormField label="Schedule Name" value={formData.schedule_name} onChange={v => setFormData({ ...formData, schedule_name: v })} placeholder={`${formData.name || activeTemplate.label} schedule`} />
@@ -187,15 +188,15 @@
 										<CronBuilder value={formData.cron_schedule} onChange={v => setFormData({ ...formData, cron_schedule: v })} />
 									</div>
 								</div>
-								<label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+								<label className="checkbox-row">
 									<input type="checkbox" checked={formData.enabled} onChange={e => setFormData({ ...formData, enabled: e.target.checked })} />
 									Start enabled
 								</label>
 							</>
-						)}
+						) : null}
 					</div>
-				)}
-				<div style={{ marginTop: '16px' }}>
+				) : null}
+				<div className="inline-actions">
 					<Button type="submit" label="Create Connector Pipeline" />
 				</div>
 			</form>

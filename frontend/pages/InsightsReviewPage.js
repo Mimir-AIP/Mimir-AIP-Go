@@ -1,7 +1,7 @@
 (() => {
 	const root = window.MimirApp = window.MimirApp || {};
 	const pages = root.pages = root.pages || {};
-	const { apiCall, deriveStorageConfigLabel, renderConfigPreview } = root.lib;
+	const { apiCall, deriveStorageConfigLabel, renderConfigPreview, notify } = root.lib;
 	const { ProjectContext } = root.context;
 	const { Button, FormField, Table } = root.components.primitives;
 
@@ -18,6 +18,7 @@
 		const [reviewer, setReviewer] = React.useState('');
 		const [rationales, setRationales] = React.useState({});
 		const [loading, setLoading] = React.useState(false);
+		const [loadError, setLoadError] = React.useState('');
 
 		const loadStorageConfigs = React.useCallback(async () => {
 			if (!activeProject?.id) {
@@ -72,18 +73,20 @@
 				return;
 			}
 			setLoading(true);
+			setLoadError('');
 			Promise.all([loadStorageConfigs(), loadInsights(), loadReviews(), loadMetrics()])
-				.catch(error => console.error('Failed to load insights/review data:', error))
+				.catch(error => setLoadError(error.message || 'Failed to load insights and review data.'))
 				.finally(() => setLoading(false));
-		}, [activeProject?.id]);
+		}, [activeProject?.id, loadStorageConfigs, loadInsights, loadReviews, loadMetrics]);
 
 		const handleGenerateInsights = async () => {
 			if (!activeProject?.id) return;
 			try {
 				await apiCall('/api/insights', { method: 'POST', body: JSON.stringify({ project_id: activeProject.id }) });
+				notify({ tone: 'success', message: 'Insight generation started.' });
 				await loadInsights();
 			} catch (error) {
-				alert('Failed to generate insights: ' + error.message);
+				notify({ tone: 'error', message: `Failed to generate insights: ${error.message}` });
 			}
 		};
 
@@ -96,9 +99,10 @@
 				});
 				setResolverMetrics(result?.metrics || null);
 				setReviews(result?.review_items || []);
+				notify({ tone: 'success', message: 'Resolver analysis completed.' });
 				await loadMetrics();
 			} catch (error) {
-				alert('Failed to run resolver analysis: ' + error.message);
+				notify({ tone: 'error', message: `Failed to run resolver analysis: ${error.message}` });
 			}
 		};
 
@@ -106,15 +110,12 @@
 			try {
 				await apiCall(`/api/reviews/${itemId}/decision`, {
 					method: 'POST',
-					body: JSON.stringify({
-						decision,
-						rationale: rationales[itemId] || '',
-						reviewer,
-					}),
+					body: JSON.stringify({ decision, rationale: rationales[itemId] || '', reviewer }),
 				});
+				notify({ tone: 'success', message: `Review item ${decision}ed.` });
 				await Promise.all([loadReviews(), loadMetrics()]);
 			} catch (error) {
-				alert('Failed to submit review decision: ' + error.message);
+				notify({ tone: 'error', message: `Failed to submit review decision: ${error.message}` });
 			}
 		};
 
@@ -140,45 +141,46 @@
 			<div className="content-section">
 				<div className="section-header">
 					<h2>Insights & Review</h2>
-					<div style={{ display: 'flex', gap: '8px' }}>
+					<div className="inline-actions">
 						<Button label="Generate Insights" onClick={handleGenerateInsights} />
 						<Button label="Refresh" onClick={() => Promise.all([loadInsights(), loadReviews(), loadMetrics(), loadStorageConfigs()])} variant="secondary" />
 					</div>
 				</div>
-				<div style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>Project: <strong style={{ color: 'var(--accent)' }}>{activeProject.name}</strong></div>
+				<div className="page-notice"><strong>Project scope:</strong> {activeProject.name}</div>
+				{loadError ? <div className="error-message">{loadError}</div> : null}
 
-				{loading ? <div className="loading">Loading insights and review queue...</div> : (
+				{loading ? <div className="loading">Loading insights and review queue…</div> : (
 					<>
-						<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-							<div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)' }}>
-								<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>High-confidence precision</div>
+						<div className="section-panel section-panel--neutral" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: 0, marginBottom: '20px' }}>
+							<div>
+								<div className="section-panel-copy">High-confidence precision</div>
 								<div style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>{resolverMetrics ? Number(resolverMetrics.high_confidence_precision || 0).toFixed(2) : '0.00'}</div>
 							</div>
-							<div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)' }}>
-								<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Pending review</div>
+							<div>
+								<div className="section-panel-copy">Pending review</div>
 								<div style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>{resolverMetrics?.decision_counts?.pending || 0}</div>
 							</div>
-							<div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)' }}>
-								<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Accepted feedback</div>
+							<div>
+								<div className="section-panel-copy">Accepted feedback</div>
 								<div style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>{resolverMetrics?.decision_counts?.accepted || 0}</div>
 							</div>
-							<div style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)' }}>
-								<div style={{ color: 'var(--text-secondary)', marginBottom: '6px' }}>Rejected feedback</div>
+							<div>
+								<div className="section-panel-copy">Rejected feedback</div>
 								<div style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>{resolverMetrics?.decision_counts?.rejected || 0}</div>
 							</div>
 						</div>
 
-						<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '20px', background: 'rgba(255,153,0,0.04)' }}>
-							<h3 style={{ marginBottom: '8px' }}>Resolver Review Queue</h3>
-							<div style={{ color: 'var(--text-secondary)', marginBottom: '12px' }}>Select at least two storage configs and run generic cross-source resolution.</div>
+						<div className="section-panel">
+							<div className="section-panel-header">
+								<div>
+									<h3 className="section-panel-title">Resolver Review Queue</h3>
+									<p className="section-panel-copy">Select at least two storage configs and run generic cross-source resolution.</p>
+								</div>
+							</div>
 							<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px', marginBottom: '12px' }}>
 								{storageConfigs.map(cfg => (
-									<label key={cfg.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)' }}>
-										<input
-											type="checkbox"
-											checked={selectedStorageIds.includes(cfg.id)}
-											onChange={e => setSelectedStorageIds(prev => e.target.checked ? [...prev, cfg.id] : prev.filter(id => id !== cfg.id))}
-										/>
+									<label key={cfg.id} className="checkbox-row field-static">
+										<input type="checkbox" checked={selectedStorageIds.includes(cfg.id)} onChange={e => setSelectedStorageIds(prev => e.target.checked ? [...prev, cfg.id] : prev.filter(id => id !== cfg.id))} />
 										<span>{deriveStorageConfigLabel(cfg)}</span>
 									</label>
 								))}
@@ -189,25 +191,25 @@
 									<Button label="Run Resolver Analysis" onClick={handleRunResolver} disabled={selectedStorageIds.length < 2} />
 								</div>
 							</div>
-							{selectedStorageIds.length < 2 && <div style={{ color: 'var(--text-secondary)', marginTop: '8px' }}>Choose at least two storage configs to compare.</div>}
+							{selectedStorageIds.length < 2 ? <div className="section-panel-copy">Choose at least two storage configs to compare.</div> : null}
 						</div>
 
-						<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '20px' }}>
-							<div className="section-header" style={{ marginBottom: '12px' }}>
-								<h3 style={{ margin: 0 }}>Insights</h3>
-								<div style={{ display: 'flex', gap: '8px' }}>
+						<div className="section-panel section-panel--neutral">
+							<div className="section-panel-header">
+								<h3 className="section-panel-title">Insights</h3>
+								<div className="inline-actions">
 									<FormField label="Severity" type="select" value={severityFilter} onChange={setSeverityFilter} options={[{ value: '', label: 'all' }, 'low', 'medium', 'high', 'critical']} />
 									<FormField label="Min Confidence" type="number" value={minConfidence} onChange={setMinConfidence} placeholder="0.5" />
 									<Button label="Apply Filters" onClick={loadInsights} variant="secondary" />
 								</div>
 							</div>
-							<Table columns={insightColumns} data={insights} />
+							<Table columns={insightColumns} data={insights} emptyState="No insights match the current filters." />
 						</div>
 
-						<div style={{ padding: '16px', border: '1px solid var(--border)', borderRadius: '8px' }}>
-							<div className="section-header" style={{ marginBottom: '12px' }}>
-								<h3 style={{ margin: 0 }}>Review Queue</h3>
-								<div style={{ display: 'flex', gap: '8px' }}>
+						<div className="section-panel section-panel--neutral">
+							<div className="section-panel-header">
+								<h3 className="section-panel-title">Review Queue</h3>
+								<div className="inline-actions">
 									<FormField label="Status" type="select" value={reviewStatus} onChange={setReviewStatus} options={[{ value: '', label: 'all' }, 'pending', 'accepted', 'rejected', 'auto_accepted']} />
 									<Button label="Reload Queue" onClick={loadReviews} variant="secondary" />
 								</div>
@@ -216,18 +218,18 @@
 								<div className="empty-state">No review items for the current filters.</div>
 							) : (
 								reviews.map(item => (
-									<div key={item.id} style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '6px', marginBottom: '12px', background: 'var(--surface)' }}>
-										<div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}>
+									<div key={item.id} className="card">
+										<div className="card-header">
 											<div>
 												<div style={{ color: 'var(--accent)', fontWeight: 'bold' }}>{item.finding_type}</div>
-												<div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Status: {item.status} · Suggested: {item.suggested_decision} · Confidence: {Number(item.confidence || 0).toFixed(2)}</div>
+												<div className="section-panel-copy">Status: {item.status} · Suggested: {item.suggested_decision} · Confidence: {Number(item.confidence || 0).toFixed(2)}</div>
 											</div>
 											<div className={`status-badge status-${item.status === 'accepted' || item.status === 'auto_accepted' ? 'active' : item.status === 'rejected' ? 'failed' : 'pending'}`}>{item.status}</div>
 										</div>
 										<div style={{ marginBottom: '8px' }}>{item.rationale}</div>
 										<pre style={{ margin: '0 0 12px 0', fontSize: '0.75rem', whiteSpace: 'pre-wrap' }}>{renderConfigPreview(item.evidence || item.payload)}</pre>
 										<FormField label="Decision rationale" type="textarea" value={rationales[item.id] || ''} onChange={value => setRationales(prev => ({ ...prev, [item.id]: value }))} placeholder="Why are you accepting or rejecting this link?" />
-										<div style={{ display: 'flex', gap: '8px' }}>
+										<div className="inline-actions">
 											<Button label="Accept" onClick={() => handleReviewDecision(item.id, 'accept')} />
 											<Button label="Reject" onClick={() => handleReviewDecision(item.id, 'reject')} variant="danger" />
 										</div>

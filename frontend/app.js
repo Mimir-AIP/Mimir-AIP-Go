@@ -9,6 +9,7 @@
 	const { apiCall } = root.lib;
 	const { ProjectContext } = root.context;
 	const { useProjectStateSummary } = root.hooks;
+	const { Button, Modal } = root.components.primitives;
 	const {
 		ProjectsPage,
 		PipelinesPage,
@@ -26,6 +27,8 @@
 		const [sidebarOpen, setSidebarOpen] = React.useState(false);
 		const [projects, setProjects] = React.useState([]);
 		const [activeProjectId, setActiveProjectId] = React.useState(undefined);
+		const [notifications, setNotifications] = React.useState([]);
+		const [confirmState, setConfirmState] = React.useState(null);
 
 		const refreshProjects = React.useCallback(async (preferredProjectId) => {
 			const data = await apiCall('/api/projects');
@@ -45,9 +48,27 @@
 			refreshProjects().catch(() => {});
 		}, [refreshProjects]);
 
+		React.useEffect(() => {
+			const handleNotify = (event) => {
+				const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+				const notification = { id, duration: 4000, tone: 'info', ...event.detail };
+				setNotifications(prev => [...prev, notification]);
+				window.setTimeout(() => {
+					setNotifications(prev => prev.filter(item => item.id !== id));
+				}, notification.duration);
+			};
+			const handleConfirm = (event) => setConfirmState(event.detail || null);
+			window.addEventListener('mimir:notify', handleNotify);
+			window.addEventListener('mimir:confirm', handleConfirm);
+			return () => {
+				window.removeEventListener('mimir:notify', handleNotify);
+				window.removeEventListener('mimir:confirm', handleConfirm);
+			};
+		}, []);
+
 		const activeProject = projects.find(project => project.id === activeProjectId) || null;
 		const setActiveProject = React.useCallback((project) => setActiveProjectId(project?.id || ''), []);
-		const { summary } = useProjectStateSummary(activeProject?.id || '');
+		const { summary, loading: summaryLoading, error: summaryError } = useProjectStateSummary(activeProject?.id || '');
 
 		const pages = ['Projects', 'Pipelines', 'Ontologies', 'ML Models', 'Digital Twins', 'Storage', 'Insights & Review', 'Plugins', 'Work Queue'];
 		const pageComponents = {
@@ -65,6 +86,12 @@
 		const navigate = (page) => {
 			setCurrentPage(page);
 			setSidebarOpen(false);
+		};
+
+		const resolveConfirm = (confirmed) => {
+			if (!confirmState?.id) return;
+			window.dispatchEvent(new CustomEvent('mimir:confirm-result', { detail: { id: confirmState.id, confirmed } }));
+			setConfirmState(null);
 		};
 
 		const PageComponent = pageComponents[currentPage] || ProjectsPage;
@@ -87,11 +114,20 @@
 				<div className="app-body">
 					{sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 					<aside className={`app-sidebar${sidebarOpen ? ' is-open' : ''}`}>
-						<nav className="sidebar-nav">
+						<nav className="sidebar-nav" aria-label="Primary navigation">
 							{pages.map(page => {
-								const navState = sectionState[page] || { status: 'inactive', detail: activeProject ? 'Awaiting state snapshot' : 'Select a project' };
+								const navState = sectionState[page] || {
+									status: summaryError ? 'error' : 'inactive',
+									detail: summaryError ? 'State unavailable' : activeProject ? (summaryLoading ? 'Refreshing status…' : 'Awaiting state snapshot') : 'Select a project',
+								};
 								return (
-									<button key={page} className={`nav-item${currentPage === page ? ' active' : ''}`} onClick={() => navigate(page)}>
+									<button
+										key={page}
+										className={`nav-item${currentPage === page ? ' active' : ''}`}
+										onClick={() => navigate(page)}
+										aria-current={currentPage === page ? 'page' : undefined}
+										title={navState.detail || 'Idle'}
+									>
 										<span className={`nav-status-indicator status-${navState.status}${navState.pulse ? ' is-pulsing' : ''}`} aria-hidden="true" />
 										<span className="nav-item-text">
 											<span className="nav-item-label">{page}</span>
@@ -101,8 +137,8 @@
 								);
 							})}
 							<div className="sidebar-project-selector">
-								<label>Working Project</label>
-								<select value={activeProjectId ?? ''} onChange={e => setActiveProjectId(e.target.value)}>
+								<label htmlFor="active-project-select">Working Project</label>
+								<select id="active-project-select" value={activeProjectId ?? ''} onChange={e => setActiveProjectId(e.target.value)}>
 									<option value="">— All Projects —</option>
 									{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
 								</select>
@@ -117,6 +153,29 @@
 						</div>
 					</main>
 				</div>
+
+				<div className="toast-stack" aria-live="polite" aria-atomic="true">
+					{notifications.map((item) => (
+						<div key={item.id} className={`toast toast-${item.tone || 'info'}`}>
+							<div className="toast-message">{item.message}</div>
+						</div>
+					))}
+				</div>
+
+				<Modal
+					open={Boolean(confirmState)}
+					onClose={() => resolveConfirm(false)}
+					title={confirmState?.title}
+					footer={confirmState ? (
+						<>
+							<Button label={confirmState.cancelLabel || 'Cancel'} onClick={() => resolveConfirm(false)} variant="secondary" />
+							<Button label={confirmState.confirmLabel || 'Confirm'} onClick={() => resolveConfirm(true)} variant={confirmState.variant || 'danger'} />
+						</>
+					) : null}
+					hideDefaultFooter
+				>
+					<p className="modal-copy">{confirmState?.message}</p>
+				</Modal>
 			</div>
 		);
 	}

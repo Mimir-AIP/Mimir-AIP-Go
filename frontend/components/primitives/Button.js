@@ -2,24 +2,26 @@
 	const root = window.MimirApp = window.MimirApp || {};
 	const primitives = (((root.components = root.components || {}).primitives = root.components.primitives || {}));
 
-	primitives.Button = function Button({ label, onClick, type = 'button', variant = 'primary', disabled }) {
+	primitives.Button = function Button({
+		label,
+		onClick,
+		type = 'button',
+		variant = 'primary',
+		disabled = false,
+		className = '',
+		children,
+		...rest
+	}) {
+		const variantClass = variant === 'secondary' ? 'secondary' : variant === 'danger' ? 'danger' : '';
 		return (
 			<button
 				type={type}
-				className={variant === 'secondary' ? 'secondary' : variant === 'danger' ? 'danger' : ''}
-				style={{
-					background: variant === 'primary' ? 'var(--accent)' : undefined,
-					color: 'var(--text)',
-					fontFamily: 'var(--font-family)',
-					border: 'none',
-					padding: '8px 16px',
-					cursor: disabled ? 'not-allowed' : 'pointer',
-					opacity: disabled ? 0.5 : 1,
-				}}
+				className={[variantClass, className].filter(Boolean).join(' ')}
 				onClick={onClick}
 				disabled={disabled}
+				{...rest}
 			>
-				{label}
+				{children || label}
 			</button>
 		);
 	};

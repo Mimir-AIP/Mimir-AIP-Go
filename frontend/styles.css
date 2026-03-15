@@ -373,6 +373,30 @@ h3 {
    TABLES
    ============================================================ */
 
+.table-container {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.table-action-group {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
 table {
 	width: 100%;
 	font-family: var(--font-body);
@@ -433,6 +457,12 @@ form {
 	color: var(--text-secondary);
 }
 
+.form-hint {
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+
 input, select, textarea {
 	background: var(--bg-elevated);
 	color: var(--text);
@@ -468,9 +498,9 @@ button {
 	color: var(--text-inverse);
 	font-family: var(--font-body);
 	border: none;
-	padding: 7px 14px;
+	padding: 8px 16px;
 	cursor: pointer;
-	transition: filter 0.12s, background 0.12s;
+	transition: filter 0.12s, background 0.12s, box-shadow 0.12s, transform 0.12s;
 	border-radius: var(--radius);
 	font-weight: 500;
 	font-size: 0.8125rem;
@@ -482,16 +512,29 @@ button:hover {
 	opacity: 1;
 }
 
+button:focus-visible,
+.nav-item:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+button:active {
+	transform: translateY(1px);
+}
+
 button:disabled {
 	opacity: 0.35;
 	cursor: not-allowed;
 	filter: none;
+	transform: none;
 }
 
 button.secondary {
 	background: var(--bg-elevated);
 	color: var(--text);
-	/* box-shadow fakes a border — actual border is overridden by Button component's inline style */
 	box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
@@ -571,6 +614,18 @@ button.danger:hover {
 	letter-spacing: 0.02em;
 }
 
+.modal-body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.modal-copy {
+	margin: 0;
+	line-height: 1.6;
+	color: var(--text-secondary);
+}
+
 .modal-actions {
 	margin-top: 20px;
 	display: flex;
@@ -646,6 +701,117 @@ button.danger:hover {
 /* ============================================================
    STATES
    ============================================================ */
+
+.section-panel {
+	margin-top: 24px;
+	padding: 18px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	background: rgba(255, 153, 0, 0.04);
+}
+
+.section-panel--neutral {
+	background: var(--bg-surface);
+}
+
+.section-panel-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 12px;
+	margin-bottom: 12px;
+}
+
+.section-panel-title {
+	margin: 0 0 4px;
+	font-family: var(--font-display);
+	font-size: 0.95rem;
+}
+
+.section-panel-copy {
+	margin: 0;
+	color: var(--text-secondary);
+	line-height: 1.6;
+}
+
+.field-static {
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--surface);
+}
+
+.checkbox-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 16px;
+}
+
+.inline-actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.page-notice {
+	padding: 11px 14px;
+	border-radius: var(--radius);
+	margin-bottom: 14px;
+	font-size: 0.8125rem;
+	border: 1px solid var(--border);
+	background: rgba(96, 165, 250, 0.08);
+	color: #93c5fd;
+}
+
+.page-notice strong {
+	color: var(--text);
+}
+
+.page-notice--warning {
+	background: rgba(245, 158, 11, 0.10);
+	border-color: rgba(245, 158, 11, 0.22);
+	color: #fbbf24;
+}
+
+.toast-stack {
+	position: fixed;
+	right: 20px;
+	bottom: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	z-index: 1100;
+	pointer-events: none;
+}
+
+.toast {
+	min-width: 240px;
+	max-width: 360px;
+	padding: 12px 14px;
+	border-radius: var(--radius-lg);
+	border: 1px solid var(--border);
+	background: var(--bg-elevated);
+	box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+	font-size: 0.8125rem;
+	pointer-events: auto;
+}
+
+.toast-info {
+	color: #93c5fd;
+	border-color: rgba(96, 165, 250, 0.25);
+}
+
+.toast-success {
+	color: #34d399;
+	border-color: rgba(16, 185, 129, 0.25);
+}
+
+.toast-error {
+	color: #f87171;
+	border-color: rgba(239, 68, 68, 0.25);
+}
 
 .empty-state {
 	text-align: center;
@@ -866,5 +1032,20 @@ button.danger:hover {
 	/* Forms collapse to single column */
 	.form-grid {
 		grid-template-columns: 1fr;
+	}
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+
+	.nav-status-indicator.is-pulsing {
+		animation: none;
+		box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.2);
 	}
 }

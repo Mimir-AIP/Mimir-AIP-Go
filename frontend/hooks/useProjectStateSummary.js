@@ -7,35 +7,47 @@
 	hooks.useProjectStateSummary = function useProjectStateSummary(projectId) {
 		const [summary, setSummary] = React.useState(null);
 		const [loading, setLoading] = React.useState(false);
+		const [error, setError] = React.useState('');
+		const requestRef = React.useRef(0);
 
 		const loadSummary = React.useCallback(async () => {
+			requestRef.current += 1;
+			const requestId = requestRef.current;
 			if (!projectId) {
 				setSummary(null);
+				setError('');
+				setLoading(false);
 				return;
 			}
 			setLoading(true);
+			setError('');
 			try {
 				const data = await apiCall(`/api/projects/${projectId}/state-summary`);
+				if (requestRef.current !== requestId) return;
 				setSummary(data || null);
-			} catch (error) {
-				console.error('Failed to load project state summary:', error);
+			} catch (fetchError) {
+				if (requestRef.current !== requestId) return;
+				setSummary(null);
+				setError(fetchError.message || 'Failed to load project state summary.');
 			} finally {
-				setLoading(false);
+				if (requestRef.current === requestId) {
+					setLoading(false);
+				}
 			}
 		}, [projectId]);
 
 		React.useEffect(() => {
 			loadSummary();
-			if (!projectId) return;
+			if (!projectId) return undefined;
 			const intervalId = window.setInterval(loadSummary, 15000);
 			return () => window.clearInterval(intervalId);
 		}, [projectId, loadSummary]);
 
-		useTaskWebSocket(() => {
+		useTaskWebSocket(React.useCallback(() => {
 			if (!projectId) return;
 			loadSummary();
-		});
+		}, [projectId, loadSummary]));
 
-		return { summary, loading, refresh: loadSummary };
+		return { summary, loading, error, refresh: loadSummary };
 	};
 })();

@@ -3,39 +3,57 @@
 	const hooks = root.hooks = root.hooks || {};
 
 	hooks.useTaskWebSocket = function useTaskWebSocket(onTaskUpdate) {
+		const callbackRef = React.useRef(onTaskUpdate);
+
+		React.useEffect(() => {
+			callbackRef.current = onTaskUpdate;
+		}, [onTaskUpdate]);
+
 		React.useEffect(() => {
 			const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 			const wsUrl = `${proto}//${window.location.host}/ws/tasks`;
-			let ws;
-			let reconnectTimer;
+			let ws = null;
+			let reconnectTimer = null;
+			let disposed = false;
+
+			function scheduleReconnect() {
+				if (disposed || reconnectTimer) return;
+				reconnectTimer = window.setTimeout(() => {
+					reconnectTimer = null;
+					connect();
+				}, 3000);
+			}
 
 			function connect() {
+				if (disposed) return;
 				try {
 					ws = new WebSocket(wsUrl);
 					ws.onmessage = (event) => {
 						try {
 							const msg = JSON.parse(event.data);
-							if (msg.event === 'task_update' && msg.task) {
-								onTaskUpdate(msg.task);
+							if (msg.event === 'task_update' && msg.task && typeof callbackRef.current === 'function') {
+								callbackRef.current(msg.task);
 							}
-						} catch (e) {
-							// ignore parse errors
+						} catch {
+							// Ignore malformed websocket payloads.
 						}
 					};
 					ws.onclose = () => {
-						reconnectTimer = setTimeout(connect, 3000);
+						ws = null;
+						scheduleReconnect();
 					};
 					ws.onerror = () => {
-						ws.close();
+						if (ws) ws.close();
 					};
-				} catch (e) {
-					reconnectTimer = setTimeout(connect, 3000);
+				} catch {
+					scheduleReconnect();
 				}
 			}
 
 			connect();
 			return () => {
-				clearTimeout(reconnectTimer);
+				disposed = true;
+				if (reconnectTimer) window.clearTimeout(reconnectTimer);
 				if (ws) ws.close();
 			};
 		}, []);

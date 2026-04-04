@@ -7,6 +7,7 @@ import (
 	"maps"
 	"math"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -341,16 +342,43 @@ func (s *Service) UpdateTrainingProgress(modelID string, metrics *models.Trainin
 	return nil
 }
 
-// CompleteTraining marks training as complete and stores performance metrics
-func (s *Service) CompleteTraining(modelID, modelArtifactPath string, performanceMetrics *models.PerformanceMetrics) error {
+func modelArtifactBaseDir() string {
+	if dir := os.Getenv("MODEL_ARTIFACT_DIR"); dir != "" {
+		return dir
+	}
+	return filepath.Join(os.TempDir(), "mimir-aip", "model-artifacts")
+}
+
+func persistModelArtifact(modelID string, artifactData []byte) (string, error) {
+	if len(artifactData) == 0 {
+		return "", fmt.Errorf("model artifact data is required")
+	}
+	artifactDir := filepath.Join(modelArtifactBaseDir(), modelID)
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create artifact directory: %w", err)
+	}
+	artifactPath := filepath.Join(artifactDir, "model.json")
+	if err := os.WriteFile(artifactPath, artifactData, 0o644); err != nil {
+		return "", fmt.Errorf("failed to write model artifact: %w", err)
+	}
+	return artifactPath, nil
+}
+
+// CompleteTraining marks training as complete, persists the artifact into orchestrator-visible storage, and stores performance metrics.
+func (s *Service) CompleteTraining(modelID string, artifactData []byte, performanceMetrics *models.PerformanceMetrics) error {
 	model, err := s.store.GetMLModel(modelID)
 	if err != nil {
 		return fmt.Errorf("failed to get model: %w", err)
 	}
 
+	artifactPath, err := persistModelArtifact(modelID, artifactData)
+	if err != nil {
+		return err
+	}
+
 	model.Status = models.ModelStatusTrained
 	model.TrainingTaskID = ""
-	model.ModelArtifactPath = modelArtifactPath
+	model.ModelArtifactPath = artifactPath
 	model.PerformanceMetrics = performanceMetrics
 	now := time.Now().UTC()
 	model.TrainedAt = &now

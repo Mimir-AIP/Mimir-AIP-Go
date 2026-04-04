@@ -1,6 +1,7 @@
 package mlmodel
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -107,5 +108,49 @@ func TestStartTrainingPersistsTrainingTaskID(t *testing.T) {
 	}
 	if task.Status != models.WorkTaskStatusQueued {
 		t.Fatalf("expected queued task status, got %s", task.Status)
+	}
+}
+
+func TestCompleteTrainingPersistsArtifactToConfiguredDirectory(t *testing.T) {
+	svc, cleanup := setupTrainingService(t)
+	defer cleanup()
+
+	t.Setenv("MODEL_ARTIFACT_DIR", t.TempDir())
+
+	model, err := svc.CreateModel(&models.ModelCreateRequest{
+		ProjectID:   "project-1",
+		OntologyID:  "ontology-1",
+		Name:        "classifier",
+		Description: "test model",
+		Type:        models.ModelTypeDecisionTree,
+	})
+	if err != nil {
+		t.Fatalf("failed to create model: %v", err)
+	}
+
+	artifact := []byte(`{"model_type":"decision_tree","parameters":{"model_data":{}},"metadata":{"trained_at":"2026-01-01T00:00:00Z"}}`)
+	metrics := &models.PerformanceMetrics{Accuracy: 0.91, Precision: 0.88, Recall: 0.90, F1Score: 0.89}
+
+	if err := svc.CompleteTraining(model.ID, artifact, metrics); err != nil {
+		t.Fatalf("CompleteTraining returned error: %v", err)
+	}
+
+	persisted, err := svc.GetModel(model.ID)
+	if err != nil {
+		t.Fatalf("failed to reload model: %v", err)
+	}
+	if persisted.ModelArtifactPath == "" {
+		t.Fatal("expected persisted model artifact path")
+	}
+	if persisted.TrainingTaskID != "" {
+		t.Fatalf("expected training task id to clear after completion, got %s", persisted.TrainingTaskID)
+	}
+
+	artifactBytes, err := os.ReadFile(persisted.ModelArtifactPath)
+	if err != nil {
+		t.Fatalf("failed to read persisted artifact: %v", err)
+	}
+	if string(artifactBytes) != string(artifact) {
+		t.Fatalf("expected persisted artifact to match uploaded bytes")
 	}
 }

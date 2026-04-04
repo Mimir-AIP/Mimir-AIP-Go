@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -440,12 +441,7 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		result.PerformanceMetrics.Recall,
 		result.PerformanceMetrics.F1Score)
 
-	// Save model artifact
-	artifactPath := fmt.Sprintf("/tmp/models/%s/model.json", task.TaskSpec.ModelID)
-	if err := os.MkdirAll(fmt.Sprintf("/tmp/models/%s", task.TaskSpec.ModelID), 0755); err != nil {
-		return nil, fmt.Errorf("failed to create model directory: %w", err)
-	}
-
+	// Serialize model artifact for upload back to the orchestrator.
 	artifactData, err := json.Marshal(map[string]any{
 		"model_type":    string(model.Type),
 		"feature_names": trainingData.FeatureNames,
@@ -461,22 +457,18 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		return nil, fmt.Errorf("failed to marshal artifact: %w", err)
 	}
 
-	if err := os.WriteFile(artifactPath, artifactData, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write artifact: %w", err)
-	}
-
-	// Report training completion to orchestrator
-	if err := reportTrainingCompletion(orchestratorURL, task.TaskSpec.ModelID, artifactPath, result.PerformanceMetrics); err != nil {
+	// Report training completion to orchestrator; the orchestrator persists the artifact in a stable location.
+	if err := reportTrainingCompletion(orchestratorURL, task.TaskSpec.ModelID, artifactData, result.PerformanceMetrics); err != nil {
 		log.Printf("Warning: failed to report training completion: %v", err)
 	}
 
 	return &models.WorkTaskResult{
-		WorkTaskID:     task.ID,
-		Status:         models.WorkTaskStatusCompleted,
-		OutputLocation: artifactPath,
+		WorkTaskID: task.ID,
+		Status:     models.WorkTaskStatusCompleted,
 		Metadata: map[string]any{
 			"model_id":            task.TaskSpec.ModelID,
 			"model_type":          string(model.Type),
+			"artifact_uploaded":   true,
 			"accuracy":            result.PerformanceMetrics.Accuracy,
 			"precision":           result.PerformanceMetrics.Precision,
 			"recall":              result.PerformanceMetrics.Recall,
@@ -731,12 +723,12 @@ func cirMapsToFeatureRows(rows []map[string]any, labelColumn string) ([][]float6
 	return features, labels, featureNames
 }
 
-// reportTrainingCompletion reports successful training to orchestrator
-func reportTrainingCompletion(orchestratorURL, modelID, artifactPath string, metrics *models.PerformanceMetrics) error {
+// reportTrainingCompletion reports successful training to orchestrator.
+func reportTrainingCompletion(orchestratorURL, modelID string, artifactData []byte, metrics *models.PerformanceMetrics) error {
 	url := fmt.Sprintf("%s/api/ml-models/%s/training/complete", orchestratorURL, modelID)
 	payload := map[string]any{
-		"model_artifact_path": artifactPath,
-		"performance_metrics": metrics,
+		"artifact_data_base64": base64.StdEncoding.EncodeToString(artifactData),
+		"performance_metrics":  metrics,
 	}
 
 	data, err := json.Marshal(payload)
@@ -744,16 +736,15 @@ func reportTrainingCompletion(orchestratorURL, modelID, artifactPath string, met
 		return err
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
+	resp, err := doOrchestratorRequest(http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to report completion: status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("orchestrator returned status %d: %s", resp.StatusCode, string(body))
 	}
-
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -241,7 +242,7 @@ func (h *MLModelHandler) handleTrainingComplete(w http.ResponseWriter, r *http.R
 	}
 
 	var req struct {
-		ModelArtifactPath  string                     `json:"model_artifact_path"`
+		ArtifactDataBase64 string                     `json:"artifact_data_base64"`
 		PerformanceMetrics *models.PerformanceMetrics `json:"performance_metrics"`
 	}
 
@@ -250,12 +251,18 @@ func (h *MLModelHandler) handleTrainingComplete(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if req.ModelArtifactPath == "" || req.PerformanceMetrics == nil {
-		http.Error(w, "model_artifact_path and performance_metrics are required", http.StatusBadRequest)
+	if req.ArtifactDataBase64 == "" || req.PerformanceMetrics == nil {
+		http.Error(w, "artifact_data_base64 and performance_metrics are required", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.service.CompleteTraining(modelID, req.ModelArtifactPath, req.PerformanceMetrics); err != nil {
+	artifactData, err := base64.StdEncoding.DecodeString(req.ArtifactDataBase64)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid artifact_data_base64: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.CompleteTraining(modelID, artifactData, req.PerformanceMetrics); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to complete training: %v", err), http.StatusInternalServerError)
 		return
 	}

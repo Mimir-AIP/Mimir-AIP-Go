@@ -3,6 +3,7 @@ package scheduler
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ type Service struct {
 	pipelineService *pipeline.Service
 	queue           *queue.Queue
 	cron            *cron.Cron
+	jobsMu          sync.RWMutex
 	jobs            map[string]cron.EntryID // Maps job ID to cron entry ID
 }
 
@@ -122,74 +124,125 @@ func (s *Service) ListByProject(projectID string) ([]*models.Schedule, error) {
 
 // Update updates a scheduled job
 func (s *Service) Update(id string, req *models.ScheduleUpdateRequest) (*models.Schedule, error) {
-	// Get existing job
-	job, err := s.store.GetSchedule(id)
+	current, err := s.store.GetSchedule(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// Unschedule if currently scheduled
-	if entryID, ok := s.jobs[id]; ok {
-		s.cron.Remove(entryID)
-		delete(s.jobs, id)
+	updated := cloneSchedule(current)
+	if err := s.applyUpdate(updated, req); err != nil {
+		return nil, err
+	}
+	updated.UpdatedAt = time.Now()
+	if err := s.refreshNextRun(updated); err != nil {
+		return nil, err
 	}
 
-	// Update fields
+	if err := s.store.SaveSchedule(updated); err != nil {
+		return nil, fmt.Errorf("failed to save job: %w", err)
+	}
+
+	oldEntryID, hadOldEntry := s.jobEntry(id)
+	if updated.Enabled {
+		if err := s.scheduleJob(updated); err != nil {
+			return nil, fmt.Errorf("failed to schedule job: %w", err)
+		}
+	}
+	if hadOldEntry {
+		s.cron.Remove(oldEntryID)
+		if !updated.Enabled {
+			s.deleteJobEntry(id)
+		}
+	}
+
+	return updated, nil
+}
+
+// Delete deletes a scheduled job
+func (s *Service) Delete(id string) error {
+	entryID, hadEntry := s.jobEntry(id)
+	if err := s.store.DeleteSchedule(id); err != nil {
+		return err
+	}
+	if hadEntry {
+		s.cron.Remove(entryID)
+		s.deleteJobEntry(id)
+	}
+	return nil
+}
+
+func (s *Service) jobEntry(jobID string) (cron.EntryID, bool) {
+	s.jobsMu.RLock()
+	defer s.jobsMu.RUnlock()
+	entryID, ok := s.jobs[jobID]
+	return entryID, ok
+}
+
+func (s *Service) setJobEntry(jobID string, entryID cron.EntryID) {
+	s.jobsMu.Lock()
+	defer s.jobsMu.Unlock()
+	s.jobs[jobID] = entryID
+}
+
+func (s *Service) deleteJobEntry(jobID string) {
+	s.jobsMu.Lock()
+	defer s.jobsMu.Unlock()
+	delete(s.jobs, jobID)
+}
+
+func cloneSchedule(job *models.Schedule) *models.Schedule {
+	if job == nil {
+		return nil
+	}
+	clone := *job
+	clone.Pipelines = append([]string(nil), job.Pipelines...)
+	if job.LastRun != nil {
+		lastRun := *job.LastRun
+		clone.LastRun = &lastRun
+	}
+	if job.NextRun != nil {
+		nextRun := *job.NextRun
+		clone.NextRun = &nextRun
+	}
+	return &clone
+}
+
+func (s *Service) applyUpdate(job *models.Schedule, req *models.ScheduleUpdateRequest) error {
 	if req.Name != nil {
 		job.Name = *req.Name
 	}
 	if req.Pipelines != nil {
-		job.Pipelines = *req.Pipelines
+		for _, pipelineID := range *req.Pipelines {
+			if _, err := s.pipelineService.Get(pipelineID); err != nil {
+				return fmt.Errorf("pipeline not found: %s", pipelineID)
+			}
+		}
+		job.Pipelines = append([]string(nil), (*req.Pipelines)...)
 	}
 	if req.CronSchedule != nil {
-		// Validate new schedule
 		if _, err := cron.ParseStandard(*req.CronSchedule); err != nil {
-			return nil, fmt.Errorf("invalid cron expression: %w", err)
+			return fmt.Errorf("invalid cron expression: %w", err)
 		}
 		job.CronSchedule = *req.CronSchedule
 	}
 	if req.Enabled != nil {
 		job.Enabled = *req.Enabled
 	}
-
-	// Update timestamp
-	job.UpdatedAt = time.Now()
-
-	// Calculate next run time
-	if job.Enabled {
-		schedule, err := cron.ParseStandard(job.CronSchedule)
-		if err == nil {
-			nextRun := schedule.Next(time.Now())
-			job.NextRun = &nextRun
-		}
-	} else {
-		job.NextRun = nil
-	}
-
-	// Save job
-	if err := s.store.SaveSchedule(job); err != nil {
-		return nil, fmt.Errorf("failed to save job: %w", err)
-	}
-
-	// Reschedule if enabled
-	if job.Enabled {
-		if err := s.scheduleJob(job); err != nil {
-			return nil, fmt.Errorf("failed to schedule job: %w", err)
-		}
-	}
-
-	return job, nil
+	return nil
 }
 
-// Delete deletes a scheduled job
-func (s *Service) Delete(id string) error {
-	// Unschedule if currently scheduled
-	if entryID, ok := s.jobs[id]; ok {
-		s.cron.Remove(entryID)
-		delete(s.jobs, id)
+func (s *Service) refreshNextRun(job *models.Schedule) error {
+	if !job.Enabled {
+		job.NextRun = nil
+		return nil
 	}
-
-	return s.store.DeleteSchedule(id)
+	schedule, err := cron.ParseStandard(job.CronSchedule)
+	if err != nil {
+		return fmt.Errorf("invalid cron expression: %w", err)
+	}
+	nextRun := schedule.Next(time.Now())
+	job.NextRun = &nextRun
+	return nil
 }
 
 // scheduleJob schedules a job with the cron scheduler
@@ -207,7 +260,7 @@ func (s *Service) scheduleJob(job *models.Schedule) error {
 
 	// Add to cron scheduler
 	entryID := s.cron.Schedule(schedule, cron.FuncJob(jobFunc))
-	s.jobs[job.ID] = entryID
+	s.setJobEntry(job.ID, entryID)
 
 	log.Printf("Scheduled job %s (%s) with schedule: %s", job.Name, job.ID, job.CronSchedule)
 

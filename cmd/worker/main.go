@@ -450,7 +450,8 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 			"feature_importance": result.FeatureImportance,
 		},
 		"metadata": map[string]any{
-			"trained_at": time.Now().UTC().Format(time.RFC3339),
+			"trained_at":   time.Now().UTC().Format(time.RFC3339),
+			"label_column": labelColumn,
 		},
 	})
 	if err != nil {
@@ -579,7 +580,10 @@ func loadTrainingDataFromStorage(orchestratorURL string, task *models.WorkTask) 
 		TestFeatures:  features[splitIdx:],
 		TestLabels:    labels[splitIdx:],
 		FeatureNames:  featureNames,
-		Metadata:      map[string]any{"source": "storage"},
+		Metadata: map[string]any{
+			"source":       "storage",
+			"label_column": labelColumn,
+		},
 	}, nil
 }
 
@@ -644,7 +648,11 @@ func loadTrainingDataFromDigitalTwin(orchestratorURL, twinID, labelColumn string
 		TestFeatures:  features[splitIdx:],
 		TestLabels:    labels[splitIdx:],
 		FeatureNames:  featureNames,
-		Metadata:      map[string]any{"source": "digital_twin", "twin_id": twinID},
+		Metadata: map[string]any{
+			"source":       "digital_twin",
+			"twin_id":      twinID,
+			"label_column": labelColumn,
+		},
 	}, nil
 }
 

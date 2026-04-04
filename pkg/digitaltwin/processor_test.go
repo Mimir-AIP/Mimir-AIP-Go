@@ -12,6 +12,36 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
+func seedProcessorProject(t *testing.T, store metadatastore.MetadataStore, projectID, ontologyID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	project := &models.Project{
+		ID:          projectID,
+		Name:        projectID,
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata:    models.ProjectMetadata{CreatedAt: now, UpdatedAt: now},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project: %v", err)
+	}
+	ontology := &models.Ontology{
+		ID:          ontologyID,
+		ProjectID:   projectID,
+		Name:        ontologyID,
+		Description: "test ontology",
+		Version:     "1.0",
+		Content:     "@prefix : <http://example.org/> .",
+		Status:      "active",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := store.SaveOntology(ontology); err != nil {
+		t.Fatalf("failed to save ontology: %v", err)
+	}
+}
+
 func setupProcessorTest(t *testing.T) (*Processor, metadatastore.MetadataStore, *queue.Queue, func()) {
 	t.Helper()
 	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "processor.db"))
@@ -33,6 +63,8 @@ func setupProcessorTest(t *testing.T) (*Processor, metadatastore.MetadataStore, 
 func TestEvaluateAlertEventsQueuesPendingManualApproval(t *testing.T) {
 	processor, store, q, cleanup := setupProcessorTest(t)
 	defer cleanup()
+
+	seedProcessorProject(t, store, "project-1", "ontology-1")
 
 	now := time.Now().UTC()
 	twin := &models.DigitalTwin{ID: "twin-1", ProjectID: "project-1", OntologyID: "ontology-1", Name: "Factory", Status: "active", CreatedAt: now, UpdatedAt: now}
@@ -69,6 +101,9 @@ func TestEvaluateAlertEventsQueuesPendingManualApproval(t *testing.T) {
 				t.Fatalf("failed to save action: %v", err)
 			}
 		}
+	}
+	if err := store.SaveTwinProcessingRun(run); err != nil {
+		t.Fatalf("failed to save processing run: %v", err)
 	}
 
 	result, err := processor.evaluateAlertEvents(run)
@@ -116,14 +151,18 @@ func TestReviewAlertApproveQueuesExportAndUpdatesAction(t *testing.T) {
 	processor, store, q, cleanup := setupProcessorTest(t)
 	defer cleanup()
 
+	seedProcessorProject(t, store, "project-1", "ontology-1")
+
 	now := time.Now().UTC()
 	twin := &models.DigitalTwin{ID: "twin-1", ProjectID: "project-1", OntologyID: "ontology-1", Name: "Factory", Status: "active", CreatedAt: now, UpdatedAt: now}
 	pipeline := &models.Pipeline{ID: "pipe-1", ProjectID: twin.ProjectID, Name: "Export", Type: models.PipelineTypeOutput, Status: models.PipelineStatusActive, CreatedAt: now, UpdatedAt: now}
 	action := &models.Action{ID: "action-1", DigitalTwinID: twin.ID, Name: "Overheat export", Enabled: true, Trigger: &models.ActionTrigger{PipelineID: pipeline.ID, ApprovalMode: models.ActionApprovalModeManual}, CreatedAt: now, UpdatedAt: now}
+	run := &models.TwinProcessingRun{ID: "run-1", ProjectID: twin.ProjectID, DigitalTwinID: twin.ID, RequestedAt: now}
 	alert := &models.AlertEvent{
 		ID:                        "alert-1",
 		ProjectID:                 twin.ProjectID,
 		DigitalTwinID:             twin.ID,
+		ProcessingRunID:           run.ID,
 		ActionID:                  action.ID,
 		ApprovalStatus:            models.AlertApprovalStatusPending,
 		RequestedExportPipelineID: pipeline.ID,
@@ -136,6 +175,9 @@ func TestReviewAlertApproveQueuesExportAndUpdatesAction(t *testing.T) {
 	}
 	if err := store.SavePipeline(pipeline); err != nil {
 		t.Fatalf("failed to save pipeline: %v", err)
+	}
+	if err := store.SaveTwinProcessingRun(run); err != nil {
+		t.Fatalf("failed to save processing run: %v", err)
 	}
 	if err := store.SaveAction(action); err != nil {
 		t.Fatalf("failed to save action: %v", err)

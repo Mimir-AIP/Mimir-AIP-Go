@@ -266,17 +266,25 @@ func (e *InferenceEngine) predictRandomForest(artifact *ModelArtifact, features 
 
 // predictRegression runs linear regression: y = w·x + b
 func (e *InferenceEngine) predictRegression(artifact *ModelArtifact, features []float64) interface{} {
-	weights, ok := artifact.Parameters["weights"]
+	modelDataRaw, ok := artifact.Parameters["model_data"]
 	if !ok {
 		return 0.0
 	}
-	weightsSlice, ok := weights.([]interface{})
+	modelData, ok := modelDataRaw.(map[string]interface{})
+	if !ok {
+		return 0.0
+	}
+	weightsRaw, ok := modelData["coefficients"]
+	if !ok {
+		return 0.0
+	}
+	weightsSlice, ok := weightsRaw.([]interface{})
 	if !ok {
 		return 0.0
 	}
 
 	intercept := 0.0
-	if b, ok := artifact.Parameters["intercept"]; ok {
+	if b, ok := modelData["intercept"]; ok {
 		if bFloat, ok := b.(float64); ok {
 			intercept = bFloat
 		}

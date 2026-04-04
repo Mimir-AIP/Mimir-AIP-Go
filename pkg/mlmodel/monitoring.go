@@ -1,8 +1,10 @@
 package mlmodel
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
@@ -110,10 +112,29 @@ func (m *MonitoringService) CheckModel(model *models.MLModel) error {
 		return fmt.Errorf("no data available to validate model %s", model.ID)
 	}
 
-	// Convert CIRs to numeric feature matrix (last numeric field used as label)
-	features, labels := extractFeaturesAndLabels(allCIRs)
+	artifactBytes, err := os.ReadFile(model.ModelArtifactPath)
+	if err != nil {
+		return fmt.Errorf("failed to read model artifact for monitoring: %w", err)
+	}
+	var artifact struct {
+		FeatureNames []string       `json:"feature_names"`
+		Metadata     map[string]any `json:"metadata,omitempty"`
+	}
+	if err := json.Unmarshal(artifactBytes, &artifact); err != nil {
+		return fmt.Errorf("failed to parse model artifact for monitoring: %w", err)
+	}
+	if len(artifact.FeatureNames) == 0 {
+		return fmt.Errorf("model %s has no feature_names in artifact", model.ID)
+	}
+
+	labelColumn := "label"
+	if v, ok := artifact.Metadata["label_column"].(string); ok && v != "" {
+		labelColumn = v
+	}
+
+	features, labels := extractFeaturesAndLabels(allCIRs, artifact.FeatureNames, labelColumn)
 	if len(features) == 0 {
-		return fmt.Errorf("no numeric features extractable for model %s", model.ID)
+		return fmt.Errorf("no monitoring rows matched artifact feature schema for model %s", model.ID)
 	}
 
 	data := &training.TrainingData{
@@ -150,9 +171,8 @@ func (m *MonitoringService) CheckModel(model *models.MLModel) error {
 	return nil
 }
 
-// extractFeaturesAndLabels converts CIR records into a numeric feature matrix.
-// All numeric fields are used as features; the last numeric field is used as the label.
-func extractFeaturesAndLabels(cirs []*models.CIR) ([][]float64, []float64) {
+// extractFeaturesAndLabels converts CIR records into a deterministic numeric feature matrix.
+func extractFeaturesAndLabels(cirs []*models.CIR, featureNames []string, labelColumn string) ([][]float64, []float64) {
 	features := make([][]float64, 0, len(cirs))
 	labels := make([]float64, 0, len(cirs))
 
@@ -161,18 +181,48 @@ func extractFeaturesAndLabels(cirs []*models.CIR) ([][]float64, []float64) {
 		if !ok {
 			continue
 		}
-		row := make([]float64, 0)
-		for _, v := range dataMap {
-			if f, ok := v.(float64); ok {
-				row = append(row, f)
-			}
-		}
-		if len(row) < 2 {
+		labelVal, ok := numericValue(dataMap[labelColumn])
+		if !ok {
 			continue
 		}
-		features = append(features, row[:len(row)-1])
-		labels = append(labels, row[len(row)-1])
+		row := make([]float64, len(featureNames))
+		valid := true
+		for i, featureName := range featureNames {
+			value, ok := numericValue(dataMap[featureName])
+			if !ok {
+				valid = false
+				break
+			}
+			row[i] = value
+		}
+		if !valid {
+			continue
+		}
+		features = append(features, row)
+		labels = append(labels, labelVal)
 	}
 
 	return features, labels
+}
+
+func numericValue(v interface{}) (float64, bool) {
+	switch value := v.(type) {
+	case float64:
+		return value, true
+	case float32:
+		return float64(value), true
+	case int:
+		return float64(value), true
+	case int64:
+		return float64(value), true
+	case int32:
+		return float64(value), true
+	case bool:
+		if value {
+			return 1, true
+		}
+		return 0, true
+	default:
+		return 0, false
+	}
 }

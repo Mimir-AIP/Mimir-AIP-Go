@@ -12,6 +12,36 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
+func seedDigitalTwinProject(t *testing.T, store metadatastore.MetadataStore, projectID, ontologyID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	project := &models.Project{
+		ID:          projectID,
+		Name:        projectID,
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata:    models.ProjectMetadata{CreatedAt: now, UpdatedAt: now},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project: %v", err)
+	}
+	ontology := &models.Ontology{
+		ID:          ontologyID,
+		ProjectID:   projectID,
+		Name:        ontologyID,
+		Description: "test ontology",
+		Version:     "1.0",
+		Content:     "@prefix : <http://example.org/> .",
+		Status:      "active",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := store.SaveOntology(ontology); err != nil {
+		t.Fatalf("failed to save ontology: %v", err)
+	}
+}
+
 func setupDigitalTwinService(t *testing.T) (*Service, *queue.Queue, func()) {
 	t.Helper()
 	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "digitaltwin.db"))
@@ -32,6 +62,8 @@ func setupDigitalTwinService(t *testing.T) (*Service, *queue.Queue, func()) {
 func TestEnqueueSyncQueuesWorkAndMarksTwinSyncing(t *testing.T) {
 	service, q, cleanup := setupDigitalTwinService(t)
 	defer cleanup()
+
+	seedDigitalTwinProject(t, service.store, "project-1", "ontology-1")
 
 	now := time.Now().UTC()
 	twin := &models.DigitalTwin{

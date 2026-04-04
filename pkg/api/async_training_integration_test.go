@@ -137,3 +137,81 @@ func TestTrainingAsyncContractIsSelfContained(t *testing.T) {
 		t.Fatalf("expected model training_task_id %s, got %#v", trainingTaskID, reloadedModel["training_task_id"])
 	}
 }
+
+func TestPersistedWorkTaskSurvivesServerRestart(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "worktask-restart.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	project := &models.Project{
+		ID:          "project-1",
+		Name:        "project-1",
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata:    models.ProjectMetadata{CreatedAt: now, UpdatedAt: now},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project: %v", err)
+	}
+
+	q, err := queue.NewQueue(store)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	firstServer := httptest.NewServer(NewServer(q, "0", "").mux)
+	body, err := json.Marshal(models.WorkTaskSubmissionRequest{
+		Type:      models.WorkTaskTypePipelineExecution,
+		ProjectID: project.ID,
+		TaskSpec:  models.TaskSpec{ProjectID: project.ID, PipelineID: "pipeline-1"},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal task submission: %v", err)
+	}
+	resp, err := http.Post(firstServer.URL+"/api/worktasks", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("failed to submit work task: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d", resp.StatusCode)
+	}
+	var submitted map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&submitted); err != nil {
+		t.Fatalf("failed to decode submitted task: %v", err)
+	}
+	taskID, _ := submitted["worktask_id"].(string)
+	if taskID == "" {
+		t.Fatalf("expected worktask_id in submission response, got %#v", submitted)
+	}
+	firstServer.Close()
+
+	reloadedQueue, err := queue.NewQueue(store)
+	if err != nil {
+		t.Fatalf("failed to reload queue: %v", err)
+	}
+	secondServer := httptest.NewServer(NewServer(reloadedQueue, "0", "").mux)
+	defer secondServer.Close()
+
+	getResp, err := http.Get(secondServer.URL + "/api/worktasks/" + taskID)
+	if err != nil {
+		t.Fatalf("failed to get persisted task after restart: %v", err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK after restart, got %d", getResp.StatusCode)
+	}
+	var persisted map[string]interface{}
+	if err := json.NewDecoder(getResp.Body).Decode(&persisted); err != nil {
+		t.Fatalf("failed to decode persisted task: %v", err)
+	}
+	if persisted["worktask_id"] != taskID {
+		t.Fatalf("expected persisted worktask_id %s, got %#v", taskID, persisted["worktask_id"])
+	}
+	if persisted["status"] != string(models.WorkTaskStatusQueued) {
+		t.Fatalf("expected persisted queued status, got %#v", persisted["status"])
+	}
+}

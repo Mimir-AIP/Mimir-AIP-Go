@@ -190,7 +190,7 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 	// generate_ontology_from_text
 	s.AddTool(
 		mcp.NewTool("generate_ontology_from_text",
-			mcp.WithDescription("Generate an OWL ontology by extracting entity types and relationships from a text description"),
+			mcp.WithDescription("Bootstrap an OWL ontology from free-form text using lightweight heuristics. This is a starting point for review, not a full semantic parser."),
 			mcp.WithString("project_id",
 				mcp.Required(),
 				mcp.Description("Project ID"),
@@ -201,7 +201,7 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 			),
 			mcp.WithString("text",
 				mcp.Required(),
-				mcp.Description("Domain description text to extract an ontology from"),
+				mcp.Description("Domain description text to derive heuristic entity candidates from"),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -212,8 +212,7 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 				return mcp.NewToolResultError("project_id, name, and text are required"), nil
 			}
 
-			// Build a synthetic extraction result from the text using
-			// simple heuristics (capitalised word sequences → entity candidates).
+			// Build a heuristic extraction result from the text using capitalised word sequences as entity candidates.
 			extractionResult := extractEntitiesFromText(text)
 
 			ontology, err := m.ontologySvc.GenerateFromExtraction(projectID, name, extractionResult)
@@ -221,6 +220,8 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			data, _ := json.Marshal(map[string]any{
+				"mode":     "heuristic_bootstrap",
+				"warning":  "Generated from simple text heuristics; review and refine before relying on it.",
 				"ontology": ontology,
 				"extraction_summary": map[string]int{
 					"entities_count":      len(extractionResult.Entities),
@@ -352,7 +353,7 @@ func init_extractAndGenerateOntology(s *server.MCPServer, m *MimirMCPServer) {
 }
 
 // extractEntitiesFromText builds a minimal ExtractionResult from raw text using
-// heuristics: capitalised multi-word phrases become entity candidates.
+// simple heuristics only: capitalised multi-word phrases become entity candidates.
 func extractEntitiesFromText(text string) *models.ExtractionResult {
 	seen := make(map[string]bool)
 	entities := []models.ExtractedEntity{}

@@ -250,7 +250,7 @@ Then start a Claude Code session — the full Mimir toolset will be available au
 | Insights | 2 | List and generate autonomous insights |
 | ML Models | 8 | CRUD, train, infer, recommend, monitor |
 | Digital Twins | 11 | CRUD, process runs, alerts, automations, query |
-| Ontologies | 8 | CRUD, generate from text, extract from storage, inspect ontology text |
+| Ontologies | 8 | CRUD, heuristic text bootstrap, extract from storage, inspect ontology text |
 | Storage | 10 | Config CRUD, store/retrieve/update/delete data, health and ingestion health |
 | Tasks | 4 | Submit, list, get, and update work tasks |
 | System | 5 | Health, readiness, metrics, OpenAPI, and task websocket |

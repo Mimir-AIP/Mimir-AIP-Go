@@ -42,6 +42,7 @@ type MLModel struct {
 	RecommendationScore int                    `json:"recommendation_score"` // Score from recommendation engine
 	TrainingConfig      *TrainingConfig        `json:"training_config,omitempty"`
 	TrainingMetrics     *TrainingMetrics       `json:"training_metrics,omitempty"`
+	TrainingTaskID      string                 `json:"training_task_id,omitempty"`
 	ModelArtifactPath   string                 `json:"model_artifact_path,omitempty"` // Path to trained model file
 	PerformanceMetrics  *PerformanceMetrics    `json:"performance_metrics,omitempty"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`

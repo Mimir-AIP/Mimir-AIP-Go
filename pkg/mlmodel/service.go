@@ -264,25 +264,6 @@ func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLMod
 		model.TrainingConfig = req.TrainingConfig
 	}
 
-	// Update model status
-	model.Status = models.ModelStatusTraining
-	model.UpdatedAt = time.Now().UTC()
-
-	// Initialize training metrics
-	model.TrainingMetrics = &models.TrainingMetrics{
-		Epoch:              0,
-		TrainingLoss:       0,
-		ValidationLoss:     0,
-		TrainingAccuracy:   0,
-		ValidationAccuracy: 0,
-		LearningCurve:      []models.LearningCurvePoint{},
-	}
-
-	if err := s.store.SaveMLModel(model); err != nil {
-		return nil, fmt.Errorf("failed to update model: %w", err)
-	}
-
-	// Submit training job to worker queue
 	workTask := &models.WorkTask{
 		ID:          uuid.New().String(),
 		Type:        models.WorkTaskTypeMLTraining,
@@ -310,10 +291,31 @@ func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLMod
 		},
 	}
 
-	// Enqueue the training task
+	// Update model status and persist the canonical async handle before workers pick up the task.
+	model.Status = models.ModelStatusTraining
+	model.TrainingTaskID = workTask.ID
+	model.UpdatedAt = time.Now().UTC()
+
+	// Initialize training metrics
+	model.TrainingMetrics = &models.TrainingMetrics{
+		Epoch:              0,
+		TrainingLoss:       0,
+		ValidationLoss:     0,
+		TrainingAccuracy:   0,
+		ValidationAccuracy: 0,
+		LearningCurve:      []models.LearningCurvePoint{},
+	}
+
+	if err := s.store.SaveMLModel(model); err != nil {
+		return nil, fmt.Errorf("failed to update model: %w", err)
+	}
+
+	// Enqueue the training task.
 	if err := s.queue.Enqueue(workTask); err != nil {
-		// Rollback model status on queue failure
+		// Roll back the persisted async handle on queue failure so callers do not observe a phantom task.
 		model.Status = models.ModelStatusDraft
+		model.TrainingTaskID = ""
+		model.UpdatedAt = time.Now().UTC()
 		s.store.SaveMLModel(model)
 		return nil, fmt.Errorf("failed to enqueue training task: %w", err)
 	}
@@ -347,6 +349,7 @@ func (s *Service) CompleteTraining(modelID, modelArtifactPath string, performanc
 	}
 
 	model.Status = models.ModelStatusTrained
+	model.TrainingTaskID = ""
 	model.ModelArtifactPath = modelArtifactPath
 	model.PerformanceMetrics = performanceMetrics
 	now := time.Now().UTC()
@@ -378,7 +381,7 @@ func (s *Service) ValidateModel(modelID string, data *training.TrainingData) (*m
 	}
 
 	var artifact struct {
-		ModelType  string                 `json:"model_type"`
+		ModelType  string         `json:"model_type"`
 		Parameters map[string]any `json:"parameters"`
 	}
 	if err := json.Unmarshal(artifactBytes, &artifact); err != nil {
@@ -583,6 +586,7 @@ func (s *Service) FailTraining(modelID, reason string) error {
 	}
 
 	model.Status = models.ModelStatusFailed
+	model.TrainingTaskID = ""
 	model.UpdatedAt = time.Now().UTC()
 
 	if model.Metadata == nil {

@@ -23,6 +23,15 @@ type Queue struct {
 	listeners []WorkTaskListener
 }
 
+// Snapshot summarizes queue depth and known task counts for health/metrics surfaces.
+type Snapshot struct {
+	QueueLength   int64          `json:"queue_length"`
+	TasksByStatus map[string]int `json:"tasks_by_status"`
+	TasksByType   map[string]int `json:"tasks_by_type"`
+	FailedTasks   int            `json:"failed_tasks"`
+	TotalTasks    int            `json:"total_tasks"`
+}
+
 // NewQueue creates a new in-memory queue instance.
 func NewQueue() (*Queue, error) {
 	pq := make(PriorityQueue, 0)
@@ -162,6 +171,27 @@ func (q *Queue) ApplyWorkTaskResult(taskID string, result *models.WorkTaskResult
 	q.mu.Unlock()
 	q.notifyListeners(&taskSnapshot, listeners)
 	return nil
+}
+
+// Snapshot returns a consistent queue/task summary for health and metrics endpoints.
+func (q *Queue) Snapshot() *Snapshot {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	snapshot := &Snapshot{
+		QueueLength:   int64(q.pq.Len()),
+		TasksByStatus: make(map[string]int),
+		TasksByType:   make(map[string]int),
+		TotalTasks:    len(q.workTasks),
+	}
+	for _, task := range q.workTasks {
+		snapshot.TasksByStatus[string(task.Status)]++
+		snapshot.TasksByType[string(task.Type)]++
+		if task.Status == models.WorkTaskStatusFailed {
+			snapshot.FailedTasks++
+		}
+	}
+	return snapshot
 }
 
 // QueueLength returns the current length of the work task queue

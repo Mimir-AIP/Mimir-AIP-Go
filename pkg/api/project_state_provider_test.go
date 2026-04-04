@@ -31,13 +31,21 @@ func TestProjectStateSummaryMarksPendingTwinApprovalsAsAttention(t *testing.T) {
 		Metadata:    models.ProjectMetadata{CreatedAt: now, UpdatedAt: now},
 		Settings:    models.ProjectSettings{Timezone: "UTC", Environment: "development", OnboardingMode: models.ProjectOnboardingModeAdvanced},
 	}
-	twin := &models.DigitalTwin{ID: "twin-1", ProjectID: project.ID, OntologyID: "ontology-1", Name: "Factory", Status: "active", CreatedAt: now, UpdatedAt: now}
-	alert := &models.AlertEvent{ID: "alert-1", ProjectID: project.ID, DigitalTwinID: twin.ID, ApprovalStatus: models.AlertApprovalStatusPending, CreatedAt: now}
+	ontology := &models.Ontology{ID: "ontology-1", ProjectID: project.ID, Name: "Factory Ontology", Content: "@prefix : <http://example.org/> .", Status: "active", Version: "1.0", CreatedAt: now, UpdatedAt: now}
+	twin := &models.DigitalTwin{ID: "twin-1", ProjectID: project.ID, OntologyID: ontology.ID, Name: "Factory", Status: "active", CreatedAt: now, UpdatedAt: now}
+	run := &models.TwinProcessingRun{ID: "run-1", ProjectID: project.ID, DigitalTwinID: twin.ID, Status: models.TwinProcessingRunStatusCompleted, TriggerType: models.TwinProcessingTriggerTypeManual, RequestedAt: now, CompletedAt: &now}
+	alert := &models.AlertEvent{ID: "alert-1", ProjectID: project.ID, DigitalTwinID: twin.ID, ProcessingRunID: run.ID, ApprovalStatus: models.AlertApprovalStatusPending, Severity: models.InsightSeverityHigh, Category: "export", Title: "Pending approval", Message: "Awaiting review", CreatedAt: now}
 	if err := store.SaveProject(project); err != nil {
 		t.Fatalf("failed to save project: %v", err)
 	}
+	if err := store.SaveOntology(ontology); err != nil {
+		t.Fatalf("failed to save ontology: %v", err)
+	}
 	if err := store.SaveDigitalTwin(twin); err != nil {
 		t.Fatalf("failed to save twin: %v", err)
+	}
+	if err := store.SaveTwinProcessingRun(run); err != nil {
+		t.Fatalf("failed to save processing run: %v", err)
 	}
 	if err := store.SaveAlertEvent(alert); err != nil {
 		t.Fatalf("failed to save alert: %v", err)

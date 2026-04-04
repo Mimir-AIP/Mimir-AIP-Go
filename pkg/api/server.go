@@ -104,17 +104,41 @@ func (s *Server) Start() error {
 	return http.ListenAndServe(addr, s.mux)
 }
 
+func (s *Server) queueSnapshot() (*queue.Snapshot, error) {
+	if s.queue == nil {
+		return nil, fmt.Errorf("queue is not configured")
+	}
+	return s.queue.Snapshot(), nil
+}
+
 // handleHealth handles health check requests
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	snapshot, err := s.queueSnapshot()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "unhealthy", "ready": false, "error": err.Error()})
+		return
+	}
+
+	status := "healthy"
+	if snapshot.FailedTasks > 0 {
+		status = "degraded"
+	}
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":          status,
+		"ready":           true,
+		"queue_length":    snapshot.QueueLength,
+		"failed_tasks":    snapshot.FailedTasks,
+		"tasks_by_status": snapshot.TasksByStatus,
+		"tasks_by_type":   snapshot.TasksByType,
+	})
 }
 
 // handleReady handles readiness check requests
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
-	// Check if queue is accessible
-	_, err := s.queue.QueueLength()
-	if err != nil {
+	if _, err := s.queueSnapshot(); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]string{"status": "not ready", "error": err.Error()})
 		return
@@ -235,25 +259,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tasks, err := s.queue.ListWorkTasks()
+	snapshot, err := s.queueSnapshot()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to list tasks: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to inspect queue: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	byStatus := make(map[string]int)
-	byType := make(map[string]int)
-	for _, t := range tasks {
-		byStatus[string(t.Status)]++
-		byType[string(t.Type)]++
-	}
-
-	qLen, _ := s.queue.QueueLength()
-
 	resp := MetricsResponse{
-		Queue:         QueueMetrics{Length: qLen},
-		TasksByStatus: byStatus,
-		TasksByType:   byType,
+		Queue:         QueueMetrics{Length: snapshot.QueueLength},
+		TasksByStatus: snapshot.TasksByStatus,
+		TasksByType:   snapshot.TasksByType,
 		Timestamp:     time.Now().UTC(),
 	}
 

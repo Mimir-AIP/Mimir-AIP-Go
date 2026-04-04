@@ -184,3 +184,38 @@ func TestApplyWorkTaskResultStoresWorkerOutput(t *testing.T) {
 		t.Fatalf("Expected listener snapshot output location %s, got %s", result.OutputLocation, listener.seen[0].OutputLocation)
 	}
 }
+
+func TestSnapshotAggregatesTaskCounts(t *testing.T) {
+	q, err := NewQueue()
+	if err != nil {
+		t.Fatalf("Failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	tasks := []*models.WorkTask{
+		{ID: "queued-task", Type: models.WorkTaskTypePipelineExecution, Status: models.WorkTaskStatusQueued, Priority: 1, SubmittedAt: time.Now(), ProjectID: "test-project"},
+		{ID: "failed-task", Type: models.WorkTaskTypeMLTraining, Status: models.WorkTaskStatusFailed, Priority: 1, SubmittedAt: time.Now(), ProjectID: "test-project"},
+	}
+	for _, task := range tasks {
+		if err := q.Enqueue(task); err != nil {
+			t.Fatalf("Failed to enqueue task %s: %v", task.ID, err)
+		}
+	}
+
+	snapshot := q.Snapshot()
+	if snapshot.QueueLength != 2 {
+		t.Fatalf("expected queue length 2, got %d", snapshot.QueueLength)
+	}
+	if snapshot.TotalTasks != 2 {
+		t.Fatalf("expected total tasks 2, got %d", snapshot.TotalTasks)
+	}
+	if snapshot.FailedTasks != 1 {
+		t.Fatalf("expected failed task count 1, got %d", snapshot.FailedTasks)
+	}
+	if snapshot.TasksByStatus[string(models.WorkTaskStatusQueued)] != 1 {
+		t.Fatalf("expected queued status count 1, got %#v", snapshot.TasksByStatus)
+	}
+	if snapshot.TasksByType[string(models.WorkTaskTypeMLTraining)] != 1 {
+		t.Fatalf("expected ml_training type count 1, got %#v", snapshot.TasksByType)
+	}
+}

@@ -18,9 +18,9 @@ type SQLiteStore struct {
 
 // NewSQLiteStore creates a new SQLite-based storage instance
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
-	// Open database with connection pooling parameters
+	// Open database with connection pooling parameters.
 	// Format: file:path?param=value
-	dsn := fmt.Sprintf("file:%s?_busy_timeout=10000&_journal_mode=WAL&_synchronous=NORMAL", dbPath)
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", dbPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -44,15 +44,23 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 
 	store := &SQLiteStore{db: db}
 
-	// Verify WAL mode is enabled (or delete mode for in-memory databases in tests)
+	// Verify WAL mode is enabled (or delete mode for in-memory databases in tests).
 	var journalMode string
 	if err := db.QueryRow("PRAGMA journal_mode").Scan(&journalMode); err != nil {
 		return nil, fmt.Errorf("failed to check journal mode: %w", err)
 	}
-	// WAL mode should be enabled for file-based databases
-	// In-memory databases will use "delete" or "memory" mode, which is acceptable for testing
+	// WAL mode should be enabled for file-based databases.
+	// In-memory databases will use "delete" or "memory" mode, which is acceptable for testing.
 	if journalMode != "wal" && journalMode != "delete" && journalMode != "memory" {
 		return nil, fmt.Errorf("unexpected journal mode: got %s", journalMode)
+	}
+
+	var foreignKeysEnabled int
+	if err := db.QueryRow("PRAGMA foreign_keys").Scan(&foreignKeysEnabled); err != nil {
+		return nil, fmt.Errorf("failed to check foreign key enforcement: %w", err)
+	}
+	if foreignKeysEnabled != 1 {
+		return nil, fmt.Errorf("sqlite foreign key enforcement is disabled")
 	}
 
 	// Initialize schema

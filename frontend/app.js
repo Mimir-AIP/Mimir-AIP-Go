@@ -29,19 +29,27 @@
 		const [activeProjectId, setActiveProjectId] = React.useState(undefined);
 		const [notifications, setNotifications] = React.useState([]);
 		const [confirmState, setConfirmState] = React.useState(null);
+		const [bootError, setBootError] = React.useState('');
 
 		const refreshProjects = React.useCallback(async (preferredProjectId) => {
-			const data = await apiCall('/api/projects');
-			const list = data || [];
-			setProjects(list);
-			setActiveProjectId(prev => {
-				const target = preferredProjectId !== undefined ? preferredProjectId : prev;
-				if (!list.length) return '';
-				if (target === '') return '';
-				if (target === undefined || target === null) return list[0].id;
-				return list.some(project => project.id === target) ? target : list[0].id;
-			});
-			return list;
+			try {
+				const data = await apiCall('/api/projects');
+				const list = data || [];
+				setProjects(list);
+				setBootError('');
+				setActiveProjectId(prev => {
+					const target = preferredProjectId !== undefined ? preferredProjectId : prev;
+					if (!list.length) return '';
+					if (target === '') return '';
+					if (target === undefined || target === null) return list[0].id;
+					return list.some(project => project.id === target) ? target : list[0].id;
+				});
+				return list;
+			} catch (error) {
+				const message = error?.message || 'Failed to load projects';
+				setBootError(message);
+				throw error;
+			}
 		}, []);
 
 		React.useEffect(() => {
@@ -147,6 +155,17 @@
 					</aside>
 					<main className="app-main">
 						<div className="app-container">
+							{bootError ? (
+								<div className="panel-card" style={{ marginBottom: '1rem', border: '1px solid rgba(255,107,107,0.35)', background: 'rgba(96,18,18,0.45)' }}>
+									<div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
+										<div>
+											<div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>Frontend startup could not reach the API</div>
+											<div style={{ opacity: 0.8, fontSize: '0.95rem' }}>{bootError}</div>
+										</div>
+										<Button label="Retry connection" onClick={() => refreshProjects().catch(() => {})} variant="secondary" />
+									</div>
+								</div>
+							) : null}
 							<ProjectContext.Provider value={{ activeProject, activeProjectId: activeProjectId || '', projects, setActiveProject, setActiveProjectId, refreshProjects }}>
 								<PageComponent />
 							</ProjectContext.Provider>
@@ -180,6 +199,11 @@
 		);
 	}
 
-	const rootNode = ReactDOM.createRoot(document.getElementById('root'));
+	const mountNode = document.getElementById('root');
+	if (!mountNode) {
+		throw new Error('Frontend root element #root is missing');
+	}
+	const rootNode = ReactDOM.createRoot(mountNode);
 	rootNode.render(<App />);
+
 })();

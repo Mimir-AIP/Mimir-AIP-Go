@@ -11,7 +11,24 @@
 </head>
 <body>
 	<div id="root"></div>
-
+	<div id="boot-error" style="display:none;padding:16px 20px;margin:16px;border:1px solid rgba(255,107,107,0.35);background:rgba(96,18,18,0.45);color:#fff;font-family:'DM Sans',sans-serif"></div>
+	<script>
+		(function () {
+			function showBootError(message) {
+				var node = document.getElementById('boot-error');
+				if (!node) return;
+				node.style.display = 'block';
+				node.textContent = 'Frontend startup error: ' + message;
+			}
+			window.addEventListener('error', function (event) {
+				if (event && event.message) showBootError(event.message);
+			});
+			window.addEventListener('unhandledrejection', function (event) {
+				var reason = event && event.reason;
+				showBootError(reason && reason.message ? reason.message : String(reason || 'Unknown promise rejection'));
+			});
+		})();
+	</script>
 	<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 	<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 	<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>

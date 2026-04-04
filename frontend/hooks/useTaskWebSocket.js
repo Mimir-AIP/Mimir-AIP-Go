@@ -10,8 +10,8 @@
 		}, [onTaskUpdate]);
 
 		React.useEffect(() => {
-			const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-			const wsUrl = `${proto}//${window.location.host}/ws/tasks`;
+			const wsUrl = root.lib?.WS_TASKS_URL || root.lib?.resolveWebSocketUrl?.('/ws/tasks');
+			if (!wsUrl) return undefined;
 			let ws = null;
 			let reconnectTimer = null;
 			let disposed = false;

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -13,10 +14,30 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
+func saveConnectorProject(t *testing.T, store *metadatastore.SQLiteStore, projectID string) {
+	t.Helper()
+	project := &models.Project{
+		ID:          projectID,
+		Name:        projectID,
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata: models.ProjectMetadata{
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project %s: %v", projectID, err)
+	}
+}
+
 type connectorTestStoragePlugin struct{}
 
-func (p *connectorTestStoragePlugin) Initialize(config *models.PluginConfig) error           { return nil }
-func (p *connectorTestStoragePlugin) CreateSchema(ontology *models.OntologyDefinition) error { return nil }
+func (p *connectorTestStoragePlugin) Initialize(config *models.PluginConfig) error { return nil }
+func (p *connectorTestStoragePlugin) CreateSchema(ontology *models.OntologyDefinition) error {
+	return nil
+}
 func (p *connectorTestStoragePlugin) Store(cir *models.CIR) (*models.StorageResult, error) {
 	return &models.StorageResult{Success: true, AffectedItems: 1}, nil
 }
@@ -40,6 +61,9 @@ func setupConnectorService(t *testing.T) (*Service, *pipeline.Service, *storage.
 	if err != nil {
 		t.Fatalf("failed to create metadata store: %v", err)
 	}
+	saveConnectorProject(t, store, "project-a")
+	saveConnectorProject(t, store, "project-b")
+
 	pipelineSvc := pipeline.NewService(store)
 	q, err := queue.NewQueue()
 	if err != nil {

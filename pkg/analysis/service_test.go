@@ -11,6 +11,40 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
+func saveAnalysisProject(t *testing.T, store *metadatastore.SQLiteStore, projectID string) {
+	t.Helper()
+	project := &models.Project{
+		ID:          projectID,
+		Name:        projectID,
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata: models.ProjectMetadata{
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project %s: %v", projectID, err)
+	}
+}
+
+func saveAnalysisRun(t *testing.T, store *metadatastore.SQLiteStore, runID, projectID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	run := &models.AnalysisRun{
+		ID:          runID,
+		ProjectID:   projectID,
+		Kind:        models.AnalysisRunKindResolver,
+		Status:      models.AnalysisRunStatusCompleted,
+		CreatedAt:   now,
+		CompletedAt: &now,
+	}
+	if err := store.SaveAnalysisRun(run); err != nil {
+		t.Fatalf("failed to save analysis run %s: %v", runID, err)
+	}
+}
+
 type testStoragePlugin struct {
 	sample []*models.CIR
 }
@@ -41,6 +75,10 @@ func setupAnalysisService(t *testing.T) (*Service, *storage.Service, func()) {
 	if err != nil {
 		t.Fatalf("failed to create metadata store: %v", err)
 	}
+	saveAnalysisProject(t, store, "project-feedback")
+	saveAnalysisProject(t, store, "project-insights")
+	saveAnalysisProject(t, store, "project-review")
+
 	storageSvc := storage.NewService(store)
 	extractionSvc := extraction.NewService(storageSvc)
 	return NewService(store, extractionSvc, storageSvc), storageSvc, func() { _ = store.Close() }
@@ -57,11 +95,13 @@ func TestAdjustedLinkPolicyUsesFeedback(t *testing.T) {
 		models.ReviewItemStatusRejected,
 		models.ReviewItemStatusAccepted,
 	}
+	feedbackRunID := "feedback-run-1"
+	saveAnalysisRun(t, service.store.(*metadatastore.SQLiteStore), feedbackRunID, "project-feedback")
 	for _, status := range statuses {
 		item := &models.ReviewItem{
 			ID:          string(status) + now.Format(time.RFC3339Nano),
 			ProjectID:   "project-feedback",
-			RunID:       "run-1",
+			RunID:       feedbackRunID,
 			FindingType: "cross_source_link",
 			Status:      status,
 			Confidence:  0.6,
@@ -155,10 +195,14 @@ func TestBuildReviewItemReusesStableFindingIdentity(t *testing.T) {
 		SharedValueCount: 12,
 	}
 	findingKey := reviewFindingKey(link)
+	reviewRunID := "review-run-1"
+	nextRunID := "review-run-2"
+	saveAnalysisRun(t, service.store.(*metadatastore.SQLiteStore), reviewRunID, "project-review")
+	saveAnalysisRun(t, service.store.(*metadatastore.SQLiteStore), nextRunID, "project-review")
 	existing := &models.ReviewItem{
 		ID:              "existing-review-item",
 		ProjectID:       "project-review",
-		RunID:           "run-1",
+		RunID:           reviewRunID,
 		FindingType:     "cross_source_link",
 		FindingKey:      findingKey,
 		Status:          models.ReviewItemStatusAccepted,
@@ -172,14 +216,14 @@ func TestBuildReviewItemReusesStableFindingIdentity(t *testing.T) {
 		t.Fatalf("failed to seed review item: %v", err)
 	}
 
-	updated, err := service.buildReviewItem("project-review", "run-2", link, extraction.LinkNeedsReview, now)
+	updated, err := service.buildReviewItem("project-review", nextRunID, link, extraction.LinkNeedsReview, now)
 	if err != nil {
 		t.Fatalf("buildReviewItem returned error: %v", err)
 	}
 	if updated.ID != existing.ID {
 		t.Fatalf("expected stable review item ID %s, got %s", existing.ID, updated.ID)
 	}
-	if updated.RunID != "run-2" {
+	if updated.RunID != nextRunID {
 		t.Fatalf("expected latest run ID to be recorded, got %s", updated.RunID)
 	}
 	if updated.OccurrenceCount != 2 {
@@ -201,10 +245,12 @@ func TestDecideReviewItemAppendsDecisionHistory(t *testing.T) {
 	defer cleanup()
 
 	now := time.Now().UTC()
+	reviewRunID := "review-run-3"
+	saveAnalysisRun(t, service.store.(*metadatastore.SQLiteStore), reviewRunID, "project-review")
 	item := &models.ReviewItem{
 		ID:              "decision-item",
 		ProjectID:       "project-review",
-		RunID:           "run-1",
+		RunID:           reviewRunID,
 		FindingType:     "cross_source_link",
 		FindingKey:      "cross_source_link::storage-a::user::email::storage-b::customer::email_address",
 		Status:          models.ReviewItemStatusPending,

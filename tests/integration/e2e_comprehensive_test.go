@@ -573,11 +573,12 @@ func startMLTraining(t *testing.T, modelID string) map[string]interface{} {
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	// Extract work task ID from response metadata or return the model info
-	// The API returns the updated model, we need to construct a response with work_task_id
-	// For now, return empty work_task_id - it's queued in the background
+	trainingTaskID, _ := result["training_task_id"].(string)
+	if trainingTaskID == "" {
+		t.Fatalf("expected training_task_id in training response, got %#v", result)
+	}
 	return map[string]interface{}{
-		"work_task_id": "training-task-" + modelID,
+		"work_task_id": trainingTaskID,
 		"model_id":     modelID,
 	}
 }

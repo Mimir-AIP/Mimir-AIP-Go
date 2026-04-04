@@ -2,7 +2,19 @@ package doc
 
 func init() {
 	RegisterSchemas(M{
-		// ── Metrics ──────────────────────────────────────────────────────────
+		// ── Metrics / System ───────────────────────────────────────────────────
+		"SystemHealthResponse": Props([]string{"status", "ready", "queue_length", "failed_tasks"}, M{
+			"status":          Str("healthy | degraded | unhealthy"),
+			"ready":           Bool("Whether the orchestrator can currently serve requests"),
+			"queue_length":    Int("Current queue depth"),
+			"failed_tasks":    Int("Number of failed tasks currently tracked in memory"),
+			"tasks_by_status": ObjMap("integer"),
+			"tasks_by_type":   ObjMap("integer"),
+		}),
+		"ReadinessResponse": Props([]string{"status"}, M{
+			"status": Str("ready | not ready"),
+			"error":  Str("Readiness failure reason, when unavailable"),
+		}),
 		"MetricsResponse": Props(nil, M{
 			"queue":           Props(nil, M{"length": Int("Current queue depth")}),
 			"tasks_by_status": ObjMap("integer"),
@@ -443,7 +455,8 @@ func init() {
 			"recommendation_score": Int("Recommendation engine score"),
 			"training_config":      Obj("Training configuration"),
 			"training_metrics":     Obj("Metrics recorded during training"),
-			"model_artifact_path":  Str("Path to the serialised model artifact"),
+			"training_task_id":     Str("Canonical async work-task handle while training is in progress"),
+			"model_artifact_path":  Str("Orchestrator-local path to the persisted model artifact"),
 			"performance_metrics":  Obj("Latest performance metrics"),
 			"metadata":             M{"type": "object", "additionalProperties": true},
 			"created_at":           Str("ISO-8601 creation timestamp"),
@@ -458,25 +471,35 @@ func init() {
 			"training_config": Obj("Training configuration"),
 		}),
 		"MLModelUpdateRequest": Props(nil, M{
-			"name":            Str("New name"),
-			"description":     Str("New description"),
-			"training_config": Obj("Updated training configuration"),
-			"status":          Str("New status"),
+			"name":                Str("New name"),
+			"description":         Str("New description"),
+			"training_config":     Obj("Updated training configuration"),
+			"training_metrics":    Obj("Updated training metrics"),
+			"performance_metrics": Obj("Updated performance metrics"),
+			"status":              Str("New status"),
+			"metadata":            M{"type": "object", "additionalProperties": true},
 		}),
-		"MLModelRecommendRequest": Props([]string{"project_id"}, M{
+		"ModelRecommendationRequest": Props([]string{"project_id"}, M{
 			"project_id":  Str("Project ID"),
 			"ontology_id": Str("Ontology to base recommendation on"),
-			"storage_id":  Str("Storage config to sample data from"),
 		}),
-		"MLModelRecommendation": Props(nil, M{
+		"ModelRecommendation": Props(nil, M{
 			"recommended_type": Str("Recommended model type"),
 			"score":            Int("Confidence score (0-100)"),
 			"reason":           Str("Explanation"),
 			"alternatives":     Arr(Obj("Alternative model type with score and reason")),
 		}),
-		"MLTrainingRequest": Props([]string{"model_id"}, M{
-			"model_id":   Str("ID of the model to train"),
-			"storage_id": Str("Storage config to load training data from"),
+		"ModelTrainingRequest": Props([]string{"model_id"}, M{
+			"model_id":        Str("ID of the model to train"),
+			"storage_ids":     Arr(M{"type": "string"}),
+			"training_config": Obj("Optional training configuration override"),
+		}),
+		"TrainingCompleteRequest": Props([]string{"artifact_data_base64", "performance_metrics"}, M{
+			"artifact_data_base64": Str("Base64-encoded serialized model artifact uploaded by the worker"),
+			"performance_metrics":  Obj("Final performance metrics for the trained model"),
+		}),
+		"TrainingFailRequest": Props([]string{"reason"}, M{
+			"reason": Str("Training failure reason recorded by the worker"),
 		}),
 
 		// ── Digital Twins ─────────────────────────────────────────────────────
@@ -719,12 +742,10 @@ func init() {
 		}),
 
 		// ── Work Tasks ────────────────────────────────────────────────────────
-
-		// ── Work Tasks ────────────────────────────────────────────────────────
 		"WorkTask": Props(nil, M{
 			"id":                    Str("Work task ID (UUID)"),
 			"type":                  Str("pipeline_execution | ml_training | ml_inference | digital_twin_processing"),
-			"status":                Str("queued | running | completed | failed"),
+			"status":                Str("queued | scheduled | spawned | executing | completed | failed | timeout | cancelled"),
 			"priority":              Int("Task priority (higher = processed first)"),
 			"project_id":            Str("Owning project ID"),
 			"submitted_at":          Str("ISO-8601 submission timestamp"),
@@ -746,8 +767,12 @@ func init() {
 			"resource_requirements": M{"type": "object", "additionalProperties": true},
 			"data_access":           M{"type": "object", "additionalProperties": true},
 		}),
+		"WorkTaskListResponse": Props([]string{"tasks", "queue_length"}, M{
+			"tasks":        ArrOf("WorkTask"),
+			"queue_length": Int("Number of currently queued tasks"),
+		}),
 		"WorkTaskResult": Props([]string{"status"}, M{
-			"status":          Str("completed | failed"),
+			"status":          Str("queued | scheduled | spawned | executing | completed | failed | timeout | cancelled"),
 			"output_location": Str("Worker output location, if any"),
 			"metadata":        M{"type": "object", "additionalProperties": true},
 			"error_message":   Str("Error message if failed"),

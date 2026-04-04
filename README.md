@@ -1,6 +1,6 @@
 # Mimir AIP
 
-Mimir AIP is an ontology-driven platform for data aggregation, processing, and analysis. It provides a unified runtime for ingestion pipelines, machine learning model training and inference, digital twin management, guided or advanced project onboarding, and always-on project analysis — all backed by a persistent metadata store and exposed as [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tools for direct use by AI agents and LLM-based workflows. Mimir AIP is built in Go for performance and ease of deployment, with a React-based web frontend for user-friendly management. It runs on Kubernetes, supports a wide range of storage backends, and is extensible through runtime-loaded pipeline plugins, storage plugins, and LLM providers. The platform is designed to stay use-case agnostic: bundled connectors, review queues, and insight generation all compile down to the same core project resources rather than hard-coding one domain-specific workflow.
+Mimir AIP is an ontology-driven platform for data aggregation, processing, and analysis. It provides a unified runtime for ingestion pipelines, machine learning model training and inference, digital twin management, guided or advanced project onboarding, and operator-driven project analysis — all backed by a persistent metadata store and exposed as [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tools for direct use by AI agents and LLM-based workflows. Mimir AIP is built in Go for performance and ease of deployment, with a React-based web frontend for user-friendly management. It runs on Kubernetes, supports a wide range of storage backends, and is extensible through runtime-loaded pipeline plugins, storage plugins, and LLM providers. The platform is designed to stay use-case agnostic: bundled connectors, review queues, and insight generation all compile down to the same core project resources rather than hard-coding one domain-specific workflow.
 
 ---
 
@@ -53,7 +53,7 @@ Mimir AIP consists of two binaries and an optional web frontend:
           └───────────────────────┘
 ```
 
-**Orchestrator** — the long-running HTTP server. Manages persistent metadata in SQLite for projects, pipelines, schedules, ontologies, ML models, digital twins, storage configurations, analysis runs, review items, and insights. Exposes the REST API and MCP SSE endpoint. Also hosts the generic connector catalog, materializes bundled connectors into ordinary pipelines and schedules, and runs lightweight recurring control-plane work such as daily project insight generation. Heavy execution (pipeline runs, ML training, inference, digital twin synchronisation) is still delegated to **Workers** as Kubernetes Jobs.
+**Orchestrator** — the long-running HTTP server. Manages persistent metadata in SQLite for projects, pipelines, schedules, ontologies, ML models, digital twins, storage configurations, analysis runs, review items, and insights. Exposes the REST API and MCP SSE endpoint. Also hosts the generic connector catalog, materializes bundled connectors into ordinary pipelines and schedules, and runs lightweight control-plane coordination such as queue-backed task state, health surfaces, and model monitoring. Heavy execution (pipeline runs, ML training, inference, digital twin synchronisation) is still delegated to **Workers** as Kubernetes Jobs.
 
 **Worker** — a short-lived binary run as a Kubernetes Job. Reads its task type and parameters from environment variables, calls the orchestrator API to fetch configuration, executes the work, and reports results back. Designed with scalability in mind, supporting concurrent workers across multiple Kubernetes clusters — the orchestrator dispatches jobs to a configurable cluster pool, spilling over from the primary cluster to remote or cloud clusters when capacity is reached.
 
@@ -252,8 +252,8 @@ Then start a Claude Code session — the full Mimir toolset will be available au
 | Digital Twins | 11 | CRUD, process runs, alerts, automations, query |
 | Ontologies | 8 | CRUD, generate from text, extract from storage, inspect ontology text |
 | Storage | 10 | Config CRUD, store/retrieve/update/delete data, health and ingestion health |
-| Tasks | 3 | List, get, cancel work tasks |
-| System | 1 | Platform health |
+| Tasks | 4 | Submit, list, get, and update work tasks |
+| System | 5 | Health, readiness, metrics, OpenAPI, and task websocket |
 
 ---
 

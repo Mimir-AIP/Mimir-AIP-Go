@@ -41,7 +41,7 @@ func init() {
 	// ── Training Actions ───────────────────────────────────────────────────────
 	doc.Register("POST", "/api/ml-models/train", doc.RouteDoc{
 		Summary:     "Trigger model training",
-		Description: "Enqueues a Kubernetes training job for the specified model. Returns 202 Accepted immediately; poll the model's status field or listen on the WebSocket for completion.",
+		Description: "Queues model training and returns the updated model immediately. The response now includes `training_task_id`, which is the canonical async handle for polling `/api/worktasks/{id}` or subscribing to `/ws/tasks`.",
 		Tags:        []string{"ML Models"},
 		RequestBody: doc.JsonBody(doc.Ref("ModelTrainingRequest")),
 		Responses:   doc.R(doc.Accepted(doc.Ref("MLModel")), doc.BadRequest()),
@@ -57,7 +57,7 @@ func init() {
 	// ── Worker Callbacks (called by Kubernetes training jobs) ──────────────────
 	doc.Register("POST", "/api/ml-models/{id}/training/complete", doc.RouteDoc{
 		Summary:     "Report training complete",
-		Description: "Called by the worker job to record the trained artifact path and performance metrics.",
+		Description: "Called by the worker job to upload the trained model artifact bytes and final performance metrics. The orchestrator persists the artifact and clears the model's `training_task_id`.",
 		Tags:        []string{"ML Models"},
 		Params:      []doc.Param{doc.PParam("id", "Model ID")},
 		RequestBody: doc.JsonBody(doc.Ref("TrainingCompleteRequest")),
@@ -65,10 +65,10 @@ func init() {
 	})
 	doc.Register("POST", "/api/ml-models/{id}/training/fail", doc.RouteDoc{
 		Summary:     "Report training failure",
-		Description: "Called by the worker job to record a training failure reason.",
+		Description: "Called by the worker job to record a training failure reason and clear the model's `training_task_id`.",
 		Tags:        []string{"ML Models"},
 		Params:      []doc.Param{doc.PParam("id", "Model ID")},
-		RequestBody: doc.JsonBody(doc.Props(nil, doc.M{"reason": doc.Str("Failure reason")})),
+		RequestBody: doc.JsonBody(doc.Ref("TrainingFailRequest")),
 		Responses:   doc.R(doc.OK(doc.Props(nil, doc.M{"status": doc.Str("'training failed'")})), doc.BadRequest()),
 	})
 }

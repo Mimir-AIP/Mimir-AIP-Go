@@ -6,21 +6,28 @@ func init() {
 	// ── System ────────────────────────────────────────────────────────────────
 	doc.Register("GET", "/health", doc.RouteDoc{
 		Summary:     "Health check",
-		Description: "Returns 200 when the orchestrator process is running.",
+		Description: "Returns queue-backed orchestrator health. `status` is `healthy` when the queue is available with no failed tasks, and `degraded` when failed tasks are present.",
 		Tags:        []string{"System"},
-		Responses:   doc.R(doc.OK(doc.Props(nil, doc.M{"status": doc.Str("Always 'healthy'")}))),
+		Responses:   doc.R(doc.OK(doc.Ref("SystemHealthResponse")), doc.ServerError()),
 	})
 	doc.Register("GET", "/ready", doc.RouteDoc{
 		Summary:     "Readiness check",
-		Description: "Returns 200 when the queue is accessible and the orchestrator is ready to serve requests.",
+		Description: "Returns 200 only when the queue is configured and readable by the orchestrator process.",
 		Tags:        []string{"System"},
-		Responses:   doc.R(doc.OK(doc.Props(nil, doc.M{"status": doc.Str("'ready' or 'not ready'")})), doc.ServerError()),
+		Responses:   doc.R(doc.OK(doc.Ref("ReadinessResponse")), doc.ServerError()),
 	})
 	doc.Register("GET", "/api/metrics", doc.RouteDoc{
 		Summary:     "Platform metrics",
-		Description: "Returns task counts by status and type, plus the current queue depth.",
+		Description: "Returns a queue snapshot with task counts by status and type.",
 		Tags:        []string{"System"},
 		Responses:   doc.R(doc.OK(doc.Ref("MetricsResponse"))),
+	})
+
+	doc.Register("GET", "/ws/tasks", doc.RouteDoc{
+		Summary:     "Task update WebSocket",
+		Description: "WebSocket stream that emits `task_update` events whenever a work task status changes. Frontend clients use this for queue and training progress updates.",
+		Tags:        []string{"System"},
+		Responses:   doc.R(doc.OK(doc.Str("WebSocket upgrade endpoint"))),
 	})
 
 	doc.Register("GET", "/openapi.yaml", doc.RouteDoc{
@@ -32,10 +39,10 @@ func init() {
 
 	// ── Work Tasks (worker-facing, requires Authorization: Bearer) ────────────
 	doc.Register("GET", "/api/worktasks", doc.RouteDoc{
-		Summary:     "Get queue info",
-		Description: "Returns the current queue depth.",
+		Summary:     "List work tasks",
+		Description: "Returns all known work tasks plus the current queue depth. Requires the worker auth token.",
 		Tags:        []string{"Tasks"},
-		Responses:   doc.R(doc.OK(doc.Props(nil, doc.M{"queue_length": doc.Int("Number of queued tasks")}))),
+		Responses:   doc.R(doc.OK(doc.Ref("WorkTaskListResponse"))),
 	})
 	doc.Register("POST", "/api/worktasks", doc.RouteDoc{
 		Summary:     "Submit work task",
@@ -53,7 +60,7 @@ func init() {
 	})
 	doc.Register("POST", "/api/worktasks/{id}", doc.RouteDoc{
 		Summary:     "Update work task status",
-		Description: "Called by workers to report task completion or failure. Requires the worker auth token.",
+		Description: "Called by workers to report task execution status, result metadata, output locations, or failure details. Requires the worker auth token.",
 		Tags:        []string{"Tasks"},
 		Params:      []doc.Param{doc.PParam("id", "Work task ID")},
 		RequestBody: doc.JsonBody(doc.Ref("WorkTaskResult")),

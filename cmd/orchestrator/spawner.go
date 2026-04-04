@@ -83,21 +83,24 @@ func (ws *WorkerSpawner) processQueue() {
 	log.Printf("Scaling decision: queue=%d, active=%d, capacity=%d - SPAWNING worker",
 		queueLength, totalActive, totalCapacity)
 
-	// Dequeue a work task
+	if nextTask == nil {
+		return
+	}
+
+	// Select the target cluster before dequeuing so lack of capacity cannot strand the task outside the heap.
+	entry := ws.pool.SelectCluster(counts, nextTask.TaskSpec.PreferredCluster)
+	if entry == nil {
+		log.Printf("No cluster has available capacity; leaving task %s queued", nextTask.ID)
+		return
+	}
+
+	// Dequeue a work task only after a destination cluster is known.
 	task, err := ws.queue.Dequeue()
 	if err != nil {
 		log.Printf("Error dequeuing work task: %v", err)
 		return
 	}
 	if task == nil {
-		return
-	}
-
-	// Select the target cluster (preferred affinity → burst order)
-	entry := ws.pool.SelectCluster(counts, task.TaskSpec.PreferredCluster)
-	if entry == nil {
-		log.Printf("No cluster has available capacity; re-queuing task %s", task.ID)
-		_ = ws.queue.UpdateWorkTaskStatus(task.ID, models.WorkTaskStatusQueued, "")
 		return
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -14,32 +15,79 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 )
 
-// Service provides storage management operations
+// storagePluginFactory returns a fresh plugin instance for one configured storage operation.
+type storagePluginFactory func() models.StoragePlugin
+
+// Service provides storage management operations.
 type Service struct {
 	store        metadatastore.MetadataStore
-	plugins      *pluginruntime.Registry[models.StoragePlugin]
+	plugins      *pluginruntime.Registry[storagePluginFactory]
 	pluginLoader *PluginLoader // nil when dynamic loading is not configured
 }
 
-// NewService creates a new storage service
+// NewService creates a new storage service.
 func NewService(store metadatastore.MetadataStore) *Service {
 	return &Service{
 		store:   store,
-		plugins: pluginruntime.NewRegistry[models.StoragePlugin](),
+		plugins: pluginruntime.NewRegistry[storagePluginFactory](),
 	}
 }
 
-// RegisterPlugin registers a storage plugin
+// RegisterPlugin registers a storage plugin prototype used to create isolated instances per config.
 func (s *Service) RegisterPlugin(pluginType string, plugin models.StoragePlugin) {
-	s.plugins.Register(pluginType, plugin)
+	s.plugins.Register(pluginType, newStoragePluginFactory(plugin))
 	log.Printf("Registered storage plugin: %s", pluginType)
 }
 
-// GetPlugin retrieves a registered plugin by type
+// GetPlugin retrieves a fresh plugin instance by type.
 func (s *Service) GetPlugin(pluginType string) (models.StoragePlugin, error) {
-	plugin, ok := s.plugins.Get(pluginType)
+	factory, ok := s.plugins.Get(pluginType)
 	if !ok {
 		return nil, fmt.Errorf("storage plugin not found: %s", pluginType)
+	}
+
+	plugin := factory()
+	if plugin == nil {
+		return nil, fmt.Errorf("storage plugin factory returned nil: %s", pluginType)
+	}
+
+	return plugin, nil
+}
+
+func newStoragePluginFactory(prototype models.StoragePlugin) storagePluginFactory {
+	return func() models.StoragePlugin {
+		if prototype == nil {
+			return nil
+		}
+
+		value := reflect.ValueOf(prototype)
+		if !value.IsValid() {
+			return nil
+		}
+		if value.Kind() != reflect.Pointer || value.IsNil() {
+			return prototype
+		}
+
+		clone := reflect.New(value.Elem().Type())
+		clone.Elem().Set(value.Elem())
+		plugin, _ := clone.Interface().(models.StoragePlugin)
+		return plugin
+	}
+}
+
+func (s *Service) configuredPlugin(storageConfig *models.StorageConfig) (models.StoragePlugin, error) {
+	plugin, err := s.GetPlugin(storageConfig.PluginType)
+	if err != nil {
+		return nil, err
+	}
+
+	pluginConfig := &models.PluginConfig{
+		ConnectionString: getConnectionString(storageConfig.Config),
+		Credentials:      getCredentials(storageConfig.Config),
+		Options:          getOptions(storageConfig.Config),
+	}
+	if err := plugin.Initialize(pluginConfig); err != nil {
+		return nil, fmt.Errorf("failed to initialize storage plugin: %w", err)
 	}
 
 	return plugin, nil
@@ -127,22 +175,10 @@ func (s *Service) InitializeStorage(storageID string, ontology *models.OntologyD
 		return fmt.Errorf("storage config not found: %w", err)
 	}
 
-	plugin, err := s.GetPlugin(storageConfig.PluginType)
+	plugin, err := s.configuredPlugin(storageConfig)
 	if err != nil {
 		return err
 	}
-
-	// Initialize plugin
-	pluginConfig := &models.PluginConfig{
-		ConnectionString: getConnectionString(storageConfig.Config),
-		Credentials:      getCredentials(storageConfig.Config),
-		Options:          getOptions(storageConfig.Config),
-	}
-
-	if err := plugin.Initialize(pluginConfig); err != nil {
-		return fmt.Errorf("failed to initialize storage plugin: %w", err)
-	}
-
 	// Create schema if ontology is provided
 	if ontology != nil {
 		if err := plugin.CreateSchema(ontology); err != nil {
@@ -175,20 +211,9 @@ func (s *Service) Store(storageID string, cir *models.CIR) (*models.StorageResul
 		return nil, fmt.Errorf("storage config is not active")
 	}
 
-	plugin, err := s.GetPlugin(storageConfig.PluginType)
+	plugin, err := s.configuredPlugin(storageConfig)
 	if err != nil {
 		return nil, err
-	}
-
-	// Initialize plugin if not already done
-	pluginConfig := &models.PluginConfig{
-		ConnectionString: getConnectionString(storageConfig.Config),
-		Credentials:      getCredentials(storageConfig.Config),
-		Options:          getOptions(storageConfig.Config),
-	}
-
-	if err := plugin.Initialize(pluginConfig); err != nil {
-		return nil, fmt.Errorf("failed to initialize storage plugin: %w", err)
 	}
 
 	// Store data
@@ -213,20 +238,9 @@ func (s *Service) Retrieve(storageID string, query *models.CIRQuery) ([]*models.
 		return nil, fmt.Errorf("storage config is not active")
 	}
 
-	plugin, err := s.GetPlugin(storageConfig.PluginType)
+	plugin, err := s.configuredPlugin(storageConfig)
 	if err != nil {
 		return nil, err
-	}
-
-	// Initialize plugin
-	pluginConfig := &models.PluginConfig{
-		ConnectionString: getConnectionString(storageConfig.Config),
-		Credentials:      getCredentials(storageConfig.Config),
-		Options:          getOptions(storageConfig.Config),
-	}
-
-	if err := plugin.Initialize(pluginConfig); err != nil {
-		return nil, fmt.Errorf("failed to initialize storage plugin: %w", err)
 	}
 
 	// Retrieve data
@@ -251,20 +265,9 @@ func (s *Service) Update(storageID string, query *models.CIRQuery, updates *mode
 		return nil, fmt.Errorf("storage config is not active")
 	}
 
-	plugin, err := s.GetPlugin(storageConfig.PluginType)
+	plugin, err := s.configuredPlugin(storageConfig)
 	if err != nil {
 		return nil, err
-	}
-
-	// Initialize plugin
-	pluginConfig := &models.PluginConfig{
-		ConnectionString: getConnectionString(storageConfig.Config),
-		Credentials:      getCredentials(storageConfig.Config),
-		Options:          getOptions(storageConfig.Config),
-	}
-
-	if err := plugin.Initialize(pluginConfig); err != nil {
-		return nil, fmt.Errorf("failed to initialize storage plugin: %w", err)
 	}
 
 	// Update data
@@ -289,20 +292,9 @@ func (s *Service) Delete(storageID string, query *models.CIRQuery) (*models.Stor
 		return nil, fmt.Errorf("storage config is not active")
 	}
 
-	plugin, err := s.GetPlugin(storageConfig.PluginType)
+	plugin, err := s.configuredPlugin(storageConfig)
 	if err != nil {
 		return nil, err
-	}
-
-	// Initialize plugin
-	pluginConfig := &models.PluginConfig{
-		ConnectionString: getConnectionString(storageConfig.Config),
-		Credentials:      getCredentials(storageConfig.Config),
-		Options:          getOptions(storageConfig.Config),
-	}
-
-	if err := plugin.Initialize(pluginConfig); err != nil {
-		return nil, fmt.Errorf("failed to initialize storage plugin: %w", err)
 	}
 
 	// Delete data
@@ -323,20 +315,9 @@ func (s *Service) GetStorageMetadata(storageID string) (*models.StorageMetadata,
 		return nil, fmt.Errorf("storage config not found: %w", err)
 	}
 
-	plugin, err := s.GetPlugin(storageConfig.PluginType)
+	plugin, err := s.configuredPlugin(storageConfig)
 	if err != nil {
 		return nil, err
-	}
-
-	// Initialize plugin
-	pluginConfig := &models.PluginConfig{
-		ConnectionString: getConnectionString(storageConfig.Config),
-		Credentials:      getCredentials(storageConfig.Config),
-		Options:          getOptions(storageConfig.Config),
-	}
-
-	if err := plugin.Initialize(pluginConfig); err != nil {
-		return nil, fmt.Errorf("failed to initialize storage plugin: %w", err)
 	}
 
 	return plugin.GetMetadata()
@@ -349,20 +330,9 @@ func (s *Service) HealthCheck(storageID string) (bool, error) {
 		return false, fmt.Errorf("storage config not found: %w", err)
 	}
 
-	plugin, err := s.GetPlugin(storageConfig.PluginType)
+	plugin, err := s.configuredPlugin(storageConfig)
 	if err != nil {
 		return false, err
-	}
-
-	// Initialize plugin
-	pluginConfig := &models.PluginConfig{
-		ConnectionString: getConnectionString(storageConfig.Config),
-		Credentials:      getCredentials(storageConfig.Config),
-		Options:          getOptions(storageConfig.Config),
-	}
-
-	if err := plugin.Initialize(pluginConfig); err != nil {
-		return false, fmt.Errorf("failed to initialize storage plugin: %w", err)
 	}
 
 	return plugin.HealthCheck()

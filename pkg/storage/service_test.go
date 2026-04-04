@@ -8,6 +8,25 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
+func saveTestProject(t *testing.T, store *metadatastore.SQLiteStore, projectID string) {
+	t.Helper()
+
+	project := &models.Project{
+		ID:          projectID,
+		Name:        projectID,
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata: models.ProjectMetadata{
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save test project %s: %v", projectID, err)
+	}
+}
+
 type mockStoragePlugin struct{}
 
 func (m *mockStoragePlugin) Initialize(config *models.PluginConfig) error           { return nil }
@@ -29,12 +48,93 @@ func (m *mockStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
 }
 func (m *mockStoragePlugin) HealthCheck() (bool, error) { return true, nil }
 
+type statefulStoragePlugin struct {
+	connectionString string
+}
+
+func (m *statefulStoragePlugin) Initialize(config *models.PluginConfig) error {
+	m.connectionString = config.ConnectionString
+	return nil
+}
+
+func (m *statefulStoragePlugin) CreateSchema(ontology *models.OntologyDefinition) error { return nil }
+
+func (m *statefulStoragePlugin) Store(cir *models.CIR) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 1}, nil
+}
+
+func (m *statefulStoragePlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, error) {
+	return []*models.CIR{
+		{
+			Version: models.CIRVersion,
+			Source:  models.CIRSource{Type: models.SourceTypeDatabase, URI: m.connectionString, Timestamp: time.Now().UTC(), Format: models.DataFormatJSON},
+			Data:    map[string]interface{}{"connection_string": m.connectionString},
+		},
+	}, nil
+}
+
+func (m *statefulStoragePlugin) Update(query *models.CIRQuery, updates *models.CIRUpdate) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 0}, nil
+}
+
+func (m *statefulStoragePlugin) Delete(query *models.CIRQuery) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 0}, nil
+}
+
+func (m *statefulStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
+	return &models.StorageMetadata{StorageType: m.connectionString}, nil
+}
+
+func (m *statefulStoragePlugin) HealthCheck() (bool, error) { return true, nil }
+
+func TestStorageOperationsUseIsolatedPluginInstances(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	saveTestProject(t, store, "project-1")
+
+	svc := NewService(store)
+	svc.RegisterPlugin("stateful", &statefulStoragePlugin{})
+
+	firstCfg, err := svc.CreateStorageConfig("project-1", "stateful", map[string]interface{}{"connection_string": "mock://first"})
+	if err != nil {
+		t.Fatalf("failed to create first storage config: %v", err)
+	}
+	secondCfg, err := svc.CreateStorageConfig("project-1", "stateful", map[string]interface{}{"connection_string": "mock://second"})
+	if err != nil {
+		t.Fatalf("failed to create second storage config: %v", err)
+	}
+
+	firstResults, err := svc.Retrieve(firstCfg.ID, &models.CIRQuery{Limit: 1})
+	if err != nil {
+		t.Fatalf("failed to retrieve from first storage config: %v", err)
+	}
+	secondResults, err := svc.Retrieve(secondCfg.ID, &models.CIRQuery{Limit: 1})
+	if err != nil {
+		t.Fatalf("failed to retrieve from second storage config: %v", err)
+	}
+
+	firstConnection := firstResults[0].Data.(map[string]interface{})["connection_string"]
+	secondConnection := secondResults[0].Data.(map[string]interface{})["connection_string"]
+	if firstConnection != "mock://first" {
+		t.Fatalf("expected first storage config to keep its own plugin state, got %v", firstConnection)
+	}
+	if secondConnection != "mock://second" {
+		t.Fatalf("expected second storage config to keep its own plugin state, got %v", secondConnection)
+	}
+}
+
 func TestInitializeStorageDoesNotWriteFakeOntologyID(t *testing.T) {
 	store, err := metadatastore.NewSQLiteStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create metadata store: %v", err)
 	}
 	defer store.Close()
+
+	saveTestProject(t, store, "project-1")
 
 	svc := NewService(store)
 	svc.RegisterPlugin("mock", &mockStoragePlugin{})
@@ -105,6 +205,8 @@ func TestGetIngestionHealth_ComputesHealthySource(t *testing.T) {
 		},
 	}
 
+	saveTestProject(t, store, "project-health")
+
 	svc := NewService(store)
 	svc.RegisterPlugin("sample", &mockSampleStoragePlugin{sample: sample})
 
@@ -153,6 +255,8 @@ func TestGetIngestionHealth_DetectsDriftAndLowCompleteness(t *testing.T) {
 			},
 		},
 	}
+
+	saveTestProject(t, store, "project-drift")
 
 	svc := NewService(store)
 	svc.RegisterPlugin("sample", &mockSampleStoragePlugin{sample: sample})

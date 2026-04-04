@@ -48,7 +48,7 @@ func setupDigitalTwinService(t *testing.T) (*Service, *queue.Queue, func()) {
 	if err != nil {
 		t.Fatalf("failed to create metadata store: %v", err)
 	}
-	q, err := queue.NewQueue()
+	q, err := queue.NewQueue(store)
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}

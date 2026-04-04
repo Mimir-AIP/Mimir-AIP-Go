@@ -41,14 +41,6 @@ func main() {
 
 	log.Printf("Starting Mimir AIP Orchestrator in %s mode", cfg.Environment)
 
-	// Initialize in-memory job queue
-	q, err := queue.NewQueue()
-	if err != nil {
-		log.Fatalf("Failed to initialize job queue: %v", err)
-	}
-
-	log.Println("Initialized in-memory job queue")
-
 	// Initialize Kubernetes cluster pool
 	// When CLUSTER_CONFIG_FILE is set, load multi-cluster config; otherwise use a single
 	// in-cluster pool that preserves the existing single-cluster behaviour exactly.
@@ -94,6 +86,12 @@ func main() {
 		log.Fatalf("Failed to initialize SQLite storage: %v", err)
 	}
 	log.Printf("Initialized SQLite storage at: %s", dbPath)
+
+	q, err := queue.NewQueue(store)
+	if err != nil {
+		log.Fatalf("Failed to initialize durable job queue: %v", err)
+	}
+	log.Println("Initialized durable job queue")
 
 	// Initialize plugin service (metadata management only - workers compile plugins)
 	tempDir := storageDir + "/temp"

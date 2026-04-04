@@ -28,6 +28,11 @@ type MetadataStore interface {
 	ListSchedulesByProject(projectID string) ([]*models.Schedule, error)
 	DeleteSchedule(id string) error
 
+	// Work task operations
+	SaveWorkTask(task *models.WorkTask) error
+	GetWorkTask(id string) (*models.WorkTask, error)
+	ListWorkTasks() ([]*models.WorkTask, error)
+
 	// Plugin operations
 	SavePlugin(plugin *models.Plugin, binaryData []byte) error
 	GetPlugin(name string) (*models.Plugin, error)

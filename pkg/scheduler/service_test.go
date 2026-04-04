@@ -49,7 +49,7 @@ func setupSchedulerService(t *testing.T) (*Service, func()) {
 	}
 
 	pipelineSvc := pipeline.NewService(store)
-	q, err := queue.NewQueue()
+	q, err := queue.NewQueue(store)
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}

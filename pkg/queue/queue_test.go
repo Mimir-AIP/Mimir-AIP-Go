@@ -1,15 +1,17 @@
 package queue
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
 // TestEnqueueDequeue tests basic queue operations
 func TestEnqueueDequeue(t *testing.T) {
-	q, err := NewQueue()
+	q, err := NewQueue(nil)
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
@@ -50,7 +52,7 @@ func TestEnqueueDequeue(t *testing.T) {
 
 // TestQueueLength tests queue length tracking
 func TestQueueLength(t *testing.T) {
-	q, err := NewQueue()
+	q, err := NewQueue(nil)
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
@@ -86,7 +88,7 @@ func TestQueueLength(t *testing.T) {
 
 // TestWorkTaskStatusUpdate tests work task status updates
 func TestWorkTaskStatusUpdate(t *testing.T) {
-	q, err := NewQueue()
+	q, err := NewQueue(nil)
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
@@ -131,7 +133,7 @@ func (l *recordingListener) OnWorkTaskStatusChanged(task *models.WorkTask) {
 }
 
 func TestApplyWorkTaskResultStoresWorkerOutput(t *testing.T) {
-	q, err := NewQueue()
+	q, err := NewQueue(nil)
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
@@ -186,7 +188,7 @@ func TestApplyWorkTaskResultStoresWorkerOutput(t *testing.T) {
 }
 
 func TestSnapshotAggregatesTaskCounts(t *testing.T) {
-	q, err := NewQueue()
+	q, err := NewQueue(nil)
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
@@ -217,5 +219,64 @@ func TestSnapshotAggregatesTaskCounts(t *testing.T) {
 	}
 	if snapshot.TasksByType[string(models.WorkTaskTypeMLTraining)] != 1 {
 		t.Fatalf("expected ml_training type count 1, got %#v", snapshot.TasksByType)
+	}
+}
+
+func TestQueueReloadsPersistedTasks(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "queue.db"))
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	project := &models.Project{
+		ID:          "project-1",
+		Name:        "project-1",
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata:    models.ProjectMetadata{CreatedAt: now, UpdatedAt: now},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project: %v", err)
+	}
+
+	q, err := NewQueue(store)
+	if err != nil {
+		t.Fatalf("failed to create durable queue: %v", err)
+	}
+	task := &models.WorkTask{
+		ID:          "persisted-task",
+		Type:        models.WorkTaskTypeMLTraining,
+		Status:      models.WorkTaskStatusQueued,
+		Priority:    2,
+		SubmittedAt: now,
+		ProjectID:   project.ID,
+		TaskSpec:    models.TaskSpec{ModelID: "model-1", ProjectID: project.ID},
+	}
+	if err := q.Enqueue(task); err != nil {
+		t.Fatalf("failed to enqueue task: %v", err)
+	}
+
+	reloaded, err := NewQueue(store)
+	if err != nil {
+		t.Fatalf("failed to reload durable queue: %v", err)
+	}
+	defer reloaded.Close()
+
+	persisted, err := reloaded.GetWorkTask(task.ID)
+	if err != nil {
+		t.Fatalf("expected persisted task to reload: %v", err)
+	}
+	if persisted.Status != models.WorkTaskStatusQueued {
+		t.Fatalf("expected queued status after reload, got %s", persisted.Status)
+	}
+	peeked, err := reloaded.PeekNext()
+	if err != nil {
+		t.Fatalf("expected queued task to be available after reload: %v", err)
+	}
+	if peeked == nil || peeked.ID != task.ID {
+		t.Fatalf("expected task %s at front of queue, got %#v", task.ID, peeked)
 	}
 }

@@ -71,7 +71,7 @@ func setupMonitoringService(t *testing.T) (*MonitoringService, *Service, *storag
 	if err := store.SaveOntology(ont); err != nil {
 		t.Fatalf("failed to save ontology: %v", err)
 	}
-	q, err := queue.NewQueue()
+	q, err := queue.NewQueue(store)
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}

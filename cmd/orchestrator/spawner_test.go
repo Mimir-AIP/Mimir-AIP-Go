@@ -11,7 +11,7 @@ import (
 )
 
 func TestProcessQueueLeavesTaskQueuedWhenNoClusterHasCapacity(t *testing.T) {
-	q, err := queue.NewQueue()
+	q, err := queue.NewQueue(nil)
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}

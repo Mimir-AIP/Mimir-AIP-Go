@@ -161,6 +161,21 @@ func (s *SQLiteStore) initSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_schedules_project_id ON schedules(project_id);
 
+	CREATE TABLE IF NOT EXISTS work_tasks (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		type TEXT NOT NULL,
+		status TEXT NOT NULL,
+		submitted_at DATETIME NOT NULL,
+		data TEXT NOT NULL,
+		FOREIGN KEY (project_id) REFERENCES projects(id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_work_tasks_project_id ON work_tasks(project_id);
+	CREATE INDEX IF NOT EXISTS idx_work_tasks_status ON work_tasks(status);
+	CREATE INDEX IF NOT EXISTS idx_work_tasks_submitted_at ON work_tasks(submitted_at);
+
+
 	CREATE TABLE IF NOT EXISTS plugins (
 		id TEXT PRIMARY KEY,
 		name TEXT UNIQUE NOT NULL,
@@ -902,6 +917,61 @@ func (s *SQLiteStore) DeleteSchedule(id string) error {
 		return fmt.Errorf("failed to delete schedule: %w", err)
 	}
 	return nil
+}
+
+// SaveWorkTask saves a work task to the database.
+func (s *SQLiteStore) SaveWorkTask(task *models.WorkTask) error {
+	data, err := json.Marshal(task)
+	if err != nil {
+		return fmt.Errorf("failed to marshal work task: %w", err)
+	}
+	query := `
+		INSERT OR REPLACE INTO work_tasks (id, project_id, type, status, submitted_at, data)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.db.Exec(query, task.ID, task.ProjectID, task.Type, task.Status, task.SubmittedAt.UTC(), data)
+	if err != nil {
+		return fmt.Errorf("failed to save work task: %w", err)
+	}
+	return nil
+}
+
+// GetWorkTask retrieves a work task by ID.
+func (s *SQLiteStore) GetWorkTask(id string) (*models.WorkTask, error) {
+	var data string
+	if err := s.db.QueryRow(`SELECT data FROM work_tasks WHERE id = ?`, id).Scan(&data); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("work task not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get work task: %w", err)
+	}
+	var task models.WorkTask
+	if err := json.Unmarshal([]byte(data), &task); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal work task: %w", err)
+	}
+	return &task, nil
+}
+
+// ListWorkTasks lists all persisted work tasks.
+func (s *SQLiteStore) ListWorkTasks() ([]*models.WorkTask, error) {
+	rows, err := s.db.Query(`SELECT data FROM work_tasks ORDER BY submitted_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list work tasks: %w", err)
+	}
+	defer rows.Close()
+	tasks := make([]*models.WorkTask, 0)
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			continue
+		}
+		var task models.WorkTask
+		if err := json.Unmarshal([]byte(data), &task); err != nil {
+			continue
+		}
+		tasks = append(tasks, &task)
+	}
+	return tasks, nil
 }
 
 // SavePlugin saves a plugin and its binary data to the database

@@ -48,7 +48,7 @@ func setupProcessorTest(t *testing.T) (*Processor, metadatastore.MetadataStore, 
 	if err != nil {
 		t.Fatalf("failed to create metadata store: %v", err)
 	}
-	q, err := queue.NewQueue()
+	q, err := queue.NewQueue(store)
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}

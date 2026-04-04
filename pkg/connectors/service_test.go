@@ -65,7 +65,7 @@ func setupConnectorService(t *testing.T) (*Service, *pipeline.Service, *storage.
 	saveConnectorProject(t, store, "project-b")
 
 	pipelineSvc := pipeline.NewService(store)
-	q, err := queue.NewQueue()
+	q, err := queue.NewQueue(store)
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}

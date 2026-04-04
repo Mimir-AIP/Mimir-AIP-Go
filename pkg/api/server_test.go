@@ -12,7 +12,7 @@ import (
 )
 
 func TestHandleHealthReportsDegradedWhenFailedTasksExist(t *testing.T) {
-	q, err := queue.NewQueue()
+	q, err := queue.NewQueue(nil)
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestHandleHealthReportsDegradedWhenFailedTasksExist(t *testing.T) {
 }
 
 func TestHandleReadyReportsReadyWhenQueueConfigured(t *testing.T) {
-	q, err := queue.NewQueue()
+	q, err := queue.NewQueue(nil)
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}

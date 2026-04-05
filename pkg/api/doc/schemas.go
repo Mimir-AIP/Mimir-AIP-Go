@@ -519,10 +519,15 @@ func init() {
 		}),
 
 		// ── Digital Twins ─────────────────────────────────────────────────────
+		"DigitalTwinReconciliationPolicy": Props(nil, M{
+			"strategy":        Str("source_priority | freshest"),
+			"source_priority": Arr(M{"type": "string"}),
+		}),
 		"DigitalTwinConfig": Props(nil, M{
 			"storage_ids":          Arr(M{"type": "string"}),
 			"enable_predictions":   Bool("Whether prediction endpoints are enabled for this twin"),
 			"prediction_cache_ttl": Int("Prediction cache TTL in seconds"),
+			"reconciliation":       Ref("DigitalTwinReconciliationPolicy"),
 			"custom_settings":      M{"type": "object", "additionalProperties": M{"type": "string"}},
 		}),
 		"DigitalTwin": Props(nil, M{

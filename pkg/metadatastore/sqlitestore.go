@@ -1773,10 +1773,20 @@ func (s *SQLiteStore) SaveDigitalTwin(twin *models.DigitalTwin) error {
 	}
 
 	query := `
-		INSERT OR REPLACE INTO digital_twins (
+		INSERT INTO digital_twins (
 			id, project_id, name, description, ontology_id, status,
 			created_at, updated_at, last_synced_at, data
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			project_id = excluded.project_id,
+			name = excluded.name,
+			description = excluded.description,
+			ontology_id = excluded.ontology_id,
+			status = excluded.status,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			last_synced_at = excluded.last_synced_at,
+			data = excluded.data
 	`
 
 	_, err = s.db.Exec(query,

@@ -43,7 +43,30 @@ func seedDigitalTwinProject(t *testing.T, store metadatastore.MetadataStore, pro
 	}
 }
 
-func setupDigitalTwinService(t *testing.T) (*Service, *queue.Queue, func()) {
+type twinSampleStoragePlugin struct {
+	sample []*models.CIR
+}
+
+func (m *twinSampleStoragePlugin) Initialize(config *models.PluginConfig) error           { return nil }
+func (m *twinSampleStoragePlugin) CreateSchema(ontology *models.OntologyDefinition) error { return nil }
+func (m *twinSampleStoragePlugin) Store(cir *models.CIR) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 1}, nil
+}
+func (m *twinSampleStoragePlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, error) {
+	return m.sample, nil
+}
+func (m *twinSampleStoragePlugin) Update(query *models.CIRQuery, updates *models.CIRUpdate) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 0}, nil
+}
+func (m *twinSampleStoragePlugin) Delete(query *models.CIRQuery) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 0}, nil
+}
+func (m *twinSampleStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
+	return &models.StorageMetadata{StorageType: "twin-sample"}, nil
+}
+func (m *twinSampleStoragePlugin) HealthCheck() (bool, error) { return true, nil }
+
+func setupDigitalTwinService(t *testing.T) (*Service, *storage.Service, *queue.Queue, func()) {
 	t.Helper()
 	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "digitaltwin.db"))
 	if err != nil {
@@ -53,15 +76,16 @@ func setupDigitalTwinService(t *testing.T) (*Service, *queue.Queue, func()) {
 	if err != nil {
 		t.Fatalf("failed to create queue: %v", err)
 	}
-	service := NewService(store, nil, ontology.NewService(store), storage.NewService(store), nil, q)
-	return service, q, func() {
+	storageSvc := storage.NewService(store)
+	service := NewService(store, nil, ontology.NewService(store), storageSvc, nil, q)
+	return service, storageSvc, q, func() {
 		_ = q.Close()
 		_ = store.Close()
 	}
 }
 
 func TestEnqueueSyncQueuesWorkAndMarksTwinSyncing(t *testing.T) {
-	service, q, cleanup := setupDigitalTwinService(t)
+	service, _, q, cleanup := setupDigitalTwinService(t)
 	defer cleanup()
 
 	seedDigitalTwinProject(t, service.store, "project-1", "ontology-1")
@@ -107,7 +131,7 @@ func TestEnqueueSyncQueuesWorkAndMarksTwinSyncing(t *testing.T) {
 }
 
 func TestEntityHistoryCapturesUpdates(t *testing.T) {
-	service, _, cleanup := setupDigitalTwinService(t)
+	service, _, _, cleanup := setupDigitalTwinService(t)
 	defer cleanup()
 
 	seedDigitalTwinProject(t, service.store, "project-1", "ontology-1")
@@ -148,5 +172,136 @@ func TestEntityHistoryCapturesUpdates(t *testing.T) {
 	}
 	if fmt.Sprintf("%v", history[0].Attributes["temperature"]) != "91" {
 		t.Fatalf("expected latest revision temperature 91, got %#v", history[0].Attributes["temperature"])
+	}
+}
+
+func TestSyncWithStorageUsesSourcePriorityReconciliation(t *testing.T) {
+	service, storageSvc, _, cleanup := setupDigitalTwinService(t)
+	defer cleanup()
+
+	seedDigitalTwinProject(t, service.store, "project-1", "ontology-1")
+	now := time.Now().UTC()
+	storageSvc.RegisterPlugin("sample-a", &twinSampleStoragePlugin{sample: []*models.CIR{func() *models.CIR {
+		cir := models.NewCIR(models.SourceTypeDatabase, "db://a/m1", models.DataFormatJSON, map[string]interface{}{"machine_id": "M-1", "temperature": 80})
+		cir.Source.Timestamp = now.Add(-5 * time.Minute)
+		cir.SetParameter("entity_type", "Machine")
+		return cir
+	}()}})
+	storageSvc.RegisterPlugin("sample-b", &twinSampleStoragePlugin{sample: []*models.CIR{func() *models.CIR {
+		cir := models.NewCIR(models.SourceTypeDatabase, "db://b/m1", models.DataFormatJSON, map[string]interface{}{"machine_id": "M-1", "temperature": 95})
+		cir.Source.Timestamp = now
+		cir.SetParameter("entity_type", "Machine")
+		return cir
+	}()}})
+
+	cfgA, err := storageSvc.CreateStorageConfig("project-1", "sample-a", map[string]interface{}{"connection_string": "mock://a"})
+	if err != nil {
+		t.Fatalf("failed to create storage config A: %v", err)
+	}
+	cfgB, err := storageSvc.CreateStorageConfig("project-1", "sample-b", map[string]interface{}{"connection_string": "mock://b"})
+	if err != nil {
+		t.Fatalf("failed to create storage config B: %v", err)
+	}
+	twin := &models.DigitalTwin{
+		ID:         "twin-priority",
+		ProjectID:  "project-1",
+		OntologyID: "ontology-1",
+		Name:       "Priority Twin",
+		Status:     "active",
+		Config: &models.DigitalTwinConfig{
+			StorageIDs: []string{cfgA.ID, cfgB.ID},
+			Reconciliation: &models.TwinReconciliationPolicy{
+				Strategy:       "source_priority",
+				SourcePriority: []string{cfgB.ID, cfgA.ID},
+			},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := service.store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save digital twin: %v", err)
+	}
+
+	if err := service.SyncWithStorage(twin.ID); err != nil {
+		t.Fatalf("SyncWithStorage returned error: %v", err)
+	}
+	entities, err := service.ListEntities(twin.ID)
+	if err != nil {
+		t.Fatalf("ListEntities returned error: %v", err)
+	}
+	if len(entities) != 1 {
+		t.Fatalf("expected one reconciled entity, got %d", len(entities))
+	}
+	entity := entities[0]
+	if fmt.Sprintf("%v", entity.Attributes["temperature"]) != "95" {
+		t.Fatalf("expected higher-priority source value 95, got %#v", entity.Attributes["temperature"])
+	}
+	sources, ok := entity.ComputedValues["attribute_sources"].(map[string]interface{})
+	if !ok || fmt.Sprintf("%v", sources["temperature"]) != cfgB.ID {
+		t.Fatalf("expected attribute source %s, got %#v", cfgB.ID, entity.ComputedValues["attribute_sources"])
+	}
+	conflicts, ok := entity.ComputedValues["reconciliation_conflicts"].(map[string]interface{})
+	if !ok || len(conflicts) == 0 {
+		t.Fatalf("expected reconciliation conflict metadata, got %#v", entity.ComputedValues["reconciliation_conflicts"])
+	}
+}
+
+func TestSyncWithStorageUsesFreshestReconciliation(t *testing.T) {
+	service, storageSvc, _, cleanup := setupDigitalTwinService(t)
+	defer cleanup()
+
+	seedDigitalTwinProject(t, service.store, "project-1", "ontology-1")
+	now := time.Now().UTC()
+	storageSvc.RegisterPlugin("fresh-a", &twinSampleStoragePlugin{sample: []*models.CIR{func() *models.CIR {
+		cir := models.NewCIR(models.SourceTypeDatabase, "db://a/m1", models.DataFormatJSON, map[string]interface{}{"machine_id": "M-1", "temperature": 88})
+		cir.Source.Timestamp = now
+		cir.SetParameter("entity_type", "Machine")
+		return cir
+	}()}})
+	storageSvc.RegisterPlugin("fresh-b", &twinSampleStoragePlugin{sample: []*models.CIR{func() *models.CIR {
+		cir := models.NewCIR(models.SourceTypeDatabase, "db://b/m1", models.DataFormatJSON, map[string]interface{}{"machine_id": "M-1", "temperature": 72})
+		cir.Source.Timestamp = now.Add(-10 * time.Minute)
+		cir.SetParameter("entity_type", "Machine")
+		return cir
+	}()}})
+
+	cfgA, err := storageSvc.CreateStorageConfig("project-1", "fresh-a", map[string]interface{}{"connection_string": "mock://a"})
+	if err != nil {
+		t.Fatalf("failed to create storage config A: %v", err)
+	}
+	cfgB, err := storageSvc.CreateStorageConfig("project-1", "fresh-b", map[string]interface{}{"connection_string": "mock://b"})
+	if err != nil {
+		t.Fatalf("failed to create storage config B: %v", err)
+	}
+	twin := &models.DigitalTwin{
+		ID:         "twin-freshest",
+		ProjectID:  "project-1",
+		OntologyID: "ontology-1",
+		Name:       "Fresh Twin",
+		Status:     "active",
+		Config: &models.DigitalTwinConfig{
+			StorageIDs: []string{cfgB.ID, cfgA.ID},
+			Reconciliation: &models.TwinReconciliationPolicy{
+				Strategy: "freshest",
+			},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := service.store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save digital twin: %v", err)
+	}
+	if err := service.SyncWithStorage(twin.ID); err != nil {
+		t.Fatalf("SyncWithStorage returned error: %v", err)
+	}
+	entities, err := service.ListEntities(twin.ID)
+	if err != nil {
+		t.Fatalf("ListEntities returned error: %v", err)
+	}
+	if len(entities) != 1 {
+		t.Fatalf("expected one reconciled entity, got %d", len(entities))
+	}
+	if fmt.Sprintf("%v", entities[0].Attributes["temperature"]) != "88" {
+		t.Fatalf("expected freshest value 88, got %#v", entities[0].Attributes["temperature"])
 	}
 }

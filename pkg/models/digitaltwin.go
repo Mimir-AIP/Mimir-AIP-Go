@@ -24,10 +24,17 @@ type DigitalTwin struct {
 
 // DigitalTwinConfig holds the supported runtime options for a digital twin.
 type DigitalTwinConfig struct {
-	StorageIDs         []string          `json:"storage_ids"`
-	EnablePredictions  bool              `json:"enable_predictions"`
-	PredictionCacheTTL int               `json:"prediction_cache_ttl"`
-	CustomSettings     map[string]string `json:"custom_settings,omitempty"`
+	StorageIDs         []string                  `json:"storage_ids"`
+	EnablePredictions  bool                      `json:"enable_predictions"`
+	PredictionCacheTTL int                       `json:"prediction_cache_ttl"`
+	Reconciliation     *TwinReconciliationPolicy `json:"reconciliation,omitempty"`
+	CustomSettings     map[string]string         `json:"custom_settings,omitempty"`
+}
+
+// TwinReconciliationPolicy controls how competing source values are resolved during sync.
+type TwinReconciliationPolicy struct {
+	Strategy       string   `json:"strategy,omitempty"`        // source_priority | freshest
+	SourcePriority []string `json:"source_priority,omitempty"` // highest priority first
 }
 
 // Entity represents an entity instance in the digital twin

@@ -668,6 +668,17 @@ func init() {
 			"created_at":      Str("ISO-8601 creation timestamp"),
 			"updated_at":      Str("ISO-8601 last-updated timestamp"),
 		}),
+		"EntityRevision": Props(nil, M{
+			"id":              Str("Entity revision ID (UUID)"),
+			"entity_id":       Str("Entity ID"),
+			"digital_twin_id": Str("Owning digital twin ID"),
+			"revision":        Int("Monotonic revision number"),
+			"attributes":      M{"type": "object", "additionalProperties": true},
+			"modifications":   M{"type": "object", "additionalProperties": true},
+			"computed_values": M{"type": "object", "additionalProperties": true},
+			"relationships":   ArrOf("EntityRelationship"),
+			"recorded_at":     Str("ISO-8601 timestamp when this revision was recorded"),
+		}),
 		"Prediction": Props(nil, M{
 			"id":              Str("Prediction ID (UUID)"),
 			"digital_twin_id": Str("Owning digital twin ID"),

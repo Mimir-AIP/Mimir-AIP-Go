@@ -46,6 +46,19 @@ type Entity struct {
 	UpdatedAt      time.Time              `json:"updated_at"`
 }
 
+// EntityRevision captures a historical snapshot of an entity after a materialized change.
+type EntityRevision struct {
+	ID             string                 `json:"id"`
+	EntityID       string                 `json:"entity_id"`
+	DigitalTwinID  string                 `json:"digital_twin_id"`
+	Revision       int                    `json:"revision"`
+	Attributes     map[string]interface{} `json:"attributes"`
+	Modifications  map[string]interface{} `json:"modifications,omitempty"`
+	ComputedValues map[string]interface{} `json:"computed_values,omitempty"`
+	Relationships  []*EntityRelationship  `json:"relationships,omitempty"`
+	RecordedAt     time.Time              `json:"recorded_at"`
+}
+
 // EntityRelationship represents a relationship between entities
 type EntityRelationship struct {
 	Type       string                 `json:"type"`                 // Relationship type from ontology

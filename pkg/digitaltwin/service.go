@@ -337,6 +337,15 @@ func (s *Service) GetEntity(id string) (*models.Entity, error) {
 	return entity, nil
 }
 
+// GetEntityHistory lists historical snapshots for one entity, newest first.
+func (s *Service) GetEntityHistory(entityID string, limit int) ([]*models.EntityRevision, error) {
+	revisions, err := s.store.ListEntityRevisions(entityID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list entity history: %w", err)
+	}
+	return revisions, nil
+}
+
 // UpdateEntity updates entity attributes (stores as delta modifications)
 func (s *Service) UpdateEntity(entityID string, req *models.EntityUpdateRequest) (*models.Entity, error) {
 	if err := req.Validate(); err != nil {

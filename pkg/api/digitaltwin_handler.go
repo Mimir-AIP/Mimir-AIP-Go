@@ -66,6 +66,8 @@ func (h *DigitalTwinHandler) HandleDigitalTwin(w http.ResponseWriter, r *http.Re
 				h.handleDigitalTwinEntities(w, r, twinID)
 			} else if len(parts) >= 4 && parts[3] == "related" {
 				h.handleDigitalTwinEntityRelated(w, r, twinID, parts[2])
+			} else if len(parts) >= 4 && parts[3] == "history" {
+				h.handleDigitalTwinEntityHistory(w, r, twinID, parts[2])
 			} else {
 				h.handleDigitalTwinEntity(w, r, twinID, parts[2])
 			}
@@ -289,6 +291,30 @@ func (h *DigitalTwinHandler) handleDigitalTwinEntity(w http.ResponseWriter, r *h
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleDigitalTwinEntityHistory handles GET /api/digital-twins/{twinID}/entities/{entityID}/history
+func (h *DigitalTwinHandler) handleDigitalTwinEntityHistory(w http.ResponseWriter, r *http.Request, twinID, entityID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	limit := 20
+	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
+		parsedLimit, err := strconv.Atoi(rawLimit)
+		if err != nil || parsedLimit <= 0 {
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		limit = parsedLimit
+	}
+	revisions, err := h.service.GetEntityHistory(entityID, limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get entity history: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(revisions)
 }
 
 // handleDigitalTwinEntityRelated handles GET /api/digital-twins/{twinID}/entities/{entityID}/related

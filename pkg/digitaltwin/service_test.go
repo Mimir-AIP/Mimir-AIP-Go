@@ -1,6 +1,7 @@
 package digitaltwin
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -102,5 +103,50 @@ func TestEnqueueSyncQueuesWorkAndMarksTwinSyncing(t *testing.T) {
 	}
 	if updatedTwin.Status != "syncing" {
 		t.Fatalf("expected twin status syncing, got %s", updatedTwin.Status)
+	}
+}
+
+func TestEntityHistoryCapturesUpdates(t *testing.T) {
+	service, _, cleanup := setupDigitalTwinService(t)
+	defer cleanup()
+
+	seedDigitalTwinProject(t, service.store, "project-1", "ontology-1")
+	now := time.Now().UTC()
+	twin := &models.DigitalTwin{ID: "twin-1", ProjectID: "project-1", OntologyID: "ontology-1", Name: "Factory Twin", Status: "active", CreatedAt: now, UpdatedAt: now}
+	if err := service.store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to seed digital twin: %v", err)
+	}
+	entity := &models.Entity{
+		ID:            "entity-1",
+		DigitalTwinID: twin.ID,
+		Type:          "Machine",
+		Attributes:    map[string]interface{}{"temperature": 80},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := service.store.SaveEntity(entity); err != nil {
+		t.Fatalf("failed to save entity: %v", err)
+	}
+
+	updated, err := service.UpdateEntity(entity.ID, &models.EntityUpdateRequest{Attributes: map[string]interface{}{"temperature": 91}})
+	if err != nil {
+		t.Fatalf("UpdateEntity returned error: %v", err)
+	}
+	if updated.Attributes["temperature"] != 91 {
+		t.Fatalf("expected updated temperature 91, got %#v", updated.Attributes["temperature"])
+	}
+
+	history, err := service.GetEntityHistory(entity.ID, 10)
+	if err != nil {
+		t.Fatalf("GetEntityHistory returned error: %v", err)
+	}
+	if len(history) < 2 {
+		t.Fatalf("expected at least 2 entity revisions, got %d", len(history))
+	}
+	if history[0].Revision <= history[1].Revision {
+		t.Fatalf("expected newest revision first, got %#v", history)
+	}
+	if fmt.Sprintf("%v", history[0].Attributes["temperature"]) != "91" {
+		t.Fatalf("expected latest revision temperature 91, got %#v", history[0].Attributes["temperature"])
 	}
 }

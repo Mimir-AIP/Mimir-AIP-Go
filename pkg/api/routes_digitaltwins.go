@@ -171,6 +171,17 @@ func init() {
 		RequestBody: doc.JsonBody(doc.Ref("EntityUpdateRequest")),
 		Responses:   doc.R(doc.OK(doc.Ref("Entity")), doc.BadRequest(), doc.NotFound()),
 	})
+	doc.Register("GET", "/api/digital-twins/{id}/entities/{entityId}/history", doc.RouteDoc{
+		Summary:     "Get entity history",
+		Description: "Returns recorded entity revisions, newest first. Use the optional `limit` query parameter to bound the result size.",
+		Tags:        []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.PParam("entityId", "Entity ID"),
+			doc.QParam("limit", "Maximum number of revisions to return", false),
+		},
+		Responses: doc.R(doc.OK(doc.ArrOf("EntityRevision"))),
+	})
 	doc.Register("GET", "/api/digital-twins/{id}/entities/{entityId}/related", doc.RouteDoc{
 		Summary:     "Get related entities",
 		Description: "Returns entities connected to the given entity by a typed relationship traversal.",

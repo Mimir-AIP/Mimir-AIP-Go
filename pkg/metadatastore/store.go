@@ -118,6 +118,7 @@ type MetadataStore interface {
 	GetEntity(id string) (*models.Entity, error)
 	ListEntitiesByDigitalTwin(twinID string) ([]*models.Entity, error)
 	ListEntitiesByTypeInTwin(twinID, entityType string) ([]*models.Entity, error)
+	ListEntityRevisions(entityID string, limit int) ([]*models.EntityRevision, error)
 	DeleteEntity(id string) error
 
 	// Digital Twin Scenario operations

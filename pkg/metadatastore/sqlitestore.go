@@ -363,6 +363,25 @@ CREATE INDEX IF NOT EXISTS idx_dt_entity_revisions_entity_id ON dt_entity_revisi
 	CREATE INDEX IF NOT EXISTS idx_dt_entity_revisions_recorded_at ON dt_entity_revisions(recorded_at);
 
 
+CREATE TABLE IF NOT EXISTS dt_sync_runs (
+	id TEXT PRIMARY KEY,
+	twin_id TEXT NOT NULL,
+	trigger_type TEXT NOT NULL,
+	triggered_by TEXT,
+	status TEXT NOT NULL,
+	started_at TEXT NOT NULL,
+	completed_at TEXT,
+	ontology_version TEXT,
+	reconciliation_strategy TEXT,
+	data TEXT NOT NULL,
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE
+	);
+
+CREATE INDEX IF NOT EXISTS idx_dt_sync_runs_twin_id ON dt_sync_runs(twin_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_sync_runs_started_at ON dt_sync_runs(started_at);
+	CREATE INDEX IF NOT EXISTS idx_dt_sync_runs_status ON dt_sync_runs(status);
+
+
 CREATE TABLE IF NOT EXISTS dt_scenarios (
 	id TEXT PRIMARY KEY,
 	twin_id TEXT NOT NULL,
@@ -1984,6 +2003,77 @@ func (s *SQLiteStore) DeleteAutomation(id string) error {
 		return fmt.Errorf("failed to delete automation: %w", err)
 	}
 	return nil
+}
+
+// SaveTwinSyncRun upserts one persisted twin sync run.
+func (s *SQLiteStore) SaveTwinSyncRun(run *models.TwinSyncRun) error {
+	data, err := json.Marshal(run)
+	if err != nil {
+		return fmt.Errorf("failed to marshal twin sync run: %w", err)
+	}
+	query := `
+		INSERT INTO dt_sync_runs (id, twin_id, trigger_type, triggered_by, status, started_at, completed_at, ontology_version, reconciliation_strategy, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			twin_id = excluded.twin_id,
+			trigger_type = excluded.trigger_type,
+			triggered_by = excluded.triggered_by,
+			status = excluded.status,
+			started_at = excluded.started_at,
+			completed_at = excluded.completed_at,
+			ontology_version = excluded.ontology_version,
+			reconciliation_strategy = excluded.reconciliation_strategy,
+			data = excluded.data
+	`
+	_, err = s.db.Exec(query, run.ID, run.DigitalTwinID, run.TriggerType, nullableString(run.TriggeredBy), run.Status, run.StartedAt, run.CompletedAt, nullableString(run.OntologyVersion), nullableString(run.ReconciliationStrategy), data)
+	if err != nil {
+		return fmt.Errorf("failed to save twin sync run: %w", err)
+	}
+	return nil
+}
+
+// GetTwinSyncRun retrieves one persisted twin sync run by ID.
+func (s *SQLiteStore) GetTwinSyncRun(id string) (*models.TwinSyncRun, error) {
+	var data []byte
+	if err := s.db.QueryRow(`SELECT data FROM dt_sync_runs WHERE id = ?`, id).Scan(&data); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("twin sync run not found: %s", id)
+		}
+		return nil, fmt.Errorf("failed to get twin sync run: %w", err)
+	}
+	run := &models.TwinSyncRun{}
+	if err := json.Unmarshal(data, run); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal twin sync run: %w", err)
+	}
+	return run, nil
+}
+
+// ListTwinSyncRuns lists persisted sync runs for one twin ordered by recency.
+func (s *SQLiteStore) ListTwinSyncRuns(twinID string, limit int) ([]*models.TwinSyncRun, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(`SELECT data FROM dt_sync_runs WHERE twin_id = ? ORDER BY started_at DESC LIMIT ?`, twinID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list twin sync runs: %w", err)
+	}
+	defer rows.Close()
+	runs := make([]*models.TwinSyncRun, 0)
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan twin sync run: %w", err)
+		}
+		run := &models.TwinSyncRun{}
+		if err := json.Unmarshal(data, run); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal twin sync run: %w", err)
+		}
+		runs = append(runs, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating twin sync runs: %w", err)
+	}
+	return runs, nil
 }
 
 // SaveTwinProcessingRun upserts one persisted twin-processing run.

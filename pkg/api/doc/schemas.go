@@ -623,6 +623,23 @@ func init() {
 			"trigger_ref":   Str("Upstream trigger reference"),
 			"automation_id": Str("Automation that requested the run"),
 		}),
+		"TwinSyncRun": Props(nil, M{
+			"id":                             Str("Twin sync run ID (UUID)"),
+			"digital_twin_id":                Str("Owning digital twin ID"),
+			"trigger_type":                   Str("manual | pipeline_completed | webhook | scheduled | system"),
+			"triggered_by":                   Str("Trigger actor or reference"),
+			"source_ids":                     Arr(M{"type": "string"}),
+			"ontology_version":               Str("Ontology version used during this sync run"),
+			"reconciliation_strategy":        Str("source_priority | freshest"),
+			"started_at":                     Str("ISO-8601 run start timestamp"),
+			"completed_at":                   Str("ISO-8601 run completion timestamp"),
+			"status":                         Str("running | completed | failed"),
+			"summary":                        M{"type": "object", "additionalProperties": true},
+			"entity_revision_high_watermark": Int("Highest entity revision seen when the run completed"),
+			"base_snapshot_id":               Str("Optional snapshot anchor ID"),
+			"error":                          Str("Failure reason when status=failed"),
+		}),
+
 		"AlertEvent": Props(nil, M{
 			"id":                           Str("Alert event ID (UUID)"),
 			"project_id":                   Str("Owning project ID"),

@@ -100,6 +100,11 @@ type MetadataStore interface {
 	ListAutomationsByProject(projectID string) ([]*models.Automation, error)
 	DeleteAutomation(id string) error
 
+	// Twin sync run operations
+	SaveTwinSyncRun(run *models.TwinSyncRun) error
+	GetTwinSyncRun(id string) (*models.TwinSyncRun, error)
+	ListTwinSyncRuns(twinID string, limit int) ([]*models.TwinSyncRun, error)
+
 	// Twin processing run operations
 	SaveTwinProcessingRun(run *models.TwinProcessingRun) error
 	GetTwinProcessingRun(id string) (*models.TwinProcessingRun, error)

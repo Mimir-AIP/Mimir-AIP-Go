@@ -305,3 +305,56 @@ func TestSyncWithStorageUsesFreshestReconciliation(t *testing.T) {
 		t.Fatalf("expected freshest value 88, got %#v", entities[0].Attributes["temperature"])
 	}
 }
+
+func TestSyncWithStorageRecordsSyncRun(t *testing.T) {
+	service, storageSvc, _, cleanup := setupDigitalTwinService(t)
+	defer cleanup()
+
+	seedDigitalTwinProject(t, service.store, "project-1", "ontology-1")
+	now := time.Now().UTC()
+	storageSvc.RegisterPlugin("sync-sample", &twinSampleStoragePlugin{sample: []*models.CIR{func() *models.CIR {
+		cir := models.NewCIR(models.SourceTypeDatabase, "db://sample/m1", models.DataFormatJSON, map[string]interface{}{"machine_id": "M-1", "temperature": 88})
+		cir.Source.Timestamp = now
+		cir.SetParameter("entity_type", "Machine")
+		return cir
+	}()}})
+	cfg, err := storageSvc.CreateStorageConfig("project-1", "sync-sample", map[string]interface{}{"connection_string": "mock://sample"})
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+	twin := &models.DigitalTwin{
+		ID:         "twin-sync-run",
+		ProjectID:  "project-1",
+		OntologyID: "ontology-1",
+		Name:       "Sync Run Twin",
+		Status:     "active",
+		Config: &models.DigitalTwinConfig{
+			StorageIDs: []string{cfg.ID},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := service.store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save digital twin: %v", err)
+	}
+	if err := service.SyncWithStorageWithOptions(twin.ID, &models.TwinSyncOptions{TriggerType: "webhook", TriggeredBy: "sensor-gateway"}); err != nil {
+		t.Fatalf("SyncWithStorageWithOptions returned error: %v", err)
+	}
+	runs, err := service.ListSyncRuns(twin.ID, 10)
+	if err != nil {
+		t.Fatalf("ListSyncRuns returned error: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected one sync run, got %d", len(runs))
+	}
+	run := runs[0]
+	if run.TriggerType != "webhook" || run.TriggeredBy != "sensor-gateway" {
+		t.Fatalf("unexpected sync run trigger metadata: %#v", run)
+	}
+	if run.Status != "completed" {
+		t.Fatalf("expected completed sync run, got %s", run.Status)
+	}
+	if run.EntityRevisionHighWatermark == 0 {
+		t.Fatal("expected non-zero entity revision high watermark")
+	}
+}

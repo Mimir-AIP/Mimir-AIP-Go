@@ -89,6 +89,29 @@ type Scenario struct {
 	UpdatedAt     time.Time               `json:"updated_at"`
 }
 
+// TwinSyncRun records one materialization/synchronization pass over a digital twin.
+type TwinSyncRun struct {
+	ID                          string                 `json:"id"`
+	DigitalTwinID               string                 `json:"digital_twin_id"`
+	TriggerType                 string                 `json:"trigger_type"`
+	TriggeredBy                 string                 `json:"triggered_by,omitempty"`
+	SourceIDs                   []string               `json:"source_ids,omitempty"`
+	OntologyVersion             string                 `json:"ontology_version,omitempty"`
+	ReconciliationStrategy      string                 `json:"reconciliation_strategy,omitempty"`
+	StartedAt                   time.Time              `json:"started_at"`
+	CompletedAt                 *time.Time             `json:"completed_at,omitempty"`
+	Status                      string                 `json:"status"`
+	Summary                     map[string]interface{} `json:"summary,omitempty"`
+	EntityRevisionHighWatermark int                    `json:"entity_revision_high_watermark,omitempty"`
+	BaseSnapshotID              string                 `json:"base_snapshot_id,omitempty"`
+	Error                       string                 `json:"error,omitempty"`
+}
+
+type TwinSyncOptions struct {
+	TriggerType string
+	TriggeredBy string
+}
+
 // ScenarioModification represents a single modification in a scenario
 type ScenarioModification struct {
 	EntityType    string      `json:"entity_type"`

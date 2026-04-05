@@ -52,6 +52,27 @@ func init() {
 		})),
 	})
 
+	doc.Register("GET", "/api/digital-twins/{id}/history/runs", doc.RouteDoc{
+		Summary:     "List twin sync runs",
+		Description: "Returns digital twin synchronization/materialization runs, newest first. These are the version anchors for temporal twin history.",
+		Tags:        []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.QParam("limit", "Optional maximum number of sync runs to return", false),
+		},
+		Responses: doc.R(doc.OK(doc.ArrOf("TwinSyncRun")), doc.NotFound()),
+	})
+	doc.Register("GET", "/api/digital-twins/{id}/history/runs/{runId}", doc.RouteDoc{
+		Summary:     "Get twin sync run",
+		Description: "Returns one synchronization/materialization run by ID.",
+		Tags:        []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.PParam("runId", "Twin sync run ID"),
+		},
+		Responses: doc.R(doc.OK(doc.Ref("TwinSyncRun")), doc.NotFound()),
+	})
+
 	// ── Runs / Alerts / Automations ─────────────────────────────────────────────
 	doc.Register("GET", "/api/digital-twins/{id}/runs", doc.RouteDoc{
 		Summary:     "List twin processing runs",

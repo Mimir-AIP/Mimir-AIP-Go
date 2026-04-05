@@ -220,6 +220,23 @@ func (s *Service) ListDigitalTwinsByProject(projectID string) ([]*models.Digital
 	return twins, nil
 }
 
+// ListSyncRuns returns persisted sync/materialization runs for one twin.
+func (s *Service) ListSyncRuns(twinID string, limit int) ([]*models.TwinSyncRun, error) {
+	return s.store.ListTwinSyncRuns(twinID, limit)
+}
+
+// GetSyncRun returns one sync/materialization run for a twin.
+func (s *Service) GetSyncRun(twinID, runID string) (*models.TwinSyncRun, error) {
+	run, err := s.store.GetTwinSyncRun(runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.DigitalTwinID != twinID {
+		return nil, fmt.Errorf("twin sync run %s does not belong to digital twin %s", runID, twinID)
+	}
+	return run, nil
+}
+
 // EnqueueSync marks a twin as syncing and submits worker-backed sync work.
 func (s *Service) EnqueueSync(twinID string) (*models.WorkTask, error) {
 	if s.queue == nil {
@@ -246,7 +263,7 @@ func (s *Service) EnqueueSync(twinID string) (*models.WorkTask, error) {
 		SubmittedAt: now,
 		TaskSpec: models.TaskSpec{
 			ProjectID:  twin.ProjectID,
-			Parameters: map[string]any{"digital_twin_id": twinID},
+			Parameters: map[string]any{"digital_twin_id": twinID, "sync_trigger_type": "manual", "sync_triggered_by": "enqueue_sync"},
 		},
 	}
 	if err := s.queue.Enqueue(task); err != nil {
@@ -258,54 +275,108 @@ func (s *Service) EnqueueSync(twinID string) (*models.WorkTask, error) {
 	return task, nil
 }
 
-// SyncWithStorage synchronizes digital twin entities with CIR data from storage.
-//
-// Entity resolution: when the same logical entity appears in multiple storage
-// sources (e.g. student_id=42 in grades_db and in attendance_db), the records
-// are merged into a single canonical entity rather than creating duplicates.
-// Resolution is driven entirely by key-field value matching — no configuration
-// required.
-//
-// Relationship wiring: after all sources are synced, entities of different
-// types that share a common key-field value (the join detected during
-// extraction) are linked via EntityRelationship entries.
 func (s *Service) SyncWithStorage(twinID string) error {
+	return s.SyncWithStorageWithOptions(twinID, nil)
+}
+
+func (s *Service) SyncWithStorageWithOptions(twinID string, opts *models.TwinSyncOptions) error {
 	twin, err := s.store.GetDigitalTwin(twinID)
 	if err != nil {
 		return fmt.Errorf("failed to get digital twin: %w", err)
 	}
-
 	ont, err := s.ontologyService.GetOntology(twin.OntologyID)
 	if err != nil {
 		s.markTwinSyncFailed(twin)
 		return fmt.Errorf("failed to get ontology: %w", err)
 	}
-
+	policy := defaultReconciliationPolicy(twin)
+	sourceIDs := []string{}
+	if twin.Config != nil {
+		sourceIDs = append(sourceIDs, twin.Config.StorageIDs...)
+	}
+	run := &models.TwinSyncRun{
+		ID:                     uuid.New().String(),
+		DigitalTwinID:          twinID,
+		TriggerType:            defaultString(optValue(opts, func(o *models.TwinSyncOptions) string { return o.TriggerType }), "system"),
+		TriggeredBy:            optValue(opts, func(o *models.TwinSyncOptions) string { return o.TriggeredBy }),
+		SourceIDs:              sourceIDs,
+		OntologyVersion:        ont.Version,
+		ReconciliationStrategy: policy.Strategy,
+		StartedAt:              time.Now().UTC(),
+		Status:                 "running",
+		Summary:                map[string]interface{}{},
+	}
+	if err := s.store.SaveTwinSyncRun(run); err != nil {
+		return fmt.Errorf("failed to save twin sync run: %w", err)
+	}
+	processedSources := 0
 	if twin.Config != nil && len(twin.Config.StorageIDs) > 0 {
 		for _, storageID := range twin.Config.StorageIDs {
 			if err := s.syncFromStorage(twin, ont, storageID); err != nil {
 				s.markTwinSyncFailed(twin)
+				completedAt := time.Now().UTC()
+				run.CompletedAt = &completedAt
+				run.Status = "failed"
+				run.Error = err.Error()
+				run.Summary["processed_sources"] = processedSources
+				_ = s.store.SaveTwinSyncRun(run)
 				return fmt.Errorf("failed to sync from storage %s: %w", storageID, err)
 			}
+			processedSources++
 		}
 	}
-
-	// Wire cross-type relationships based on shared key field values.
 	if err := s.wireRelationships(twin.ID); err != nil {
-		// Non-fatal: log and continue.
 		fmt.Printf("Warning: failed to wire cross-type relationships for twin %s: %v\n", twin.ID, err)
 	}
-
 	now := time.Now().UTC()
 	twin.Status = "active"
 	twin.LastSyncAt = &now
 	twin.UpdatedAt = now
-
 	if err := s.store.SaveDigitalTwin(twin); err != nil {
 		return fmt.Errorf("failed to update digital twin: %w", err)
 	}
-
+	completedAt := time.Now().UTC()
+	run.CompletedAt = &completedAt
+	run.Status = "completed"
+	run.Summary["processed_sources"] = processedSources
+	run.Summary["entity_revision_high_watermark"] = latestEntityRevisionHighWatermark(s.store, twin.ID)
+	run.EntityRevisionHighWatermark = latestEntityRevisionHighWatermark(s.store, twin.ID)
+	if err := s.store.SaveTwinSyncRun(run); err != nil {
+		return fmt.Errorf("failed to finalize twin sync run: %w", err)
+	}
 	return nil
+}
+
+func optValue(opts *models.TwinSyncOptions, selector func(*models.TwinSyncOptions) string) string {
+	if opts == nil {
+		return ""
+	}
+	return selector(opts)
+}
+
+func defaultString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func latestEntityRevisionHighWatermark(store metadatastore.MetadataStore, twinID string) int {
+	entities, err := store.ListEntitiesByDigitalTwin(twinID)
+	if err != nil {
+		return 0
+	}
+	maxRevision := 0
+	for _, entity := range entities {
+		revisions, err := store.ListEntityRevisions(entity.ID, 1)
+		if err != nil || len(revisions) == 0 {
+			continue
+		}
+		if revisions[0].Revision > maxRevision {
+			maxRevision = revisions[0].Revision
+		}
+	}
+	return maxRevision
 }
 
 func (s *Service) markTwinSyncFailed(twin *models.DigitalTwin) {

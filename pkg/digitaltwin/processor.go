@@ -201,7 +201,10 @@ func (p *Processor) ExecuteRun(runID string) (*models.TwinProcessingRun, error) 
 		return nil, fmt.Errorf("failed to persist running twin processing run: %w", err)
 	}
 
-	if err := p.twinService.SyncWithStorage(run.DigitalTwinID); err != nil {
+	if err := p.twinService.SyncWithStorageWithOptions(run.DigitalTwinID, &models.TwinSyncOptions{
+		TriggerType: string(run.TriggerType),
+		TriggeredBy: run.TriggerRef,
+	}); err != nil {
 		return p.failRun(run, "sync", err)
 	}
 	markStageCompleted(run, "sync", time.Now().UTC(), nil)

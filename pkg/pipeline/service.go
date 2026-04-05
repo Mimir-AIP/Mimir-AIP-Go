@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,24 +73,38 @@ func (s *Service) RegisterPlugin(name string, plugin Plugin) {
 	s.plugins.Register(name, plugin)
 }
 
+func validateTriggerConfig(trigger *models.PipelineTriggerConfig) error {
+	if trigger == nil {
+		return nil
+	}
+	if trigger.Webhook && strings.TrimSpace(trigger.Secret) == "" {
+		return fmt.Errorf("trigger_config.secret is required when webhook is enabled")
+	}
+	return nil
+}
+
 // Create creates a new pipeline
 func (s *Service) Create(req *models.PipelineCreateRequest) (*models.Pipeline, error) {
 	// Validate request
 	if err := s.validateCreateRequest(req); err != nil {
 		return nil, err
 	}
+	if err := validateTriggerConfig(req.TriggerConfig); err != nil {
+		return nil, err
+	}
 
 	// Create pipeline
 	pipeline := &models.Pipeline{
-		ID:          uuid.New().String(),
-		ProjectID:   req.ProjectID,
-		Name:        req.Name,
-		Type:        req.Type,
-		Description: req.Description,
-		Steps:       req.Steps,
-		Status:      models.PipelineStatusActive,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		ID:            uuid.New().String(),
+		ProjectID:     req.ProjectID,
+		Name:          req.Name,
+		Type:          req.Type,
+		Description:   req.Description,
+		Steps:         req.Steps,
+		TriggerConfig: req.TriggerConfig,
+		Status:        models.PipelineStatusActive,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	// Save pipeline
@@ -129,6 +144,12 @@ func (s *Service) Update(id string, req *models.PipelineUpdateRequest) (*models.
 	}
 	if req.Steps != nil {
 		pipeline.Steps = *req.Steps
+	}
+	if req.TriggerConfig != nil {
+		if err := validateTriggerConfig(req.TriggerConfig); err != nil {
+			return nil, err
+		}
+		pipeline.TriggerConfig = req.TriggerConfig
 	}
 	if req.Status != nil {
 		pipeline.Status = *req.Status

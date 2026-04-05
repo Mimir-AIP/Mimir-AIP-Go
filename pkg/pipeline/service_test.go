@@ -4,12 +4,29 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
-func setupTestService(t *testing.T) (*Service, string) {
+func savePipelineTestProject(t *testing.T, store metadatastore.MetadataStore, projectID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	project := &models.Project{
+		ID:          projectID,
+		Name:        projectID,
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata:    models.ProjectMetadata{CreatedAt: now, UpdatedAt: now},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project %s: %v", projectID, err)
+	}
+}
+
+func setupTestService(t *testing.T) (*Service, metadatastore.MetadataStore, string) {
 	// Create temporary directory for test storage
 	tmpDir, err := os.MkdirTemp("", "pipeline-test-*")
 	if err != nil {
@@ -21,9 +38,12 @@ func setupTestService(t *testing.T) (*Service, string) {
 	if err != nil {
 		t.Fatalf("Failed to create SQLite store: %v", err)
 	}
+	savePipelineTestProject(t, store, "test-project")
+	savePipelineTestProject(t, store, "project-1")
+	savePipelineTestProject(t, store, "project-2")
 
 	service := NewService(store)
-	return service, tmpDir
+	return service, store, tmpDir
 }
 
 func cleanupTestService(tmpDir string) {
@@ -31,7 +51,7 @@ func cleanupTestService(tmpDir string) {
 }
 
 func TestPipelineCreate(t *testing.T) {
-	service, tmpDir := setupTestService(t)
+	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
 	req := &models.PipelineCreateRequest{
@@ -79,7 +99,7 @@ func TestPipelineCreate(t *testing.T) {
 }
 
 func TestPipelineCreateValidation(t *testing.T) {
-	service, tmpDir := setupTestService(t)
+	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
 	tests := []struct {
@@ -141,7 +161,7 @@ func TestPipelineCreateValidation(t *testing.T) {
 }
 
 func TestPipelineGet(t *testing.T) {
-	service, tmpDir := setupTestService(t)
+	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
 	// Create a pipeline
@@ -175,7 +195,7 @@ func TestPipelineGet(t *testing.T) {
 }
 
 func TestPipelineList(t *testing.T) {
-	service, tmpDir := setupTestService(t)
+	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
 	// Create multiple pipelines
@@ -206,7 +226,7 @@ func TestPipelineList(t *testing.T) {
 }
 
 func TestPipelineListByProject(t *testing.T) {
-	service, tmpDir := setupTestService(t)
+	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
 	// Create pipelines for different projects
@@ -265,7 +285,7 @@ func TestPipelineListByProject(t *testing.T) {
 }
 
 func TestPipelineExecution(t *testing.T) {
-	service, tmpDir := setupTestService(t)
+	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
 	// Create a simple pipeline
@@ -336,7 +356,7 @@ func TestPipelineExecution(t *testing.T) {
 }
 
 func TestPipelineUpdate(t *testing.T) {
-	service, tmpDir := setupTestService(t)
+	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
 	// Create a pipeline
@@ -374,7 +394,7 @@ func TestPipelineUpdate(t *testing.T) {
 }
 
 func TestPipelineDelete(t *testing.T) {
-	service, tmpDir := setupTestService(t)
+	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
 	// Create a pipeline

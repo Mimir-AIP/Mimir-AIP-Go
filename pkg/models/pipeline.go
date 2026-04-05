@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // PipelineType represents the type of pipeline
 type PipelineType string
@@ -22,15 +25,24 @@ const (
 
 // Pipeline represents a data processing pipeline
 type Pipeline struct {
-	ID          string         `json:"id" yaml:"-"`
-	ProjectID   string         `json:"project_id" yaml:"-"`
-	Name        string         `json:"name" yaml:"name"`
-	Type        PipelineType   `json:"type" yaml:"type"`
-	Description string         `json:"description" yaml:"description,omitempty"`
-	Steps       []PipelineStep `json:"steps" yaml:"steps"`
-	Status      PipelineStatus `json:"status" yaml:"status,omitempty"`
-	CreatedAt   time.Time      `json:"created_at" yaml:"-"`
-	UpdatedAt   time.Time      `json:"updated_at" yaml:"-"`
+	ID            string                 `json:"id" yaml:"-"`
+	ProjectID     string                 `json:"project_id" yaml:"-"`
+	Name          string                 `json:"name" yaml:"name"`
+	Type          PipelineType           `json:"type" yaml:"type"`
+	Description   string                 `json:"description" yaml:"description,omitempty"`
+	Steps         []PipelineStep         `json:"steps" yaml:"steps"`
+	TriggerConfig *PipelineTriggerConfig `json:"trigger_config,omitempty" yaml:"trigger_config,omitempty"`
+	Status        PipelineStatus         `json:"status" yaml:"status,omitempty"`
+	CreatedAt     time.Time              `json:"created_at" yaml:"-"`
+	UpdatedAt     time.Time              `json:"updated_at" yaml:"-"`
+}
+
+// PipelineTriggerConfig defines optional non-cron trigger entrypoints for a pipeline.
+type PipelineTriggerConfig struct {
+	AllowManual bool   `json:"allow_manual" yaml:"allow_manual"`
+	Webhook     bool   `json:"webhook" yaml:"webhook"`
+	Secret      string `json:"secret,omitempty" yaml:"secret,omitempty"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 }
 
 // ForEachConfig configures iteration over a collection within a pipeline step.
@@ -112,18 +124,20 @@ func (pc *PipelineContext) GetAllStepData(stepName string) (map[string]interface
 
 // PipelineCreateRequest represents a request to create a new pipeline
 type PipelineCreateRequest struct {
-	ProjectID   string         `json:"project_id"`
-	Name        string         `json:"name" yaml:"name"`
-	Type        PipelineType   `json:"type" yaml:"type"`
-	Description string         `json:"description" yaml:"description,omitempty"`
-	Steps       []PipelineStep `json:"steps" yaml:"steps"`
+	ProjectID     string                 `json:"project_id"`
+	Name          string                 `json:"name" yaml:"name"`
+	Type          PipelineType           `json:"type" yaml:"type"`
+	Description   string                 `json:"description" yaml:"description,omitempty"`
+	Steps         []PipelineStep         `json:"steps" yaml:"steps"`
+	TriggerConfig *PipelineTriggerConfig `json:"trigger_config,omitempty" yaml:"trigger_config,omitempty"`
 }
 
 // PipelineUpdateRequest represents a request to update a pipeline
 type PipelineUpdateRequest struct {
-	Description *string         `json:"description,omitempty"`
-	Steps       *[]PipelineStep `json:"steps,omitempty"`
-	Status      *PipelineStatus `json:"status,omitempty"`
+	Description   *string                `json:"description,omitempty"`
+	Steps         *[]PipelineStep        `json:"steps,omitempty"`
+	TriggerConfig *PipelineTriggerConfig `json:"trigger_config,omitempty"`
+	Status        *PipelineStatus        `json:"status,omitempty"`
 }
 
 // PipelineCheckpoint stores incremental connector state for a pipeline step.
@@ -143,4 +157,26 @@ type PipelineExecutionRequest struct {
 	TriggerType string                 `json:"trigger_type"`
 	TriggeredBy string                 `json:"triggered_by,omitempty"`
 	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+}
+
+// PipelineTriggerRequest represents a manual or webhook-triggered execution request.
+type PipelineTriggerRequest struct {
+	TriggerType   string                 `json:"trigger_type,omitempty"`
+	TriggeredBy   string                 `json:"triggered_by,omitempty"`
+	Parameters    map[string]interface{} `json:"parameters,omitempty"`
+	SourceEventID string                 `json:"source_event_id,omitempty"`
+	WebhookToken  string                 `json:"webhook_token,omitempty"`
+}
+
+// Validate checks whether the trigger request is structurally valid.
+func (r *PipelineTriggerRequest) Validate() error {
+	if r.TriggerType == "" {
+		r.TriggerType = "manual"
+	}
+	switch r.TriggerType {
+	case "manual", "webhook", "system":
+		return nil
+	default:
+		return fmt.Errorf("trigger_type must be one of: manual, webhook, system")
+	}
 }

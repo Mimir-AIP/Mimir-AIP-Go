@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -220,6 +221,35 @@ func TestIngestCSVURL_CheckpointPreventsReplay(t *testing.T) {
 	}
 }
 
+func saveCheckpointTestFixtures(t *testing.T, store metadatastore.MetadataStore) {
+	t.Helper()
+	now := time.Now().UTC()
+	project := &models.Project{
+		ID:          "project-1",
+		Name:        "project-1",
+		Description: "test project",
+		Version:     "v1",
+		Status:      models.ProjectStatusActive,
+		Metadata:    models.ProjectMetadata{CreatedAt: now, UpdatedAt: now},
+	}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project: %v", err)
+	}
+	pipelineRecord := &models.Pipeline{
+		ID:        "pipe-1",
+		ProjectID: project.ID,
+		Name:      "pipe-1",
+		Type:      models.PipelineTypeIngestion,
+		Steps:     []models.PipelineStep{{Name: "step-1", Plugin: "default", Action: "set_context"}},
+		Status:    models.PipelineStatusActive,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := store.SavePipeline(pipelineRecord); err != nil {
+		t.Fatalf("failed to save pipeline: %v", err)
+	}
+}
+
 func TestLoadAndSaveCheckpoint_PersistsAcrossCalls(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := metadatastore.NewSQLiteStore(filepath.Join(tmpDir, "checkpoints.db"))
@@ -227,6 +257,7 @@ func TestLoadAndSaveCheckpoint_PersistsAcrossCalls(t *testing.T) {
 		t.Fatalf("failed to create sqlite store: %v", err)
 	}
 	defer store.Close()
+	saveCheckpointTestFixtures(t, store)
 
 	plugin := NewDefaultPluginWithDeps(nil, store)
 	ctx := models.NewPipelineContext(DefaultContextMaxSize)

@@ -87,15 +87,22 @@ func init() {
 
 		// ── Pipelines ────────────────────────────────────────────────────────
 		"Pipeline": Props(nil, M{
-			"id":          Str("Pipeline ID (UUID)"),
-			"project_id":  Str("Owning project ID"),
-			"name":        Str("Pipeline name"),
-			"type":        Str("ingestion | processing | output"),
-			"description": Str("Pipeline description"),
-			"steps":       ArrOf("PipelineStep"),
-			"status":      Str("Pipeline status"),
-			"created_at":  Str("ISO-8601 creation timestamp"),
-			"updated_at":  Str("ISO-8601 last-updated timestamp"),
+			"id":             Str("Pipeline ID (UUID)"),
+			"project_id":     Str("Owning project ID"),
+			"name":           Str("Pipeline name"),
+			"type":           Str("ingestion | processing | output"),
+			"description":    Str("Pipeline description"),
+			"steps":          ArrOf("PipelineStep"),
+			"trigger_config": Ref("PipelineTriggerConfig"),
+			"status":         Str("Pipeline status"),
+			"created_at":     Str("ISO-8601 creation timestamp"),
+			"updated_at":     Str("ISO-8601 last-updated timestamp"),
+		}),
+		"PipelineTriggerConfig": Props(nil, M{
+			"allow_manual": Bool("Whether the pipeline can be triggered manually or system-side through the trigger endpoint"),
+			"webhook":      Bool("Whether the pipeline accepts webhook-triggered execution"),
+			"secret":       Str("Webhook secret used to authenticate remote trigger requests; redacted in pipeline responses"),
+			"description":  Str("Optional operator-facing note about when this trigger should be used"),
 		}),
 		"PipelineStep": Props([]string{"name", "plugin", "action"}, M{
 			"name":       Str("Step name (unique within pipeline)"),
@@ -105,16 +112,18 @@ func init() {
 			"output":     ObjMap("string"),
 		}),
 		"PipelineCreateRequest": Props([]string{"project_id", "name", "type", "steps"}, M{
-			"project_id":  Str("Owning project ID"),
-			"name":        Str("Pipeline name"),
-			"type":        Str("Pipeline type"),
-			"description": Str("Pipeline description"),
-			"steps":       ArrOf("PipelineStep"),
+			"project_id":     Str("Owning project ID"),
+			"name":           Str("Pipeline name"),
+			"type":           Str("Pipeline type"),
+			"description":    Str("Pipeline description"),
+			"steps":          ArrOf("PipelineStep"),
+			"trigger_config": Ref("PipelineTriggerConfig"),
 		}),
 		"PipelineUpdateRequest": Props(nil, M{
-			"description": Str("New description"),
-			"steps":       ArrOf("PipelineStep"),
-			"status":      Str("New status"),
+			"description":    Str("New description"),
+			"steps":          ArrOf("PipelineStep"),
+			"trigger_config": Ref("PipelineTriggerConfig"),
+			"status":         Str("New status"),
 		}),
 		"PipelineCheckpoint": Props([]string{"project_id", "pipeline_id", "step_name", "version", "checkpoint"}, M{
 			"project_id":  Str("Owning project ID"),
@@ -131,6 +140,13 @@ func init() {
 			"trigger_type": Str("manual | scheduled | automatic"),
 			"triggered_by": Str("Trigger source identifier"),
 			"parameters":   M{"type": "object", "additionalProperties": true},
+		}),
+		"PipelineTriggerRequest": Props(nil, M{
+			"trigger_type":    Str("manual | webhook | system"),
+			"triggered_by":    Str("Who or what initiated this trigger"),
+			"parameters":      M{"type": "object", "additionalProperties": true},
+			"source_event_id": Str("Optional upstream event identifier for dedupe/audit"),
+			"webhook_token":   Str("Optional webhook token when not supplied via header or query parameter"),
 		}),
 
 		// ── Schedules ─────────────────────────────────────────────────────────

@@ -25,6 +25,22 @@ func init() {
 		RequestBody: doc.JsonBody(doc.Ref("PipelineExecutionRequest")),
 		Responses:   doc.R(doc.Accepted(doc.Ref("WorkTask")), doc.BadRequest(), doc.NotFound()),
 	})
+	doc.Register("POST", "/api/pipelines/{id}/trigger", doc.RouteDoc{
+		Summary:     "Trigger pipeline",
+		Description: "Queues a pipeline through its manual/system trigger path. Uses the pipeline's trigger configuration and records trigger provenance in the resulting work task.",
+		Tags:        []string{"Pipelines"},
+		Params:      []doc.Param{doc.PParam("id", "Pipeline ID")},
+		RequestBody: doc.JsonBody(doc.Ref("PipelineTriggerRequest")),
+		Responses:   doc.R(doc.Accepted(doc.Ref("WorkTask")), doc.BadRequest(), doc.NotFound()),
+	})
+	doc.Register("POST", "/api/pipelines/{id}/webhook", doc.RouteDoc{
+		Summary:     "Webhook-trigger pipeline",
+		Description: "Authenticated webhook endpoint for remotely triggering a pipeline. Provide the configured webhook token via `X-Mimir-Webhook-Token`, query parameter `token`, or request body.",
+		Tags:        []string{"Pipelines"},
+		Params:      []doc.Param{doc.PParam("id", "Pipeline ID")},
+		RequestBody: doc.JsonBody(doc.Ref("PipelineTriggerRequest")),
+		Responses:   doc.R(doc.Accepted(doc.Ref("WorkTask")), doc.BadRequest(), doc.NotFound()),
+	})
 	doc.Register("GET", "/api/pipelines/{id}/checkpoints", doc.RouteDoc{
 		Summary:     "Get pipeline checkpoint",
 		Description: "Returns persisted connector checkpoint state for a pipeline step.",

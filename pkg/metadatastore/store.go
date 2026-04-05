@@ -124,6 +124,12 @@ type MetadataStore interface {
 	ListEntitiesByDigitalTwin(twinID string) ([]*models.Entity, error)
 	ListEntitiesByTypeInTwin(twinID, entityType string) ([]*models.Entity, error)
 	ListEntityRevisions(entityID string, limit int) ([]*models.EntityRevision, error)
+	SaveRelationshipRevision(revision *models.RelationshipRevision) error
+	ListRelationshipRevisions(twinID, entityID string, limit int) ([]*models.RelationshipRevision, error)
+	SaveTwinSnapshot(snapshot *models.TwinSnapshot) error
+	GetTwinSnapshot(id string) (*models.TwinSnapshot, error)
+	GetTwinSnapshotByRun(twinID, syncRunID string) (*models.TwinSnapshot, error)
+	ListTwinSnapshots(twinID string, limit int) ([]*models.TwinSnapshot, error)
 	DeleteEntity(id string) error
 
 	// Digital Twin Scenario operations

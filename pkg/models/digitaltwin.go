@@ -74,6 +74,47 @@ type EntityRelationship struct {
 	Properties map[string]interface{} `json:"properties,omitempty"` // Relationship properties
 }
 
+// RelationshipRevision records one temporal change to a graph edge.
+type RelationshipRevision struct {
+	ID               string                 `json:"id"`
+	DigitalTwinID    string                 `json:"digital_twin_id"`
+	SyncRunID        string                 `json:"sync_run_id,omitempty"`
+	SourceEntityID   string                 `json:"source_entity_id"`
+	TargetEntityID   string                 `json:"target_entity_id"`
+	RelationshipType string                 `json:"relationship_type"`
+	Revision         int                    `json:"revision"`
+	ChangeType       string                 `json:"change_type"`
+	DeltaData        map[string]interface{} `json:"delta_data,omitempty"`
+	FullState        map[string]interface{} `json:"full_state,omitempty"`
+	Provenance       map[string]interface{} `json:"provenance,omitempty"`
+	RecordedAt       time.Time              `json:"recorded_at"`
+	OntologyVersion  string                 `json:"ontology_version,omitempty"`
+}
+
+// TwinSnapshot captures a checkpoint of the materialized twin graph for fast reconstruction.
+type TwinSnapshot struct {
+	ID                                string                 `json:"id"`
+	DigitalTwinID                     string                 `json:"digital_twin_id"`
+	SyncRunID                         string                 `json:"sync_run_id,omitempty"`
+	SnapshotKind                      string                 `json:"snapshot_kind"`
+	EntityState                       []byte                 `json:"-"`
+	RelationshipState                 []byte                 `json:"-"`
+	CreatedAt                         time.Time              `json:"created_at"`
+	EntityRevisionHighWatermark       int                    `json:"entity_revision_high_watermark,omitempty"`
+	RelationshipRevisionHighWatermark int                    `json:"relationship_revision_high_watermark,omitempty"`
+	Metadata                          map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// ReconstructedTwinState is a read-only point-in-time twin view built from a snapshot.
+type ReconstructedTwinState struct {
+	DigitalTwinID string                 `json:"digital_twin_id"`
+	SyncRunID     string                 `json:"sync_run_id"`
+	SnapshotID    string                 `json:"snapshot_id"`
+	Entities      []*Entity              `json:"entities"`
+	Relationships []*EntityRelationship  `json:"relationships"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+}
+
 // Scenario represents a what-if scenario with hypothetical modifications
 type Scenario struct {
 	ID            string                  `json:"id"`

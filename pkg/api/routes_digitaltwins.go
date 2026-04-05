@@ -173,6 +173,17 @@ func init() {
 		Params:    []doc.Param{doc.PParam("id", "Digital twin ID")},
 		Responses: doc.R(doc.OK(doc.ArrOf("Entity"))),
 	})
+	doc.Register("GET", "/api/digital-twins/{id}/state", doc.RouteDoc{
+		Summary:     "Get twin state at sync run",
+		Description: "Returns a read-only reconstructed digital twin graph from the checkpoint captured for one completed sync run.",
+		Tags:        []string{"Digital Twins"},
+		Params: []doc.Param{
+			doc.PParam("id", "Digital twin ID"),
+			doc.QParam("at_run", "Sync run ID to reconstruct", true),
+		},
+		Responses: doc.R(doc.OK(doc.Ref("ReconstructedTwinState")), doc.NotFound(), doc.BadRequest()),
+	})
+
 	doc.Register("GET", "/api/digital-twins/{id}/entities/{entityId}", doc.RouteDoc{
 		Summary: "Get entity",
 		Tags:    []string{"Digital Twins"},

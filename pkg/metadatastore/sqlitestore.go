@@ -382,6 +382,47 @@ CREATE INDEX IF NOT EXISTS idx_dt_sync_runs_twin_id ON dt_sync_runs(twin_id);
 	CREATE INDEX IF NOT EXISTS idx_dt_sync_runs_status ON dt_sync_runs(status);
 
 
+CREATE TABLE IF NOT EXISTS dt_relationship_revisions (
+	id TEXT PRIMARY KEY,
+	twin_id TEXT NOT NULL,
+	sync_run_id TEXT,
+	source_entity_id TEXT NOT NULL,
+	target_entity_id TEXT NOT NULL,
+	relationship_type TEXT NOT NULL,
+	revision INTEGER NOT NULL,
+	change_type TEXT NOT NULL,
+	recorded_at TEXT NOT NULL,
+	data TEXT NOT NULL,
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE,
+	FOREIGN KEY (sync_run_id) REFERENCES dt_sync_runs(id) ON DELETE SET NULL,
+	UNIQUE(twin_id, source_entity_id, target_entity_id, relationship_type, revision)
+	);
+
+CREATE INDEX IF NOT EXISTS idx_dt_relationship_revisions_twin_id ON dt_relationship_revisions(twin_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_relationship_revisions_source_id ON dt_relationship_revisions(source_entity_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_relationship_revisions_target_id ON dt_relationship_revisions(target_entity_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_relationship_revisions_recorded_at ON dt_relationship_revisions(recorded_at);
+
+CREATE TABLE IF NOT EXISTS dt_snapshots (
+	id TEXT PRIMARY KEY,
+	twin_id TEXT NOT NULL,
+	sync_run_id TEXT NOT NULL,
+	snapshot_kind TEXT NOT NULL,
+	entity_state BLOB NOT NULL,
+	relationship_state BLOB NOT NULL,
+	created_at TEXT NOT NULL,
+	entity_revision_high_watermark INTEGER NOT NULL DEFAULT 0,
+	relationship_revision_high_watermark INTEGER NOT NULL DEFAULT 0,
+	data TEXT NOT NULL,
+	FOREIGN KEY (twin_id) REFERENCES digital_twins(id) ON DELETE CASCADE,
+	FOREIGN KEY (sync_run_id) REFERENCES dt_sync_runs(id) ON DELETE CASCADE
+	);
+
+CREATE INDEX IF NOT EXISTS idx_dt_snapshots_twin_id ON dt_snapshots(twin_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_snapshots_sync_run_id ON dt_snapshots(sync_run_id);
+	CREATE INDEX IF NOT EXISTS idx_dt_snapshots_created_at ON dt_snapshots(created_at);
+
+
 CREATE TABLE IF NOT EXISTS dt_scenarios (
 	id TEXT PRIMARY KEY,
 	twin_id TEXT NOT NULL,
@@ -2074,6 +2115,173 @@ func (s *SQLiteStore) ListTwinSyncRuns(twinID string, limit int) ([]*models.Twin
 		return nil, fmt.Errorf("error iterating twin sync runs: %w", err)
 	}
 	return runs, nil
+}
+
+// SaveRelationshipRevision persists one temporal relationship change.
+func (s *SQLiteStore) SaveRelationshipRevision(revision *models.RelationshipRevision) error {
+	data, err := json.Marshal(revision)
+	if err != nil {
+		return fmt.Errorf("failed to marshal relationship revision: %w", err)
+	}
+	query := `
+		INSERT INTO dt_relationship_revisions (id, twin_id, sync_run_id, source_entity_id, target_entity_id, relationship_type, revision, change_type, recorded_at, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.db.Exec(query, revision.ID, revision.DigitalTwinID, nullableString(revision.SyncRunID), revision.SourceEntityID, revision.TargetEntityID, revision.RelationshipType, revision.Revision, revision.ChangeType, revision.RecordedAt.Format(time.RFC3339), data)
+	if err != nil {
+		return fmt.Errorf("failed to save relationship revision: %w", err)
+	}
+	return nil
+}
+
+// ListRelationshipRevisions lists temporal relationship changes for a twin, optionally scoped to one entity.
+func (s *SQLiteStore) ListRelationshipRevisions(twinID, entityID string, limit int) ([]*models.RelationshipRevision, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	query := `SELECT data FROM dt_relationship_revisions WHERE twin_id = ?`
+	args := []interface{}{twinID}
+	if entityID != "" {
+		query += ` AND (source_entity_id = ? OR target_entity_id = ?)`
+		args = append(args, entityID, entityID)
+	}
+	query += ` ORDER BY recorded_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list relationship revisions: %w", err)
+	}
+	defer rows.Close()
+	revisions := make([]*models.RelationshipRevision, 0)
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("failed to scan relationship revision: %w", err)
+		}
+		revision := &models.RelationshipRevision{}
+		if err := json.Unmarshal(data, revision); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal relationship revision: %w", err)
+		}
+		revisions = append(revisions, revision)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating relationship revisions: %w", err)
+	}
+	return revisions, nil
+}
+
+// SaveTwinSnapshot persists one checkpoint snapshot for a digital twin.
+func (s *SQLiteStore) SaveTwinSnapshot(snapshot *models.TwinSnapshot) error {
+	metadata, err := json.Marshal(snapshot.Metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal twin snapshot metadata: %w", err)
+	}
+	query := `
+		INSERT INTO dt_snapshots (id, twin_id, sync_run_id, snapshot_kind, entity_state, relationship_state, created_at, entity_revision_high_watermark, relationship_revision_high_watermark, data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			twin_id = excluded.twin_id,
+			sync_run_id = excluded.sync_run_id,
+			snapshot_kind = excluded.snapshot_kind,
+			entity_state = excluded.entity_state,
+			relationship_state = excluded.relationship_state,
+			created_at = excluded.created_at,
+			entity_revision_high_watermark = excluded.entity_revision_high_watermark,
+			relationship_revision_high_watermark = excluded.relationship_revision_high_watermark,
+			data = excluded.data
+	`
+	_, err = s.db.Exec(query, snapshot.ID, snapshot.DigitalTwinID, snapshot.SyncRunID, snapshot.SnapshotKind, snapshot.EntityState, snapshot.RelationshipState, snapshot.CreatedAt.Format(time.RFC3339), snapshot.EntityRevisionHighWatermark, snapshot.RelationshipRevisionHighWatermark, metadata)
+	if err != nil {
+		return fmt.Errorf("failed to save twin snapshot: %w", err)
+	}
+	return nil
+}
+
+// GetTwinSnapshot retrieves one checkpoint snapshot by ID.
+func (s *SQLiteStore) GetTwinSnapshot(id string) (*models.TwinSnapshot, error) {
+	return s.getTwinSnapshot(`SELECT id, twin_id, sync_run_id, snapshot_kind, entity_state, relationship_state, created_at, entity_revision_high_watermark, relationship_revision_high_watermark, data FROM dt_snapshots WHERE id = ?`, id)
+}
+
+// GetTwinSnapshotByRun retrieves the checkpoint associated with one sync run.
+func (s *SQLiteStore) GetTwinSnapshotByRun(twinID, syncRunID string) (*models.TwinSnapshot, error) {
+	return s.getTwinSnapshot(`SELECT id, twin_id, sync_run_id, snapshot_kind, entity_state, relationship_state, created_at, entity_revision_high_watermark, relationship_revision_high_watermark, data FROM dt_snapshots WHERE twin_id = ? AND sync_run_id = ?`, twinID, syncRunID)
+}
+
+// ListTwinSnapshots lists persisted snapshots for one twin ordered by recency.
+func (s *SQLiteStore) ListTwinSnapshots(twinID string, limit int) ([]*models.TwinSnapshot, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.db.Query(`SELECT id, twin_id, sync_run_id, snapshot_kind, entity_state, relationship_state, created_at, entity_revision_high_watermark, relationship_revision_high_watermark, data FROM dt_snapshots WHERE twin_id = ? ORDER BY created_at DESC LIMIT ?`, twinID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list twin snapshots: %w", err)
+	}
+	defer rows.Close()
+	snapshots := make([]*models.TwinSnapshot, 0)
+	for rows.Next() {
+		snapshot, err := scanTwinSnapshot(rows)
+		if err != nil {
+			return nil, err
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating twin snapshots: %w", err)
+	}
+	return snapshots, nil
+}
+
+func (s *SQLiteStore) getTwinSnapshot(query string, args ...interface{}) (*models.TwinSnapshot, error) {
+	snapshot, err := scanTwinSnapshot(s.db.QueryRow(query, args...))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("twin snapshot not found")
+		}
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+type snapshotScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanTwinSnapshot(scanner snapshotScanner) (*models.TwinSnapshot, error) {
+	var id string
+	var twinID string
+	var syncRunID string
+	var snapshotKind string
+	var entityState []byte
+	var relationshipState []byte
+	var createdAt string
+	var entityHW int
+	var relationshipHW int
+	var metadata []byte
+	if err := scanner.Scan(&id, &twinID, &syncRunID, &snapshotKind, &entityState, &relationshipState, &createdAt, &entityHW, &relationshipHW, &metadata); err != nil {
+		return nil, err
+	}
+	createdAtTime, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse snapshot timestamp: %w", err)
+	}
+	metadataMap := make(map[string]interface{})
+	if len(metadata) > 0 {
+		if err := json.Unmarshal(metadata, &metadataMap); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal snapshot metadata: %w", err)
+		}
+	}
+	return &models.TwinSnapshot{
+		ID:                                id,
+		DigitalTwinID:                     twinID,
+		SyncRunID:                         syncRunID,
+		SnapshotKind:                      snapshotKind,
+		EntityState:                       entityState,
+		RelationshipState:                 relationshipState,
+		CreatedAt:                         createdAtTime,
+		EntityRevisionHighWatermark:       entityHW,
+		RelationshipRevisionHighWatermark: relationshipHW,
+		Metadata:                          metadataMap,
+	}, nil
 }
 
 // SaveTwinProcessingRun upserts one persisted twin-processing run.

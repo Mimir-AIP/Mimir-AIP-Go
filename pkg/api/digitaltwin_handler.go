@@ -75,6 +75,9 @@ func (h *DigitalTwinHandler) HandleDigitalTwin(w http.ResponseWriter, r *http.Re
 		case "query":
 			h.handleDigitalTwinQuery(w, r, twinID)
 			return
+		case "state":
+			h.handleDigitalTwinState(w, r, twinID)
+			return
 		case "predict":
 			h.handleDigitalTwinPredict(w, r, twinID)
 			return
@@ -284,6 +287,26 @@ func (h *DigitalTwinHandler) handleSyncDigitalTwin(w http.ResponseWriter, r *htt
 		"status":          "queued",
 		"message":         "Digital twin sync has been queued as a work task",
 	})
+}
+
+// handleDigitalTwinState handles GET /api/digital-twins/{id}/state?at_run=...
+func (h *DigitalTwinHandler) handleDigitalTwinState(w http.ResponseWriter, r *http.Request, twinID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	atRun := strings.TrimSpace(r.URL.Query().Get("at_run"))
+	if atRun == "" {
+		http.Error(w, "at_run query parameter is required", http.StatusBadRequest)
+		return
+	}
+	state, err := h.service.GetStateAtRun(twinID, atRun)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to reconstruct twin state: %v", err), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(state)
 }
 
 // handleDigitalTwinEntities handles GET /api/digital-twins/{id}/entities

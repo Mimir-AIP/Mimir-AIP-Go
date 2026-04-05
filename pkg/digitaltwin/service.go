@@ -2,6 +2,7 @@ package digitaltwin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sort"
@@ -237,6 +238,46 @@ func (s *Service) GetSyncRun(twinID, runID string) (*models.TwinSyncRun, error) 
 	return run, nil
 }
 
+// ListSnapshots returns persisted checkpoints for one twin.
+func (s *Service) ListSnapshots(twinID string, limit int) ([]*models.TwinSnapshot, error) {
+	return s.store.ListTwinSnapshots(twinID, limit)
+}
+
+// GetStateAtRun reconstructs the twin graph from the checkpoint captured for one sync run.
+func (s *Service) GetStateAtRun(twinID, runID string) (*models.ReconstructedTwinState, error) {
+	snapshot, err := s.store.GetTwinSnapshotByRun(twinID, runID)
+	if err != nil {
+		return nil, err
+	}
+	return reconstructStateFromSnapshot(snapshot)
+}
+
+func reconstructStateFromSnapshot(snapshot *models.TwinSnapshot) (*models.ReconstructedTwinState, error) {
+	if snapshot == nil {
+		return nil, fmt.Errorf("snapshot is required")
+	}
+	entities := make([]*models.Entity, 0)
+	if len(snapshot.EntityState) > 0 {
+		if err := json.Unmarshal(snapshot.EntityState, &entities); err != nil {
+			return nil, fmt.Errorf("failed to decode snapshot entity state: %w", err)
+		}
+	}
+	relationships := make([]*models.EntityRelationship, 0)
+	if len(snapshot.RelationshipState) > 0 {
+		if err := json.Unmarshal(snapshot.RelationshipState, &relationships); err != nil {
+			return nil, fmt.Errorf("failed to decode snapshot relationship state: %w", err)
+		}
+	}
+	return &models.ReconstructedTwinState{
+		DigitalTwinID: snapshot.DigitalTwinID,
+		SyncRunID:     snapshot.SyncRunID,
+		SnapshotID:    snapshot.ID,
+		Entities:      entities,
+		Relationships: relationships,
+		Metadata:      snapshot.Metadata,
+	}, nil
+}
+
 // EnqueueSync marks a twin as syncing and submits worker-backed sync work.
 func (s *Service) EnqueueSync(twinID string) (*models.WorkTask, error) {
 	if s.queue == nil {
@@ -325,7 +366,8 @@ func (s *Service) SyncWithStorageWithOptions(twinID string, opts *models.TwinSyn
 			processedSources++
 		}
 	}
-	if err := s.wireRelationships(twin.ID); err != nil {
+	relationshipHighWatermark, err := s.wireRelationships(twin.ID, run)
+	if err != nil {
 		fmt.Printf("Warning: failed to wire cross-type relationships for twin %s: %v\n", twin.ID, err)
 	}
 	now := time.Now().UTC()
@@ -340,11 +382,84 @@ func (s *Service) SyncWithStorageWithOptions(twinID string, opts *models.TwinSyn
 	run.Status = "completed"
 	run.Summary["processed_sources"] = processedSources
 	run.Summary["entity_revision_high_watermark"] = latestEntityRevisionHighWatermark(s.store, twin.ID)
+	run.Summary["relationship_revision_high_watermark"] = relationshipHighWatermark
 	run.EntityRevisionHighWatermark = latestEntityRevisionHighWatermark(s.store, twin.ID)
+	if snapshot, snapshotErr := s.captureTwinSnapshot(twin.ID, run, relationshipHighWatermark); snapshotErr != nil {
+		return fmt.Errorf("failed to capture twin snapshot: %w", snapshotErr)
+	} else {
+		run.BaseSnapshotID = snapshot.ID
+		run.Summary["snapshot_id"] = snapshot.ID
+	}
 	if err := s.store.SaveTwinSyncRun(run); err != nil {
 		return fmt.Errorf("failed to finalize twin sync run: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) captureTwinSnapshot(twinID string, run *models.TwinSyncRun, relationshipHighWatermark int) (*models.TwinSnapshot, error) {
+	entities, err := s.store.ListEntitiesByDigitalTwin(twinID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list entities for snapshot: %w", err)
+	}
+	relationships := flattenRelationships(entities)
+	entityState, err := json.Marshal(entities)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal snapshot entities: %w", err)
+	}
+	relationshipState, err := json.Marshal(relationships)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal snapshot relationships: %w", err)
+	}
+	snapshot := &models.TwinSnapshot{
+		ID:                                uuid.New().String(),
+		DigitalTwinID:                     twinID,
+		SyncRunID:                         run.ID,
+		SnapshotKind:                      "full",
+		EntityState:                       entityState,
+		RelationshipState:                 relationshipState,
+		CreatedAt:                         time.Now().UTC(),
+		EntityRevisionHighWatermark:       run.EntityRevisionHighWatermark,
+		RelationshipRevisionHighWatermark: relationshipHighWatermark,
+		Metadata: map[string]interface{}{
+			"trigger_type":            run.TriggerType,
+			"reconciliation_strategy": run.ReconciliationStrategy,
+			"entity_count":            len(entities),
+			"relationship_count":      len(relationships),
+		},
+	}
+	if err := s.store.SaveTwinSnapshot(snapshot); err != nil {
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func flattenRelationships(entities []*models.Entity) []*models.EntityRelationship {
+	relationships := make([]*models.EntityRelationship, 0)
+	seen := make(map[string]bool)
+	for _, entity := range entities {
+		for _, rel := range entity.Relationships {
+			if rel == nil {
+				continue
+			}
+			key := entity.ID + "|" + rel.Type + "|" + rel.TargetID
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			copy := *rel
+			copy.Properties = cloneJSONMap(rel.Properties)
+			relationships = append(relationships, &copy)
+		}
+	}
+	return relationships
+}
+
+func latestRelationshipRevisionHighWatermark(store metadatastore.MetadataStore, twinID string) int {
+	revisions, err := store.ListRelationshipRevisions(twinID, "", 1)
+	if err != nil || len(revisions) == 0 {
+		return 0
+	}
+	return revisions[0].Revision
 }
 
 func optValue(opts *models.TwinSyncOptions, selector func(*models.TwinSyncOptions) string) string {
@@ -1059,6 +1174,17 @@ func mergeEntityAttributes(entity *models.Entity, incoming map[string]interface{
 	entity.ComputedValues["reconciliation_conflicts"] = conflictMapToInterfaceMap(conflicts)
 }
 
+func cloneJSONMap(values map[string]interface{}) map[string]interface{} {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]interface{}, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
 func resolveReconciledValue(currentValue interface{}, currentSource string, currentObservedAt time.Time, incomingValue interface{}, incomingSource string, incomingObservedAt time.Time, policy *models.TwinReconciliationPolicy) (string, interface{}) {
 	if policy == nil {
 		policy = &models.TwinReconciliationPolicy{Strategy: "source_priority"}
@@ -1197,53 +1323,45 @@ func appendSourceID(entity *models.Entity, storageID string) {
 }
 
 // wireRelationships links entities of different types that share a common
-// key-field value.  This is the runtime equivalent of foreign-key resolution:
-// a GradeRecord with student_id=42 and an AttendanceRecord with student_id=42
-// will be linked bidirectionally via an EntityRelationship of type
-// "relatedByStudentId".
-//
-// The algorithm is data-agnostic: it discovers shared key fields by comparing
-// attribute name sets across entity types, then joins on matching values.
-func (s *Service) wireRelationships(twinID string) error {
+// key-field value, records temporal edge changes, and rewrites the current
+// materialized relationship graph in one pass.
+func (s *Service) wireRelationships(twinID string, run *models.TwinSyncRun) (int, error) {
 	allEntities, err := s.store.ListEntitiesByDigitalTwin(twinID)
 	if err != nil {
-		return fmt.Errorf("failed to list entities: %w", err)
+		return 0, fmt.Errorf("failed to list entities: %w", err)
 	}
-
-	// Group entities by type.
 	byType := make(map[string][]*models.Entity)
+	entityByID := make(map[string]*models.Entity)
+	currentRelationships := make(map[string]*models.EntityRelationship)
 	for _, e := range allEntities {
 		byType[e.Type] = append(byType[e.Type], e)
+		entityByID[e.ID] = e
+		for _, rel := range e.Relationships {
+			if rel == nil {
+				continue
+			}
+			currentRelationships[relationshipKey(e.ID, rel.Type, rel.TargetID)] = rel
+		}
+		e.Relationships = nil
 	}
-
 	types := make([]string, 0, len(byType))
 	for t := range byType {
 		types = append(types, t)
 	}
-
 	if len(types) < 2 {
-		return nil // nothing to link
+		return latestRelationshipRevisionHighWatermark(s.store, twinID), nil
 	}
-
-	// Track which entity pairs have already been linked to avoid duplicates.
-	linked := make(map[string]bool)
-
-	// For each pair of distinct entity types, find common key fields and
-	// build index-based joins.
+	desiredRelationships := make(map[string]*models.EntityRelationship)
 	for i := 0; i < len(types); i++ {
 		for j := i + 1; j < len(types); j++ {
 			typeA, typeB := types[i], types[j]
 			entitiesA := byType[typeA]
 			entitiesB := byType[typeB]
-
-			// Find key field names that appear in both entity types.
 			sharedKeys := commonKeyFieldNames(entitiesA, entitiesB)
 			if len(sharedKeys) == 0 {
 				continue
 			}
-
-			// Build value index for type B: field → value → entity
-			bIndex := make(map[string]map[string]*models.Entity) // field → value → entity
+			bIndex := make(map[string]map[string]*models.Entity)
 			for _, e := range entitiesB {
 				for _, kf := range sharedKeys {
 					kv := keyValue(e.Attributes[kf])
@@ -1256,8 +1374,6 @@ func (s *Service) wireRelationships(twinID string) error {
 					bIndex[kf][kv] = e
 				}
 			}
-
-			// Match entities from type A against the index.
 			for _, eA := range entitiesA {
 				for _, kf := range sharedKeys {
 					kv := keyValue(eA.Attributes[kf])
@@ -1268,51 +1384,147 @@ func (s *Service) wireRelationships(twinID string) error {
 					if !ok {
 						continue
 					}
-
 					relType := "relatedBy" + toCamelCaseRel(kf)
-
-					// A → B
-					fwdKey := eA.ID + "|" + eB.ID + "|" + relType
-					if !linked[fwdKey] {
-						linked[fwdKey] = true
-						if !hasRelationship(eA, relType, eB.ID) {
-							eA.Relationships = append(eA.Relationships, &models.EntityRelationship{
-								Type:       relType,
-								TargetID:   eB.ID,
-								TargetType: typeB,
-							})
-						}
-					}
-					// B → A (bidirectional)
-					bwdKey := eB.ID + "|" + eA.ID + "|" + relType
-					if !linked[bwdKey] {
-						linked[bwdKey] = true
-						if !hasRelationship(eB, relType, eA.ID) {
-							eB.Relationships = append(eB.Relationships, &models.EntityRelationship{
-								Type:       relType,
-								TargetID:   eA.ID,
-								TargetType: typeA,
-							})
-						}
-					}
-				}
-			}
-
-			// Persist updated entities.
-			for _, e := range entitiesA {
-				if err := s.store.SaveEntity(e); err != nil {
-					fmt.Printf("Warning: failed to save wired entity %s: %v\n", e.ID, err)
-				}
-			}
-			for _, e := range entitiesB {
-				if err := s.store.SaveEntity(e); err != nil {
-					fmt.Printf("Warning: failed to save wired entity %s: %v\n", e.ID, err)
+					addDesiredRelationship(eA, eB, relType, typeB, desiredRelationships)
+					addDesiredRelationship(eB, eA, relType, typeA, desiredRelationships)
 				}
 			}
 		}
 	}
+	relationshipHighWatermark, err := s.persistRelationshipDiffs(twinID, run, currentRelationships, desiredRelationships)
+	if err != nil {
+		return 0, err
+	}
+	for _, entity := range entityByID {
+		if err := s.store.SaveEntity(entity); err != nil {
+			fmt.Printf("Warning: failed to save wired entity %s: %v\n", entity.ID, err)
+		}
+	}
+	return relationshipHighWatermark, nil
+}
 
-	return nil
+func addDesiredRelationship(source, target *models.Entity, relType, targetType string, desired map[string]*models.EntityRelationship) {
+	key := relationshipKey(source.ID, relType, target.ID)
+	if _, exists := desired[key]; exists {
+		return
+	}
+	rel := &models.EntityRelationship{Type: relType, TargetID: target.ID, TargetType: targetType}
+	source.Relationships = append(source.Relationships, rel)
+	desired[key] = rel
+}
+
+func relationshipKey(sourceID, relType, targetID string) string {
+	return sourceID + "|" + relType + "|" + targetID
+}
+
+func (s *Service) persistRelationshipDiffs(twinID string, run *models.TwinSyncRun, current, desired map[string]*models.EntityRelationship) (int, error) {
+	now := time.Now().UTC()
+	currentHighWatermark := latestRelationshipRevisionHighWatermark(s.store, twinID)
+	nextRevision := currentHighWatermark
+	for key, desiredRel := range desired {
+		currentRel, exists := current[key]
+		if exists && relationshipsEquivalent(currentRel, desiredRel) {
+			delete(current, key)
+			continue
+		}
+		nextRevision++
+		revision := &models.RelationshipRevision{
+			ID:               uuid.New().String(),
+			DigitalTwinID:    twinID,
+			SyncRunID:        optSyncRunID(run),
+			SourceEntityID:   relationshipSourceID(key),
+			TargetEntityID:   desiredRel.TargetID,
+			RelationshipType: desiredRel.Type,
+			Revision:         nextRevision,
+			ChangeType:       relationshipChangeType(exists),
+			DeltaData:        relationshipDelta(currentRel, desiredRel),
+			FullState:        relationshipFullState(desiredRel),
+			Provenance:       relationshipProvenance(run),
+			RecordedAt:       now,
+			OntologyVersion:  optOntologyVersion(run),
+		}
+		if err := s.store.SaveRelationshipRevision(revision); err != nil {
+			return 0, fmt.Errorf("failed to save relationship revision: %w", err)
+		}
+		delete(current, key)
+	}
+	for key, currentRel := range current {
+		nextRevision++
+		revision := &models.RelationshipRevision{
+			ID:               uuid.New().String(),
+			DigitalTwinID:    twinID,
+			SyncRunID:        optSyncRunID(run),
+			SourceEntityID:   relationshipSourceID(key),
+			TargetEntityID:   currentRel.TargetID,
+			RelationshipType: currentRel.Type,
+			Revision:         nextRevision,
+			ChangeType:       "removed", DeltaData: relationshipDelta(currentRel, nil),
+			Provenance:      relationshipProvenance(run),
+			RecordedAt:      now,
+			OntologyVersion: optOntologyVersion(run),
+		}
+		if err := s.store.SaveRelationshipRevision(revision); err != nil {
+			return 0, fmt.Errorf("failed to save removed relationship revision: %w", err)
+		}
+	}
+	return nextRevision, nil
+}
+
+func relationshipSourceID(key string) string {
+	parts := strings.Split(key, "|")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return ""
+}
+
+func relationshipChangeType(existed bool) string {
+	if existed {
+		return "updated"
+	}
+	return "added"
+}
+
+func relationshipsEquivalent(a, b *models.EntityRelationship) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	if a.Type != b.Type || a.TargetID != b.TargetID || a.TargetType != b.TargetType {
+		return false
+	}
+	return fmt.Sprintf("%v", a.Properties) == fmt.Sprintf("%v", b.Properties)
+}
+
+func relationshipDelta(before, after *models.EntityRelationship) map[string]interface{} {
+	return map[string]interface{}{"before": relationshipFullState(before), "after": relationshipFullState(after)}
+}
+
+func relationshipFullState(rel *models.EntityRelationship) map[string]interface{} {
+	if rel == nil {
+		return nil
+	}
+	return map[string]interface{}{"type": rel.Type, "target_id": rel.TargetID, "target_type": rel.TargetType, "properties": cloneJSONMap(rel.Properties)}
+}
+
+func relationshipProvenance(run *models.TwinSyncRun) map[string]interface{} {
+	if run == nil {
+		return nil
+	}
+	return map[string]interface{}{"sync_run_id": run.ID, "trigger_type": run.TriggerType, "triggered_by": run.TriggeredBy}
+}
+
+func optSyncRunID(run *models.TwinSyncRun) string {
+	if run == nil {
+		return ""
+	}
+	return run.ID
+}
+
+func optOntologyVersion(run *models.TwinSyncRun) string {
+	if run == nil {
+		return ""
+	}
+	return run.OntologyVersion
 }
 
 // commonKeyFieldNames returns key-like attribute names that appear in both

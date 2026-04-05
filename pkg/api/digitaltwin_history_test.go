@@ -77,3 +77,58 @@ func TestDigitalTwinSyncHistoryEndpoints(t *testing.T) {
 		t.Fatalf("unexpected sync run payload: %#v", payload)
 	}
 }
+
+func TestDigitalTwinStateAtRunEndpoint(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "dt-state.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+	q, err := queue.NewQueue(store)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+	now := time.Now().UTC()
+	project := &models.Project{ID: "project-1", Name: "project-1", Description: "test", Version: "v1", Status: models.ProjectStatusActive, Metadata: models.ProjectMetadata{CreatedAt: now, UpdatedAt: now}}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to save project: %v", err)
+	}
+	ont := &models.Ontology{ID: "ontology-1", ProjectID: project.ID, Name: "ontology-1", Description: "test", Version: "1.0", Content: "@prefix : <http://example.org/> .", Status: "active", CreatedAt: now, UpdatedAt: now}
+	if err := store.SaveOntology(ont); err != nil {
+		t.Fatalf("failed to save ontology: %v", err)
+	}
+	service := digitaltwin.NewService(store, nil, ontology.NewService(store), storage.NewService(store), nil, q)
+	handler := NewDigitalTwinHandler(service, nil, nil)
+	twin := &models.DigitalTwin{ID: "twin-1", ProjectID: project.ID, OntologyID: ont.ID, Name: "Twin", Status: "active", CreatedAt: now, UpdatedAt: now}
+	if err := store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save twin: %v", err)
+	}
+	entity := &models.Entity{ID: "entity-1", DigitalTwinID: twin.ID, Type: "Machine", Attributes: map[string]interface{}{"temperature": 91}, CreatedAt: now, UpdatedAt: now, Relationships: []*models.EntityRelationship{{Type: "relatedByMachineId", TargetID: "entity-2", TargetType: "Line"}}}
+	if err := store.SaveEntity(entity); err != nil {
+		t.Fatalf("failed to save entity: %v", err)
+	}
+	run := &models.TwinSyncRun{ID: "run-1", DigitalTwinID: twin.ID, TriggerType: "manual", StartedAt: now, CompletedAt: &now, Status: "completed", Summary: map[string]interface{}{"processed_sources": 1}, EntityRevisionHighWatermark: 1}
+	if err := store.SaveTwinSyncRun(run); err != nil {
+		t.Fatalf("failed to save sync run: %v", err)
+	}
+	entityState, _ := json.Marshal([]*models.Entity{entity})
+	relState, _ := json.Marshal(entity.Relationships)
+	snapshot := &models.TwinSnapshot{ID: "snapshot-1", DigitalTwinID: twin.ID, SyncRunID: run.ID, SnapshotKind: "full", EntityState: entityState, RelationshipState: relState, CreatedAt: now, EntityRevisionHighWatermark: 1, RelationshipRevisionHighWatermark: 1, Metadata: map[string]interface{}{"relationship_count": 1}}
+	if err := store.SaveTwinSnapshot(snapshot); err != nil {
+		t.Fatalf("failed to save snapshot: %v", err)
+	}
+	resp := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/digital-twins/twin-1/state?at_run=run-1", nil)
+	handler.HandleDigitalTwin(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 reconstructing state, got %d body=%s", resp.Code, resp.Body.String())
+	}
+	var state map[string]interface{}
+	if err := json.Unmarshal(resp.Body.Bytes(), &state); err != nil {
+		t.Fatalf("failed to decode reconstructed state: %v", err)
+	}
+	if state["sync_run_id"] != "run-1" || state["snapshot_id"] != "snapshot-1" {
+		t.Fatalf("unexpected reconstructed state metadata: %#v", state)
+	}
+}

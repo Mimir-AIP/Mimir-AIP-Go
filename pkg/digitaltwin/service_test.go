@@ -358,3 +358,68 @@ func TestSyncWithStorageRecordsSyncRun(t *testing.T) {
 		t.Fatal("expected non-zero entity revision high watermark")
 	}
 }
+
+func TestSyncWithStorageRecordsRelationshipRevisionsAndSnapshot(t *testing.T) {
+	service, storageSvc, _, cleanup := setupDigitalTwinService(t)
+	defer cleanup()
+
+	seedDigitalTwinProject(t, service.store, "project-1", "ontology-1")
+	now := time.Now().UTC()
+	storageSvc.RegisterPlugin("rel-a", &twinSampleStoragePlugin{sample: []*models.CIR{func() *models.CIR {
+		cir := models.NewCIR(models.SourceTypeDatabase, "db://a/student-1", models.DataFormatJSON, map[string]interface{}{"student_id": "S-1", "score": 88})
+		cir.Source.Timestamp = now
+		cir.SetParameter("entity_type", "Student")
+		return cir
+	}()}})
+	storageSvc.RegisterPlugin("rel-b", &twinSampleStoragePlugin{sample: []*models.CIR{func() *models.CIR {
+		cir := models.NewCIR(models.SourceTypeDatabase, "db://b/student-1", models.DataFormatJSON, map[string]interface{}{"student_id": "S-1", "attendance": 95})
+		cir.Source.Timestamp = now
+		cir.SetParameter("entity_type", "Attendance")
+		return cir
+	}()}})
+	cfgA, err := storageSvc.CreateStorageConfig("project-1", "rel-a", map[string]interface{}{"connection_string": "mock://a"})
+	if err != nil {
+		t.Fatalf("failed to create storage config A: %v", err)
+	}
+	cfgB, err := storageSvc.CreateStorageConfig("project-1", "rel-b", map[string]interface{}{"connection_string": "mock://b"})
+	if err != nil {
+		t.Fatalf("failed to create storage config B: %v", err)
+	}
+	twin := &models.DigitalTwin{
+		ID:         "twin-rel-history",
+		ProjectID:  "project-1",
+		OntologyID: "ontology-1",
+		Name:       "Relationship Twin",
+		Status:     "active",
+		Config:     &models.DigitalTwinConfig{StorageIDs: []string{cfgA.ID, cfgB.ID}},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := service.store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save digital twin: %v", err)
+	}
+	if err := service.SyncWithStorageWithOptions(twin.ID, &models.TwinSyncOptions{TriggerType: "manual", TriggeredBy: "test"}); err != nil {
+		t.Fatalf("SyncWithStorageWithOptions returned error: %v", err)
+	}
+	relationshipRevisions, err := service.store.ListRelationshipRevisions(twin.ID, "", 10)
+	if err != nil {
+		t.Fatalf("failed to list relationship revisions: %v", err)
+	}
+	if len(relationshipRevisions) == 0 {
+		t.Fatal("expected relationship revisions to be recorded")
+	}
+	snapshots, err := service.ListSnapshots(twin.ID, 10)
+	if err != nil {
+		t.Fatalf("failed to list snapshots: %v", err)
+	}
+	if len(snapshots) != 1 {
+		t.Fatalf("expected one snapshot, got %d", len(snapshots))
+	}
+	state, err := service.GetStateAtRun(twin.ID, snapshots[0].SyncRunID)
+	if err != nil {
+		t.Fatalf("GetStateAtRun returned error: %v", err)
+	}
+	if len(state.Entities) == 0 || len(state.Relationships) == 0 {
+		t.Fatalf("expected reconstructed state to include entities and relationships, got %#v", state)
+	}
+}

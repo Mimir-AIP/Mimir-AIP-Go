@@ -2,7 +2,7 @@
 	const root = window.MimirApp = window.MimirApp || {};
 	const primitives = (((root.components = root.components || {}).primitives = root.components.primitives || {}));
 
-	primitives.Button = function Button({
+	primitives.Button = React.memo(function Button({
 		label,
 		onClick,
 		type = 'button',
@@ -24,5 +24,5 @@
 				{children || label}
 			</button>
 		);
-	};
+	});
 })();

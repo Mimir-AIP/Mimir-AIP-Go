@@ -1,4 +1,4 @@
-package main
+package execution
 
 import (
 	"testing"
@@ -34,13 +34,13 @@ func TestProcessQueueLeavesTaskQueuedWhenNoClusterHasCapacity(t *testing.T) {
 		t.Fatalf("failed to enqueue task: %v", err)
 	}
 
-	spawner := NewWorkerSpawner(q, &k8s.ClusterPool{}, &config.Config{
+	backend := NewKubernetesBackend(q, &k8s.ClusterPool{}, &config.Config{
 		MinWorkers:        1,
 		QueueThreshold:    0,
 		ConcurrencyLimits: map[string]int{},
 	})
 
-	spawner.processQueue()
+	backend.processQueue()
 
 	queueLength, err := q.QueueLength()
 	if err != nil {

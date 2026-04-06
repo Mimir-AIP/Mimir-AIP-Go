@@ -116,7 +116,7 @@
 						<span className="topbar-name">Mimir AIP</span>
 					</div>
 					<div className="topbar-meta">
-						<span className="topbar-version">{activeProject ? `Project: ${activeProject.name}` : 'All projects'}</span>
+						<span className="topbar-version" title={activeProject ? activeProject.name : 'All projects'}>{activeProject ? `Project: ${activeProject.name}` : 'All projects'}</span>
 					</div>
 				</header>
 				<div className="app-body">

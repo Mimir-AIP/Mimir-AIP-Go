@@ -30,9 +30,9 @@
 	--surface:    var(--bg-surface);
 
 	/* Fonts */
-	--font-display: 'Syne', sans-serif;
-	--font-body:    'DM Sans', sans-serif;
-	--font-mono:    'JetBrains Mono', 'Google Sans Code', monospace;
+	--font-display: 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+	--font-body:    'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+	--font-mono:    'SFMono-Regular', 'JetBrains Mono', 'Consolas', 'Liberation Mono', monospace;
 	--font-family:  var(--font-body);
 
 	/* Layout */
@@ -122,6 +122,18 @@ body {
 	display: flex;
 	align-items: center;
 	gap: 20px;
+}
+
+.topbar-meta > * {
+	min-width: 0;
+}
+
+.topbar-version {
+	display: block;
+	max-width: min(48vw, 720px);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .topbar-version {
@@ -286,6 +298,18 @@ body {
 	padding: clamp(20px, 3vw, 48px) clamp(20px, 4vw, 56px);
 }
 
+.app-container > * {
+	min-width: 0;
+}
+
+.content-section,
+.card,
+.section-panel {
+	min-width: 0;
+	content-visibility: auto;
+	contain-intrinsic-size: 280px;
+}
+
 /* ============================================================
    TYPOGRAPHY
    ============================================================ */
@@ -334,8 +358,12 @@ h3 {
 
 .tabs-container {
 	display: flex;
+	gap: 2px;
 	margin-bottom: 20px;
 	border-bottom: 1px solid var(--border);
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: thin;
 }
 
 /* Override global button rule for tabs — nested selector wins */
@@ -375,7 +403,11 @@ h3 {
 
 .table-container {
 	overflow-x: auto;
+	overflow-y: hidden;
 	-webkit-overflow-scrolling: touch;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
 }
 
 .table-action-group {
@@ -383,6 +415,10 @@ h3 {
 	gap: 8px;
 	align-items: center;
 	flex-wrap: wrap;
+}
+
+.table-action-group > * {
+	flex-shrink: 0;
 }
 
 .sr-only {
@@ -404,6 +440,7 @@ table {
 	background: transparent;
 	border-collapse: collapse;
 	font-size: 0.8125rem;
+	table-layout: auto;
 }
 
 thead th {
@@ -415,12 +452,18 @@ thead th {
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--text-secondary);
+	vertical-align: top;
+	white-space: nowrap;
 }
 
 tbody td {
 	border-bottom: 1px solid var(--border);
 	padding: 13px 14px;
 	color: var(--text);
+	vertical-align: top;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 tbody tr:hover {
@@ -441,6 +484,10 @@ form {
 	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 	gap: 12px;
 	margin-bottom: 12px;
+}
+
+.form-grid > * {
+	min-width: 0;
 }
 
 .form-group {
@@ -474,6 +521,11 @@ input, select, textarea {
 	transition: border-color 0.12s, box-shadow 0.12s;
 }
 
+textarea {
+	min-height: 110px;
+	resize: vertical;
+}
+
 input:focus, select:focus, textarea:focus {
 	outline: none;
 	border-color: var(--accent);
@@ -505,6 +557,11 @@ button {
 	font-weight: 500;
 	font-size: 0.8125rem;
 	letter-spacing: 0.01em;
+}
+
+button {
+	white-space: nowrap;
+	will-change: transform;
 }
 
 button:hover {
@@ -585,19 +642,14 @@ button.danger:hover {
 	color: var(--text);
 	font-family: var(--font-body);
 	padding: 28px;
-	max-width: 560px;
-	width: 90%;
+	max-width: min(760px, calc(100vw - 32px));
+	width: min(760px, calc(100vw - 32px));
 	border: 1px solid var(--border-strong);
 	border-radius: var(--radius-lg);
-	max-height: 82vh;
+	max-height: min(88vh, 920px);
 	overflow-y: auto;
 	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
 	animation: slideUp 0.18s ease;
-}
-
-@keyframes slideUp {
-	from { opacity: 0; transform: translateY(10px); }
-	to   { opacity: 1; transform: translateY(0); }
 }
 
 .modal-header {
@@ -612,12 +664,14 @@ button.danger:hover {
 	font-weight: 600;
 	color: var(--text);
 	letter-spacing: 0.02em;
+	overflow-wrap: anywhere;
 }
 
 .modal-body {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
+	min-width: 0;
 }
 
 .modal-copy {
@@ -631,6 +685,11 @@ button.danger:hover {
 	display: flex;
 	gap: 8px;
 	justify-content: flex-end;
+	flex-wrap: wrap;
+	position: sticky;
+	bottom: -28px;
+	padding-top: 12px;
+	background: linear-gradient(180deg, rgba(17, 30, 53, 0), rgba(17, 30, 53, 0.96) 40%);
 }
 
 /* ============================================================
@@ -663,6 +722,10 @@ button.danger:hover {
 	gap: 8px;
 }
 
+
+.card > * {
+	min-width: 0;
+}
 /* ============================================================
    STATUS BADGES
    ============================================================ */
@@ -753,6 +816,15 @@ button.danger:hover {
 	gap: 8px;
 	align-items: center;
 	flex-wrap: wrap;
+}
+
+.inline-actions > * {
+	flex-shrink: 0;
+}
+
+.page-notice,
+.field-static {
+	overflow-wrap: anywhere;
 }
 
 .page-notice {
@@ -867,6 +939,13 @@ button.danger:hover {
 	color: var(--text-secondary);
 }
 
+.json-display pre {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
 /* ============================================================
    GRAPH
    ============================================================ */
@@ -966,6 +1045,14 @@ button.danger:hover {
 	:root {
 		--sidebar-width: 176px;
 	}
+
+	.topbar-version {
+		max-width: min(42vw, 480px);
+	}
+
+	.app-container {
+		padding-inline: clamp(18px, 3vw, 36px);
+	}
 }
 
 /* ── Mobile: < 768px ── */
@@ -1012,10 +1099,10 @@ button.danger:hover {
 		gap: 10px;
 	}
 
-	/* Tables scroll horizontally */
-	.content-section {
-		overflow-x: auto;
-		-webkit-overflow-scrolling: touch;
+	/* Tables scroll horizontally without forcing the full page wider */
+	.table-container {
+		margin-inline: -4px;
+		padding-inline: 4px;
 	}
 
 	table {
@@ -1025,8 +1112,12 @@ button.danger:hover {
 	/* Modals fit the screen */
 	.modal-content {
 		padding: 20px 16px;
-		width: 96%;
+		width: min(100vw - 16px, 680px);
 		max-height: 90vh;
+	}
+
+	.modal-actions {
+		bottom: -20px;
 	}
 
 	/* Forms collapse to single column */

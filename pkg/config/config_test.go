@@ -11,6 +11,7 @@ func TestLoadConfig(t *testing.T) {
 	os.Setenv("ENVIRONMENT", "test")
 	os.Setenv("LOG_LEVEL", "debug")
 	os.Setenv("PORT", "9090")
+	os.Setenv("EXECUTION_MODE", "local")
 	os.Setenv("MIN_WORKERS", "2")
 	os.Setenv("MAX_WORKERS", "100")
 	os.Setenv("QUEUE_THRESHOLD", "10")
@@ -19,6 +20,7 @@ func TestLoadConfig(t *testing.T) {
 		os.Unsetenv("ENVIRONMENT")
 		os.Unsetenv("LOG_LEVEL")
 		os.Unsetenv("PORT")
+		os.Unsetenv("EXECUTION_MODE")
 		os.Unsetenv("MIN_WORKERS")
 		os.Unsetenv("MAX_WORKERS")
 		os.Unsetenv("QUEUE_THRESHOLD")
@@ -38,6 +40,10 @@ func TestLoadConfig(t *testing.T) {
 	}
 
 	if cfg.Port != "9090" {
+
+		if cfg.ExecutionMode != ExecutionModeLocal {
+			t.Errorf("Expected ExecutionMode %q, got %q", ExecutionModeLocal, cfg.ExecutionMode)
+		}
 		t.Errorf("Expected port '9090', got '%s'", cfg.Port)
 	}
 
@@ -70,6 +76,10 @@ func TestLoadConfigDefaults(t *testing.T) {
 	}
 
 	if cfg.Port != "8080" {
+
+		if cfg.ExecutionMode != ExecutionModeKubernetes {
+			t.Errorf("Expected default ExecutionMode %q, got %q", ExecutionModeKubernetes, cfg.ExecutionMode)
+		}
 		t.Errorf("Expected default port '8080', got '%s'", cfg.Port)
 	}
 

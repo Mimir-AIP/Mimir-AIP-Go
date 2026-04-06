@@ -19,13 +19,11 @@ func main() {
 		apiURL = "http://localhost:8080"
 	}
 
-	// Parse the orchestrator URL
 	orchestratorURL, err := url.Parse(apiURL)
 	if err != nil {
 		log.Fatalf("Failed to parse API_URL: %v", err)
 	}
 
-	// Create reverse proxy for API requests
 	proxy := httputil.NewSingleHostReverseProxy(orchestratorURL)
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("Frontend proxy error for %s %s: %v", r.Method, r.URL.Path, err)
@@ -49,7 +47,6 @@ func main() {
 			}
 		}
 	}
-	// Handle proxied API and realtime endpoints.
 	for _, path := range []string{"/api/", "/health", "/ready", "/openapi.yaml", "/ws/tasks"} {
 		http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Proxying request: %s %s", r.Method, r.URL.Path)
@@ -57,7 +54,6 @@ func main() {
 		})
 	}
 
-	// Serve static files from the current directory
 	fs := http.FileServer(http.Dir("."))
 	http.Handle("/", fs)
 

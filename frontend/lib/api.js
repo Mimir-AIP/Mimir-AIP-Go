@@ -57,11 +57,22 @@
 			}
 
 			const contentType = response.headers.get('content-type') || '';
-			if (!contentType.includes('application/json')) {
-				return await response.text();
+			const bodyText = await response.text();
+			if (!bodyText) {
+				return null;
 			}
-
-			return await response.json();
+			if (contentType.includes('application/json')) {
+				return JSON.parse(bodyText);
+			}
+			const trimmed = bodyText.trim();
+			if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+				try {
+					return JSON.parse(trimmed);
+				} catch {
+					// Fall back to plain text when an endpoint returns non-JSON text without a content type.
+				}
+			}
+			return bodyText;
 		} catch (error) {
 			console.error('API Error:', error);
 			throw error;

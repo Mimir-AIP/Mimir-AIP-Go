@@ -4,6 +4,14 @@ import (
 	"encoding/json"
 	"os"
 	"strconv"
+	"strings"
+)
+
+type ExecutionMode string
+
+const (
+	ExecutionModeKubernetes ExecutionMode = "kubernetes"
+	ExecutionModeLocal      ExecutionMode = "local"
 )
 
 // Config holds the application configuration
@@ -13,6 +21,7 @@ type Config struct {
 	Port                 string
 	DatabaseURL          string
 	OrchestratorURL      string
+	ExecutionMode        ExecutionMode
 	JobTimeout           int
 	MinWorkers           int
 	MaxWorkers           int
@@ -44,6 +53,7 @@ func LoadConfig() (*Config, error) {
 		Port:                 getEnv("PORT", "8080"),
 		DatabaseURL:          getEnv("DATABASE_URL", ""),
 		OrchestratorURL:      getEnv("ORCHESTRATOR_URL", "http://localhost:8080"),
+		ExecutionMode:        getEnvAsExecutionMode("EXECUTION_MODE", ExecutionModeKubernetes),
 		JobTimeout:           getEnvAsInt("JOB_TIMEOUT", 3600),
 		MinWorkers:           getEnvAsInt("MIN_WORKERS", 1),
 		MaxWorkers:           getEnvAsInt("MAX_WORKERS", 50),
@@ -98,6 +108,21 @@ func getEnvAsConcurrencyLimits(key string) map[string]int {
 		defaults[k] = v
 	}
 	return defaults
+}
+
+func getEnvAsExecutionMode(key string, defaultValue ExecutionMode) ExecutionMode {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if value == "" {
+		return defaultValue
+	}
+
+	mode := ExecutionMode(value)
+	switch mode {
+	case ExecutionModeKubernetes, ExecutionModeLocal:
+		return mode
+	default:
+		return defaultValue
+	}
 }
 
 // getEnvAsBool retrieves an environment variable as a boolean or returns a default value

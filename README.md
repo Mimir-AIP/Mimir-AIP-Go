@@ -9,8 +9,9 @@ Mimir AIP is an ontology-driven platform for data aggregation, processing, and a
 - [Architecture](#architecture)
 - [Terminology](#terminology)
 - [Quick Start](#quick-start)
-  - [Docker Compose](#docker-compose)
+  - [Local All-in-One Mode](#local-all-in-one-mode)
   - [Kubernetes with Helm](#kubernetes-with-helm)
+  - [Docker Compose (development-only)](#docker-compose-development-only)
 - [MCP Integration](#mcp-integration)
 - [Configuration Reference](#configuration-reference)
 - [Building from Source](#building-from-source)
@@ -53,11 +54,11 @@ Mimir AIP consists of two binaries and an optional web frontend:
           └───────────────────────┘
 ```
 
-**Orchestrator** — the long-running HTTP server. Manages persistent metadata in SQLite for projects, pipelines, schedules, ontologies, ML models, digital twins, storage configurations, analysis runs, review items, and insights. Exposes the REST API and MCP SSE endpoint. Also hosts the generic connector catalog, materializes bundled connectors into ordinary pipelines and schedules, and runs lightweight control-plane coordination such as queue-backed task state, health surfaces, and model monitoring. Heavy execution (pipeline runs, ML training, inference, digital twin synchronisation) is still delegated to **Workers** as Kubernetes Jobs.
+**Orchestrator** — the long-running HTTP server. Manages persistent metadata in SQLite for projects, pipelines, schedules, ontologies, ML models, digital twins, storage configurations, analysis runs, review items, and insights. Exposes the REST API and MCP SSE endpoint. Also hosts the generic connector catalog, materializes bundled connectors into ordinary pipelines and schedules, and runs lightweight control-plane coordination such as queue-backed task state, health surfaces, and model monitoring. In full deployment mode it dispatches heavy execution (pipeline runs, ML training, inference, digital twin synchronisation) to **Workers** as Kubernetes Jobs; in local mode the same queue/task model executes work in-process without Kubernetes.
 
-**Worker** — a short-lived binary run as a Kubernetes Job. Reads its task type and parameters from environment variables, calls the orchestrator API to fetch configuration, executes the work, and reports results back. Designed with scalability in mind, supporting concurrent workers across multiple Kubernetes clusters — the orchestrator dispatches jobs to a configurable cluster pool, spilling over from the primary cluster to remote or cloud clusters when capacity is reached.
+**Worker** — a short-lived binary run as a Kubernetes Job in the full deployment path. Reads its task type and parameters from environment variables, calls the orchestrator API to fetch configuration, executes the work, and reports results back. Designed with scalability in mind, supporting concurrent workers across multiple Kubernetes clusters — the orchestrator dispatches jobs to a configurable cluster pool, spilling over from the primary cluster to remote or cloud clusters when capacity is reached.
 
-**Frontend** — a lightweight React single-page application served by a small Go HTTP server. Communicates exclusively with the orchestrator REST API and now exposes both guided and advanced onboarding flows, bundled connector setup, and project-level insights and review surfaces.
+**Frontend** — a lightweight React single-page application served either by the standalone frontend server in split deployments or directly from the local all-in-one launcher. It communicates exclusively with the orchestrator REST API and exposes guided and advanced onboarding flows, bundled connector setup, and project-level insights and review surfaces.
 
 ---
 
@@ -95,30 +96,31 @@ Mimir AIP consists of two binaries and an optional web frontend:
 
 ## Quick Start
 
-### Docker Compose
+### Local All-in-One Mode
 
-The simplest way to run Mimir AIP locally. Docker Compose starts the orchestrator and frontend; worker jobs are not available without Kubernetes.
+The recommended way to run Mimir AIP locally. This launches the API, embedded frontend, SQLite metadata store, queue, and in-process local task execution from a single binary — no Kubernetes or Docker required for core platform workflows.
 
-**Prerequisites:** Docker and Docker Compose.
+**Prerequisites:** Go 1.21+.
 
 ```bash
 git clone https://github.com/mimir-aip/mimir-aip-go
 cd mimir-aip-go
 
-docker compose up --build
+go run ./cmd/mimir-local
 ```
+
+By default the launcher starts on `http://localhost:8080` and serves:
 
 | Service | URL |
 |---------|-----|
-| Orchestrator API | http://localhost:8080 |
-| Web Frontend | http://localhost:3000 |
+| Local all-in-one UI + API | http://localhost:8080 |
 | MCP SSE endpoint | http://localhost:8080/mcp/sse |
 
-To stop:
+**Persistence:** if `STORAGE_DIR` is unset, local mode stores its SQLite metadata and local runtime state under your OS user config directory (for example `~/Library/Application Support/MimirAIP` on macOS).
 
-```bash
-docker compose down
-```
+To stop, press `Ctrl+C` in the launcher terminal.
+
+Local mode is intended for evaluation, development, and single-machine workflows. The full Kubernetes path remains the production-oriented deployment for horizontal worker scaling and stronger execution isolation.
 
 ---
 
@@ -217,6 +219,34 @@ helm install mimir-aip ./helm/mimir-aip \
 
 ---
 
+### Docker Compose (development-only)
+
+Docker Compose is still available for split-process development, but it is no longer the recommended local product path. It starts the orchestrator and frontend separately; full worker-job execution still requires Kubernetes.
+
+**Prerequisites:** Docker and Docker Compose.
+
+```bash
+git clone https://github.com/mimir-aip/mimir-aip-go
+cd mimir-aip-go
+
+docker compose up --build
+```
+
+| Service | URL |
+|---------|-----|
+| Orchestrator API | http://localhost:8080 |
+| Web Frontend | http://localhost:3000 |
+| MCP SSE endpoint | http://localhost:8080/mcp/sse |
+
+To stop:
+
+```bash
+docker compose down
+```
+
+
+---
+
 ## MCP Integration
 
 Mimir AIP exposes 68 MCP tools over a Server-Sent Events (SSE) transport at `/mcp/sse`. Any MCP-compatible client can connect.
@@ -259,38 +289,45 @@ Then start a Claude Code session — the full Mimir toolset will be available au
 
 ## Configuration Reference
 
-All orchestrator configuration is supplied via environment variables (set in `docker-compose.yaml` or the Helm ConfigMap).
+All runtime configuration is supplied via environment variables. In local mode you typically set them directly in your shell; in Kubernetes they are provided through the Helm chart ConfigMap and workload manifests.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENVIRONMENT` | `production` | Runtime label (`production` or `development`) |
 | `LOG_LEVEL` | `info` | Log verbosity (`debug`, `info`, `warn`, `error`) |
-| `PORT` | `8080` | Orchestrator HTTP port |
-| `STORAGE_DIR` | `/app/data` | Directory for the SQLite database and file storage |
-| `MIN_WORKERS` | `1` | Minimum concurrent worker jobs |
-| `MAX_WORKERS` | `10` | Maximum concurrent worker jobs |
-| `QUEUE_THRESHOLD` | `5` | Queued tasks before spinning up an additional worker |
+| `PORT` | `8080` | HTTP port for the orchestrator or local all-in-one launcher |
+| `EXECUTION_MODE` | `kubernetes` | Execution backend: `kubernetes` for worker-job dispatch, `local` for in-process local execution |
+| `STORAGE_DIR` | local mode: OS user config dir; container mode: `/app/data` | Directory for the SQLite database and local runtime state |
+| `MIN_WORKERS` | `1` | Minimum concurrent worker jobs in Kubernetes mode |
+| `MAX_WORKERS` | `10` | Maximum concurrent worker jobs or local execution slots |
+| `QUEUE_THRESHOLD` | `5` | Queued tasks before spinning up an additional worker in Kubernetes mode |
 | `WORKER_NAMESPACE` | _(release namespace)_ | Kubernetes namespace workers are spawned into |
 | `WORKER_SERVICE_ACCOUNT` | `mimir-worker` | Service account assigned to worker jobs |
+| `WORKER_AUTH_TOKEN` | _(empty)_ | Optional bearer token protecting worker-facing task update endpoints |
 
 ---
 
 ## Building from Source
 
-**Prerequisites:** Go 1.21+, Docker (for container builds).
+**Prerequisites:** Go 1.21+, Docker (only if you need container builds).
 
 ```bash
 # Run unit tests
 make test
 
-# Build all binaries (native, no Docker)
+# Build key binaries (native, no Docker)
 go build ./cmd/orchestrator
 go build ./cmd/worker
+go build ./cmd/frontend
+go build ./cmd/mimir-local
 
-# Build Docker images
+# Run the local all-in-one launcher
+go run ./cmd/mimir-local
+
+# Build Docker images for the split deployment / Kubernetes path
 make build-all
 
-# Run the orchestrator locally against a local SQLite database
+# Run the orchestrator only against a local SQLite database
 make dev-orchestrator
 ```
 

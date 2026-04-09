@@ -3700,7 +3700,7 @@ paths:
                 - Projects
     /api/projects/{id}:
         delete:
-            description: Deletes a project and all its components.
+            description: Archives a project by marking its status archived. Project resources remain persisted and can still be inspected explicitly.
             parameters:
                 - description: Project ID
                   in: path
@@ -3713,7 +3713,7 @@ paths:
                     description: No content
                 "404":
                     description: Resource not found
-            summary: Delete project
+            summary: Archive project
             tags:
                 - Projects
         get:

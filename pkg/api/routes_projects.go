@@ -40,8 +40,8 @@ func init() {
 		Responses:   doc.R(doc.OK(doc.Ref("Project")), doc.BadRequest(), doc.NotFound()),
 	})
 	doc.Register("DELETE", "/api/projects/{id}", doc.RouteDoc{
-		Summary:     "Delete project",
-		Description: "Deletes a project and all its components.",
+		Summary:     "Archive project",
+		Description: "Archives a project by marking its status archived. Project resources remain persisted and can still be inspected explicitly.",
 		Tags:        []string{"Projects"},
 		Params:      []doc.Param{doc.PParam("id", "Project ID")},
 		Responses:   doc.R(doc.NoContent(), doc.NotFound()),

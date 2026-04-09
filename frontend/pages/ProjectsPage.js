@@ -40,10 +40,10 @@
 			}
 		};
 
-		const handleDelete = async (id) => {
+		const handleArchive = async (id) => {
 			const confirmed = await confirmAction({
-				title: 'Delete project',
-				message: 'Archive this project? The record remains but it will be marked archived.',
+				title: 'Archive project',
+				message: 'Archive this project? The record remains available for inspection, but it will be marked archived.',
 				confirmLabel: 'Archive project',
 				variant: 'danger',
 			});
@@ -53,7 +53,7 @@
 				notify({ tone: 'success', message: 'Project archived.' });
 				await refreshProjects();
 			} catch (error) {
-				notify({ tone: 'error', message: `Failed to delete project: ${error.message}` });
+				notify({ tone: 'error', message: `Failed to archive project: ${error.message}` });
 			}
 		};
 
@@ -102,7 +102,7 @@
 							) : (
 								<Button label="Use" onClick={() => setActiveProject(row)} variant="secondary" />
 							)}
-							<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
+							<Button label="Archive" onClick={() => handleArchive(row.id)} variant="danger" />
 						</>
 					)}
 				/>

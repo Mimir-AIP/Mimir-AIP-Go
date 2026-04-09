@@ -145,7 +145,7 @@ func registerProjectTools(s *server.MCPServer, m *MimirMCPServer) {
 	// delete_project
 	s.AddTool(
 		mcp.NewTool("delete_project",
-			mcp.WithDescription("Delete (archive) a project by ID"),
+			mcp.WithDescription("Archive a project by ID"),
 			mcp.WithString("id",
 				mcp.Required(),
 				mcp.Description("Project ID"),

@@ -49,11 +49,28 @@
 			});
 			if (!confirmed) return;
 			try {
-				await apiCall(`/api/projects/${id}`, { method: 'DELETE' });
+				await apiCall(`/api/projects/${id}/archive`, { method: 'POST' });
 				notify({ tone: 'success', message: 'Project archived.' });
 				await refreshProjects();
 			} catch (error) {
 				notify({ tone: 'error', message: `Failed to archive project: ${error.message}` });
+			}
+		};
+
+		const handleDelete = async (id) => {
+			const confirmed = await confirmAction({
+				title: 'Delete project permanently',
+				message: 'Delete this project permanently? Mimir will remove the project and its persisted project-owned resources. This cannot be undone.',
+				confirmLabel: 'Delete project',
+				variant: 'danger',
+			});
+			if (!confirmed) return;
+			try {
+				await apiCall(`/api/projects/${id}`, { method: 'DELETE' });
+				notify({ tone: 'success', message: 'Project deleted.' });
+				await refreshProjects();
+			} catch (error) {
+				notify({ tone: 'error', message: `Failed to delete project: ${error.message}` });
 			}
 		};
 
@@ -102,7 +119,8 @@
 							) : (
 								<Button label="Use" onClick={() => setActiveProject(row)} variant="secondary" />
 							)}
-							<Button label="Archive" onClick={() => handleArchive(row.id)} variant="danger" />
+							<Button label="Archive" onClick={() => handleArchive(row.id)} variant="secondary" />
+							<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
 						</>
 					)}
 				/>

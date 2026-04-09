@@ -196,43 +196,153 @@ func TestProjectUpdate(t *testing.T) {
 	}
 }
 
-func TestProjectDelete(t *testing.T) {
+func TestProjectArchive(t *testing.T) {
 	service, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
-	// Create a project
-	req := &models.ProjectCreateRequest{
-		Name: "test-project",
-	}
-
-	created, err := service.Create(req)
+	created, err := service.Create(&models.ProjectCreateRequest{Name: "archive-project"})
 	if err != nil {
 		t.Fatalf("Failed to create project: %v", err)
 	}
 
-	// Delete the project (soft delete)
-	err = service.Delete(created.ID)
+	err = service.Archive(created.ID)
+	if err != nil {
+		t.Fatalf("Failed to archive project: %v", err)
+	}
+
+	archived, err := service.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Failed to get archived project: %v", err)
+	}
+	if archived.Status != models.ProjectStatusArchived {
+		t.Errorf("Expected archived status, got %s", archived.Status)
+	}
+}
+
+func TestProjectDelete(t *testing.T) {
+	service, tmpDir := setupTestService(t)
+	defer cleanupTestService(tmpDir)
+
+	project, err := service.Create(&models.ProjectCreateRequest{Name: "delete-project"})
+	if err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+
+	ontology := &models.Ontology{
+		ID:        "delete-ontology",
+		ProjectID: project.ID,
+		Name:      "Delete Ontology",
+		Content:   "@prefix ex: <http://example.com/> .",
+		Status:    "active",
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := service.store.SaveOntology(ontology); err != nil {
+		t.Fatalf("failed to save ontology: %v", err)
+	}
+	model := &models.MLModel{
+		ID:         "delete-model",
+		ProjectID:  project.ID,
+		OntologyID: ontology.ID,
+		Name:       "Delete Model",
+		Type:       models.ModelTypeDecisionTree,
+		Status:     models.ModelStatusDraft,
+		Version:    "1.0.0",
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if err := service.store.SaveMLModel(model); err != nil {
+		t.Fatalf("failed to save model: %v", err)
+	}
+	storageConfig := &models.StorageConfig{
+		ID:         "delete-storage",
+		ProjectID:  project.ID,
+		PluginType: "filesystem",
+		Config:     map[string]interface{}{"path": "./tmp/delete"},
+		OntologyID: ontology.ID,
+		Active:     true,
+		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+	}
+	if err := service.store.SaveStorageConfig(storageConfig); err != nil {
+		t.Fatalf("failed to save storage config: %v", err)
+	}
+	pipeline := &models.Pipeline{
+		ID:        "delete-pipeline",
+		ProjectID: project.ID,
+		Name:      "Delete Pipeline",
+		Type:      models.PipelineTypeIngestion,
+		Steps:     []models.PipelineStep{{Name: "store", Parameters: map[string]interface{}{"storage_id": storageConfig.ID}}},
+		Status:    models.PipelineStatusActive,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := service.store.SavePipeline(pipeline); err != nil {
+		t.Fatalf("failed to save pipeline: %v", err)
+	}
+	schedule := &models.Schedule{
+		ID:           "delete-schedule",
+		ProjectID:    project.ID,
+		Name:         "Delete Schedule",
+		Pipelines:    []string{pipeline.ID},
+		CronSchedule: "0 * * * *",
+		Enabled:      true,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
+	}
+	if err := service.store.SaveSchedule(schedule); err != nil {
+		t.Fatalf("failed to save schedule: %v", err)
+	}
+	if err := service.store.SaveWorkTask(&models.WorkTask{ID: "delete-task", Type: models.WorkTaskTypePipelineExecution, Status: models.WorkTaskStatusCompleted, Priority: 1, SubmittedAt: time.Now().UTC(), ProjectID: project.ID}); err != nil {
+		t.Fatalf("failed to save work task: %v", err)
+	}
+	run := &models.AnalysisRun{ID: "delete-run", ProjectID: project.ID, Kind: models.AnalysisRunKindResolver, Status: models.AnalysisRunStatusCompleted, CreatedAt: time.Now().UTC()}
+	if err := service.store.SaveAnalysisRun(run); err != nil {
+		t.Fatalf("failed to save analysis run: %v", err)
+	}
+	item := &models.ReviewItem{ID: "delete-review", ProjectID: project.ID, RunID: run.ID, FindingType: "duplicate", FindingKey: "key-1", Status: models.ReviewItemStatusPending, Confidence: 0.8, OccurrenceCount: 1, Payload: map[string]any{"field": "value"}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := service.store.SaveReviewItem(item); err != nil {
+		t.Fatalf("failed to save review item: %v", err)
+	}
+	insight := &models.Insight{ID: "delete-insight", ProjectID: project.ID, RunID: run.ID, Type: "trend", Severity: models.InsightSeverityMedium, Confidence: 0.6, Explanation: "trend changed", Status: "open", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := service.store.SaveInsight(insight); err != nil {
+		t.Fatalf("failed to save insight: %v", err)
+	}
+
+	err = service.Delete(project.ID)
 	if err != nil {
 		t.Fatalf("Failed to delete project: %v", err)
 	}
 
-	// Verify soft deletion - project still exists but is archived
-	deleted, err := service.Get(created.ID)
-	if err != nil {
-		t.Fatalf("Failed to get deleted project: %v", err)
+	if _, err := service.Get(project.ID); err == nil {
+		t.Fatal("expected deleted project to be absent")
 	}
-
-	if deleted.Status != models.ProjectStatusArchived {
-		t.Errorf("Expected status %s after deletion, got %s", models.ProjectStatusArchived, deleted.Status)
+	if _, err := service.store.GetOntology(ontology.ID); err == nil {
+		t.Fatal("expected ontology to be deleted with project")
 	}
-
-	// Verify project still exists in database (soft delete)
-	retrieved, err := service.Get(created.ID)
-	if err != nil {
-		t.Error("Expected project to still exist in database (soft delete)")
+	if _, err := service.store.GetMLModel(model.ID); err == nil {
+		t.Fatal("expected ml model to be deleted with project")
 	}
-	if retrieved.Status != models.ProjectStatusArchived {
-		t.Errorf("Expected archived status, got %s", retrieved.Status)
+	if _, err := service.store.GetStorageConfig(storageConfig.ID); err == nil {
+		t.Fatal("expected storage config to be deleted with project")
+	}
+	if _, err := service.store.GetPipeline(pipeline.ID); err == nil {
+		t.Fatal("expected pipeline to be deleted with project")
+	}
+	if _, err := service.store.GetSchedule(schedule.ID); err == nil {
+		t.Fatal("expected schedule to be deleted with project")
+	}
+	if tasks, err := service.store.ListWorkTasks(); err != nil || len(tasks) != 0 {
+		t.Fatalf("expected work tasks to be removed, got len=%d err=%v", len(tasks), err)
+	}
+	if runs, err := service.store.ListAnalysisRunsByProject(project.ID); err != nil || len(runs) != 0 {
+		t.Fatalf("expected analysis runs removed, got len=%d err=%v", len(runs), err)
+	}
+	if items, err := service.store.ListReviewItems(project.ID); err != nil || len(items) != 0 {
+		t.Fatalf("expected review items removed, got len=%d err=%v", len(items), err)
+	}
+	if insights, err := service.store.ListInsightsByProject(project.ID); err != nil || len(insights) != 0 {
+		t.Fatalf("expected insights removed, got len=%d err=%v", len(insights), err)
 	}
 }
 

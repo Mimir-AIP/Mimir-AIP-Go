@@ -40,6 +40,7 @@ func (h *ProjectHandler) HandleProjects(w http.ResponseWriter, r *http.Request) 
 // HandleProject handles individual project operations and component associations.
 // Routes:
 //   - GET/PUT/DELETE /api/projects/{id}
+//   - POST            /api/projects/{id}/archive
 //   - POST            /api/projects/{id}/clone
 //   - GET             /api/projects/{id}/state-summary
 //   - POST/DELETE     /api/projects/{id}/{componentType}/{componentId}
@@ -52,6 +53,10 @@ func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) >= 2 && parts[1] == "state-summary" {
 		h.handleStateSummary(w, r, parts[0])
+		return
+	}
+	if len(parts) >= 2 && parts[1] == "archive" && (len(parts) == 2 || parts[2] == "") {
+		h.handleArchive(w, r, parts[0])
 		return
 	}
 	if len(parts) >= 2 && parts[1] == "clone" && (len(parts) == 2 || parts[2] == "") {
@@ -75,6 +80,22 @@ func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (h *ProjectHandler) handleArchive(w http.ResponseWriter, r *http.Request, projectID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := h.service.Archive(projectID); err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "project not found") {
+			status = http.StatusNotFound
+		}
+		http.Error(w, fmt.Sprintf("Failed to archive project: %v", err), status)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *ProjectHandler) handleClone(w http.ResponseWriter, r *http.Request, projectID string) {
@@ -186,13 +207,16 @@ func (h *ProjectHandler) handleUpdate(w http.ResponseWriter, r *http.Request, pr
 	json.NewEncoder(w).Encode(project)
 }
 
-// handleDelete deletes a project
+// handleDelete permanently deletes a project.
 func (h *ProjectHandler) handleDelete(w http.ResponseWriter, r *http.Request, projectID string) {
 	if err := h.service.Delete(projectID); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to delete project: %v", err), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "project not found") {
+			status = http.StatusNotFound
+		}
+		http.Error(w, fmt.Sprintf("Failed to delete project: %v", err), status)
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
 }
 

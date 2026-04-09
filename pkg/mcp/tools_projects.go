@@ -142,10 +142,31 @@ func registerProjectTools(s *server.MCPServer, m *MimirMCPServer) {
 		},
 	)
 
+	// archive_project
+	s.AddTool(
+		mcp.NewTool("archive_project",
+			mcp.WithDescription("Archive a project by ID"),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("Project ID"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id := req.GetString("id", "")
+			if id == "" {
+				return mcp.NewToolResultError("id is required"), nil
+			}
+			if err := m.projectSvc.Archive(id); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(`{"success":true}`), nil
+		},
+	)
+
 	// delete_project
 	s.AddTool(
 		mcp.NewTool("delete_project",
-			mcp.WithDescription("Archive a project by ID"),
+			mcp.WithDescription("Permanently delete a project by ID"),
 			mcp.WithString("id",
 				mcp.Required(),
 				mcp.Description("Project ID"),

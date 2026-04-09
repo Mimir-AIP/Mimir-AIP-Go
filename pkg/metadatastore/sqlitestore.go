@@ -1105,6 +1105,14 @@ func (s *SQLiteStore) ListWorkTasks() ([]*models.WorkTask, error) {
 	return tasks, nil
 }
 
+// DeleteWorkTasksByProject deletes all persisted work tasks for one project.
+func (s *SQLiteStore) DeleteWorkTasksByProject(projectID string) error {
+	if _, err := s.db.Exec(`DELETE FROM work_tasks WHERE project_id = ?`, projectID); err != nil {
+		return fmt.Errorf("failed to delete work tasks for project %s: %w", projectID, err)
+	}
+	return nil
+}
+
 // SavePlugin saves a plugin and its binary data to the database
 func (s *SQLiteStore) SavePlugin(plugin *models.Plugin, binaryData []byte) error {
 	// Marshal plugin definition to JSON
@@ -3239,6 +3247,14 @@ func (s *SQLiteStore) ListAnalysisRunsByProject(projectID string) ([]*models.Ana
 	return result, nil
 }
 
+// DeleteAnalysisRunsByProject deletes persisted analysis runs for one project.
+func (s *SQLiteStore) DeleteAnalysisRunsByProject(projectID string) error {
+	if _, err := s.db.Exec(`DELETE FROM analysis_runs WHERE project_id = ?`, projectID); err != nil {
+		return fmt.Errorf("failed to delete analysis runs for project %s: %w", projectID, err)
+	}
+	return nil
+}
+
 // SaveReviewItem upserts a persisted review item.
 func (s *SQLiteStore) SaveReviewItem(item *models.ReviewItem) error {
 	return s.retryOnBusy(func() error {
@@ -3293,6 +3309,14 @@ func (s *SQLiteStore) ListReviewItems(projectID string) ([]*models.ReviewItem, e
 		result = append(result, item)
 	}
 	return result, nil
+}
+
+// DeleteReviewItemsByProject deletes persisted review items for one project.
+func (s *SQLiteStore) DeleteReviewItemsByProject(projectID string) error {
+	if _, err := s.db.Exec(`DELETE FROM review_items WHERE project_id = ?`, projectID); err != nil {
+		return fmt.Errorf("failed to delete review items for project %s: %w", projectID, err)
+	}
+	return nil
 }
 
 // SaveInsight upserts a persisted insight.
@@ -3359,6 +3383,14 @@ func (s *SQLiteStore) ListInsightsByProject(projectID string) ([]*models.Insight
 		result = append(result, insight)
 	}
 	return result, nil
+}
+
+// DeleteInsightsByProject deletes persisted insights for one project.
+func (s *SQLiteStore) DeleteInsightsByProject(projectID string) error {
+	if _, err := s.db.Exec(`DELETE FROM insights WHERE project_id = ?`, projectID); err != nil {
+		return fmt.Errorf("failed to delete insights for project %s: %w", projectID, err)
+	}
+	return nil
 }
 
 type sqlExecer interface {

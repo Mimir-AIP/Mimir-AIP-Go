@@ -114,6 +114,8 @@ func Run(cfg *config.Config, options Options) error {
 	projectService := project.NewService(store)
 	pipelineService := pipeline.NewService(store)
 	schedulerService := scheduler.NewService(store, pipelineService, q)
+	projectService.SetScheduleDeleter(schedulerService)
+	projectService.SetTaskCleaner(q)
 	storageService := storage.NewService(store)
 	pipelineService.SetStorageSvc(storageService)
 

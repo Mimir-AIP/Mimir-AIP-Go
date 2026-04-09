@@ -3700,6 +3700,24 @@ paths:
                 - Projects
     /api/projects/{id}:
         delete:
+            description: Permanently deletes a project and cascades deletion across persisted project-owned resources.
+            parameters:
+                - description: Project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Resource not found
+            summary: Delete project
+            tags:
+                - Projects
+    /api/projects/{id}/archive:
+        post:
             description: Archives a project by marking its status archived. Project resources remain persisted and can still be inspected explicitly.
             parameters:
                 - description: Project ID
@@ -3716,6 +3734,7 @@ paths:
             summary: Archive project
             tags:
                 - Projects
+
         get:
             description: Returns a single project by ID.
             parameters:

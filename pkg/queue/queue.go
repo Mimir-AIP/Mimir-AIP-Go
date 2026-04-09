@@ -282,6 +282,34 @@ func (q *Queue) ListWorkTasks() ([]*models.WorkTask, error) {
 	return tasks, nil
 }
 
+// DeleteTasksByProject removes all known tasks for a project from the in-memory queue and backing store.
+func (q *Queue) DeleteTasksByProject(projectID string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.store != nil {
+		if err := q.store.DeleteWorkTasksByProject(projectID); err != nil {
+			return err
+		}
+	}
+
+	for id, task := range q.workTasks {
+		if task.ProjectID == projectID {
+			delete(q.workTasks, id)
+		}
+	}
+
+	rebuilt := make(PriorityQueue, 0, len(q.workTasks))
+	for _, task := range q.workTasks {
+		if task.Status == models.WorkTaskStatusQueued {
+			rebuilt = append(rebuilt, &PriorityQueueItem{TaskID: task.ID, Priority: priorityScore(task, task.SubmittedAt)})
+		}
+	}
+	heap.Init(&rebuilt)
+	q.pq = &rebuilt
+	return nil
+}
+
 // CountActiveByType returns the number of tasks with status spawned or executing for a given type.
 func (q *Queue) CountActiveByType(taskType models.WorkTaskType) (int64, error) {
 	q.mu.RLock()

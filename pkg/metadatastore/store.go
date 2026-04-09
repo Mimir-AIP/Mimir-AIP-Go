@@ -32,7 +32,7 @@ type MetadataStore interface {
 	SaveWorkTask(task *models.WorkTask) error
 	GetWorkTask(id string) (*models.WorkTask, error)
 	ListWorkTasks() ([]*models.WorkTask, error)
-
+	DeleteWorkTasksByProject(projectID string) error
 	// Plugin operations
 	SavePlugin(plugin *models.Plugin, binaryData []byte) error
 	GetPlugin(name string) (*models.Plugin, error)
@@ -58,14 +58,17 @@ type MetadataStore interface {
 	SaveResolverRun(run *models.AnalysisRun, items []*models.ReviewItem) error
 	GetAnalysisRun(id string) (*models.AnalysisRun, error)
 	ListAnalysisRunsByProject(projectID string) ([]*models.AnalysisRun, error)
+	DeleteAnalysisRunsByProject(projectID string) error
 	SaveReviewItem(item *models.ReviewItem) error
 	GetReviewItem(id string) (*models.ReviewItem, error)
 	GetReviewItemByFindingKey(projectID, findingKey string) (*models.ReviewItem, error)
 	ListReviewItems(projectID string) ([]*models.ReviewItem, error)
+	DeleteReviewItemsByProject(projectID string) error
 	SaveInsight(insight *models.Insight) error
 	SaveInsightRun(run *models.AnalysisRun, insights []*models.Insight) error
 	GetInsight(id string) (*models.Insight, error)
 	ListInsightsByProject(projectID string) ([]*models.Insight, error)
+	DeleteInsightsByProject(projectID string) error
 	// Storage operations
 	SaveStorageConfig(config *models.StorageConfig) error
 	GetStorageConfig(id string) (*models.StorageConfig, error)

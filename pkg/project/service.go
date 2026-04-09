@@ -21,9 +21,21 @@ var (
 	ErrComponentProjectMismatch = fmt.Errorf("component belongs to a different project")
 )
 
+// scheduleDeleter removes a persisted schedule and any runtime scheduler registration.
+type scheduleDeleter interface {
+	Delete(id string) error
+}
+
+// projectTaskCleaner removes project-scoped work tasks from persistence and in-memory queue state.
+type projectTaskCleaner interface {
+	DeleteTasksByProject(projectID string) error
+}
+
 // Service provides project management operations
 type Service struct {
-	store metadatastore.MetadataStore
+	store           metadatastore.MetadataStore
+	scheduleDeleter scheduleDeleter
+	taskCleaner     projectTaskCleaner
 }
 
 // NewService creates a new project service
@@ -31,6 +43,16 @@ func NewService(store metadatastore.MetadataStore) *Service {
 	return &Service{
 		store: store,
 	}
+}
+
+// SetScheduleDeleter wires runtime-aware schedule cleanup into project deletion.
+func (s *Service) SetScheduleDeleter(deleter scheduleDeleter) {
+	s.scheduleDeleter = deleter
+}
+
+// SetTaskCleaner wires in-memory queue cleanup into project deletion.
+func (s *Service) SetTaskCleaner(cleaner projectTaskCleaner) {
+	s.taskCleaner = cleaner
 }
 
 // Create creates a new project
@@ -184,22 +206,152 @@ func (s *Service) Update(id string, req *models.ProjectUpdateRequest) (*models.P
 	return project, nil
 }
 
-// Delete deletes a project
-func (s *Service) Delete(id string) error {
-	// Get project to verify it exists
+// Archive marks a project archived without deleting its persisted resources.
+func (s *Service) Archive(id string) error {
 	project, err := s.store.GetProject(id)
 	if err != nil {
 		return err
 	}
 
-	// Soft delete - update status to archived
 	project.Status = models.ProjectStatusArchived
-	project.Metadata.UpdatedAt = time.Now()
-
+	project.Metadata.UpdatedAt = time.Now().UTC()
 	if err := s.store.SaveProject(project); err != nil {
 		return fmt.Errorf("failed to archive project: %w", err)
 	}
+	return nil
+}
 
+// Delete permanently deletes a project and all persisted project-owned resources.
+func (s *Service) Delete(id string) error {
+	if _, err := s.store.GetProject(id); err != nil {
+		return err
+	}
+
+	if err := s.deleteProjectArtifacts(id); err != nil {
+		return err
+	}
+
+	schedules, err := s.store.ListSchedulesByProject(id)
+	if err != nil {
+		return fmt.Errorf("failed to list project schedules: %w", err)
+	}
+	for _, schedule := range schedules {
+		if schedule == nil {
+			continue
+		}
+		if s.scheduleDeleter != nil {
+			if err := s.scheduleDeleter.Delete(schedule.ID); err != nil {
+				return fmt.Errorf("failed to delete project schedule %s: %w", schedule.ID, err)
+			}
+			continue
+		}
+		if err := s.store.DeleteSchedule(schedule.ID); err != nil {
+			return fmt.Errorf("failed to delete project schedule %s: %w", schedule.ID, err)
+		}
+	}
+
+	pipelines, err := s.store.ListPipelinesByProject(id)
+	if err != nil {
+		return fmt.Errorf("failed to list project pipelines: %w", err)
+	}
+	for _, pipeline := range pipelines {
+		if pipeline == nil {
+			continue
+		}
+		if err := s.store.DeletePipeline(pipeline.ID); err != nil {
+			return fmt.Errorf("failed to delete project pipeline %s: %w", pipeline.ID, err)
+		}
+	}
+
+	automations, err := s.store.ListAutomationsByProject(id)
+	if err != nil {
+		return fmt.Errorf("failed to list project automations: %w", err)
+	}
+	for _, automation := range automations {
+		if automation == nil {
+			continue
+		}
+		if err := s.store.DeleteAutomation(automation.ID); err != nil {
+			return fmt.Errorf("failed to delete project automation %s: %w", automation.ID, err)
+		}
+	}
+
+	twins, err := s.store.ListDigitalTwinsByProject(id)
+	if err != nil {
+		return fmt.Errorf("failed to list project digital twins: %w", err)
+	}
+	for _, twin := range twins {
+		if twin == nil {
+			continue
+		}
+		if err := s.store.DeleteDigitalTwin(twin.ID); err != nil {
+			return fmt.Errorf("failed to delete project digital twin %s: %w", twin.ID, err)
+		}
+	}
+
+	mlModels, err := s.store.ListMLModelsByProject(id)
+	if err != nil {
+		return fmt.Errorf("failed to list project ml models: %w", err)
+	}
+	for _, model := range mlModels {
+		if model == nil {
+			continue
+		}
+		if err := s.store.DeleteMLModel(model.ID); err != nil {
+			return fmt.Errorf("failed to delete project ml model %s: %w", model.ID, err)
+		}
+	}
+
+	storageConfigs, err := s.store.ListStorageConfigsByProject(id)
+	if err != nil {
+		return fmt.Errorf("failed to list project storage configs: %w", err)
+	}
+	for _, config := range storageConfigs {
+		if config == nil {
+			continue
+		}
+		if err := s.store.DeleteStorageConfig(config.ID); err != nil {
+			return fmt.Errorf("failed to delete project storage config %s: %w", config.ID, err)
+		}
+	}
+
+	ontologies, err := s.store.ListOntologiesByProject(id)
+	if err != nil {
+		return fmt.Errorf("failed to list project ontologies: %w", err)
+	}
+	for _, ontology := range ontologies {
+		if ontology == nil {
+			continue
+		}
+		if err := s.store.DeleteOntology(ontology.ID); err != nil {
+			return fmt.Errorf("failed to delete project ontology %s: %w", ontology.ID, err)
+		}
+	}
+
+	if err := s.store.DeleteProject(id); err != nil {
+		return fmt.Errorf("failed to delete project: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) deleteProjectArtifacts(projectID string) error {
+	if s.taskCleaner != nil {
+		if err := s.taskCleaner.DeleteTasksByProject(projectID); err != nil {
+			return fmt.Errorf("failed to delete project work tasks: %w", err)
+		}
+	} else if err := s.store.DeleteWorkTasksByProject(projectID); err != nil {
+		return fmt.Errorf("failed to delete project work tasks: %w", err)
+	}
+
+	if err := s.store.DeleteReviewItemsByProject(projectID); err != nil {
+		return fmt.Errorf("failed to delete project review items: %w", err)
+	}
+	if err := s.store.DeleteInsightsByProject(projectID); err != nil {
+		return fmt.Errorf("failed to delete project insights: %w", err)
+	}
+	if err := s.store.DeleteAnalysisRunsByProject(projectID); err != nil {
+		return fmt.Errorf("failed to delete project analysis runs: %w", err)
+	}
 	return nil
 }
 

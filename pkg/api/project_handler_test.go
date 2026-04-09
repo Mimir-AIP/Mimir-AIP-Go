@@ -68,3 +68,90 @@ func TestProjectCloneRouteUsesProjectScopedPath(t *testing.T) {
 		t.Fatalf("expected legacy clone path to be rejected with 405, got %d body=%s", legacyResp.Code, legacyResp.Body.String())
 	}
 }
+
+func TestProjectArchiveRouteUsesSeparateEndpoint(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "project-archive.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	q, err := queue.NewQueue(nil)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	service := project.NewService(store)
+	handler := NewProjectHandler(service, nil)
+	server := NewServer(q, "0", "")
+	server.RegisterHandler("/api/projects", handler.HandleProjects)
+	server.RegisterHandler("/api/projects/", handler.HandleProject)
+
+	source, err := service.Create(&models.ProjectCreateRequest{Name: "archive-source"})
+	if err != nil {
+		t.Fatalf("failed to create source project: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/projects/"+source.ID+"/archive", nil)
+	resp := httptest.NewRecorder()
+	server.mux.ServeHTTP(resp, req)
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 No Content from archive route, got %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	archived, err := service.Get(source.ID)
+	if err != nil {
+		t.Fatalf("failed to reload archived project: %v", err)
+	}
+	if archived.Status != models.ProjectStatusArchived {
+		t.Fatalf("expected archived status, got %s", archived.Status)
+	}
+}
+
+func TestProjectDeleteRoutePermanentlyDeletesProject(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "project-delete.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	q, err := queue.NewQueue(store)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	service := project.NewService(store)
+	service.SetTaskCleaner(q)
+	handler := NewProjectHandler(service, nil)
+	server := NewServer(q, "0", "")
+	server.RegisterHandler("/api/projects", handler.HandleProjects)
+	server.RegisterHandler("/api/projects/", handler.HandleProject)
+
+	projectRecord, err := service.Create(&models.ProjectCreateRequest{Name: "delete-source"})
+	if err != nil {
+		t.Fatalf("failed to create project: %v", err)
+	}
+	if err := q.Enqueue(&models.WorkTask{ID: "delete-task", Type: models.WorkTaskTypePipelineExecution, Status: models.WorkTaskStatusQueued, Priority: 1, SubmittedAt: projectRecord.Metadata.CreatedAt, ProjectID: projectRecord.ID}); err != nil {
+		t.Fatalf("failed to enqueue work task: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/projects/"+projectRecord.ID, nil)
+	resp := httptest.NewRecorder()
+	server.mux.ServeHTTP(resp, req)
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 No Content from delete route, got %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	if _, err := service.Get(projectRecord.ID); err == nil {
+		t.Fatal("expected project to be permanently deleted")
+	}
+	tasks, err := q.ListWorkTasks()
+	if err != nil {
+		t.Fatalf("failed to inspect queue tasks: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected queue tasks for deleted project to be removed, got %d", len(tasks))
+	}
+}

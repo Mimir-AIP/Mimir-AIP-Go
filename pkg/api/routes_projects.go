@@ -40,9 +40,16 @@ func init() {
 		RequestBody: doc.JsonBody(doc.Ref("ProjectUpdateRequest")),
 		Responses:   doc.R(doc.OK(doc.Ref("Project")), doc.BadRequest(), doc.NotFound()),
 	})
-	doc.Register("DELETE", "/api/projects/{id}", doc.RouteDoc{
+	doc.Register("POST", "/api/projects/{id}/archive", doc.RouteDoc{
 		Summary:     "Archive project",
 		Description: "Archives a project by marking its status archived. Project resources remain persisted and can still be inspected explicitly.",
+		Tags:        []string{"Projects"},
+		Params:      []doc.Param{doc.PParam("id", "Project ID")},
+		Responses:   doc.R(doc.NoContent(), doc.NotFound()),
+	})
+	doc.Register("DELETE", "/api/projects/{id}", doc.RouteDoc{
+		Summary:     "Delete project",
+		Description: "Permanently deletes a project and cascades deletion across persisted project-owned resources.",
 		Tags:        []string{"Projects"},
 		Params:      []doc.Param{doc.PParam("id", "Project ID")},
 		Responses:   doc.R(doc.NoContent(), doc.NotFound()),

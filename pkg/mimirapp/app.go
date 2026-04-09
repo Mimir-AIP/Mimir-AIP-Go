@@ -228,7 +228,6 @@ func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *
 	projectHandler := api.NewProjectHandler(projectService, projectStateProvider)
 	server.RegisterHandler("/api/projects", projectHandler.HandleProjects)
 	server.RegisterHandler("/api/projects/", projectHandler.HandleProject)
-	server.RegisterHandler("/api/projects/clone", projectHandler.HandleProjectClone)
 
 	pipelineHandler := api.NewPipelineHandler(pipelineService, q)
 	server.RegisterHandler("/api/pipelines", pipelineHandler.HandlePipelines)

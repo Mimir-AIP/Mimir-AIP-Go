@@ -40,10 +40,10 @@ func (h *ProjectHandler) HandleProjects(w http.ResponseWriter, r *http.Request) 
 // HandleProject handles individual project operations and component associations.
 // Routes:
 //   - GET/PUT/DELETE /api/projects/{id}
+//   - POST            /api/projects/{id}/clone
 //   - GET             /api/projects/{id}/state-summary
 //   - POST/DELETE     /api/projects/{id}/{componentType}/{componentId}
 func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
-	// Parse path segments after /api/projects/
 	trimmed := strings.TrimPrefix(r.URL.Path, "/api/projects/")
 	parts := strings.SplitN(trimmed, "/", 3)
 	if len(parts) == 0 || parts[0] == "" {
@@ -54,7 +54,10 @@ func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 		h.handleStateSummary(w, r, parts[0])
 		return
 	}
-	// Three segments means component association route
+	if len(parts) >= 2 && parts[1] == "clone" && (len(parts) == 2 || parts[2] == "") {
+		h.handleClone(w, r, parts[0])
+		return
+	}
 	if len(parts) >= 3 && parts[2] != "" {
 		h.HandleProjectComponent(w, r)
 		return
@@ -74,22 +77,12 @@ func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleProjectClone handles project cloning
-func (h *ProjectHandler) HandleProjectClone(w http.ResponseWriter, r *http.Request) {
+func (h *ProjectHandler) handleClone(w http.ResponseWriter, r *http.Request, projectID string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Extract project ID from path
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/projects/"), "/")
-	if len(parts) < 2 {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
-		return
-	}
-	projectID := parts[0]
-
-	// Parse request body
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -98,10 +91,13 @@ func (h *ProjectHandler) HandleProjectClone(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Clone project
 	cloned, err := h.service.Clone(projectID, req.Name)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to clone project: %v", err), http.StatusInternalServerError)
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "project not found") {
+			status = http.StatusNotFound
+		}
+		http.Error(w, fmt.Sprintf("Failed to clone project: %v", err), status)
 		return
 	}
 

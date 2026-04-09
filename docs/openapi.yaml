@@ -3829,9 +3829,16 @@ paths:
             summary: Add component to project
             tags:
                 - Projects
-    /api/projects/clone:
+    /api/projects/{id}/clone:
         post:
-            description: Deep-clones an existing project including all its pipelines, ontologies, ML models, digital twins, and storage configurations.
+            description: Deep-clones an existing project into a new draft project, copying persisted project-owned configuration and remapping internal references to the cloned resources.
+            parameters:
+                - description: Source project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
             requestBody:
                 content:
                     application/json:

@@ -240,18 +240,133 @@ func TestProjectClone(t *testing.T) {
 	service, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
-	// Create a project
-	req := &models.ProjectCreateRequest{
+	original, err := service.Create(&models.ProjectCreateRequest{
 		Name:        "original-project",
 		Description: "Original description",
-	}
-
-	original, err := service.Create(req)
+		Version:     "2.3.4",
+	})
 	if err != nil {
 		t.Fatalf("Failed to create project: %v", err)
 	}
 
-	// Clone the project
+	now := time.Now().UTC()
+	ontology := &models.Ontology{
+		ID:        "ontology-original",
+		ProjectID: original.ID,
+		Name:      "OperationsOntology",
+		Content:   "@prefix ex: <http://example.com/> .",
+		Status:    "active",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := service.store.SaveOntology(ontology); err != nil {
+		t.Fatalf("failed to save ontology: %v", err)
+	}
+
+	storageConfig := &models.StorageConfig{
+		ID:         "storage-original",
+		ProjectID:  original.ID,
+		PluginType: "filesystem",
+		Config: map[string]interface{}{
+			"path": "./data/original",
+		},
+		OntologyID: ontology.ID,
+		Active:     true,
+		CreatedAt:  now.Format(time.RFC3339),
+		UpdatedAt:  now.Format(time.RFC3339),
+	}
+	if err := service.store.SaveStorageConfig(storageConfig); err != nil {
+		t.Fatalf("failed to save storage config: %v", err)
+	}
+
+	pipeline := &models.Pipeline{
+		ID:        "pipeline-original",
+		ProjectID: original.ID,
+		Name:      "daily-ingest",
+		Type:      models.PipelineTypeIngestion,
+		Steps: []models.PipelineStep{{
+			Name:   "store",
+			Plugin: "builtin",
+			Action: "store_cir",
+			Parameters: map[string]interface{}{
+				"storage_id": storageConfig.ID,
+			},
+		}},
+		Status:    models.PipelineStatusActive,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := service.store.SavePipeline(pipeline); err != nil {
+		t.Fatalf("failed to save pipeline: %v", err)
+	}
+
+	schedule := &models.Schedule{
+		ID:           "schedule-original",
+		ProjectID:    original.ID,
+		Name:         "nightly",
+		Pipelines:    []string{pipeline.ID},
+		CronSchedule: "0 0 * * *",
+		Enabled:      true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := service.store.SaveSchedule(schedule); err != nil {
+		t.Fatalf("failed to save schedule: %v", err)
+	}
+
+	trainedAt := now
+	model := &models.MLModel{
+		ID:                "model-original",
+		ProjectID:         original.ID,
+		OntologyID:        ontology.ID,
+		Name:              "RiskModel",
+		Type:              models.ModelTypeDecisionTree,
+		Status:            models.ModelStatusTrained,
+		Version:           "1.0.0",
+		ModelArtifactPath: "/tmp/original-model.bin",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		TrainedAt:         &trainedAt,
+	}
+	if err := service.store.SaveMLModel(model); err != nil {
+		t.Fatalf("failed to save model: %v", err)
+	}
+
+	twin := &models.DigitalTwin{
+		ID:         "twin-original",
+		ProjectID:  original.ID,
+		OntologyID: ontology.ID,
+		Name:       "PlantTwin",
+		Status:     "error",
+		Config: &models.DigitalTwinConfig{
+			StorageIDs: []string{storageConfig.ID},
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := service.store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save digital twin: %v", err)
+	}
+
+	automation := &models.Automation{
+		ID:          "automation-original",
+		ProjectID:   original.ID,
+		Name:        "Export on alert",
+		Enabled:     true,
+		TargetType:  models.AutomationTargetTypeDigitalTwin,
+		TargetID:    twin.ID,
+		TriggerType: models.AutomationTriggerTypeManual,
+		ActionType:  models.AutomationActionTypeTriggerExportPipeline,
+		ActionConfig: map[string]any{
+			"pipeline_id": pipeline.ID,
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := service.store.SaveAutomation(automation); err != nil {
+		t.Fatalf("failed to save automation: %v", err)
+	}
+
 	cloned, err := service.Clone(original.ID, "cloned-project")
 	if err != nil {
 		t.Fatalf("Failed to clone project: %v", err)
@@ -260,18 +375,102 @@ func TestProjectClone(t *testing.T) {
 	if cloned.ID == original.ID {
 		t.Error("Expected cloned project to have different ID")
 	}
-
 	if cloned.Name != "cloned-project" {
 		t.Errorf("Expected name 'cloned-project', got %s", cloned.Name)
 	}
-
-	expectedDesc := original.Description + " (cloned)"
-	if cloned.Description != expectedDesc {
-		t.Errorf("Expected description %s, got %s", expectedDesc, cloned.Description)
+	if cloned.Description != original.Description {
+		t.Errorf("Expected description %s, got %s", original.Description, cloned.Description)
 	}
-
+	if cloned.Version != original.Version {
+		t.Errorf("Expected version %s, got %s", original.Version, cloned.Version)
+	}
 	if cloned.Status != models.ProjectStatusDraft {
 		t.Errorf("Expected status %s, got %s", models.ProjectStatusDraft, cloned.Status)
+	}
+
+	clonedOntologies, err := service.store.ListOntologiesByProject(cloned.ID)
+	if err != nil || len(clonedOntologies) != 1 {
+		t.Fatalf("expected 1 cloned ontology, got %d (err=%v)", len(clonedOntologies), err)
+	}
+	clonedStorageConfigs, err := service.store.ListStorageConfigsByProject(cloned.ID)
+	if err != nil || len(clonedStorageConfigs) != 1 {
+		t.Fatalf("expected 1 cloned storage config, got %d (err=%v)", len(clonedStorageConfigs), err)
+	}
+	clonedPipelines, err := service.store.ListPipelinesByProject(cloned.ID)
+	if err != nil || len(clonedPipelines) != 1 {
+		t.Fatalf("expected 1 cloned pipeline, got %d (err=%v)", len(clonedPipelines), err)
+	}
+	clonedSchedules, err := service.store.ListSchedulesByProject(cloned.ID)
+	if err != nil || len(clonedSchedules) != 1 {
+		t.Fatalf("expected 1 cloned schedule, got %d (err=%v)", len(clonedSchedules), err)
+	}
+	clonedModels, err := service.store.ListMLModelsByProject(cloned.ID)
+	if err != nil || len(clonedModels) != 1 {
+		t.Fatalf("expected 1 cloned model, got %d (err=%v)", len(clonedModels), err)
+	}
+	clonedTwins, err := service.store.ListDigitalTwinsByProject(cloned.ID)
+	if err != nil || len(clonedTwins) != 1 {
+		t.Fatalf("expected 1 cloned twin, got %d (err=%v)", len(clonedTwins), err)
+	}
+	clonedAutomations, err := service.store.ListAutomationsByProject(cloned.ID)
+	if err != nil || len(clonedAutomations) != 1 {
+		t.Fatalf("expected 1 cloned automation, got %d (err=%v)", len(clonedAutomations), err)
+	}
+
+	clonedOntology := clonedOntologies[0]
+	clonedStorage := clonedStorageConfigs[0]
+	clonedPipeline := clonedPipelines[0]
+	clonedSchedule := clonedSchedules[0]
+	clonedModel := clonedModels[0]
+	clonedTwin := clonedTwins[0]
+	clonedAutomation := clonedAutomations[0]
+
+	if clonedOntology.ID == ontology.ID {
+		t.Fatal("expected cloned ontology to get a new ID")
+	}
+	if clonedStorage.OntologyID != clonedOntology.ID {
+		t.Fatalf("expected cloned storage ontology %s, got %s", clonedOntology.ID, clonedStorage.OntologyID)
+	}
+	if got := clonedPipeline.Steps[0].Parameters["storage_id"]; got != clonedStorage.ID {
+		t.Fatalf("expected cloned pipeline storage_id %s, got %#v", clonedStorage.ID, got)
+	}
+	if len(clonedSchedule.Pipelines) != 1 || clonedSchedule.Pipelines[0] != clonedPipeline.ID {
+		t.Fatalf("expected cloned schedule to target cloned pipeline %s, got %#v", clonedPipeline.ID, clonedSchedule.Pipelines)
+	}
+	if clonedSchedule.Enabled {
+		t.Fatal("expected cloned schedule to be disabled by default")
+	}
+	if clonedModel.OntologyID != clonedOntology.ID {
+		t.Fatalf("expected cloned model ontology %s, got %s", clonedOntology.ID, clonedModel.OntologyID)
+	}
+	if clonedModel.Status != models.ModelStatusDraft {
+		t.Fatalf("expected cloned model status draft, got %s", clonedModel.Status)
+	}
+	if clonedModel.ModelArtifactPath != "" || clonedModel.TrainedAt != nil {
+		t.Fatalf("expected cloned model runtime training state to be cleared, got artifact=%q trained_at=%v", clonedModel.ModelArtifactPath, clonedModel.TrainedAt)
+	}
+	if clonedTwin.OntologyID != clonedOntology.ID {
+		t.Fatalf("expected cloned twin ontology %s, got %s", clonedOntology.ID, clonedTwin.OntologyID)
+	}
+	if clonedTwin.Status != "active" {
+		t.Fatalf("expected cloned twin to reset to active, got %s", clonedTwin.Status)
+	}
+	if clonedTwin.Config == nil || len(clonedTwin.Config.StorageIDs) != 1 || clonedTwin.Config.StorageIDs[0] != clonedStorage.ID {
+		t.Fatalf("expected cloned twin storage IDs [%s], got %#v", clonedStorage.ID, clonedTwin.Config)
+	}
+	if clonedAutomation.TargetID != clonedTwin.ID {
+		t.Fatalf("expected cloned automation target %s, got %s", clonedTwin.ID, clonedAutomation.TargetID)
+	}
+	if got := clonedAutomation.ActionConfig["pipeline_id"]; got != clonedPipeline.ID {
+		t.Fatalf("expected cloned automation pipeline_id %s, got %#v", clonedPipeline.ID, got)
+	}
+
+	if !slices.Contains(cloned.Components.Ontologies, clonedOntology.ID) ||
+		!slices.Contains(cloned.Components.StorageConfigs, clonedStorage.ID) ||
+		!slices.Contains(cloned.Components.Pipelines, clonedPipeline.ID) ||
+		!slices.Contains(cloned.Components.MLModels, clonedModel.ID) ||
+		!slices.Contains(cloned.Components.DigitalTwins, clonedTwin.ID) {
+		t.Fatalf("expected cloned project component lists to reference cloned resources: %#v", cloned.Components)
 	}
 }
 

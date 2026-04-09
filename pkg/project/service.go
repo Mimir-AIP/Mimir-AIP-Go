@@ -1,6 +1,7 @@
 package project
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"slices"
@@ -202,51 +203,274 @@ func (s *Service) Delete(id string) error {
 	return nil
 }
 
-// Clone clones a project
+// Clone deep-clones a project's persisted configuration into a new draft project.
 func (s *Service) Clone(id string, newName string) (*models.Project, error) {
-	// Get original project
 	original, err := s.store.GetProject(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validate new name
 	if !projectNameRegex.MatchString(newName) {
 		return nil, fmt.Errorf("invalid project name: must be 3-50 alphanumeric characters, hyphens, or underscores")
 	}
-
-	// Check name uniqueness
 	if err := s.checkNameUnique(newName); err != nil {
 		return nil, err
 	}
 
-	// Create cloned project
-	cloned := &models.Project{
-		ID:          uuid.New().String(),
-		Name:        newName,
-		Description: original.Description + " (cloned)",
-		Version:     "1.0.0",
-		Status:      models.ProjectStatusDraft,
-		Metadata: models.ProjectMetadata{
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-			Tags:      append([]string{}, original.Metadata.Tags...),
-		},
-		Components: models.ProjectComponents{
-			Pipelines:    []string{},
-			Ontologies:   []string{},
-			MLModels:     []string{},
-			DigitalTwins: []string{},
-		},
-		Settings: original.Settings,
+	ontologies, err := s.store.ListOntologiesByProject(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project ontologies: %w", err)
+	}
+	storageConfigs, err := s.store.ListStorageConfigsByProject(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project storage configs: %w", err)
+	}
+	pipelines, err := s.store.ListPipelinesByProject(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project pipelines: %w", err)
+	}
+	schedules, err := s.store.ListSchedulesByProject(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project schedules: %w", err)
+	}
+	mlModels, err := s.store.ListMLModelsByProject(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project ml models: %w", err)
+	}
+	twins, err := s.store.ListDigitalTwinsByProject(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project digital twins: %w", err)
+	}
+	automations, err := s.store.ListAutomationsByProject(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project automations: %w", err)
 	}
 
-	// Save cloned project
+	clonedProjectID := uuid.New().String()
+	idMap := map[string]string{original.ID: clonedProjectID}
+	for _, ontology := range ontologies {
+		idMap[ontology.ID] = uuid.New().String()
+	}
+	for _, config := range storageConfigs {
+		idMap[config.ID] = uuid.New().String()
+	}
+	for _, pipeline := range pipelines {
+		idMap[pipeline.ID] = uuid.New().String()
+	}
+	for _, schedule := range schedules {
+		idMap[schedule.ID] = uuid.New().String()
+	}
+	for _, model := range mlModels {
+		idMap[model.ID] = uuid.New().String()
+	}
+	for _, twin := range twins {
+		idMap[twin.ID] = uuid.New().String()
+	}
+	for _, automation := range automations {
+		idMap[automation.ID] = uuid.New().String()
+	}
+
+	now := time.Now().UTC()
+	cloned := &models.Project{
+		ID:          clonedProjectID,
+		Name:        newName,
+		Description: original.Description,
+		Version:     original.Version,
+		Status:      models.ProjectStatusDraft,
+		Metadata: models.ProjectMetadata{
+			CreatedAt: now,
+			UpdatedAt: now,
+			Tags:      append([]string{}, original.Metadata.Tags...),
+		},
+		Settings: original.Settings,
+		Components: models.ProjectComponents{
+			Pipelines:      []string{},
+			Ontologies:     []string{},
+			MLModels:       []string{},
+			DigitalTwins:   []string{},
+			StorageConfigs: []string{},
+		},
+	}
 	if err := s.store.SaveProject(cloned); err != nil {
 		return nil, fmt.Errorf("failed to save cloned project: %w", err)
 	}
 
+	cloned.Components.Ontologies = make([]string, 0, len(ontologies))
+	for _, ontology := range ontologies {
+		copy, err := cloneWithIDRemap(ontology, idMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone ontology %s: %w", ontology.ID, err)
+		}
+		copy.ID = idMap[ontology.ID]
+		copy.ProjectID = clonedProjectID
+		copy.CreatedAt = now
+		copy.UpdatedAt = now
+		if err := s.store.SaveOntology(copy); err != nil {
+			return nil, fmt.Errorf("failed to save cloned ontology %s: %w", ontology.ID, err)
+		}
+		cloned.Components.Ontologies = append(cloned.Components.Ontologies, copy.ID)
+	}
+
+	cloned.Components.StorageConfigs = make([]string, 0, len(storageConfigs))
+	for _, config := range storageConfigs {
+		copy, err := cloneWithIDRemap(config, idMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone storage config %s: %w", config.ID, err)
+		}
+		copy.ID = idMap[config.ID]
+		copy.ProjectID = clonedProjectID
+		copy.CreatedAt = now.Format(time.RFC3339)
+		copy.UpdatedAt = copy.CreatedAt
+		if err := s.store.SaveStorageConfig(copy); err != nil {
+			return nil, fmt.Errorf("failed to save cloned storage config %s: %w", config.ID, err)
+		}
+		cloned.Components.StorageConfigs = append(cloned.Components.StorageConfigs, copy.ID)
+	}
+
+	cloned.Components.Pipelines = make([]string, 0, len(pipelines))
+	for _, pipeline := range pipelines {
+		copy, err := cloneWithIDRemap(pipeline, idMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone pipeline %s: %w", pipeline.ID, err)
+		}
+		copy.ID = idMap[pipeline.ID]
+		copy.ProjectID = clonedProjectID
+		copy.CreatedAt = now
+		copy.UpdatedAt = now
+		if err := s.store.SavePipeline(copy); err != nil {
+			return nil, fmt.Errorf("failed to save cloned pipeline %s: %w", pipeline.ID, err)
+		}
+		cloned.Components.Pipelines = append(cloned.Components.Pipelines, copy.ID)
+	}
+
+	for _, schedule := range schedules {
+		copy, err := cloneWithIDRemap(schedule, idMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone schedule %s: %w", schedule.ID, err)
+		}
+		copy.ID = idMap[schedule.ID]
+		copy.ProjectID = clonedProjectID
+		copy.Enabled = false
+		copy.CreatedAt = now
+		copy.UpdatedAt = now
+		copy.LastRun = nil
+		copy.NextRun = nil
+		if err := s.store.SaveSchedule(copy); err != nil {
+			return nil, fmt.Errorf("failed to save cloned schedule %s: %w", schedule.ID, err)
+		}
+	}
+
+	cloned.Components.MLModels = make([]string, 0, len(mlModels))
+	for _, model := range mlModels {
+		copy, err := cloneWithIDRemap(model, idMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone ml model %s: %w", model.ID, err)
+		}
+		copy.ID = idMap[model.ID]
+		copy.ProjectID = clonedProjectID
+		copy.Status = models.ModelStatusDraft
+		copy.TrainingTaskID = ""
+		copy.TrainingMetrics = nil
+		copy.PerformanceMetrics = nil
+		copy.ModelArtifactPath = ""
+		copy.TrainedAt = nil
+		copy.CreatedAt = now
+		copy.UpdatedAt = now
+		if err := s.store.SaveMLModel(copy); err != nil {
+			return nil, fmt.Errorf("failed to save cloned ml model %s: %w", model.ID, err)
+		}
+		cloned.Components.MLModels = append(cloned.Components.MLModels, copy.ID)
+	}
+
+	cloned.Components.DigitalTwins = make([]string, 0, len(twins))
+	for _, twin := range twins {
+		copy, err := cloneWithIDRemap(twin, idMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone digital twin %s: %w", twin.ID, err)
+		}
+		copy.ID = idMap[twin.ID]
+		copy.ProjectID = clonedProjectID
+		copy.Status = "active"
+		copy.LastSyncAt = nil
+		copy.CreatedAt = now
+		copy.UpdatedAt = now
+		if err := s.store.SaveDigitalTwin(copy); err != nil {
+			return nil, fmt.Errorf("failed to save cloned digital twin %s: %w", twin.ID, err)
+		}
+		cloned.Components.DigitalTwins = append(cloned.Components.DigitalTwins, copy.ID)
+	}
+
+	for _, automation := range automations {
+		copy, err := cloneWithIDRemap(automation, idMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to clone automation %s: %w", automation.ID, err)
+		}
+		copy.ID = idMap[automation.ID]
+		copy.ProjectID = clonedProjectID
+		copy.CreatedAt = now
+		copy.UpdatedAt = now
+		if err := s.store.SaveAutomation(copy); err != nil {
+			return nil, fmt.Errorf("failed to save cloned automation %s: %w", automation.ID, err)
+		}
+	}
+
+	cloned.Metadata.UpdatedAt = now
+	if err := s.store.SaveProject(cloned); err != nil {
+		return nil, fmt.Errorf("failed to finalize cloned project: %w", err)
+	}
+
 	return cloned, nil
+}
+
+func cloneWithIDRemap[T any](src *T, idMap map[string]string) (*T, error) {
+	encoded, err := json.Marshal(src)
+	if err != nil {
+		return nil, err
+	}
+
+	var generic any
+	if err := json.Unmarshal(encoded, &generic); err != nil {
+		return nil, err
+	}
+
+	remapped, err := json.Marshal(remapIDs(generic, idMap))
+	if err != nil {
+		return nil, err
+	}
+
+	var dst T
+	if err := json.Unmarshal(remapped, &dst); err != nil {
+		return nil, err
+	}
+	return &dst, nil
+}
+
+func remapIDs(value any, idMap map[string]string) any {
+	switch typed := value.(type) {
+	case string:
+		if mapped, ok := idMap[typed]; ok {
+			return mapped
+		}
+		return typed
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed {
+			out[i] = remapIDs(item, idMap)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, item := range typed {
+			mappedKey := key
+			if mapped, ok := idMap[key]; ok {
+				mappedKey = mapped
+			}
+			out[mappedKey] = remapIDs(item, idMap)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 // AddPipeline associates a pipeline with a project

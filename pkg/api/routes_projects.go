@@ -17,10 +17,11 @@ func init() {
 		RequestBody: doc.JsonBody(doc.Ref("ProjectCreateRequest")),
 		Responses:   doc.R(doc.Created(doc.Ref("Project")), doc.BadRequest()),
 	})
-	doc.Register("POST", "/api/projects/clone", doc.RouteDoc{
+	doc.Register("POST", "/api/projects/{id}/clone", doc.RouteDoc{
 		Summary:     "Clone project",
-		Description: "Deep-clones an existing project including all its pipelines, ontologies, ML models, digital twins, and storage configurations.",
+		Description: "Deep-clones an existing project into a new draft project, copying persisted project-owned configuration and remapping internal references to the cloned resources.",
 		Tags:        []string{"Projects"},
+		Params:      []doc.Param{doc.PParam("id", "Source project ID")},
 		RequestBody: doc.JsonBody(doc.Ref("ProjectCloneRequest")),
 		Responses:   doc.R(doc.Created(doc.Ref("Project")), doc.BadRequest(), doc.NotFound()),
 	})

@@ -151,4 +151,7 @@ type MetadataStore interface {
 	ListPredictionsByDigitalTwin(twinID string) ([]*models.Prediction, error)
 	DeletePrediction(id string) error
 	DeleteExpiredPredictions(twinID string) error
+
+	// Administrative operations
+	ResetAll() error
 }

@@ -21,6 +21,10 @@ func init() {
 			"tasks_by_type":   ObjMap("integer"),
 			"timestamp":       Str("ISO-8601 UTC snapshot timestamp"),
 		}),
+		"FactoryResetResponse": Props([]string{"reset_at", "message"}, M{
+			"reset_at": Str("ISO-8601 UTC timestamp when the reset completed"),
+			"message":  Str("Human-readable summary of what the reset did and did not delete"),
+		}),
 
 		// ── Projects ─────────────────────────────────────────────────────────
 		"ProjectMetadata": Props(nil, M{

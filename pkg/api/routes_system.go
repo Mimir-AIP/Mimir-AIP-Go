@@ -36,6 +36,16 @@ func init() {
 		Tags:        []string{"System"},
 		Responses:   doc.R(doc.OK(doc.Str("OpenAPI 3.0 YAML document"))),
 	})
+	doc.Register("POST", "/api/admin/settings/factory-reset", doc.RouteDoc{
+		Summary:     "Factory reset metadata",
+		Description: "Deletes all persisted Mimir metadata and clears the in-memory work queue after confirming there are no queued or active tasks. External data stored in connected storage backends is not deleted.",
+		Tags:        []string{"System"},
+		Responses: doc.R(
+			doc.OK(doc.Ref("FactoryResetResponse")),
+			map[string]doc.M{"409": {"description": "Conflict — reset blocked while queued or active tasks exist"}},
+			doc.ServerError(),
+		),
+	})
 
 	// ── Work Tasks (worker-facing, requires Authorization: Bearer) ────────────
 	doc.Register("GET", "/api/worktasks", doc.RouteDoc{

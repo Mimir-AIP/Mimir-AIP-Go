@@ -1,6 +1,7 @@
 package metadatastore
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -75,6 +76,58 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 // Close closes the database connection
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
+}
+
+// ResetAll deletes all persisted metadata rows while preserving the schema.
+func (s *SQLiteStore) ResetAll() error {
+	return s.retryOnBusy(func() error {
+		ctx := context.Background()
+		conn, err := s.db.Conn(ctx)
+		if err != nil {
+			return fmt.Errorf("acquire reset connection: %w", err)
+		}
+		defer conn.Close()
+
+		if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+			return fmt.Errorf("disable foreign keys for reset: %w", err)
+		}
+		defer conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+
+		rows, err := conn.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+		if err != nil {
+			return fmt.Errorf("list metadata tables: %w", err)
+		}
+		var tableNames []string
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan metadata table name: %w", err)
+			}
+			tableNames = append(tableNames, name)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return fmt.Errorf("iterate metadata tables: %w", err)
+		}
+		rows.Close()
+
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin reset transaction: %w", err)
+		}
+		defer tx.Rollback()
+
+		for _, tableName := range tableNames {
+			if _, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %q", tableName)); err != nil {
+				return fmt.Errorf("clear table %s: %w", tableName, err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit metadata reset: %w", err)
+		}
+		return nil
+	}, 5)
 }
 
 // retryOnBusy retries a database operation if it fails due to SQLITE_BUSY

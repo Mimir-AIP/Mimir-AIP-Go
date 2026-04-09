@@ -403,6 +403,16 @@ func (q *Queue) Close() error {
 	return nil
 }
 
+// Reset clears all in-memory queued and tracked work tasks after the backing store has been reset.
+func (q *Queue) Reset() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	pq := make(PriorityQueue, 0)
+	heap.Init(&pq)
+	q.pq = &pq
+	q.workTasks = make(map[string]*models.WorkTask)
+}
+
 // PriorityQueueItem represents an item in the priority queue
 type PriorityQueueItem struct {
 	TaskID   string

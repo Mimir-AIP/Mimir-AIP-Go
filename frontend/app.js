@@ -20,6 +20,7 @@
 		InsightsReviewPage,
 		PluginsPage,
 		WorkTasksPage,
+		AdminSettingsPage,
 	} = root.pages;
 
 	function App() {
@@ -78,7 +79,7 @@
 		const setActiveProject = React.useCallback((project) => setActiveProjectId(project?.id || ''), []);
 		const { summary, loading: summaryLoading, error: summaryError } = useProjectStateSummary(activeProject?.id || '');
 
-		const pages = ['Projects', 'Pipelines', 'Ontologies', 'ML Models', 'Digital Twins', 'Storage', 'Insights & Review', 'Plugins', 'Work Queue'];
+		const pages = ['Projects', 'Pipelines', 'Ontologies', 'ML Models', 'Digital Twins', 'Storage', 'Insights & Review', 'Plugins', 'Work Queue', 'Admin Settings'];
 		const pageComponents = {
 			Projects: ProjectsPage,
 			Pipelines: PipelinesPage,
@@ -89,6 +90,7 @@
 			'Insights & Review': InsightsReviewPage,
 			Plugins: PluginsPage,
 			'Work Queue': WorkTasksPage,
+			'Admin Settings': AdminSettingsPage,
 		};
 
 		const navigate = (page) => {
@@ -124,10 +126,12 @@
 					<aside className={`app-sidebar${sidebarOpen ? ' is-open' : ''}`}>
 						<nav className="sidebar-nav" aria-label="Primary navigation">
 							{pages.map(page => {
-								const navState = sectionState[page] || {
-									status: summaryError ? 'error' : 'inactive',
-									detail: summaryError ? 'State unavailable' : activeProject ? (summaryLoading ? 'Refreshing status…' : 'Awaiting state snapshot') : 'Select a project',
-								};
+								const navState = page === 'Admin Settings'
+									? { status: 'inactive', detail: 'System administration' }
+									: (sectionState[page] || {
+										status: summaryError ? 'error' : 'inactive',
+										detail: summaryError ? 'State unavailable' : activeProject ? (summaryLoading ? 'Refreshing status…' : 'Awaiting state snapshot') : 'Select a project',
+									});
 								return (
 									<button
 										key={page}

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	adminpkg "github.com/mimir-aip/mimir-aip-go/pkg/admin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/analysis"
 	"github.com/mimir-aip/mimir-aip-go/pkg/api"
 	automationpkg "github.com/mimir-aip/mimir-aip-go/pkg/automation"
@@ -91,6 +92,7 @@ func Run(cfg *config.Config, options Options) error {
 		return fmt.Errorf("initialize durable job queue: %w", err)
 	}
 	log.Println("Initialized durable job queue")
+	adminService := adminpkg.NewService(store, q)
 
 	var backend execution.Backend
 	switch cfg.ExecutionMode {
@@ -197,7 +199,7 @@ func Run(cfg *config.Config, options Options) error {
 	defer monitoringService.Stop()
 
 	server := api.NewServer(q, cfg.Port, cfg.WorkerAuthToken)
-	registerHandlers(server, store, q, cfg, projectService, pipelineService, schedulerService, connectorService, analysisService, pluginService, storageService, ontologyService, extractionService, mlmodelService, dtService, twinProcessor, automationService)
+	registerHandlers(server, store, q, cfg, projectService, pipelineService, schedulerService, connectorService, analysisService, pluginService, storageService, ontologyService, extractionService, mlmodelService, dtService, twinProcessor, automationService, adminService)
 	if options.Frontend != nil {
 		server.RegisterHandler("/", func(w http.ResponseWriter, r *http.Request) {
 			options.Frontend.ServeHTTP(w, r)
@@ -221,7 +223,7 @@ func Run(cfg *config.Config, options Options) error {
 	return nil
 }
 
-func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *queue.Queue, cfg *config.Config, projectService *project.Service, pipelineService *pipeline.Service, schedulerService *scheduler.Service, connectorService *connectors.Service, analysisService *analysis.Service, pluginService *plugins.Service, storageService *storage.Service, ontologyService *ontology.Service, extractionService *extraction.Service, mlmodelService *mlmodel.Service, dtService *digitaltwin.Service, twinProcessor *digitaltwin.Processor, automationService *automationpkg.Service) {
+func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *queue.Queue, cfg *config.Config, projectService *project.Service, pipelineService *pipeline.Service, schedulerService *scheduler.Service, connectorService *connectors.Service, analysisService *analysis.Service, pluginService *plugins.Service, storageService *storage.Service, ontologyService *ontology.Service, extractionService *extraction.Service, mlmodelService *mlmodel.Service, dtService *digitaltwin.Service, twinProcessor *digitaltwin.Processor, automationService *automationpkg.Service, adminService *adminpkg.Service) {
 	projectStateProvider := api.NewProjectStateProvider(store, q)
 	projectHandler := api.NewProjectHandler(projectService, projectStateProvider)
 	server.RegisterHandler("/api/projects", projectHandler.HandleProjects)
@@ -288,6 +290,8 @@ func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *
 	server.RegisterHandler("/mcp/", func(w http.ResponseWriter, r *http.Request) {
 		mcpHandler.ServeHTTP(w, r)
 	})
+	adminHandler := api.NewAdminHandler(adminService)
+	server.RegisterHandler("/api/admin/settings/", adminHandler.HandleAdminSettings)
 }
 
 func resolveStorageDir(cfg *config.Config) (string, error) {

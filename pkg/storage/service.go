@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -157,15 +158,128 @@ func (s *Service) UpdateStorageConfig(storageID string, config map[string]interf
 	return nil
 }
 
-// DeleteStorageConfig deletes a storage configuration
+// StorageConfigInUseError reports the persisted resources that still reference a storage config.
+type StorageConfigInUseError struct {
+	StorageID  string
+	References []string
+}
+
+func (e *StorageConfigInUseError) Error() string {
+	return fmt.Sprintf("storage config %s is still referenced by %s", e.StorageID, strings.Join(e.References, ", "))
+}
+
+// DeleteStorageConfig deletes a storage configuration once no persisted project-owned resources still reference it.
 func (s *Service) DeleteStorageConfig(storageID string) error {
+	storageConfig, err := s.store.GetStorageConfig(storageID)
+	if err != nil {
+		return fmt.Errorf("storage config not found: %w", err)
+	}
+
+	references, err := s.findStorageReferences(storageConfig.ProjectID, storageID)
+	if err != nil {
+		return err
+	}
+	if len(references) > 0 {
+		return &StorageConfigInUseError{StorageID: storageID, References: references}
+	}
+
+	if err := s.removeProjectStorageMembership(storageConfig.ProjectID, storageID); err != nil {
+		return err
+	}
 	if err := s.store.DeleteStorageConfig(storageID); err != nil {
 		return fmt.Errorf("failed to delete storage config: %w", err)
 	}
 
 	log.Printf("Deleted storage config %s", storageID)
-
 	return nil
+}
+
+func (s *Service) findStorageReferences(projectID, storageID string) ([]string, error) {
+	references := make([]string, 0)
+
+	pipelines, err := s.store.ListPipelinesByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project pipelines: %w", err)
+	}
+	for _, pipeline := range pipelines {
+		if jsonContainsExactString(pipeline, storageID) {
+			references = append(references, fmt.Sprintf("pipeline %s", pipeline.ID))
+		}
+	}
+
+	schedules, err := s.store.ListSchedulesByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project schedules: %w", err)
+	}
+	for _, schedule := range schedules {
+		if jsonContainsExactString(schedule, storageID) {
+			references = append(references, fmt.Sprintf("schedule %s", schedule.ID))
+		}
+	}
+
+	modelsList, err := s.store.ListMLModelsByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project ml models: %w", err)
+	}
+	for _, model := range modelsList {
+		if jsonContainsExactString(model, storageID) {
+			references = append(references, fmt.Sprintf("ml model %s", model.ID))
+		}
+	}
+
+	twins, err := s.store.ListDigitalTwinsByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project digital twins: %w", err)
+	}
+	for _, twin := range twins {
+		if jsonContainsExactString(twin, storageID) {
+			references = append(references, fmt.Sprintf("digital twin %s", twin.ID))
+		}
+	}
+
+	automations, err := s.store.ListAutomationsByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list project automations: %w", err)
+	}
+	for _, automation := range automations {
+		if jsonContainsExactString(automation, storageID) {
+			references = append(references, fmt.Sprintf("automation %s", automation.ID))
+		}
+	}
+
+	return references, nil
+}
+
+func (s *Service) removeProjectStorageMembership(projectID, storageID string) error {
+	project, err := s.store.GetProject(projectID)
+	if err != nil {
+		return fmt.Errorf("failed to load owning project: %w", err)
+	}
+
+	filtered := make([]string, 0, len(project.Components.StorageConfigs))
+	for _, id := range project.Components.StorageConfigs {
+		if id != storageID {
+			filtered = append(filtered, id)
+		}
+	}
+	if len(filtered) == len(project.Components.StorageConfigs) {
+		return nil
+	}
+
+	project.Components.StorageConfigs = filtered
+	project.Metadata.UpdatedAt = time.Now().UTC()
+	if err := s.store.SaveProject(project); err != nil {
+		return fmt.Errorf("failed to update project storage membership: %w", err)
+	}
+	return nil
+}
+
+func jsonContainsExactString(value any, needle string) bool {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(encoded), fmt.Sprintf("%q", needle))
 }
 
 // InitializeStorage initializes storage for a project using the specified configuration

@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -282,5 +284,135 @@ func TestGetIngestionHealth_DetectsDriftAndLowCompleteness(t *testing.T) {
 	}
 	if src.Status == models.IngestionHealthHealthy {
 		t.Fatalf("expected non-healthy status for degraded source, got %s", src.Status)
+	}
+}
+
+func TestDeleteStorageConfigRejectsReferencedResources(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	saveTestProject(t, store, "project-delete-refs")
+
+	svc := NewService(store)
+	svc.RegisterPlugin("mock", &mockStoragePlugin{})
+
+	cfg, err := svc.CreateStorageConfig("project-delete-refs", "mock", map[string]interface{}{"connection_string": "mock://refs"})
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+
+	project, err := store.GetProject("project-delete-refs")
+	if err != nil {
+		t.Fatalf("failed to load project: %v", err)
+	}
+	project.Components.StorageConfigs = []string{cfg.ID}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to update project components: %v", err)
+	}
+
+	pipeline := &models.Pipeline{
+		ID:        "pipeline-delete-refs",
+		ProjectID: "project-delete-refs",
+		Name:      "ingest",
+		Type:      models.PipelineTypeIngestion,
+		Steps: []models.PipelineStep{{
+			Name:       "store",
+			Plugin:     "builtin",
+			Action:     "store_cir",
+			Parameters: map[string]interface{}{"storage_id": cfg.ID},
+		}},
+		Status:    models.PipelineStatusActive,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := store.SavePipeline(pipeline); err != nil {
+		t.Fatalf("failed to save pipeline: %v", err)
+	}
+
+	twin := &models.DigitalTwin{
+		ID:         "twin-delete-refs",
+		ProjectID:  "project-delete-refs",
+		OntologyID: "ontology-delete-refs",
+		Name:       "Twin",
+		Status:     "active",
+		Config:     &models.DigitalTwinConfig{StorageIDs: []string{cfg.ID}},
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if err := store.SaveOntology(&models.Ontology{
+		ID:        "ontology-delete-refs",
+		ProjectID: "project-delete-refs",
+		Name:      "Ontology",
+		Content:   "@prefix ex: <http://example.com/> .",
+		Status:    "active",
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("failed to save ontology: %v", err)
+	}
+	if err := store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save digital twin: %v", err)
+	}
+
+	err = svc.DeleteStorageConfig(cfg.ID)
+	var inUseErr *StorageConfigInUseError
+	if !errors.As(err, &inUseErr) {
+		t.Fatalf("expected StorageConfigInUseError, got %v", err)
+	}
+	if len(inUseErr.References) != 2 {
+		t.Fatalf("expected 2 references, got %#v", inUseErr.References)
+	}
+	if !strings.Contains(inUseErr.Error(), pipeline.ID) || !strings.Contains(inUseErr.Error(), twin.ID) {
+		t.Fatalf("expected error to mention referencing resources, got %v", inUseErr)
+	}
+
+	if _, err := store.GetStorageConfig(cfg.ID); err != nil {
+		t.Fatalf("expected referenced storage config to remain persisted, got %v", err)
+	}
+}
+
+func TestDeleteStorageConfigRemovesProjectMembership(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	saveTestProject(t, store, "project-delete-ok")
+
+	svc := NewService(store)
+	svc.RegisterPlugin("mock", &mockStoragePlugin{})
+
+	cfg, err := svc.CreateStorageConfig("project-delete-ok", "mock", map[string]interface{}{"connection_string": "mock://ok"})
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+
+	project, err := store.GetProject("project-delete-ok")
+	if err != nil {
+		t.Fatalf("failed to load project: %v", err)
+	}
+	project.Components.StorageConfigs = []string{cfg.ID}
+	if err := store.SaveProject(project); err != nil {
+		t.Fatalf("failed to update project components: %v", err)
+	}
+
+	if err := svc.DeleteStorageConfig(cfg.ID); err != nil {
+		t.Fatalf("expected storage config deletion to succeed, got %v", err)
+	}
+
+	if _, err := store.GetStorageConfig(cfg.ID); err == nil {
+		t.Fatal("expected storage config to be deleted")
+	}
+
+	updatedProject, err := store.GetProject("project-delete-ok")
+	if err != nil {
+		t.Fatalf("failed to reload project: %v", err)
+	}
+	if len(updatedProject.Components.StorageConfigs) != 0 {
+		t.Fatalf("expected project storage membership to be cleaned up, got %#v", updatedProject.Components.StorageConfigs)
 	}
 }

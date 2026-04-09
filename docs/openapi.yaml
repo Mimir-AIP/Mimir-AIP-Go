@@ -4167,7 +4167,7 @@ paths:
                 - Storage
     /api/storage/configs/{id}:
         delete:
-            description: ""
+            description: Deletes a storage config only when no persisted project-owned resources still reference it.
             parameters:
                 - description: Storage config ID
                   in: path
@@ -4180,6 +4180,8 @@ paths:
                     description: No content
                 "404":
                     description: Resource not found
+                "409":
+                    description: Conflict — storage config is still referenced by project resources
             summary: Delete storage config
             tags:
                 - Storage

@@ -62,7 +62,7 @@
 		const handleDelete = async (id) => {
 			const confirmed = await confirmAction({
 				title: 'Delete storage configuration',
-				message: 'Delete this storage configuration? Dependent ingestion or analysis flows may fail until it is replaced.',
+				message: 'Delete this storage configuration permanently? Mimir will block deletion while pipelines, digital twins, or other persisted resources still reference it.',
 				confirmLabel: 'Delete config',
 				variant: 'danger',
 			});

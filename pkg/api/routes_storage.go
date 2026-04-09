@@ -32,10 +32,15 @@ func init() {
 		Responses:   doc.R(doc.OK(doc.Ref("StorageConfig")), doc.BadRequest(), doc.NotFound()),
 	})
 	doc.Register("DELETE", "/api/storage/configs/{id}", doc.RouteDoc{
-		Summary:   "Delete storage config",
-		Tags:      []string{"Storage"},
-		Params:    []doc.Param{doc.PParam("id", "Storage config ID")},
-		Responses: doc.R(doc.NoContent(), doc.NotFound()),
+		Summary:     "Delete storage config",
+		Description: "Deletes a storage config only when no persisted project-owned resources still reference it.",
+		Tags:        []string{"Storage"},
+		Params:      []doc.Param{doc.PParam("id", "Storage config ID")},
+		Responses: doc.R(
+			doc.NoContent(),
+			doc.NotFound(),
+			map[string]doc.M{"409": {"description": "Conflict — storage config is still referenced by project resources"}},
+		),
 	})
 
 	// ── CIR Data Operations ────────────────────────────────────────────────────

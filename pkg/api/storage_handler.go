@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -299,7 +300,15 @@ func (h *StorageHandler) updateStorageConfig(w http.ResponseWriter, r *http.Requ
 // deleteStorageConfig deletes a storage configuration
 func (h *StorageHandler) deleteStorageConfig(w http.ResponseWriter, r *http.Request, id string) {
 	if err := h.service.DeleteStorageConfig(id); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to delete storage config: %v", err), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		var inUseErr *storage.StorageConfigInUseError
+		switch {
+		case errors.As(err, &inUseErr):
+			status = http.StatusConflict
+		case strings.Contains(err.Error(), "storage config not found"):
+			status = http.StatusNotFound
+		}
+		http.Error(w, fmt.Sprintf("Failed to delete storage config: %v", err), status)
 		return
 	}
 

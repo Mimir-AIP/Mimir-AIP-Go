@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,22 +45,64 @@ func NewService(
 	}
 }
 
+type ModelProjectMismatchError struct {
+	ModelID           string
+	ExpectedProjectID string
+	ActualProjectID   string
+}
+
+func (e *ModelProjectMismatchError) Error() string {
+	return fmt.Sprintf("ml model %s belongs to project %s, not %s", e.ModelID, e.ActualProjectID, e.ExpectedProjectID)
+}
+
+type ModelInUseError struct {
+	ModelID    string
+	References []string
+}
+
+func (e *ModelInUseError) Error() string {
+	return fmt.Sprintf("ml model %s is still referenced by %s", e.ModelID, strings.Join(e.References, ", "))
+}
+
+func (s *Service) ensureProjectExists(projectID string) error {
+	if projectID == "" {
+		return fmt.Errorf("project_id is required")
+	}
+	if _, err := s.store.GetProject(projectID); err != nil {
+		return fmt.Errorf("project not found: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) getOwnedModel(projectID, modelID string) (*models.MLModel, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("project_id is required")
+	}
+	model, err := s.store.GetMLModel(modelID)
+	if err != nil {
+		return nil, fmt.Errorf("model not found: %w", err)
+	}
+	if model.ProjectID != projectID {
+		return nil, &ModelProjectMismatchError{ModelID: modelID, ExpectedProjectID: projectID, ActualProjectID: model.ProjectID}
+	}
+	return model, nil
+}
+
+func (s *Service) GetModelForProject(projectID, modelID string) (*models.MLModel, error) {
+	return s.getOwnedModel(projectID, modelID)
+}
+
 // CreateModel creates a new ML model
 func (s *Service) CreateModel(req *models.ModelCreateRequest) (*models.MLModel, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-
-	// Verify ontology exists
-	ontology, err := s.ontologyService.GetOntology(req.OntologyID)
-	if err != nil {
+	if err := s.ensureProjectExists(req.ProjectID); err != nil {
+		return nil, err
+	}
+	if _, err := s.ontologyService.GetOntologyForProject(req.ProjectID, req.OntologyID); err != nil {
 		return nil, fmt.Errorf("failed to get ontology: %w", err)
 	}
-
-	if ontology.ProjectID != req.ProjectID {
-		return nil, fmt.Errorf("ontology does not belong to project")
-	}
-
 	model := &models.MLModel{
 		ID:             uuid.New().String(),
 		ProjectID:      req.ProjectID,
@@ -74,19 +117,12 @@ func (s *Service) CreateModel(req *models.ModelCreateRequest) (*models.MLModel, 
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 	}
-
-	// Set default training config if not provided
 	if model.TrainingConfig == nil {
-		model.TrainingConfig = &models.TrainingConfig{
-			TrainTestSplit: 0.8,
-			RandomSeed:     42,
-		}
+		model.TrainingConfig = &models.TrainingConfig{TrainTestSplit: 0.8, RandomSeed: 42}
 	}
-
 	if err := s.store.SaveMLModel(model); err != nil {
 		return nil, fmt.Errorf("failed to save model: %w", err)
 	}
-
 	return model, nil
 }
 
@@ -138,12 +174,33 @@ func (s *Service) UpdateModel(id string, req *models.ModelUpdateRequest) (*model
 	return model, nil
 }
 
+func (s *Service) UpdateModelForProject(projectID, id string, req *models.ModelUpdateRequest) (*models.MLModel, error) {
+	if _, err := s.getOwnedModel(projectID, id); err != nil {
+		return nil, err
+	}
+	return s.UpdateModel(id, req)
+}
+
 // DeleteModel deletes an ML model
 func (s *Service) DeleteModel(id string) error {
+	references, err := s.findModelReferences(id)
+	if err != nil {
+		return err
+	}
+	if len(references) > 0 {
+		return &ModelInUseError{ModelID: id, References: references}
+	}
 	if err := s.store.DeleteMLModel(id); err != nil {
 		return fmt.Errorf("failed to delete model: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) DeleteModelForProject(projectID, id string) error {
+	if _, err := s.getOwnedModel(projectID, id); err != nil {
+		return err
+	}
+	return s.DeleteModel(id)
 }
 
 // ListProjectModels lists all models for a project
@@ -155,33 +212,69 @@ func (s *Service) ListProjectModels(projectID string) ([]*models.MLModel, error)
 	return models, nil
 }
 
+func (s *Service) findModelReferences(modelID string) ([]string, error) {
+	references := make([]string, 0)
+	twins, err := s.store.ListDigitalTwins()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list digital twins: %w", err)
+	}
+	for _, twin := range twins {
+		if twin == nil {
+			continue
+		}
+		actions, err := s.store.ListActionsByDigitalTwin(twin.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list actions for twin %s: %w", twin.ID, err)
+		}
+		for _, action := range actions {
+			if action != nil && action.Condition != nil && action.Condition.ModelID == modelID {
+				references = append(references, fmt.Sprintf("digital twin action %s", action.ID))
+			}
+		}
+		predictions, err := s.store.ListPredictionsByDigitalTwin(twin.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list predictions for twin %s: %w", twin.ID, err)
+		}
+		for _, prediction := range predictions {
+			if prediction != nil && prediction.ModelID == modelID {
+				references = append(references, fmt.Sprintf("prediction %s", prediction.ID))
+			}
+		}
+	}
+	tasks, err := s.store.ListWorkTasks()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list work tasks: %w", err)
+	}
+	for _, task := range tasks {
+		if task == nil || task.TaskSpec.ModelID != modelID {
+			continue
+		}
+		switch task.Status {
+		case models.WorkTaskStatusQueued, models.WorkTaskStatusScheduled, models.WorkTaskStatusSpawned, models.WorkTaskStatusExecuting:
+			references = append(references, fmt.Sprintf("work task %s", task.ID))
+		}
+	}
+	return references, nil
+}
+
 // RecommendModelType recommends the best model type for a project
 func (s *Service) RecommendModelType(projectID, ontologyID string) (*models.ModelRecommendation, error) {
-	// Get the ontology
-	ontology, err := s.ontologyService.GetOntology(ontologyID)
+	if err := s.ensureProjectExists(projectID); err != nil {
+		return nil, err
+	}
+	ontologyRecord, err := s.ontologyService.GetOntologyForProject(projectID, ontologyID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ontology: %w", err)
 	}
-
-	if ontology.ProjectID != projectID {
-		return nil, fmt.Errorf("ontology does not belong to project")
-	}
-
-	// Get storage configs for the project to analyze data
 	storageConfigs, err := s.storageService.GetProjectStorageConfigs(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get storage configs: %w", err)
 	}
-
-	// Analyze data from storage configs
 	dataSummary := s.analyzeData(storageConfigs)
-
-	// Get recommendation
-	recommendation, err := s.recommendationEngine.RecommendModelType(ontology, dataSummary)
+	recommendation, err := s.recommendationEngine.RecommendModelType(ontologyRecord, dataSummary)
 	if err != nil {
 		return nil, fmt.Errorf("failed to recommend model type: %w", err)
 	}
-
 	return recommendation, nil
 }
 

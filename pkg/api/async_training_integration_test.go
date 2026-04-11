@@ -120,7 +120,7 @@ func TestTrainingAsyncContractIsSelfContained(t *testing.T) {
 		t.Fatalf("expected queued task status, got %#v", taskPayload["status"])
 	}
 
-	modelResp, err := http.Get(httpServer.URL + "/api/ml-models/" + model.ID)
+	modelResp, err := http.Get(httpServer.URL + "/api/ml-models/" + model.ID + "?project_id=" + model.ProjectID)
 	if err != nil {
 		t.Fatalf("failed to fetch model: %v", err)
 	}

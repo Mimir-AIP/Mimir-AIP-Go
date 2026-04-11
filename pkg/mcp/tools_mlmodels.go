@@ -15,27 +15,18 @@ func registerMLModelTools(s *server.MCPServer, m *MimirMCPServer) {
 	// list_ml_models
 	s.AddTool(
 		mcp.NewTool("list_ml_models",
-			mcp.WithDescription("List ML models, optionally filtered by project"),
+			mcp.WithDescription("List ML models for a specific project"),
 			mcp.WithString("project_id",
-				mcp.Description("Filter by project ID; omit to list all models"),
+				mcp.Required(),
+				mcp.Description("Project ID"),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			projectID := req.GetString("project_id", "")
-			var (
-				mlModels []*models.MLModel
-				err      error
-			)
-			if projectID != "" {
-				mlModels, err = m.mlSvc.ListProjectModels(projectID)
-			} else {
-				// List all by iterating; fall back to an empty list if no project given
-				// The service only supports listing by project, so return helpful guidance
-				data, _ := json.Marshal(map[string]string{
-					"message": "Provide project_id to list models for a specific project",
-				})
-				return mcp.NewToolResultText(string(data)), nil
+			if projectID == "" {
+				return mcp.NewToolResultError("project_id is required"), nil
 			}
+			mlModels, err := m.mlSvc.ListProjectModels(projectID)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -48,17 +39,16 @@ func registerMLModelTools(s *server.MCPServer, m *MimirMCPServer) {
 	s.AddTool(
 		mcp.NewTool("get_ml_model",
 			mcp.WithDescription("Get details of a specific ML model by ID"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("ML model ID"),
-			),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("ML model ID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
 			}
-			model, err := m.mlSvc.GetModel(id)
+			model, err := m.mlSvc.GetModelForProject(projectID, id)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -215,24 +205,17 @@ func registerMLModelTools(s *server.MCPServer, m *MimirMCPServer) {
 	s.AddTool(
 		mcp.NewTool("update_ml_model",
 			mcp.WithDescription("Update an existing ML model's metadata or status"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("ML model ID"),
-			),
-			mcp.WithString("name",
-				mcp.Description("New model name"),
-			),
-			mcp.WithString("description",
-				mcp.Description("New description"),
-			),
-			mcp.WithString("status",
-				mcp.Description("New status: created, training, trained, failed, or deprecated"),
-			),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("ML model ID")),
+			mcp.WithString("name", mcp.Description("New model name")),
+			mcp.WithString("description", mcp.Description("New description")),
+			mcp.WithString("status", mcp.Description("New status: draft, training, trained, failed, degraded, deprecated, or archived")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
 			}
 			updateReq := &models.ModelUpdateRequest{}
 			if name := req.GetString("name", ""); name != "" {
@@ -245,7 +228,7 @@ func registerMLModelTools(s *server.MCPServer, m *MimirMCPServer) {
 				ms := models.ModelStatus(st)
 				updateReq.Status = &ms
 			}
-			model, err := m.mlSvc.UpdateModel(id, updateReq)
+			model, err := m.mlSvc.UpdateModelForProject(projectID, id, updateReq)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -258,17 +241,16 @@ func registerMLModelTools(s *server.MCPServer, m *MimirMCPServer) {
 	s.AddTool(
 		mcp.NewTool("delete_ml_model",
 			mcp.WithDescription("Delete an ML model by ID"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("ML model ID"),
-			),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("ML model ID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
 			}
-			if err := m.mlSvc.DeleteModel(id); err != nil {
+			if err := m.mlSvc.DeleteModelForProject(projectID, id); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			return mcp.NewToolResultText(`{"success":true}`), nil

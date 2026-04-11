@@ -412,6 +412,7 @@ func init() {
 		}),
 
 		// ── ML Models ─────────────────────────────────────────────────────────
+		// ── ML Models ─────────────────────────────────────────────────────────
 		"MLModel": Props(nil, M{
 			"id":                   Str("ML model ID (UUID)"),
 			"project_id":           Str("Owning project ID"),
@@ -432,32 +433,34 @@ func init() {
 			"created_at":           Str("ISO-8601 creation timestamp"),
 			"updated_at":           Str("ISO-8601 last-updated timestamp"),
 		}),
-		"MLModelCreateRequest": Props([]string{"project_id", "name", "type"}, M{
+		"ModelCreateRequest": Props([]string{"project_id", "ontology_id", "name", "type"}, M{
 			"project_id":      Str("Owning project ID"),
 			"ontology_id":     Str("Linked ontology ID"),
 			"name":            Str("Model name"),
 			"description":     Str("Description"),
-			"type":            Str("Model type"),
+			"type":            Str("decision_tree | random_forest | regression | neural_network"),
 			"training_config": Obj("Training configuration"),
+			"metadata":        M{"type": "object", "additionalProperties": true},
 		}),
-		"MLModelUpdateRequest": Props(nil, M{
+		"ModelUpdateRequest": Props(nil, M{
 			"name":                Str("New name"),
 			"description":         Str("New description"),
-			"training_config":     Obj("Updated training configuration"),
 			"training_metrics":    Obj("Updated training metrics"),
 			"performance_metrics": Obj("Updated performance metrics"),
 			"status":              Str("New status"),
 			"metadata":            M{"type": "object", "additionalProperties": true},
 		}),
-		"ModelRecommendationRequest": Props([]string{"project_id"}, M{
+		"ModelRecommendationRequest": Props([]string{"project_id", "ontology_id"}, M{
 			"project_id":  Str("Project ID"),
 			"ontology_id": Str("Ontology to base recommendation on"),
 		}),
 		"ModelRecommendation": Props(nil, M{
-			"recommended_type": Str("Recommended model type"),
-			"score":            Int("Confidence score (0-100)"),
-			"reason":           Str("Explanation"),
-			"alternatives":     Arr(Obj("Alternative model type with score and reason")),
+			"recommended_type":  Str("Recommended model type"),
+			"score":             Int("Score (0-100)"),
+			"reasoning":         Str("Explanation"),
+			"all_scores":        M{"type": "object", "additionalProperties": M{"type": "integer"}},
+			"ontology_analysis": Obj("Ontology analysis used in the recommendation"),
+			"data_analysis":     Obj("Data analysis used in the recommendation"),
 		}),
 		"ModelTrainingRequest": Props([]string{"model_id"}, M{
 			"model_id":        Str("ID of the model to train"),

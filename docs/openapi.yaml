@@ -718,7 +718,7 @@ components:
                     description: Model version string
                     type: string
             type: object
-        MLModelCreateRequest:
+        ModelCreateRequest:
             properties:
                 description:
                     description: Description
@@ -736,14 +736,18 @@ components:
                     description: Training configuration
                     type: object
                 type:
-                    description: Model type
+                    description: decision_tree | random_forest | regression | neural_network
                     type: string
+                metadata:
+                    additionalProperties: true
+                    type: object
             required:
                 - project_id
+                - ontology_id
                 - name
                 - type
             type: object
-        MLModelRecommendRequest:
+        ModelRecommendationRequest:
             properties:
                 ontology_id:
                     description: Ontology to base recommendation on
@@ -751,42 +755,49 @@ components:
                 project_id:
                     description: Project ID
                     type: string
-                storage_id:
-                    description: Storage config to sample data from
-                    type: string
             required:
                 - project_id
+                - ontology_id
             type: object
-        MLModelRecommendation:
+        ModelRecommendation:
             properties:
-                alternatives:
-                    items:
-                        description: Alternative model type with score and reason
-                        type: object
-                    type: array
-                reason:
+                all_scores:
+                    additionalProperties:
+                        type: integer
+                    type: object
+                data_analysis:
+                    type: object
+                ontology_analysis:
+                    type: object
+                reasoning:
                     description: Explanation
                     type: string
                 recommended_type:
                     description: Recommended model type
                     type: string
                 score:
-                    description: Confidence score (0-100)
+                    description: Score (0-100)
                     type: integer
             type: object
-        MLModelUpdateRequest:
+        ModelUpdateRequest:
             properties:
                 description:
                     description: New description
                     type: string
+                metadata:
+                    additionalProperties: true
+                    type: object
                 name:
                     description: New name
                     type: string
+                performance_metrics:
+                    description: Updated performance metrics
+                    type: object
                 status:
                     description: New status
                     type: string
-                training_config:
-                    description: Updated training configuration
+                training_metrics:
+                    description: Updated training metrics
                     type: object
             type: object
         MLTrainingRequest:
@@ -3000,7 +3011,7 @@ paths:
                 - ML Models
     /api/ml-models/recommend:
         post:
-            description: Analyses the project's ontology and returns a suggested model type (e.g. decision_tree, neural_network) along with a confidence score.
+            description: Analyses the project's ontology and storage and returns a suggested built-in model type plus score-based reasoning.
             requestBody:
                 content:
                     application/json:

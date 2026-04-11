@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,6 +21,25 @@ type MLModelHandler struct {
 func NewMLModelHandler(service *mlmodel.Service) *MLModelHandler {
 	return &MLModelHandler{
 		service: service,
+	}
+}
+
+func mlErrorStatus(err error) int {
+	var projectMismatchErr *mlmodel.ModelProjectMismatchError
+	var inUseErr *mlmodel.ModelInUseError
+	switch {
+	case err == nil:
+		return http.StatusOK
+	case errors.As(err, &projectMismatchErr):
+		return http.StatusForbidden
+	case errors.As(err, &inUseErr):
+		return http.StatusConflict
+	case strings.Contains(err.Error(), "not found"):
+		return http.StatusNotFound
+	case strings.Contains(err.Error(), "invalid"), strings.Contains(err.Error(), "project_id is required"):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
 	}
 }
 
@@ -173,10 +193,9 @@ func (h *MLModelHandler) handleCreateMLModel(w http.ResponseWriter, r *http.Requ
 
 	model, err := h.service.CreateModel(&req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create model: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to create model: %v", err), mlErrorStatus(err))
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(model)
@@ -184,53 +203,52 @@ func (h *MLModelHandler) handleCreateMLModel(w http.ResponseWriter, r *http.Requ
 
 // handleGetMLModel handles GET /api/ml-models/{id}
 func (h *MLModelHandler) handleGetMLModel(w http.ResponseWriter, r *http.Request, modelID string) {
-	model, err := h.service.GetModel(modelID)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			http.Error(w, "Model not found", http.StatusNotFound)
-		} else {
-			http.Error(w, fmt.Sprintf("Failed to get model: %v", err), http.StatusInternalServerError)
-		}
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-
+	model, err := h.service.GetModelForProject(projectID, modelID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get model: %v", err), mlErrorStatus(err))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(model)
 }
 
 // handleUpdateMLModel handles PUT /api/ml-models/{id}
 func (h *MLModelHandler) handleUpdateMLModel(w http.ResponseWriter, r *http.Request, modelID string) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
+		return
+	}
 	var req models.ModelUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
-
-	model, err := h.service.UpdateModel(modelID, &req)
+	model, err := h.service.UpdateModelForProject(projectID, modelID, &req)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			http.Error(w, "Model not found", http.StatusNotFound)
-		} else {
-			http.Error(w, fmt.Sprintf("Failed to update model: %v", err), http.StatusInternalServerError)
-		}
+		http.Error(w, fmt.Sprintf("Failed to update model: %v", err), mlErrorStatus(err))
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(model)
 }
 
 // handleDeleteMLModel handles DELETE /api/ml-models/{id}
 func (h *MLModelHandler) handleDeleteMLModel(w http.ResponseWriter, r *http.Request, modelID string) {
-	if err := h.service.DeleteModel(modelID); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			http.Error(w, "Model not found", http.StatusNotFound)
-		} else {
-			http.Error(w, fmt.Sprintf("Failed to delete model: %v", err), http.StatusInternalServerError)
-		}
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-
+	if err := h.service.DeleteModelForProject(projectID, modelID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete model: %v", err), mlErrorStatus(err))
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

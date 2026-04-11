@@ -21,21 +21,21 @@ func init() {
 	doc.Register("GET", "/api/ml-models/{id}", doc.RouteDoc{
 		Summary:   "Get ML model",
 		Tags:      []string{"ML Models"},
-		Params:    []doc.Param{doc.PParam("id", "Model ID")},
-		Responses: doc.R(doc.OK(doc.Ref("MLModel")), doc.NotFound()),
+		Params:    []doc.Param{doc.PParam("id", "Model ID"), doc.QParam("project_id", "Owning project ID", true)},
+		Responses: doc.R(doc.OK(doc.Ref("MLModel")), doc.NotFound(), map[string]doc.M{"403": {"description": "Forbidden — model belongs to another project"}}),
 	})
 	doc.Register("PUT", "/api/ml-models/{id}", doc.RouteDoc{
 		Summary:     "Update ML model",
 		Tags:        []string{"ML Models"},
-		Params:      []doc.Param{doc.PParam("id", "Model ID")},
+		Params:      []doc.Param{doc.PParam("id", "Model ID"), doc.QParam("project_id", "Owning project ID", true)},
 		RequestBody: doc.JsonBody(doc.Ref("ModelUpdateRequest")),
-		Responses:   doc.R(doc.OK(doc.Ref("MLModel")), doc.BadRequest(), doc.NotFound()),
+		Responses:   doc.R(doc.OK(doc.Ref("MLModel")), doc.BadRequest(), doc.NotFound(), map[string]doc.M{"403": {"description": "Forbidden — model belongs to another project"}}),
 	})
 	doc.Register("DELETE", "/api/ml-models/{id}", doc.RouteDoc{
 		Summary:   "Delete ML model",
 		Tags:      []string{"ML Models"},
-		Params:    []doc.Param{doc.PParam("id", "Model ID")},
-		Responses: doc.R(doc.NoContent(), doc.NotFound()),
+		Params:    []doc.Param{doc.PParam("id", "Model ID"), doc.QParam("project_id", "Owning project ID", true)},
+		Responses: doc.R(doc.NoContent(), doc.NotFound(), map[string]doc.M{"403": {"description": "Forbidden — model belongs to another project"}}, map[string]doc.M{"409": {"description": "Conflict — model is still referenced by twin actions, predictions, or active work tasks"}}),
 	})
 
 	// ── Training Actions ───────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ func init() {
 	})
 	doc.Register("POST", "/api/ml-models/recommend", doc.RouteDoc{
 		Summary:     "Recommend model type",
-		Description: "Analyses the project's ontology and returns a suggested model type (e.g. decision_tree, neural_network) along with a confidence score.",
+		Description: "Analyses the project's ontology and storage and returns a suggested built-in model type plus score-based reasoning.",
 		Tags:        []string{"ML Models"},
 		RequestBody: doc.JsonBody(doc.Ref("ModelRecommendationRequest")),
 		Responses:   doc.R(doc.OK(doc.Ref("ModelRecommendation")), doc.BadRequest()),

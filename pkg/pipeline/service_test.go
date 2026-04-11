@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -420,5 +421,120 @@ func TestPipelineDelete(t *testing.T) {
 	_, err = service.Get(created.ID)
 	if err == nil {
 		t.Error("Expected error when getting deleted pipeline")
+	}
+}
+
+func TestPipelineCreateRejectsMissingProject(t *testing.T) {
+	service, _, tmpDir := setupTestService(t)
+	defer cleanupTestService(tmpDir)
+
+	_, err := service.Create(&models.PipelineCreateRequest{
+		ProjectID: "missing-project",
+		Name:      "invalid-pipeline",
+		Type:      models.PipelineTypeIngestion,
+		Steps:     []models.PipelineStep{{Name: "step1", Plugin: "default", Action: "set_context", Parameters: map[string]interface{}{"key": "test", "value": "hello"}}},
+	})
+	if err == nil {
+		t.Fatal("expected create to fail when project does not exist")
+	}
+}
+
+func TestPipelineCreateRejectsUnknownPluginActionAndGoto(t *testing.T) {
+	service, _, tmpDir := setupTestService(t)
+	defer cleanupTestService(tmpDir)
+
+	tests := []struct {
+		name string
+		step models.PipelineStep
+	}{
+		{
+			name: "unknown plugin",
+			step: models.PipelineStep{Name: "step1", Plugin: "missing", Action: "set_context"},
+		},
+		{
+			name: "unknown builtin action",
+			step: models.PipelineStep{Name: "step1", Plugin: "default", Action: "missing_action"},
+		},
+		{
+			name: "goto missing target",
+			step: models.PipelineStep{Name: "step1", Plugin: "default", Action: "goto", Parameters: map[string]interface{}{"target": "does-not-exist"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := service.Create(&models.PipelineCreateRequest{
+				ProjectID: "test-project",
+				Name:      "invalid-pipeline",
+				Type:      models.PipelineTypeIngestion,
+				Steps:     []models.PipelineStep{tt.step},
+			})
+			if err == nil {
+				t.Fatalf("expected validation error for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestPipelineDeleteRejectsReferencedPipeline(t *testing.T) {
+	service, store, tmpDir := setupTestService(t)
+	defer cleanupTestService(tmpDir)
+
+	created, err := service.Create(&models.PipelineCreateRequest{
+		ProjectID: "test-project",
+		Name:      "referenced-pipeline",
+		Type:      models.PipelineTypeIngestion,
+		Steps:     []models.PipelineStep{{Name: "step1", Plugin: "default", Action: "set_context", Parameters: map[string]interface{}{"key": "x", "value": "y"}}},
+	})
+	if err != nil {
+		t.Fatalf("failed to create pipeline: %v", err)
+	}
+
+	schedule := &models.Schedule{ID: "schedule-1", ProjectID: "test-project", Name: "nightly", Pipelines: []string{created.ID}, CronSchedule: "0 * * * *", Enabled: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := store.SaveSchedule(schedule); err != nil {
+		t.Fatalf("failed to save schedule: %v", err)
+	}
+
+	automation := &models.Automation{
+		ID:            "automation-1",
+		ProjectID:     "test-project",
+		Name:          "trigger export",
+		Enabled:       true,
+		TargetType:    models.AutomationTargetTypeDigitalTwin,
+		TargetID:      "twin-1",
+		TriggerType:   models.AutomationTriggerTypePipelineCompleted,
+		TriggerConfig: map[string]any{"pipeline_ids": []string{created.ID}},
+		ActionType:    models.AutomationActionTypeTriggerExportPipeline,
+		ActionConfig:  map[string]any{"pipeline_id": created.ID},
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}
+	if err := store.SaveAutomation(automation); err != nil {
+		t.Fatalf("failed to save automation: %v", err)
+	}
+
+	ontology := &models.Ontology{ID: "ontology-1", ProjectID: "test-project", Name: "Ontology", Content: "@prefix ex: <http://example.com/> .", Status: "active", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := store.SaveOntology(ontology); err != nil {
+		t.Fatalf("failed to save ontology: %v", err)
+	}
+	twin := &models.DigitalTwin{ID: "twin-1", ProjectID: "test-project", OntologyID: ontology.ID, Name: "Twin", Status: "active", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save twin: %v", err)
+	}
+	action := &models.Action{ID: "action-1", DigitalTwinID: twin.ID, Name: "Export", Enabled: true, Trigger: &models.ActionTrigger{PipelineID: created.ID}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := store.SaveAction(action); err != nil {
+		t.Fatalf("failed to save action: %v", err)
+	}
+
+	if err := store.SaveWorkTask(&models.WorkTask{ID: "task-1", ProjectID: "test-project", Type: models.WorkTaskTypePipelineExecution, Status: models.WorkTaskStatusQueued, Priority: 1, SubmittedAt: time.Now().UTC(), TaskSpec: models.TaskSpec{PipelineID: created.ID, ProjectID: "test-project"}}); err != nil {
+		t.Fatalf("failed to save work task: %v", err)
+	}
+
+	err = service.Delete(created.ID)
+	var inUseErr *PipelineInUseError
+	if !errors.As(err, &inUseErr) {
+		t.Fatalf("expected PipelineInUseError, got %v", err)
+	}
+	if len(inUseErr.References) < 4 {
+		t.Fatalf("expected multiple references, got %#v", inUseErr.References)
 	}
 }

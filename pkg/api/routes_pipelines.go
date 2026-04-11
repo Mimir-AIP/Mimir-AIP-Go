@@ -85,7 +85,7 @@ func init() {
 		Description: "Permanently deletes a pipeline when no persisted resources still reference it.",
 		Tags:        []string{"Pipelines"},
 		Params:      []doc.Param{doc.PParam("id", "Pipeline ID")},
-		Responses:   doc.R(doc.NoContent(), doc.NotFound(), doc.BadRequest()),
+		Responses:   doc.R(doc.NoContent(), doc.NotFound(), map[string]doc.M{"409": {"description": "Conflict — pipeline is still referenced by schedules, automations, twin actions, or active work tasks"}}),
 	})
 
 	// ── Schedules ─────────────────────────────────────────────────────────────

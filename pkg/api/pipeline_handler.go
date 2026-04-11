@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -411,12 +412,19 @@ func (h *PipelineHandler) handleUpdate(w http.ResponseWriter, r *http.Request, p
 	json.NewEncoder(w).Encode(sanitizePipeline(pipelineDef))
 }
 
-// handleDelete deletes a pipeline
+// handleDelete permanently deletes a pipeline when no persisted resources still reference it.
 func (h *PipelineHandler) handleDelete(w http.ResponseWriter, r *http.Request, pipelineID string) {
 	if err := h.service.Delete(pipelineID); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to delete pipeline: %v", err), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		var inUseErr *pipeline.PipelineInUseError
+		switch {
+		case errors.As(err, &inUseErr):
+			status = http.StatusConflict
+		case strings.Contains(err.Error(), "pipeline not found"):
+			status = http.StatusNotFound
+		}
+		http.Error(w, fmt.Sprintf("Failed to delete pipeline: %v", err), status)
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
 }

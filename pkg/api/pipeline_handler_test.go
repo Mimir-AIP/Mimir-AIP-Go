@@ -45,7 +45,7 @@ func TestCreatePipelineRedactsWebhookSecret(t *testing.T) {
 		ProjectID:     "project-1",
 		Name:          "ingest",
 		Type:          models.PipelineTypeIngestion,
-		Steps:         []models.PipelineStep{{Name: "step-1", Plugin: "default", Action: "noop"}},
+		Steps:         []models.PipelineStep{{Name: "step-1", Plugin: "default", Action: "set_context", Parameters: map[string]any{"key": "foo", "value": "bar"}}},
 		TriggerConfig: &models.PipelineTriggerConfig{AllowManual: true, Webhook: true, Secret: "super-secret"},
 	})
 	resp := httptest.NewRecorder()
@@ -76,7 +76,7 @@ func TestPipelineWebhookQueuesExecution(t *testing.T) {
 		ProjectID:     "project-1",
 		Name:          "ingest",
 		Type:          models.PipelineTypeIngestion,
-		Steps:         []models.PipelineStep{{Name: "step-1", Plugin: "default", Action: "noop"}},
+		Steps:         []models.PipelineStep{{Name: "step-1", Plugin: "default", Action: "set_context", Parameters: map[string]any{"key": "foo", "value": "bar"}}},
 		TriggerConfig: &models.PipelineTriggerConfig{AllowManual: false, Webhook: true, Secret: "token-123"},
 		Status:        models.PipelineStatusActive,
 		CreatedAt:     time.Now().UTC(),
@@ -123,7 +123,7 @@ func TestPipelineTriggerRespectsManualToggle(t *testing.T) {
 		ProjectID:     "project-1",
 		Name:          "ingest",
 		Type:          models.PipelineTypeIngestion,
-		Steps:         []models.PipelineStep{{Name: "step-1", Plugin: "default", Action: "noop"}},
+		Steps:         []models.PipelineStep{{Name: "step-1", Plugin: "default", Action: "set_context", Parameters: map[string]any{"key": "foo", "value": "bar"}}},
 		TriggerConfig: &models.PipelineTriggerConfig{AllowManual: false},
 		Status:        models.PipelineStatusActive,
 		CreatedAt:     time.Now().UTC(),
@@ -138,5 +138,35 @@ func TestPipelineTriggerRespectsManualToggle(t *testing.T) {
 	handler.HandlePipeline(resp, req)
 	if resp.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 Forbidden, got %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestPipelineDeleteReturnsConflictWhenReferenced(t *testing.T) {
+	handler, store, _, cleanup := setupPipelineHandlerTest(t)
+	defer cleanup()
+
+	pipelineRecord := &models.Pipeline{
+		ID:        "pipeline-delete",
+		ProjectID: "project-1",
+		Name:      "delete-me",
+		Type:      models.PipelineTypeIngestion,
+		Steps:     []models.PipelineStep{{Name: "step-1", Plugin: "default", Action: "set_context", Parameters: map[string]any{"key": "foo", "value": "bar"}}},
+		Status:    models.PipelineStatusActive,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := store.SavePipeline(pipelineRecord); err != nil {
+		t.Fatalf("failed to save pipeline: %v", err)
+	}
+	schedule := &models.Schedule{ID: "schedule-delete", ProjectID: "project-1", Name: "hourly", Pipelines: []string{pipelineRecord.ID}, CronSchedule: "0 * * * *", Enabled: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := store.SaveSchedule(schedule); err != nil {
+		t.Fatalf("failed to save schedule: %v", err)
+	}
+
+	resp := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/pipelines/"+pipelineRecord.ID, nil)
+	handler.HandlePipeline(resp, req)
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict, got %d body=%s", resp.Code, resp.Body.String())
 	}
 }

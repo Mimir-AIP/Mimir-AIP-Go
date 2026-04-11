@@ -17,6 +17,46 @@ const (
 	DefaultContextMaxSize = 10485760 // 10MB
 )
 
+type PipelineInUseError struct {
+	PipelineID string
+	References []string
+}
+
+func (e *PipelineInUseError) Error() string {
+	return fmt.Sprintf("pipeline %s is still referenced by %s", e.PipelineID, strings.Join(e.References, ", "))
+}
+
+var builtinPipelineActions = map[string]struct{}{
+	"http_request":         {},
+	"poll_http_json":       {},
+	"poll_rss":             {},
+	"poll_sql_incremental": {},
+	"poll_csv_drop":        {},
+	"ingest_csv":           {},
+	"ingest_csv_url":       {},
+	"query_sql":            {},
+	"load_checkpoint":      {},
+	"save_checkpoint":      {},
+	"parse_json":           {},
+	"if_else":              {},
+	"set_context":          {},
+	"get_context":          {},
+	"goto":                 {},
+	"store_cir":            {},
+	"store_cir_batch":      {},
+	"send_email":           {},
+	"send_webhook":         {},
+}
+
+func isPipelineTaskActive(status models.WorkTaskStatus) bool {
+	switch status {
+	case models.WorkTaskStatusQueued, models.WorkTaskStatusScheduled, models.WorkTaskStatusSpawned, models.WorkTaskStatusExecuting:
+		return true
+	default:
+		return false
+	}
+}
+
 // PluginRegistry interface for accessing plugins
 type PluginRegistry interface {
 	GetPlugin(name string) (Plugin, bool)
@@ -85,15 +125,16 @@ func validateTriggerConfig(trigger *models.PipelineTriggerConfig) error {
 
 // Create creates a new pipeline
 func (s *Service) Create(req *models.PipelineCreateRequest) (*models.Pipeline, error) {
-	// Validate request
 	if err := s.validateCreateRequest(req); err != nil {
+		return nil, err
+	}
+	if err := s.ensureProjectExists(req.ProjectID); err != nil {
 		return nil, err
 	}
 	if err := validateTriggerConfig(req.TriggerConfig); err != nil {
 		return nil, err
 	}
 
-	// Create pipeline
 	pipeline := &models.Pipeline{
 		ID:            uuid.New().String(),
 		ProjectID:     req.ProjectID,
@@ -106,12 +147,9 @@ func (s *Service) Create(req *models.PipelineCreateRequest) (*models.Pipeline, e
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
-
-	// Save pipeline
 	if err := s.store.SavePipeline(pipeline); err != nil {
 		return nil, fmt.Errorf("failed to save pipeline: %w", err)
 	}
-
 	return pipeline, nil
 }
 
@@ -132,13 +170,11 @@ func (s *Service) ListByProject(projectID string) ([]*models.Pipeline, error) {
 
 // Update updates a pipeline
 func (s *Service) Update(id string, req *models.PipelineUpdateRequest) (*models.Pipeline, error) {
-	// Get existing pipeline
 	pipeline, err := s.store.GetPipeline(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// Update fields
 	if req.Description != nil {
 		pipeline.Description = *req.Description
 	}
@@ -154,15 +190,13 @@ func (s *Service) Update(id string, req *models.PipelineUpdateRequest) (*models.
 	if req.Status != nil {
 		pipeline.Status = *req.Status
 	}
-
-	// Update timestamp
+	if err := s.validatePipelineDefinition(pipeline.ProjectID, pipeline.Steps); err != nil {
+		return nil, err
+	}
 	pipeline.UpdatedAt = time.Now()
-
-	// Save pipeline
 	if err := s.store.SavePipeline(pipeline); err != nil {
 		return nil, fmt.Errorf("failed to save pipeline: %w", err)
 	}
-
 	return pipeline, nil
 }
 
@@ -178,6 +212,17 @@ func (s *Service) SaveCheckpoint(checkpoint *models.PipelineCheckpoint) error {
 
 // Delete deletes a pipeline
 func (s *Service) Delete(id string) error {
+	pipeline, err := s.store.GetPipeline(id)
+	if err != nil {
+		return err
+	}
+	references, err := s.findPipelineReferences(pipeline.ProjectID, pipeline.ID)
+	if err != nil {
+		return err
+	}
+	if len(references) > 0 {
+		return &PipelineInUseError{PipelineID: pipeline.ID, References: references}
+	}
 	return s.store.DeletePipeline(id)
 }
 
@@ -378,52 +423,198 @@ func (s *Service) executeForEach(step models.PipelineStep, execution *models.Pip
 	return len(items), nil
 }
 
-// validateCreateRequest validates a pipeline creation request
-func (s *Service) validateCreateRequest(req *models.PipelineCreateRequest) error {
-	// Validate name
-	if req.Name == "" {
-		return fmt.Errorf("pipeline name is required")
+func (s *Service) ensureProjectExists(projectID string) error {
+	if strings.TrimSpace(projectID) == "" {
+		return fmt.Errorf("project_id is required")
 	}
-
-	// Validate type
-	if req.Type != models.PipelineTypeIngestion &&
-		req.Type != models.PipelineTypeProcessing &&
-		req.Type != models.PipelineTypeOutput {
-		return fmt.Errorf("invalid pipeline type: must be one of ingestion, processing, output")
+	if _, err := s.store.GetProject(projectID); err != nil {
+		return fmt.Errorf("project not found: %w", err)
 	}
+	return nil
+}
 
-	// Validate steps
-	if len(req.Steps) == 0 {
-		return fmt.Errorf("pipeline must have at least one step")
+func (s *Service) validatePipelineDefinition(projectID string, steps []models.PipelineStep) error {
+	if err := s.ensureProjectExists(projectID); err != nil {
+		return err
 	}
-
-	// Validate step names are unique
-	stepNames := make(map[string]bool)
-	for _, step := range req.Steps {
+	stepNames := make(map[string]struct{}, len(steps))
+	for _, step := range steps {
 		if step.Name == "" {
 			return fmt.Errorf("step name is required")
 		}
-		if stepNames[step.Name] {
+		if _, exists := stepNames[step.Name]; exists {
 			return fmt.Errorf("duplicate step name: %s", step.Name)
 		}
-		stepNames[step.Name] = true
+		stepNames[step.Name] = struct{}{}
+	}
+	for _, step := range steps {
+		if err := s.validatePipelineStep(step, stepNames, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-		if step.ForEach == nil {
-			if step.Plugin == "" {
-				return fmt.Errorf("step plugin is required for step: %s", step.Name)
+func (s *Service) validatePipelineStep(step models.PipelineStep, stepNames map[string]struct{}, nested bool) error {
+	if step.ForEach == nil {
+		if step.Plugin == "" {
+			return fmt.Errorf("step plugin is required for step: %s", step.Name)
+		}
+		if step.Action == "" {
+			return fmt.Errorf("step action is required for step: %s", step.Name)
+		}
+		if err := s.validatePluginAction(step.Plugin, step.Action); err != nil {
+			return fmt.Errorf("step %s: %w", step.Name, err)
+		}
+		if nested && step.Action == "goto" {
+			return fmt.Errorf("step %s: goto is not supported inside for_each steps", step.Name)
+		}
+		if step.Action == "goto" {
+			target, _ := step.Parameters["target"].(string)
+			if target == "" {
+				return fmt.Errorf("step %s: goto target parameter is required", step.Name)
 			}
-			if step.Action == "" {
-				return fmt.Errorf("step action is required for step: %s", step.Name)
+			if _, ok := stepNames[target]; !ok {
+				return fmt.Errorf("step %s: goto target not found: %s", step.Name, target)
 			}
-		} else {
-			if step.ForEach.Items == "" {
-				return fmt.Errorf("for_each.items is required for step: %s", step.Name)
-			}
-			if len(step.ForEach.Steps) == 0 {
-				return fmt.Errorf("for_each.steps must not be empty for step: %s", step.Name)
+		}
+		return nil
+	}
+	if step.ForEach.Items == "" {
+		return fmt.Errorf("for_each.items is required for step: %s", step.Name)
+	}
+	if len(step.ForEach.Steps) == 0 {
+		return fmt.Errorf("for_each.steps must not be empty for step: %s", step.Name)
+	}
+	subNames := make(map[string]struct{}, len(step.ForEach.Steps))
+	for _, subStep := range step.ForEach.Steps {
+		if subStep.Name == "" {
+			return fmt.Errorf("for_each step name is required for parent step: %s", step.Name)
+		}
+		if _, exists := subNames[subStep.Name]; exists {
+			return fmt.Errorf("duplicate for_each step name %s in step %s", subStep.Name, step.Name)
+		}
+		subNames[subStep.Name] = struct{}{}
+	}
+	for _, subStep := range step.ForEach.Steps {
+		if err := s.validatePipelineStep(subStep, subNames, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) validatePluginAction(pluginName, action string) error {
+	if pluginName == "default" || pluginName == "builtin" {
+		if _, ok := builtinPipelineActions[action]; !ok {
+			return fmt.Errorf("unknown built-in action: %s", action)
+		}
+		return nil
+	}
+	if _, ok := s.plugins.Get(pluginName); ok {
+		return nil
+	}
+	if s.pluginRegistry != nil {
+		if _, ok := s.pluginRegistry.GetPlugin(pluginName); ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown plugin: %s", pluginName)
+}
+
+func (s *Service) findPipelineReferences(projectID, pipelineID string) ([]string, error) {
+	references := make([]string, 0)
+	schedules, err := s.store.ListSchedulesByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list schedules for pipeline delete: %w", err)
+	}
+	for _, schedule := range schedules {
+		if schedule == nil {
+			continue
+		}
+		for _, id := range schedule.Pipelines {
+			if id == pipelineID {
+				references = append(references, fmt.Sprintf("schedule %s", schedule.ID))
+				break
 			}
 		}
 	}
+	automations, err := s.store.ListAutomationsByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list automations for pipeline delete: %w", err)
+	}
+	for _, automation := range automations {
+		if pipelineReferencedByAutomation(automation, pipelineID) {
+			references = append(references, fmt.Sprintf("automation %s", automation.ID))
+		}
+	}
+	twins, err := s.store.ListDigitalTwinsByProject(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list digital twins for pipeline delete: %w", err)
+	}
+	for _, twin := range twins {
+		if twin == nil {
+			continue
+		}
+		actions, err := s.store.ListActionsByDigitalTwin(twin.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list twin actions for pipeline delete: %w", err)
+		}
+		for _, action := range actions {
+			if action != nil && action.Trigger != nil && action.Trigger.PipelineID == pipelineID {
+				references = append(references, fmt.Sprintf("digital twin action %s", action.ID))
+			}
+		}
+	}
+	tasks, err := s.store.ListWorkTasks()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list work tasks for pipeline delete: %w", err)
+	}
+	for _, task := range tasks {
+		if task == nil || task.ProjectID != projectID || task.TaskSpec.PipelineID != pipelineID {
+			continue
+		}
+		if isPipelineTaskActive(task.Status) {
+			references = append(references, fmt.Sprintf("work task %s", task.ID))
+		}
+	}
+	return references, nil
+}
 
-	return nil
+func pipelineReferencedByAutomation(automation *models.Automation, pipelineID string) bool {
+	if automation == nil {
+		return false
+	}
+	if actionPipelineID, ok := automation.ActionConfig["pipeline_id"].(string); ok && actionPipelineID == pipelineID {
+		return true
+	}
+	if ids, ok := automation.TriggerConfig["pipeline_ids"].([]string); ok {
+		for _, id := range ids {
+			if id == pipelineID {
+				return true
+			}
+		}
+	}
+	if idsAny, ok := automation.TriggerConfig["pipeline_ids"].([]interface{}); ok {
+		for _, raw := range idsAny {
+			if id, ok := raw.(string); ok && id == pipelineID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// validateCreateRequest validates a pipeline creation request
+func (s *Service) validateCreateRequest(req *models.PipelineCreateRequest) error {
+	if req.Name == "" {
+		return fmt.Errorf("pipeline name is required")
+	}
+	if req.Type != models.PipelineTypeIngestion && req.Type != models.PipelineTypeProcessing && req.Type != models.PipelineTypeOutput {
+		return fmt.Errorf("invalid pipeline type: must be one of ingestion, processing, output")
+	}
+	if len(req.Steps) == 0 {
+		return fmt.Errorf("pipeline must have at least one step")
+	}
+	return s.validatePipelineDefinition(req.ProjectID, req.Steps)
 }

@@ -23,12 +23,86 @@ func NewService(store metadatastore.MetadataStore) *Service {
 	}
 }
 
+type OntologyProjectMismatchError struct {
+	OntologyID        string
+	ExpectedProjectID string
+	ActualProjectID   string
+}
+
+func (e *OntologyProjectMismatchError) Error() string {
+	return fmt.Sprintf("ontology %s belongs to project %s, not %s", e.OntologyID, e.ActualProjectID, e.ExpectedProjectID)
+}
+
+type OntologyInUseError struct {
+	OntologyID string
+	References []string
+}
+
+func (e *OntologyInUseError) Error() string {
+	return fmt.Sprintf("ontology %s is still referenced by %s", e.OntologyID, strings.Join(e.References, ", "))
+}
+
+func validOntologyStatus(status string) bool {
+	return status == "draft" || status == "active" || status == "archived"
+}
+
+func validateOntologyContent(content string) error {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return fmt.Errorf("content is required")
+	}
+	if !strings.Contains(trimmed, "@prefix") {
+		return fmt.Errorf("ontology content must include Turtle prefixes")
+	}
+	return nil
+}
+
+func (s *Service) ensureProjectExists(projectID string) error {
+	if strings.TrimSpace(projectID) == "" {
+		return fmt.Errorf("project_id is required")
+	}
+	if _, err := s.store.GetProject(projectID); err != nil {
+		return fmt.Errorf("project not found: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) EnsureProjectExists(projectID string) error {
+	return s.ensureProjectExists(projectID)
+}
+
+func (s *Service) getOwnedOntology(projectID, ontologyID string) (*models.Ontology, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return nil, fmt.Errorf("project_id is required")
+	}
+	ontology, err := s.store.GetOntology(ontologyID)
+	if err != nil {
+		return nil, fmt.Errorf("ontology not found: %w", err)
+	}
+	if ontology.ProjectID != projectID {
+		return nil, &OntologyProjectMismatchError{OntologyID: ontologyID, ExpectedProjectID: projectID, ActualProjectID: ontology.ProjectID}
+	}
+	return ontology, nil
+}
+
+func (s *Service) GetOwnedOntology(projectID, ontologyID string) (*models.Ontology, error) {
+	return s.getOwnedOntology(projectID, ontologyID)
+}
+
 // CreateOntology creates a new ontology
 func (s *Service) CreateOntology(req *models.OntologyCreateRequest) (*models.Ontology, error) {
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ontology request: %w", err)
 	}
-
+	if err := s.ensureProjectExists(req.ProjectID); err != nil {
+		return nil, err
+	}
+	if !validOntologyStatus(req.Status) {
+		return nil, fmt.Errorf("status must be one of: draft, active, archived")
+	}
+	if err := validateOntologyContent(req.Content); err != nil {
+		return nil, err
+	}
 	now := time.Now()
 	ontology := &models.Ontology{
 		ID:          uuid.New().String(),
@@ -42,19 +116,20 @@ func (s *Service) CreateOntology(req *models.OntologyCreateRequest) (*models.Ont
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-
 	if err := s.store.SaveOntology(ontology); err != nil {
 		return nil, fmt.Errorf("failed to save ontology: %w", err)
 	}
-
 	log.Printf("Created ontology %s for project %s", ontology.ID, ontology.ProjectID)
-
 	return ontology, nil
 }
 
 // GetOntology retrieves an ontology by ID
 func (s *Service) GetOntology(ontologyID string) (*models.Ontology, error) {
 	return s.store.GetOntology(ontologyID)
+}
+
+func (s *Service) GetOntologyForProject(projectID, ontologyID string) (*models.Ontology, error) {
+	return s.getOwnedOntology(projectID, ontologyID)
 }
 
 // GetProjectOntologies retrieves all ontologies for a project
@@ -68,8 +143,6 @@ func (s *Service) UpdateOntology(ontologyID string, req *models.OntologyUpdateRe
 	if err != nil {
 		return nil, fmt.Errorf("ontology not found: %w", err)
 	}
-
-	// Apply updates
 	if req.Name != nil {
 		ontology.Name = *req.Name
 	}
@@ -80,35 +153,85 @@ func (s *Service) UpdateOntology(ontologyID string, req *models.OntologyUpdateRe
 		ontology.Version = *req.Version
 	}
 	if req.Content != nil {
+		if err := validateOntologyContent(*req.Content); err != nil {
+			return nil, err
+		}
 		ontology.Content = *req.Content
 	}
 	if req.Status != nil {
-		if *req.Status != "draft" && *req.Status != "active" && *req.Status != "archived" && *req.Status != "needs_review" {
+		if !validOntologyStatus(*req.Status) {
 			return nil, fmt.Errorf("invalid status: %s", *req.Status)
 		}
 		ontology.Status = *req.Status
 	}
-
 	ontology.UpdatedAt = time.Now()
-
 	if err := s.store.SaveOntology(ontology); err != nil {
 		return nil, fmt.Errorf("failed to update ontology: %w", err)
 	}
-
 	log.Printf("Updated ontology %s", ontologyID)
-
 	return ontology, nil
+}
+
+func (s *Service) UpdateOntologyForProject(projectID, ontologyID string, req *models.OntologyUpdateRequest) (*models.Ontology, error) {
+	if _, err := s.getOwnedOntology(projectID, ontologyID); err != nil {
+		return nil, err
+	}
+	return s.UpdateOntology(ontologyID, req)
 }
 
 // DeleteOntology deletes an ontology
 func (s *Service) DeleteOntology(ontologyID string) error {
+	references, err := s.findOntologyReferences(ontologyID)
+	if err != nil {
+		return err
+	}
+	if len(references) > 0 {
+		return &OntologyInUseError{OntologyID: ontologyID, References: references}
+	}
 	if err := s.store.DeleteOntology(ontologyID); err != nil {
 		return fmt.Errorf("failed to delete ontology: %w", err)
 	}
-
 	log.Printf("Deleted ontology %s", ontologyID)
-
 	return nil
+}
+
+func (s *Service) DeleteOntologyForProject(projectID, ontologyID string) error {
+	if _, err := s.getOwnedOntology(projectID, ontologyID); err != nil {
+		return err
+	}
+	return s.DeleteOntology(ontologyID)
+}
+
+func (s *Service) findOntologyReferences(ontologyID string) ([]string, error) {
+	references := make([]string, 0)
+	modelList, err := s.store.ListMLModels()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ml models for ontology delete: %w", err)
+	}
+	for _, model := range modelList {
+		if model != nil && model.OntologyID == ontologyID {
+			references = append(references, fmt.Sprintf("ml model %s", model.ID))
+		}
+	}
+	twins, err := s.store.ListDigitalTwins()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list digital twins for ontology delete: %w", err)
+	}
+	for _, twin := range twins {
+		if twin != nil && twin.OntologyID == ontologyID {
+			references = append(references, fmt.Sprintf("digital twin %s", twin.ID))
+		}
+	}
+	configs, err := s.store.ListStorageConfigs()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list storage configs for ontology delete: %w", err)
+	}
+	for _, cfg := range configs {
+		if cfg != nil && cfg.OntologyID == ontologyID {
+			references = append(references, fmt.Sprintf("storage config %s", cfg.ID))
+		}
+	}
+	return references, nil
 }
 
 // OntologyDiff describes the differences between two ontologies.
@@ -135,20 +258,6 @@ func (s *Service) DiffOntologies(oldContent, newContent string) OntologyDiff {
 	diff.HasChanges = len(diff.AddedClasses) > 0 || len(diff.RemovedClasses) > 0 ||
 		len(diff.AddedProperties) > 0 || len(diff.RemovedProperties) > 0
 	return diff
-}
-
-// FlagForReview sets an ontology's status to "needs_review".
-// The diff is returned in the API response by the caller and is not persisted separately.
-func (s *Service) FlagForReview(ontologyID string, diff OntologyDiff) error {
-	ont, err := s.store.GetOntology(ontologyID)
-	if err != nil {
-		return fmt.Errorf("ontology not found: %w", err)
-	}
-
-	ont.Status = "needs_review"
-	ont.UpdatedAt = time.Now()
-
-	return s.store.SaveOntology(ont)
 }
 
 // parseTurtleDeclarations extracts class and property names from Turtle content.

@@ -371,39 +371,44 @@ func init() {
 		}),
 
 		// ── Ontologies ────────────────────────────────────────────────────────
+		// ── Ontologies ────────────────────────────────────────────────────────
 		"Ontology": Props(nil, M{
 			"id":          Str("Ontology ID (UUID)"),
 			"project_id":  Str("Owning project ID"),
 			"name":        Str("Ontology name"),
 			"description": Str("Ontology description"),
 			"content":     Str("OWL/Turtle ontology content"),
-			"status":      Str("draft | active | needs_review | deprecated"),
+			"status":      Str("draft | active | archived"),
 			"created_at":  Str("ISO-8601 creation timestamp"),
 			"updated_at":  Str("ISO-8601 last-updated timestamp"),
 		}),
-		"OntologyCreateRequest": Props([]string{"project_id", "name"}, M{
+		"OntologyCreateRequest": Props([]string{"project_id", "name", "content"}, M{
 			"project_id":  Str("Owning project ID"),
 			"name":        Str("Ontology name"),
 			"description": Str("Description"),
+			"version":     Str("Version string"),
 			"content":     Str("Initial OWL/Turtle content"),
+			"status":      Str("draft | active | archived"),
 		}),
 		"OntologyUpdateRequest": Props(nil, M{
 			"name":        Str("New name"),
 			"description": Str("New description"),
+			"version":     Str("New version string"),
 			"content":     Str("Updated OWL/Turtle content"),
-			"status":      Str("New status"),
+			"status":      Str("New status: draft | active | archived"),
 		}),
 
 		// ── Extraction ────────────────────────────────────────────────────────
-		"ExtractionRequest": Props([]string{"project_id", "storage_id"}, M{
-			"project_id":  Str("Project ID"),
-			"storage_id":  Str("Storage config ID to extract from"),
-			"ontology_id": Str("Existing ontology to diff against (optional)"),
+		"ExtractionRequest": Props([]string{"project_id", "storage_ids", "ontology_name"}, M{
+			"project_id":           Str("Project ID"),
+			"storage_ids":          Arr(M{"type": "string"}),
+			"ontology_name":        Str("Name for the generated ontology"),
+			"include_structured":   Bool("Whether to extract from structured data"),
+			"include_unstructured": Bool("Whether to extract from unstructured data"),
 		}),
 		"ExtractionResult": Props(nil, M{
-			"ontology":     Ref("Ontology"),
-			"diff":         Obj("OntologyDiff — added/removed/modified classes and properties"),
-			"needs_review": Bool("True if the diff is significant enough to flag for human review"),
+			"ontology":           Ref("Ontology"),
+			"extraction_summary": M{"type": "object", "additionalProperties": true},
 		}),
 
 		// ── ML Models ─────────────────────────────────────────────────────────

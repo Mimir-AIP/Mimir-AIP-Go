@@ -42,6 +42,10 @@ func (h *ExtractionHandler) HandleExtractAndGenerate(w http.ResponseWriter, r *h
 		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
 		return
 	}
+	if err := h.ontologyService.EnsureProjectExists(req.ProjectID); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
 
 	// Extract entities from storage
 	extractionResult, err := h.extractionService.ExtractFromStorage(

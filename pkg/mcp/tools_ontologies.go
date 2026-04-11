@@ -14,25 +14,18 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 	// list_ontologies
 	s.AddTool(
 		mcp.NewTool("list_ontologies",
-			mcp.WithDescription("List ontologies, optionally filtered by project"),
+			mcp.WithDescription("List ontologies for a specific project"),
 			mcp.WithString("project_id",
-				mcp.Description("Filter by project ID; omit to list all ontologies"),
+				mcp.Required(),
+				mcp.Description("Project ID"),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			projectID := req.GetString("project_id", "")
-			var (
-				ontologies []*models.Ontology
-				err        error
-			)
-			if projectID != "" {
-				ontologies, err = m.ontologySvc.GetProjectOntologies(projectID)
-			} else {
-				data, _ := json.Marshal(map[string]string{
-					"message": "Provide project_id to list ontologies for a specific project",
-				})
-				return mcp.NewToolResultText(string(data)), nil
+			if projectID == "" {
+				return mcp.NewToolResultError("project_id is required"), nil
 			}
+			ontologies, err := m.ontologySvc.GetProjectOntologies(projectID)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -45,17 +38,16 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 	s.AddTool(
 		mcp.NewTool("get_ontology",
 			mcp.WithDescription("Get details of a specific ontology by ID"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("Ontology ID"),
-			),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Ontology ID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
 			}
-			ontology, err := m.ontologySvc.GetOntology(id)
+			ontology, err := m.ontologySvc.GetOntologyForProject(projectID, id)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -116,30 +108,19 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 	s.AddTool(
 		mcp.NewTool("update_ontology",
 			mcp.WithDescription("Update an existing ontology's metadata or content"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("Ontology ID"),
-			),
-			mcp.WithString("name",
-				mcp.Description("New name"),
-			),
-			mcp.WithString("description",
-				mcp.Description("New description"),
-			),
-			mcp.WithString("version",
-				mcp.Description("New version string e.g. 2.0.0"),
-			),
-			mcp.WithString("content",
-				mcp.Description("Replacement OWL/Turtle content"),
-			),
-			mcp.WithString("status",
-				mcp.Description("New status: active or deprecated"),
-			),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Ontology ID")),
+			mcp.WithString("name", mcp.Description("New name")),
+			mcp.WithString("description", mcp.Description("New description")),
+			mcp.WithString("version", mcp.Description("New version string e.g. 2.0.0")),
+			mcp.WithString("content", mcp.Description("Replacement OWL/Turtle content")),
+			mcp.WithString("status", mcp.Description("New status: draft, active, or archived")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
 			}
 			updateReq := &models.OntologyUpdateRequest{}
 			if name := req.GetString("name", ""); name != "" {
@@ -157,7 +138,7 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 			if st := req.GetString("status", ""); st != "" {
 				updateReq.Status = &st
 			}
-			ontology, err := m.ontologySvc.UpdateOntology(id, updateReq)
+			ontology, err := m.ontologySvc.UpdateOntologyForProject(projectID, id, updateReq)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -170,17 +151,16 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 	s.AddTool(
 		mcp.NewTool("delete_ontology",
 			mcp.WithDescription("Delete an ontology by ID"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("Ontology ID"),
-			),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Ontology ID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
 			}
-			if err := m.ontologySvc.DeleteOntology(id); err != nil {
+			if err := m.ontologySvc.DeleteOntologyForProject(projectID, id); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			return mcp.NewToolResultText(`{"success":true}`), nil
@@ -277,25 +257,12 @@ func registerOntologyTools(s *server.MCPServer, m *MimirMCPServer) {
 func init_extractAndGenerateOntology(s *server.MCPServer, m *MimirMCPServer) {
 	s.AddTool(
 		mcp.NewTool("extract_and_generate_ontology",
-			mcp.WithDescription("Extract entities from storage backends and generate an OWL ontology; diffs against any existing active ontology and flags for review if changes are detected"),
-			mcp.WithString("project_id",
-				mcp.Required(),
-				mcp.Description("Project ID"),
-			),
-			mcp.WithString("storage_ids",
-				mcp.Required(),
-				mcp.Description("Comma-separated list of storage config IDs to extract from"),
-			),
-			mcp.WithString("ontology_name",
-				mcp.Required(),
-				mcp.Description("Name for the generated ontology"),
-			),
-			mcp.WithString("include_structured",
-				mcp.Description("Include structured data extraction (default true)"),
-			),
-			mcp.WithString("include_unstructured",
-				mcp.Description("Include unstructured/text extraction (default true)"),
-			),
+			mcp.WithDescription("Extract entities from storage backends and generate or update an ontology directly"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Project ID")),
+			mcp.WithString("storage_ids", mcp.Required(), mcp.Description("Comma-separated list of storage config IDs to extract from")),
+			mcp.WithString("ontology_name", mcp.Required(), mcp.Description("Ontology name to create or update")),
+			mcp.WithString("include_structured", mcp.Description("Include structured extraction (default true)")),
+			mcp.WithString("include_unstructured", mcp.Description("Include unstructured extraction (default false)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			projectID := req.GetString("project_id", "")
@@ -305,47 +272,23 @@ func init_extractAndGenerateOntology(s *server.MCPServer, m *MimirMCPServer) {
 				return mcp.NewToolResultError("project_id, storage_ids, and ontology_name are required"), nil
 			}
 			storageIDs := splitCSV(storageIDsStr)
-			includeStructured := req.GetString("include_structured", "true") != "false"
-			includeUnstructured := req.GetString("include_unstructured", "true") != "false"
-
-			extractionResult, err := m.extractionSvc.ExtractFromStorage(projectID, storageIDs, includeStructured, includeUnstructured)
+			extractionResult, err := m.extractionSvc.ExtractFromStorage(projectID, storageIDs, parseBool(req.GetString("include_structured", "true"), true), parseBool(req.GetString("include_unstructured", "false"), false))
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-
-			newOntology, err := m.ontologySvc.GenerateFromExtraction(projectID, ontologyName, extractionResult)
+			ontology, err := m.ontologySvc.GenerateFromExtraction(projectID, ontologyName, extractionResult)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-
-			// Diff against existing active ontology
-			var ontologyDiff interface{}
-			existingOntologies, err := m.ontologySvc.GetProjectOntologies(projectID)
-			if err == nil {
-				for _, existing := range existingOntologies {
-					if existing.Status == "active" && existing.ID != newOntology.ID {
-						diff := m.ontologySvc.DiffOntologies(existing.Content, newOntology.Content)
-						if diff.HasChanges {
-							_ = m.ontologySvc.FlagForReview(newOntology.ID, diff)
-							newOntology.Status = "needs_review"
-							ontologyDiff = diff
-						}
-						break
-					}
-				}
-			}
-
-			resp := map[string]interface{}{
-				"ontology": newOntology,
-				"extraction_summary": map[string]int{
-					"entities_count":      len(extractionResult.Entities),
-					"relationships_count": len(extractionResult.Relationships),
+			resp := map[string]any{
+				"ontology": ontology,
+				"extraction_summary": map[string]any{
+					"entities_count":           len(extractionResult.Entities),
+					"relationships_count":      len(extractionResult.Relationships),
+					"cross_source_links_count": len(extractionResult.CrossSourceLinks),
+					"cross_source_links":       extractionResult.CrossSourceLinks,
 				},
 			}
-			if ontologyDiff != nil {
-				resp["ontology_diff"] = ontologyDiff
-			}
-
 			data, _ := json.Marshal(resp)
 			return mcp.NewToolResultText(string(data)), nil
 		},

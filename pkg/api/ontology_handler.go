@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -19,6 +20,25 @@ type OntologyHandler struct {
 func NewOntologyHandler(service *ontology.Service) *OntologyHandler {
 	return &OntologyHandler{
 		service: service,
+	}
+}
+
+func ontologyErrorStatus(err error) int {
+	var projectMismatchErr *ontology.OntologyProjectMismatchError
+	var inUseErr *ontology.OntologyInUseError
+	switch {
+	case err == nil:
+		return http.StatusOK
+	case errors.As(err, &projectMismatchErr):
+		return http.StatusForbidden
+	case errors.As(err, &inUseErr):
+		return http.StatusConflict
+	case strings.Contains(err.Error(), "not found"):
+		return http.StatusNotFound
+	case strings.Contains(err.Error(), "invalid"), strings.Contains(err.Error(), "project_id is required"):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
 	}
 }
 
@@ -92,10 +112,9 @@ func (h *OntologyHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	ontology, err := h.service.CreateOntology(&req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create ontology: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to create ontology: %v", err), ontologyErrorStatus(err))
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(ontology)
@@ -103,40 +122,51 @@ func (h *OntologyHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 // handleGet handles GET /api/ontologies/{id}
 func (h *OntologyHandler) handleGet(w http.ResponseWriter, r *http.Request, ontologyID string) {
-	ontology, err := h.service.GetOntology(ontologyID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get ontology: %v", err), http.StatusNotFound)
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-
+	ontologyRecord, err := h.service.GetOntologyForProject(projectID, ontologyID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get ontology: %v", err), ontologyErrorStatus(err))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ontology)
+	json.NewEncoder(w).Encode(ontologyRecord)
 }
 
 // handleUpdate handles PUT /api/ontologies/{id}
 func (h *OntologyHandler) handleUpdate(w http.ResponseWriter, r *http.Request, ontologyID string) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
+		return
+	}
 	var req models.OntologyUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
-
-	ontology, err := h.service.UpdateOntology(ontologyID, &req)
+	ontologyRecord, err := h.service.UpdateOntologyForProject(projectID, ontologyID, &req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update ontology: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to update ontology: %v", err), ontologyErrorStatus(err))
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ontology)
+	json.NewEncoder(w).Encode(ontologyRecord)
 }
 
 // handleDelete handles DELETE /api/ontologies/{id}
 func (h *OntologyHandler) handleDelete(w http.ResponseWriter, r *http.Request, ontologyID string) {
-	if err := h.service.DeleteOntology(ontologyID); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to delete ontology: %v", err), http.StatusInternalServerError)
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-
+	if err := h.service.DeleteOntologyForProject(projectID, ontologyID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete ontology: %v", err), ontologyErrorStatus(err))
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

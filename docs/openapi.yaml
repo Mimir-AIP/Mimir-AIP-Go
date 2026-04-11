@@ -539,12 +539,9 @@ components:
             type: object
         ExtractionResult:
             properties:
-                diff:
-                    description: OntologyDiff — added/removed/modified classes and properties
+                extraction_summary:
+                    additionalProperties: true
                     type: object
-                needs_review:
-                    description: True if the diff is significant enough to flag for human review
-                    type: boolean
                 ontology:
                     $ref: '#/components/schemas/Ontology'
             type: object
@@ -844,7 +841,7 @@ components:
                     description: Owning project ID
                     type: string
                 status:
-                    description: draft | active | needs_review | deprecated
+                    description: draft | active | archived
                     type: string
                 updated_at:
                     description: ISO-8601 last-updated timestamp
@@ -864,9 +861,16 @@ components:
                 project_id:
                     description: Owning project ID
                     type: string
+                status:
+                    description: draft | active | archived
+                    type: string
+                version:
+                    description: Version string
+                    type: string
             required:
                 - project_id
                 - name
+                - content
             type: object
         OntologyUpdateRequest:
             properties:
@@ -880,7 +884,10 @@ components:
                     description: New name
                     type: string
                 status:
-                    description: New status
+                    description: New status: draft | active | archived
+                    type: string
+                version:
+                    description: New version string
                     type: string
             type: object
         OrderByClause:
@@ -2640,7 +2647,7 @@ paths:
                 - Digital Twins
     /api/extraction/generate-ontology:
         post:
-            description: Runs the schema-inductive extraction algorithm over the specified storage backends, generates an OWL/Turtle ontology, and diffs it against existing active ontologies. If changes are detected the new ontology is flagged as 'needs_review' and the diff is returned.
+            description: Runs the extraction algorithm over the specified storage backends and generates or updates a project ontology directly.
             requestBody:
                 content:
                     application/json:
@@ -2654,13 +2661,10 @@ paths:
                             schema:
                                 properties:
                                     extraction_summary:
-                                        description: Entity and relationship counts
+                                        additionalProperties: true
                                         type: object
                                     ontology:
                                         $ref: '#/components/schemas/Ontology'
-                                    ontology_diff:
-                                        description: Diff against the existing active ontology, if any
-                                        type: object
                                 type: object
                     description: Created
                 "400":
@@ -3080,11 +3084,16 @@ paths:
                 - Ontologies
     /api/ontologies/{id}:
         delete:
-            description: ""
             parameters:
                 - description: Ontology ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -3097,11 +3106,16 @@ paths:
             tags:
                 - Ontologies
         get:
-            description: ""
             parameters:
                 - description: Ontology ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -3118,11 +3132,16 @@ paths:
             tags:
                 - Ontologies
         put:
-            description: ""
             parameters:
                 - description: Ontology ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string

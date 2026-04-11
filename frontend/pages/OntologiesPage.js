@@ -5,6 +5,10 @@
 	const { ProjectContext } = root.context;
 	const { Button, FormField, Modal, Table } = root.components.primitives;
 
+	function emptyOntologyForm(projectId = '') {
+		return { name: '', project_id: projectId, description: '', version: '1.0', status: 'draft', content: '@prefix : <http://example.org/mimir#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n\n:Entity a owl:Class .' };
+	}
+
 	pages.OntologiesPage = function OntologiesPage() {
 		const { activeProject, projects } = React.useContext(ProjectContext);
 		const [ontologies, setOntologies] = React.useState([]);
@@ -14,8 +18,8 @@
 		const [showExtractionModal, setShowExtractionModal] = React.useState(false);
 		const [storageConfigs, setStorageConfigs] = React.useState([]);
 		const [storageLoadError, setStorageLoadError] = React.useState('');
-		const [formData, setFormData] = React.useState({ name: '', project_id: '', schema: '{}' });
-		const [extractionForm, setExtractionForm] = React.useState({ project_id: '', storage_config_id: '', ontology_name: '' });
+		const [formData, setFormData] = React.useState(emptyOntologyForm());
+		const [extractionForm, setExtractionForm] = React.useState({ project_id: '', storage_ids: [], ontology_name: '', include_structured: true, include_unstructured: false });
 
 		React.useEffect(() => {
 			if (activeProject) {
@@ -64,10 +68,17 @@
 			try {
 				await apiCall('/api/ontologies', {
 					method: 'POST',
-					body: JSON.stringify({ ...formData, schema: JSON.parse(formData.schema) }),
+					body: JSON.stringify({
+						project_id: formData.project_id,
+						name: formData.name,
+						description: formData.description,
+						version: formData.version,
+						status: formData.status,
+						content: formData.content,
+					}),
 				});
 				setShowModal(false);
-				setFormData({ name: '', project_id: activeProject?.id || '', schema: '{}' });
+				setFormData(emptyOntologyForm(activeProject?.id || ''));
 				notify({ tone: 'success', message: 'Ontology created.' });
 				loadOntologies();
 			} catch (error) {
@@ -84,7 +95,7 @@
 			});
 			if (!confirmed) return;
 			try {
-				await apiCall(`/api/ontologies/${id}`, { method: 'DELETE' });
+				await apiCall(`/api/ontologies/${id}?project_id=${activeProject?.id || ''}`, { method: 'DELETE' });
 				notify({ tone: 'success', message: 'Ontology deleted.' });
 				loadOntologies();
 			} catch (error) {
@@ -92,34 +103,33 @@
 			}
 		};
 
-		const handleApprove = async (id) => {
+		const handlePromote = async (id) => {
 			try {
-				await apiCall(`/api/ontologies/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) });
+				await apiCall(`/api/ontologies/${id}?project_id=${activeProject?.id || ''}`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) });
 				notify({ tone: 'success', message: 'Ontology promoted to active.' });
 				loadOntologies();
 			} catch (error) {
-				notify({ tone: 'error', message: `Failed to approve ontology: ${error.message}` });
-			}
-		};
-
-		const handleReject = async (id) => {
-			try {
-				await apiCall(`/api/ontologies/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'draft' }) });
-				notify({ tone: 'success', message: 'Ontology moved back to draft.' });
-				loadOntologies();
-			} catch (error) {
-				notify({ tone: 'error', message: `Failed to reject ontology: ${error.message}` });
+				notify({ tone: 'error', message: `Failed to promote ontology: ${error.message}` });
 			}
 		};
 
 		const handleExtraction = async (e) => {
 			e.preventDefault();
 			try {
-				const result = await apiCall('/api/extraction/generate-ontology', { method: 'POST', body: JSON.stringify(extractionForm) });
-				notify({ tone: 'success', message: result?.message || 'Ontology extraction started. Refresh in a moment to see the generated ontology.' });
+				const result = await apiCall('/api/extraction/generate-ontology', {
+					method: 'POST',
+					body: JSON.stringify({
+						project_id: extractionForm.project_id,
+						storage_ids: extractionForm.storage_ids,
+						ontology_name: extractionForm.ontology_name,
+						include_structured: extractionForm.include_structured,
+						include_unstructured: extractionForm.include_unstructured,
+					}),
+				});
+				notify({ tone: 'success', message: result?.ontology?.name ? `Generated ontology: ${result.ontology.name}` : 'Ontology generation complete.' });
 				setShowExtractionModal(false);
-				setExtractionForm({ project_id: activeProject?.id || '', storage_config_id: '', ontology_name: '' });
-				window.setTimeout(loadOntologies, 2000);
+				setExtractionForm({ project_id: activeProject?.id || '', storage_ids: [], ontology_name: '', include_structured: true, include_unstructured: false });
+				window.setTimeout(loadOntologies, 500);
 			} catch (error) {
 				notify({ tone: 'error', message: `Failed to start extraction: ${error.message}` });
 			}
@@ -142,10 +152,11 @@
 					<h2>Ontologies</h2>
 					<div className="inline-actions">
 						<Button label="+ New Ontology" onClick={() => setShowModal(true)} />
-						<Button label="Extract from Storage" onClick={openExtractionModal} variant="secondary" />
+						<Button label="Generate from Storage" onClick={openExtractionModal} variant="secondary" />
 					</div>
 				</div>
 
+				{activeProject ? <div className="page-notice"><strong>Project scope:</strong> showing ontologies for {activeProject.name}.</div> : null}
 				{loadError ? <div className="error-message">{loadError}</div> : null}
 
 				{loading ? (
@@ -158,9 +169,7 @@
 						emptyState={activeProject ? 'No ontologies exist for this project yet.' : 'Select a project to inspect ontologies.'}
 						actions={(row) => (
 							<>
-								{row.status === 'needs_review' ? <Button label="Approve" onClick={() => handleApprove(row.id)} variant="secondary" /> : null}
-								{row.status === 'needs_review' ? <Button label="Reject" onClick={() => handleReject(row.id)} variant="secondary" /> : null}
-								{row.status === 'draft' ? <Button label="Promote" onClick={() => handleApprove(row.id)} variant="secondary" /> : null}
+								{row.status === 'draft' ? <Button label="Promote" onClick={() => handlePromote(row.id)} variant="secondary" /> : null}
 								<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
 							</>
 						)}
@@ -173,20 +182,33 @@
 							<FormField label="Ontology Name" value={formData.name} onChange={(v) => setFormData({ ...formData, name: v })} required />
 							<FormField label="Project" type="select" value={formData.project_id} onChange={(v) => setFormData({ ...formData, project_id: v })} options={projectOptions} required />
 						</div>
-						<FormField label="Schema (JSON)" type="textarea" value={formData.schema} onChange={(v) => setFormData({ ...formData, schema: v })} placeholder='{"entities": [], "relationships": []}' required />
+						<div className="form-grid">
+							<FormField label="Version" value={formData.version} onChange={(v) => setFormData({ ...formData, version: v })} />
+							<FormField label="Status" type="select" value={formData.status} onChange={(v) => setFormData({ ...formData, status: v })} options={['draft', 'active', 'archived']} required />
+						</div>
+						<FormField label="Description" type="textarea" value={formData.description} onChange={(v) => setFormData({ ...formData, description: v })} />
+						<FormField label="Ontology Content (OWL/Turtle)" type="textarea" value={formData.content} onChange={(v) => setFormData({ ...formData, content: v })} required rows={10} />
 						<Button type="submit" label="Create Ontology" />
 					</form>
 				</Modal>
 
-				<Modal open={showExtractionModal} onClose={() => setShowExtractionModal(false)} title="Extract Ontology from Storage">
+				<Modal open={showExtractionModal} onClose={() => setShowExtractionModal(false)} title="Generate Ontology from Storage">
 					<form onSubmit={handleExtraction}>
 						{storageLoadError ? <div className="error-message">{storageLoadError}</div> : null}
 						<div className="form-grid">
 							<FormField label="Project" type="select" value={extractionForm.project_id} onChange={(v) => setExtractionForm({ ...extractionForm, project_id: v })} options={projectOptions} required />
-							<FormField label="Storage Config" type="select" value={extractionForm.storage_config_id} onChange={(v) => setExtractionForm({ ...extractionForm, storage_config_id: v })} options={storageConfigOptions} required hint={storageConfigs.length ? undefined : 'No storage configs are currently available for this project.'} />
+							<FormField label="Storage Config" type="select" value={extractionForm.storage_ids[0] || ''} onChange={(v) => setExtractionForm({ ...extractionForm, storage_ids: v ? [v] : [] })} options={storageConfigOptions} required hint={storageConfigs.length ? undefined : 'No storage configs are currently available for this project.'} />
 						</div>
 						<FormField label="Ontology Name" value={extractionForm.ontology_name} onChange={(v) => setExtractionForm({ ...extractionForm, ontology_name: v })} placeholder="Extracted Ontology" required />
-						<Button type="submit" label="Start Extraction" disabled={!storageConfigs.length} />
+						<label className="checkbox-row">
+							<input type="checkbox" checked={extractionForm.include_structured} onChange={(e) => setExtractionForm({ ...extractionForm, include_structured: e.target.checked })} />
+							Include structured extraction
+						</label>
+						<label className="checkbox-row">
+							<input type="checkbox" checked={extractionForm.include_unstructured} onChange={(e) => setExtractionForm({ ...extractionForm, include_unstructured: e.target.checked })} />
+							Include unstructured extraction
+						</label>
+						<Button type="submit" label="Generate Ontology" disabled={!storageConfigs.length} />
 					</form>
 				</Modal>
 			</div>

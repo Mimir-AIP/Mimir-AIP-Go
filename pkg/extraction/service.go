@@ -61,7 +61,7 @@ func (s *Service) ExtractFromStorage(projectID string, storageIDs []string, incl
 	cirsByStorage := make(map[string][]*models.CIR, len(storageIDs))
 
 	for _, storageID := range storageIDs {
-		cirs, err := s.storageService.Retrieve(storageID, &models.CIRQuery{Limit: 1000})
+		cirs, err := s.storageService.RetrieveForProject(projectID, storageID, &models.CIRQuery{Limit: 1000})
 		if err != nil {
 			// Non-fatal: log and continue so one bad source doesn't abort everything.
 			fmt.Printf("Warning: cross-source profiling: failed to retrieve from %s: %v\n", storageID, err)
@@ -314,15 +314,15 @@ type ngramOcc struct {
 
 // corpusIndex accumulates statistics across all ingested records.
 type corpusIndex struct {
-	N        int                         // total record count
-	docFreq  map[string]int              // n-gram → # distinct records
-	termFreq map[string]int              // n-gram → total occurrence count
-	capCount map[string]int              // n-gram → # occurrences where capFirst
-	fullVal  map[string]int              // n-gram → # times it was the full field value
-	ngramLen map[string]int              // n-gram → word count
-	fields   map[string]map[string]bool  // n-gram → set of field keys
-	coOcc    map[string]map[string]int   // n-gram → n-gram → # co-occurring records
-	perDoc   []map[string]bool           // per-record n-gram sets (used for coOcc build)
+	N        int                        // total record count
+	docFreq  map[string]int             // n-gram → # distinct records
+	termFreq map[string]int             // n-gram → total occurrence count
+	capCount map[string]int             // n-gram → # occurrences where capFirst
+	fullVal  map[string]int             // n-gram → # times it was the full field value
+	ngramLen map[string]int             // n-gram → word count
+	fields   map[string]map[string]bool // n-gram → set of field keys
+	coOcc    map[string]map[string]int  // n-gram → n-gram → # co-occurring records
+	perDoc   []map[string]bool          // per-record n-gram sets (used for coOcc build)
 }
 
 func newCorpusIndex() *corpusIndex {
@@ -657,9 +657,9 @@ func candidatesToEntities(candidates map[string]float64, idx *corpusIndex) []mod
 	entities := make([]models.ExtractedEntity, 0, len(sorted))
 	for _, s := range sorted {
 		attrs := map[string]interface{}{
-			"doc_frequency":      idx.docFreq[s.text],
-			"total_occurrences":  idx.termFreq[s.text],
-			"cap_consistency":    math.Round(float64(idx.capCount[s.text])/float64(idx.termFreq[s.text])*100) / 100,
+			"doc_frequency":     idx.docFreq[s.text],
+			"total_occurrences": idx.termFreq[s.text],
+			"cap_consistency":   math.Round(float64(idx.capCount[s.text])/float64(idx.termFreq[s.text])*100) / 100,
 		}
 		// Record which field keys this entity appeared under.
 		fieldKeys := make([]string, 0, len(idx.fields[s.text]))

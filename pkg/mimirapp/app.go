@@ -256,6 +256,7 @@ func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *
 	server.RegisterHandler("/api/storage/update", storageHandler.HandleStorageUpdate)
 	server.RegisterHandler("/api/storage/delete", storageHandler.HandleStorageDelete)
 	server.RegisterHandler("/api/storage/health", storageHandler.HandleStorageHealth)
+	server.RegisterHandler("/api/storage/metadata", storageHandler.HandleStorageMetadata)
 	server.RegisterHandler("/api/storage/ingestion-health", storageHandler.HandleIngestionHealth)
 
 	storagePluginHandler := api.NewStoragePluginHandler(storageService)

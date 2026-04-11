@@ -223,6 +223,31 @@ func (h *StorageHandler) HandleStorageHealth(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(map[string]interface{}{"healthy": healthy})
 }
 
+// HandleStorageMetadata handles GET /api/storage/metadata?config_id=<id>&project_id=<id>
+func (h *StorageHandler) HandleStorageMetadata(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	storageID := r.URL.Query().Get("config_id")
+	projectID := r.URL.Query().Get("project_id")
+	if storageID == "" {
+		http.Error(w, "config_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+	metadata, err := h.service.GetStorageMetadataForProject(projectID, storageID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to load storage metadata: %v", err), storageErrorStatus(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metadata)
+}
+
 // listStorageConfigs lists all storage configurations
 func (h *StorageHandler) listStorageConfigs(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("project_id")

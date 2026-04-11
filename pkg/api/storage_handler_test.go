@@ -191,3 +191,44 @@ func TestStorageStoreRequiresProjectOwnership(t *testing.T) {
 		t.Fatalf("expected 403 Forbidden, got %d body=%s", resp.Code, resp.Body.String())
 	}
 }
+
+func TestStorageMetadataRequiresProjectOwnership(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "storage-metadata.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	q, err := queue.NewQueue(nil)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	projectA := &models.Project{ID: "project-a", Name: "project-a", Description: "A", Version: "v1", Status: models.ProjectStatusActive, Metadata: models.ProjectMetadata{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}}
+	projectB := &models.Project{ID: "project-b", Name: "project-b", Description: "B", Version: "v1", Status: models.ProjectStatusActive, Metadata: models.ProjectMetadata{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}}
+	if err := store.SaveProject(projectA); err != nil {
+		t.Fatalf("failed to save project A: %v", err)
+	}
+	if err := store.SaveProject(projectB); err != nil {
+		t.Fatalf("failed to save project B: %v", err)
+	}
+
+	storageSvc := storage.NewService(store)
+	storageSvc.RegisterPlugin("mock", &testStoragePlugin{})
+	handler := NewStorageHandler(storageSvc)
+	server := NewServer(q, "0", "")
+	server.RegisterHandler("/api/storage/metadata", handler.HandleStorageMetadata)
+
+	cfg, err := storageSvc.CreateStorageConfig(projectA.ID, "mock", map[string]interface{}{"connection_string": "mock://meta"})
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/storage/metadata?config_id="+cfg.ID+"&project_id="+projectB.ID, nil)
+	resp := httptest.NewRecorder()
+	server.mux.ServeHTTP(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden, got %d body=%s", resp.Code, resp.Body.String())
+	}
+}

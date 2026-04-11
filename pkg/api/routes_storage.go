@@ -88,6 +88,13 @@ func init() {
 			"error":   doc.Str("Error message if unhealthy"),
 		})), doc.NotFound(), map[string]doc.M{"403": {"description": "Forbidden — storage config belongs to another project"}}),
 	})
+	doc.Register("GET", "/api/storage/metadata", doc.RouteDoc{
+		Summary:     "Storage metadata",
+		Description: "Returns metadata and capability information for the given project-owned storage config ID.",
+		Tags:        []string{"Storage"},
+		Params:      []doc.Param{doc.QParam("config_id", "Storage config ID", true), doc.QParam("project_id", "Owning project ID", true)},
+		Responses:   doc.R(doc.OK(doc.Ref("StorageMetadata")), doc.NotFound(), map[string]doc.M{"403": {"description": "Forbidden — storage config belongs to another project"}}),
+	})
 	doc.Register("GET", "/api/storage/ingestion-health", doc.RouteDoc{
 		Summary:     "Project ingestion health report",
 		Description: "Computes freshness, completeness, and schema drift scores across all active storage sources in a project.",

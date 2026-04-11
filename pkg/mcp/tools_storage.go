@@ -283,6 +283,28 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 		},
 	)
 
+	// storage_metadata
+	s.AddTool(
+		mcp.NewTool("storage_metadata",
+			mcp.WithDescription("Get metadata about a project-owned storage backend"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Project ID")),
+			mcp.WithString("storage_id", mcp.Required(), mcp.Description("Storage config ID")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
+			storageID := req.GetString("storage_id", "")
+			if projectID == "" || storageID == "" {
+				return mcp.NewToolResultError("project_id and storage_id are required"), nil
+			}
+			metadata, err := m.storageSvc.GetStorageMetadataForProject(projectID, storageID)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(metadata)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
 	// storage_health
 	s.AddTool(
 		mcp.NewTool("storage_health",
@@ -305,4 +327,105 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 			return mcp.NewToolResultText(string(result)), nil
 		},
 	)
+
+	// storage_ingestion_health
+	s.AddTool(
+		mcp.NewTool("storage_ingestion_health",
+			mcp.WithDescription("Get project-level ingestion health across configured storage sources"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Project ID")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
+			if projectID == "" {
+				return mcp.NewToolResultError("project_id is required"), nil
+			}
+			report, err := m.storageSvc.GetIngestionHealth(projectID)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(report)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+	// list_storage_plugins
+	s.AddTool(
+		mcp.NewTool("list_storage_plugins",
+			mcp.WithDescription("List dynamically installed external storage plugins"),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			plugins, err := m.storageSvc.ListExternalPlugins()
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(plugins)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// get_storage_plugin
+	s.AddTool(
+		mcp.NewTool("get_storage_plugin",
+			mcp.WithDescription("Get metadata for a dynamically installed external storage plugin"),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Storage plugin name")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			name := req.GetString("name", "")
+			if name == "" {
+				return mcp.NewToolResultError("name is required"), nil
+			}
+			plugin, err := m.storageSvc.GetExternalPlugin(name)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(plugin)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// install_storage_plugin
+	s.AddTool(
+		mcp.NewTool("install_storage_plugin",
+			mcp.WithDescription("Install a dynamic external storage plugin from a Git repository"),
+			mcp.WithString("repository_url", mcp.Required(), mcp.Description("HTTPS Git repository URL")),
+			mcp.WithString("git_ref", mcp.Description("Branch, tag, or commit SHA (default main)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			repositoryURL := req.GetString("repository_url", "")
+			if repositoryURL == "" {
+				return mcp.NewToolResultError("repository_url is required"), nil
+			}
+			record, err := m.storageSvc.InstallExternalPlugin(&models.ExternalStoragePluginInstallRequest{
+				RepositoryURL: repositoryURL,
+				GitRef:        req.GetString("git_ref", ""),
+			})
+			if err != nil {
+				if record != nil {
+					data, _ := json.Marshal(record)
+					return mcp.NewToolResultText(string(data)), nil
+				}
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(record)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// uninstall_storage_plugin
+	s.AddTool(
+		mcp.NewTool("uninstall_storage_plugin",
+			mcp.WithDescription("Uninstall a dynamic external storage plugin by name"),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Storage plugin name")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			name := req.GetString("name", "")
+			if name == "" {
+				return mcp.NewToolResultError("name is required"), nil
+			}
+			if err := m.storageSvc.UninstallExternalPlugin(name); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(`{"success":true}`), nil
+		},
+	)
+
 }

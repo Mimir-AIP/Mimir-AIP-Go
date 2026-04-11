@@ -3895,6 +3895,37 @@ paths:
             summary: Storage health check
             tags:
                 - Storage
+    /api/storage/metadata:
+        get:
+            description: Returns metadata and capability information for the given project-owned storage config ID.
+            parameters:
+                - description: Storage config ID
+                  in: query
+                  name: config_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StorageMetadata'
+                    description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
+                "404":
+                    description: Resource not found
+            summary: Storage metadata
+            tags:
+                - Storage
+
     /api/storage/configs:
         get:
             description: Returns all storage configurations for a project.

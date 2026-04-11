@@ -1253,8 +1253,6 @@ components:
                   type: array
         Project:
             properties:
-                components:
-                    $ref: '#/components/schemas/ProjectComponents'
                 description:
                     description: Project description
                     type: string
@@ -1287,33 +1285,8 @@ components:
                 - project_id
                 - name
             type: object
-        ProjectComponents:
-            properties:
-                digital_twins:
-                    items:
-                        type: string
-                    type: array
-                ml_models:
-                    items:
-                        type: string
-                    type: array
-                ontologies:
-                    items:
-                        type: string
-                    type: array
-                pipelines:
-                    items:
-                        type: string
-                    type: array
-                storage_configs:
-                    items:
-                        type: string
-                    type: array
-            type: object
         ProjectCreateRequest:
             properties:
-                components:
-                    $ref: '#/components/schemas/ProjectComponents'
                 description:
                     description: Project description
                     type: string
@@ -3783,69 +3756,6 @@ paths:
                 "404":
                     description: Resource not found
             summary: Update project
-            tags:
-                - Projects
-    /api/projects/{id}/{componentType}/{componentId}:
-        delete:
-            description: Removes the association between a component and a project.
-            parameters:
-                - description: Project ID
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-                - description: pipelines | ontologies | mlmodels | digitaltwins | storage
-                  in: path
-                  name: componentType
-                  required: true
-                  schema:
-                    type: string
-                - description: Component ID to disassociate
-                  in: path
-                  name: componentId
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "204":
-                    description: No content
-                "400":
-                    description: Bad request — invalid input
-                "404":
-                    description: Resource not found
-            summary: Remove component from project
-            tags:
-                - Projects
-        post:
-            description: Associates a pipeline, ontology, ML model, digital twin, or storage config with a project.
-            parameters:
-                - description: Project ID
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-                - description: pipelines | ontologies | mlmodels | digitaltwins | storage
-                  in: path
-                  name: componentType
-                  required: true
-                  schema:
-                    type: string
-                - description: Component ID to associate
-                  in: path
-                  name: componentId
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "204":
-                    description: No content
-                "400":
-                    description: Bad request — invalid input
-                "404":
-                    description: Resource not found
-            summary: Add component to project
             tags:
                 - Projects
     /api/projects/{id}/clone:

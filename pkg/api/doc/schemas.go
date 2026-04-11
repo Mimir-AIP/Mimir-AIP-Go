@@ -32,13 +32,6 @@ func init() {
 			"updated_at": Str("ISO-8601 last-updated timestamp"),
 			"tags":       Arr(M{"type": "string"}),
 		}),
-		"ProjectComponents": Props(nil, M{
-			"pipelines":       Arr(M{"type": "string"}),
-			"ontologies":      Arr(M{"type": "string"}),
-			"ml_models":       Arr(M{"type": "string"}),
-			"digital_twins":   Arr(M{"type": "string"}),
-			"storage_configs": Arr(M{"type": "string"}),
-		}),
 		"ProjectSettings": Props(nil, M{
 			"timezone":        Str("Project timezone identifier"),
 			"environment":     Str("Environment label such as development or production"),
@@ -51,7 +44,6 @@ func init() {
 			"version":     Str("Project version"),
 			"status":      Str("active | archived | draft"),
 			"metadata":    Ref("ProjectMetadata"),
-			"components":  Ref("ProjectComponents"),
 			"settings":    Ref("ProjectSettings"),
 		}),
 		"ProjectSectionState": Props(nil, M{
@@ -73,7 +65,6 @@ func init() {
 			"description": Str("Project description"),
 			"version":     Str("Optional semantic version"),
 			"status":      Str("Optional initial status"),
-			"components":  Ref("ProjectComponents"),
 			"settings":    Ref("ProjectSettings"),
 			"tags":        Arr(M{"type": "string"}),
 		}),

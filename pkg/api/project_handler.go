@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -37,13 +36,12 @@ func (h *ProjectHandler) HandleProjects(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// HandleProject handles individual project operations and component associations.
+// HandleProject handles individual project operations.
 // Routes:
 //   - GET/PUT/DELETE /api/projects/{id}
 //   - POST            /api/projects/{id}/archive
 //   - POST            /api/projects/{id}/clone
 //   - GET             /api/projects/{id}/state-summary
-//   - POST/DELETE     /api/projects/{id}/{componentType}/{componentId}
 func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 	trimmed := strings.TrimPrefix(r.URL.Path, "/api/projects/")
 	parts := strings.SplitN(trimmed, "/", 3)
@@ -63,8 +61,8 @@ func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 		h.handleClone(w, r, parts[0])
 		return
 	}
-	if len(parts) >= 3 && parts[2] != "" {
-		h.HandleProjectComponent(w, r)
+	if len(parts) >= 2 {
+		http.Error(w, "Invalid project subresource", http.StatusNotFound)
 		return
 	}
 
@@ -217,74 +215,5 @@ func (h *ProjectHandler) handleDelete(w http.ResponseWriter, r *http.Request, pr
 		http.Error(w, fmt.Sprintf("Failed to delete project: %v", err), status)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// HandleProjectComponent handles POST/DELETE for project component associations.
-// Path format: /api/projects/{id}/{componentType}/{componentId}
-// Supported componentTypes: pipelines, ontologies, mlmodels, digitaltwins, storage
-func (h *ProjectHandler) HandleProjectComponent(w http.ResponseWriter, r *http.Request) {
-	// Parse path: /api/projects/{id}/{componentType}/{componentId}
-	trimmed := strings.TrimPrefix(r.URL.Path, "/api/projects/")
-	parts := strings.SplitN(trimmed, "/", 3)
-	if len(parts) < 3 {
-		http.Error(w, "Invalid path: expected /api/projects/{id}/{componentType}/{componentId}", http.StatusBadRequest)
-		return
-	}
-	projectID := parts[0]
-	componentType := parts[1]
-	componentID := parts[2]
-
-	var err error
-	switch r.Method {
-	case http.MethodPost:
-		switch componentType {
-		case "pipelines":
-			err = h.service.AddPipeline(projectID, componentID)
-		case "ontologies":
-			err = h.service.AddOntology(projectID, componentID)
-		case "mlmodels":
-			err = h.service.AddMLModel(projectID, componentID)
-		case "digitaltwins":
-			err = h.service.AddDigitalTwin(projectID, componentID)
-		case "storage":
-			err = h.service.AddStorage(projectID, componentID)
-		default:
-			http.Error(w, fmt.Sprintf("Unknown component type: %s", componentType), http.StatusBadRequest)
-			return
-		}
-	case http.MethodDelete:
-		switch componentType {
-		case "pipelines":
-			err = h.service.RemovePipeline(projectID, componentID)
-		case "ontologies":
-			err = h.service.RemoveOntology(projectID, componentID)
-		case "mlmodels":
-			err = h.service.RemoveMLModel(projectID, componentID)
-		case "digitaltwins":
-			err = h.service.RemoveDigitalTwin(projectID, componentID)
-		case "storage":
-			err = h.service.RemoveStorage(projectID, componentID)
-		default:
-			http.Error(w, fmt.Sprintf("Unknown component type: %s", componentType), http.StatusBadRequest)
-			return
-		}
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, project.ErrComponentNotFound):
-			status = http.StatusNotFound
-		case errors.Is(err, project.ErrComponentProjectMismatch):
-			status = http.StatusBadRequest
-		}
-		http.Error(w, fmt.Sprintf("Failed to update project component: %v", err), status)
-		return
-	}
-
 	w.WriteHeader(http.StatusNoContent)
 }

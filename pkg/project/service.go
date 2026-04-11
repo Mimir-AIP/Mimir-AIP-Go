@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,10 +14,6 @@ import (
 var (
 	projectNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,50}$`)
 	versionRegex     = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
-
-	// Association validation errors
-	ErrComponentNotFound        = fmt.Errorf("component not found")
-	ErrComponentProjectMismatch = fmt.Errorf("component belongs to a different project")
 )
 
 // scheduleDeleter removes a persisted schedule and any runtime scheduler registration.
@@ -79,8 +74,7 @@ func (s *Service) Create(req *models.ProjectCreateRequest) (*models.Project, err
 			UpdatedAt: time.Now(),
 			Tags:      req.Tags,
 		},
-		Components: req.Components,
-		Settings:   req.Settings,
+		Settings: req.Settings,
 	}
 
 	// Set defaults
@@ -99,19 +93,6 @@ func (s *Service) Create(req *models.ProjectCreateRequest) (*models.Project, err
 	if project.Metadata.Tags == nil {
 		project.Metadata.Tags = []string{}
 	}
-	if project.Components.Pipelines == nil {
-		project.Components.Pipelines = []string{}
-	}
-	if project.Components.Ontologies == nil {
-		project.Components.Ontologies = []string{}
-	}
-	if project.Components.MLModels == nil {
-		project.Components.MLModels = []string{}
-	}
-	if project.Components.DigitalTwins == nil {
-		project.Components.DigitalTwins = []string{}
-	}
-
 	// Save project
 	if err := s.store.SaveProject(project); err != nil {
 		return nil, fmt.Errorf("failed to save project: %w", err)
@@ -435,19 +416,10 @@ func (s *Service) Clone(id string, newName string) (*models.Project, error) {
 			Tags:      append([]string{}, original.Metadata.Tags...),
 		},
 		Settings: original.Settings,
-		Components: models.ProjectComponents{
-			Pipelines:      []string{},
-			Ontologies:     []string{},
-			MLModels:       []string{},
-			DigitalTwins:   []string{},
-			StorageConfigs: []string{},
-		},
 	}
 	if err := s.store.SaveProject(cloned); err != nil {
 		return nil, fmt.Errorf("failed to save cloned project: %w", err)
 	}
-
-	cloned.Components.Ontologies = make([]string, 0, len(ontologies))
 	for _, ontology := range ontologies {
 		copy, err := cloneWithIDRemap(ontology, idMap)
 		if err != nil {
@@ -460,10 +432,8 @@ func (s *Service) Clone(id string, newName string) (*models.Project, error) {
 		if err := s.store.SaveOntology(copy); err != nil {
 			return nil, fmt.Errorf("failed to save cloned ontology %s: %w", ontology.ID, err)
 		}
-		cloned.Components.Ontologies = append(cloned.Components.Ontologies, copy.ID)
 	}
 
-	cloned.Components.StorageConfigs = make([]string, 0, len(storageConfigs))
 	for _, config := range storageConfigs {
 		copy, err := cloneWithIDRemap(config, idMap)
 		if err != nil {
@@ -476,10 +446,8 @@ func (s *Service) Clone(id string, newName string) (*models.Project, error) {
 		if err := s.store.SaveStorageConfig(copy); err != nil {
 			return nil, fmt.Errorf("failed to save cloned storage config %s: %w", config.ID, err)
 		}
-		cloned.Components.StorageConfigs = append(cloned.Components.StorageConfigs, copy.ID)
 	}
 
-	cloned.Components.Pipelines = make([]string, 0, len(pipelines))
 	for _, pipeline := range pipelines {
 		copy, err := cloneWithIDRemap(pipeline, idMap)
 		if err != nil {
@@ -492,7 +460,6 @@ func (s *Service) Clone(id string, newName string) (*models.Project, error) {
 		if err := s.store.SavePipeline(copy); err != nil {
 			return nil, fmt.Errorf("failed to save cloned pipeline %s: %w", pipeline.ID, err)
 		}
-		cloned.Components.Pipelines = append(cloned.Components.Pipelines, copy.ID)
 	}
 
 	for _, schedule := range schedules {
@@ -512,7 +479,6 @@ func (s *Service) Clone(id string, newName string) (*models.Project, error) {
 		}
 	}
 
-	cloned.Components.MLModels = make([]string, 0, len(mlModels))
 	for _, model := range mlModels {
 		copy, err := cloneWithIDRemap(model, idMap)
 		if err != nil {
@@ -531,10 +497,8 @@ func (s *Service) Clone(id string, newName string) (*models.Project, error) {
 		if err := s.store.SaveMLModel(copy); err != nil {
 			return nil, fmt.Errorf("failed to save cloned ml model %s: %w", model.ID, err)
 		}
-		cloned.Components.MLModels = append(cloned.Components.MLModels, copy.ID)
 	}
 
-	cloned.Components.DigitalTwins = make([]string, 0, len(twins))
 	for _, twin := range twins {
 		copy, err := cloneWithIDRemap(twin, idMap)
 		if err != nil {
@@ -549,7 +513,6 @@ func (s *Service) Clone(id string, newName string) (*models.Project, error) {
 		if err := s.store.SaveDigitalTwin(copy); err != nil {
 			return nil, fmt.Errorf("failed to save cloned digital twin %s: %w", twin.ID, err)
 		}
-		cloned.Components.DigitalTwins = append(cloned.Components.DigitalTwins, copy.ID)
 	}
 
 	for _, automation := range automations {
@@ -623,267 +586,6 @@ func remapIDs(value any, idMap map[string]string) any {
 	default:
 		return value
 	}
-}
-
-// AddPipeline associates a pipeline with a project
-func (s *Service) AddPipeline(projectID, pipelineID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	if err := s.requirePipelineOwnership(projectID, pipelineID); err != nil {
-		return err
-	}
-
-	if slices.Contains(project.Components.Pipelines, pipelineID) {
-		return nil
-	}
-
-	project.Components.Pipelines = append(project.Components.Pipelines, pipelineID)
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// RemovePipeline removes a pipeline association from a project
-func (s *Service) RemovePipeline(projectID, pipelineID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	// Remove pipeline ID
-	filtered := make([]string, 0)
-	for _, id := range project.Components.Pipelines {
-		if id != pipelineID {
-			filtered = append(filtered, id)
-		}
-	}
-
-	project.Components.Pipelines = filtered
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// AddOntology associates an ontology with a project
-func (s *Service) AddOntology(projectID, ontologyID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	if err := s.requireOntologyOwnership(projectID, ontologyID); err != nil {
-		return err
-	}
-
-	if slices.Contains(project.Components.Ontologies, ontologyID) {
-		return nil
-	}
-
-	project.Components.Ontologies = append(project.Components.Ontologies, ontologyID)
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// RemoveOntology removes an ontology association from a project
-func (s *Service) RemoveOntology(projectID, ontologyID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	filtered := make([]string, 0)
-	for _, id := range project.Components.Ontologies {
-		if id != ontologyID {
-			filtered = append(filtered, id)
-		}
-	}
-
-	project.Components.Ontologies = filtered
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// AddMLModel associates an ML model with a project
-func (s *Service) AddMLModel(projectID, modelID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	if err := s.requireMLModelOwnership(projectID, modelID); err != nil {
-		return err
-	}
-
-	if slices.Contains(project.Components.MLModels, modelID) {
-		return nil
-	}
-
-	project.Components.MLModels = append(project.Components.MLModels, modelID)
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// RemoveMLModel removes an ML model association from a project
-func (s *Service) RemoveMLModel(projectID, modelID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	filtered := make([]string, 0)
-	for _, id := range project.Components.MLModels {
-		if id != modelID {
-			filtered = append(filtered, id)
-		}
-	}
-
-	project.Components.MLModels = filtered
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// AddDigitalTwin associates a digital twin with a project
-func (s *Service) AddDigitalTwin(projectID, twinID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	if err := s.requireDigitalTwinOwnership(projectID, twinID); err != nil {
-		return err
-	}
-
-	if slices.Contains(project.Components.DigitalTwins, twinID) {
-		return nil
-	}
-
-	project.Components.DigitalTwins = append(project.Components.DigitalTwins, twinID)
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// RemoveDigitalTwin removes a digital twin association from a project
-func (s *Service) RemoveDigitalTwin(projectID, twinID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	filtered := make([]string, 0)
-	for _, id := range project.Components.DigitalTwins {
-		if id != twinID {
-			filtered = append(filtered, id)
-		}
-	}
-
-	project.Components.DigitalTwins = filtered
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// AddStorage associates a storage config with a project
-func (s *Service) AddStorage(projectID, storageID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	if err := s.requireStorageOwnership(projectID, storageID); err != nil {
-		return err
-	}
-
-	if slices.Contains(project.Components.StorageConfigs, storageID) {
-		return nil
-	}
-
-	project.Components.StorageConfigs = append(project.Components.StorageConfigs, storageID)
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-// RemoveStorage removes a storage config association from a project
-func (s *Service) RemoveStorage(projectID, storageID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return err
-	}
-
-	filtered := make([]string, 0)
-	for _, id := range project.Components.StorageConfigs {
-		if id != storageID {
-			filtered = append(filtered, id)
-		}
-	}
-
-	project.Components.StorageConfigs = filtered
-	project.Metadata.UpdatedAt = time.Now()
-
-	return s.store.SaveProject(project)
-}
-
-func (s *Service) requirePipelineOwnership(projectID, pipelineID string) error {
-	pipeline, err := s.store.GetPipeline(pipelineID)
-	if err != nil {
-		return fmt.Errorf("%w: pipeline %s", ErrComponentNotFound, pipelineID)
-	}
-	if pipeline.ProjectID != projectID {
-		return fmt.Errorf("%w: pipeline %s belongs to project %s", ErrComponentProjectMismatch, pipelineID, pipeline.ProjectID)
-	}
-	return nil
-}
-
-func (s *Service) requireOntologyOwnership(projectID, ontologyID string) error {
-	ontology, err := s.store.GetOntology(ontologyID)
-	if err != nil {
-		return fmt.Errorf("%w: ontology %s", ErrComponentNotFound, ontologyID)
-	}
-	if ontology.ProjectID != projectID {
-		return fmt.Errorf("%w: ontology %s belongs to project %s", ErrComponentProjectMismatch, ontologyID, ontology.ProjectID)
-	}
-	return nil
-}
-
-func (s *Service) requireMLModelOwnership(projectID, modelID string) error {
-	model, err := s.store.GetMLModel(modelID)
-	if err != nil {
-		return fmt.Errorf("%w: ml model %s", ErrComponentNotFound, modelID)
-	}
-	if model.ProjectID != projectID {
-		return fmt.Errorf("%w: ml model %s belongs to project %s", ErrComponentProjectMismatch, modelID, model.ProjectID)
-	}
-	return nil
-}
-
-func (s *Service) requireDigitalTwinOwnership(projectID, twinID string) error {
-	twin, err := s.store.GetDigitalTwin(twinID)
-	if err != nil {
-		return fmt.Errorf("%w: digital twin %s", ErrComponentNotFound, twinID)
-	}
-	if twin.ProjectID != projectID {
-		return fmt.Errorf("%w: digital twin %s belongs to project %s", ErrComponentProjectMismatch, twinID, twin.ProjectID)
-	}
-	return nil
-}
-
-func (s *Service) requireStorageOwnership(projectID, storageID string) error {
-	storageConfig, err := s.store.GetStorageConfig(storageID)
-	if err != nil {
-		return fmt.Errorf("%w: storage config %s", ErrComponentNotFound, storageID)
-	}
-	if storageConfig.ProjectID != projectID {
-		return fmt.Errorf("%w: storage config %s belongs to project %s", ErrComponentProjectMismatch, storageID, storageConfig.ProjectID)
-	}
-	return nil
 }
 
 // validateCreateRequest validates a project creation request

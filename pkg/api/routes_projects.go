@@ -61,27 +61,4 @@ func init() {
 		Params:      []doc.Param{doc.PParam("id", "Project ID")},
 		Responses:   doc.R(doc.OK(doc.Ref("ProjectStateSummary")), doc.NotFound()),
 	})
-
-	doc.Register("POST", "/api/projects/{id}/{componentType}/{componentId}", doc.RouteDoc{
-		Summary:     "Add component to project",
-		Description: "Associates a pipeline, ontology, ML model, digital twin, or storage config with a project.",
-		Tags:        []string{"Projects"},
-		Params: []doc.Param{
-			doc.PParam("id", "Project ID"),
-			doc.PParam("componentType", "pipelines | ontologies | mlmodels | digitaltwins | storage"),
-			doc.PParam("componentId", "Component ID to associate"),
-		},
-		Responses: doc.R(doc.NoContent(), doc.BadRequest(), doc.NotFound()),
-	})
-	doc.Register("DELETE", "/api/projects/{id}/{componentType}/{componentId}", doc.RouteDoc{
-		Summary:     "Remove component from project",
-		Description: "Removes the association between a component and a project.",
-		Tags:        []string{"Projects"},
-		Params: []doc.Param{
-			doc.PParam("id", "Project ID"),
-			doc.PParam("componentType", "pipelines | ontologies | mlmodels | digitaltwins | storage"),
-			doc.PParam("componentId", "Component ID to disassociate"),
-		},
-		Responses: doc.R(doc.NoContent(), doc.BadRequest(), doc.NotFound()),
-	})
 }

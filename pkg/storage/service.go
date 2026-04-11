@@ -182,10 +182,6 @@ func (s *Service) DeleteStorageConfig(storageID string) error {
 	if len(references) > 0 {
 		return &StorageConfigInUseError{StorageID: storageID, References: references}
 	}
-
-	if err := s.removeProjectStorageMembership(storageConfig.ProjectID, storageID); err != nil {
-		return err
-	}
 	if err := s.store.DeleteStorageConfig(storageID); err != nil {
 		return fmt.Errorf("failed to delete storage config: %w", err)
 	}
@@ -248,30 +244,6 @@ func (s *Service) findStorageReferences(projectID, storageID string) ([]string, 
 	}
 
 	return references, nil
-}
-
-func (s *Service) removeProjectStorageMembership(projectID, storageID string) error {
-	project, err := s.store.GetProject(projectID)
-	if err != nil {
-		return fmt.Errorf("failed to load owning project: %w", err)
-	}
-
-	filtered := make([]string, 0, len(project.Components.StorageConfigs))
-	for _, id := range project.Components.StorageConfigs {
-		if id != storageID {
-			filtered = append(filtered, id)
-		}
-	}
-	if len(filtered) == len(project.Components.StorageConfigs) {
-		return nil
-	}
-
-	project.Components.StorageConfigs = filtered
-	project.Metadata.UpdatedAt = time.Now().UTC()
-	if err := s.store.SaveProject(project); err != nil {
-		return fmt.Errorf("failed to update project storage membership: %w", err)
-	}
-	return nil
 }
 
 func jsonContainsExactString(value any, needle string) bool {

@@ -1,11 +1,8 @@
 package project
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 
@@ -574,14 +571,6 @@ func TestProjectClone(t *testing.T) {
 	if got := clonedAutomation.ActionConfig["pipeline_id"]; got != clonedPipeline.ID {
 		t.Fatalf("expected cloned automation pipeline_id %s, got %#v", clonedPipeline.ID, got)
 	}
-
-	if !slices.Contains(cloned.Components.Ontologies, clonedOntology.ID) ||
-		!slices.Contains(cloned.Components.StorageConfigs, clonedStorage.ID) ||
-		!slices.Contains(cloned.Components.Pipelines, clonedPipeline.ID) ||
-		!slices.Contains(cloned.Components.MLModels, clonedModel.ID) ||
-		!slices.Contains(cloned.Components.DigitalTwins, clonedTwin.ID) {
-		t.Fatalf("expected cloned project component lists to reference cloned resources: %#v", cloned.Components)
-	}
 }
 
 func TestProjectListByStatus(t *testing.T) {
@@ -641,163 +630,5 @@ func TestProjectListByStatus(t *testing.T) {
 
 	if len(archivedProjects) != 1 {
 		t.Errorf("Expected 1 archived project, got %d", len(archivedProjects))
-	}
-}
-
-func TestAddComponentRejectsCrossProjectAssociation(t *testing.T) {
-	testCases := []struct {
-		name           string
-		componentID    string
-		setupComponent func(service *Service, projectID, componentID string) error
-		add            func(service *Service, projectID, componentID string) error
-		getComponents  func(project *models.Project) []string
-	}{
-		{
-			name:        "pipeline",
-			componentID: "pipe-cross-project",
-			setupComponent: func(service *Service, projectID, componentID string) error {
-				return service.store.SavePipeline(&models.Pipeline{
-					ID:        componentID,
-					ProjectID: projectID,
-					Name:      "pipeline",
-					Type:      models.PipelineTypeIngestion,
-					Status:    models.PipelineStatusDraft,
-					CreatedAt: time.Now(),
-					UpdatedAt: time.Now(),
-				})
-			},
-			add: func(service *Service, projectID, componentID string) error {
-				return service.AddPipeline(projectID, componentID)
-			},
-			getComponents: func(project *models.Project) []string { return project.Components.Pipelines },
-		},
-		{
-			name:        "ontology",
-			componentID: "ont-cross-project",
-			setupComponent: func(service *Service, projectID, componentID string) error {
-				return service.store.SaveOntology(&models.Ontology{
-					ID:        componentID,
-					ProjectID: projectID,
-					Name:      "ontology",
-					Content:   "@prefix ex: <http://example.com/> .",
-					Status:    "draft",
-					CreatedAt: time.Now(),
-					UpdatedAt: time.Now(),
-				})
-			},
-			add: func(service *Service, projectID, componentID string) error {
-				return service.AddOntology(projectID, componentID)
-			},
-			getComponents: func(project *models.Project) []string { return project.Components.Ontologies },
-		},
-		{
-			name:        "ml-model",
-			componentID: "ml-cross-project",
-			setupComponent: func(service *Service, projectID, componentID string) error {
-				return service.store.SaveMLModel(&models.MLModel{
-					ID:         componentID,
-					ProjectID:  projectID,
-					OntologyID: "ontology",
-					Name:       "model",
-					Type:       models.ModelTypeDecisionTree,
-					Status:     models.ModelStatusDraft,
-					Version:    "1.0.0",
-					CreatedAt:  time.Now(),
-					UpdatedAt:  time.Now(),
-				})
-			},
-			add: func(service *Service, projectID, componentID string) error {
-				return service.AddMLModel(projectID, componentID)
-			},
-			getComponents: func(project *models.Project) []string { return project.Components.MLModels },
-		},
-		{
-			name:        "digital-twin",
-			componentID: "dt-cross-project",
-			setupComponent: func(service *Service, projectID, componentID string) error {
-				return service.store.SaveDigitalTwin(&models.DigitalTwin{
-					ID:         componentID,
-					ProjectID:  projectID,
-					OntologyID: "ontology",
-					Name:       "twin",
-					Status:     "active",
-					CreatedAt:  time.Now(),
-					UpdatedAt:  time.Now(),
-				})
-			},
-			add: func(service *Service, projectID, componentID string) error {
-				return service.AddDigitalTwin(projectID, componentID)
-			},
-			getComponents: func(project *models.Project) []string { return project.Components.DigitalTwins },
-		},
-		{
-			name:        "storage-config",
-			componentID: "store-cross-project",
-			setupComponent: func(service *Service, projectID, componentID string) error {
-				return service.store.SaveStorageConfig(&models.StorageConfig{
-					ID:         componentID,
-					ProjectID:  projectID,
-					PluginType: "filesystem",
-					Config: map[string]interface{}{
-						"base_path": "/tmp/mimir-tests",
-					},
-					Active:    true,
-					CreatedAt: time.Now().Format(time.RFC3339),
-					UpdatedAt: time.Now().Format(time.RFC3339),
-				})
-			},
-			add: func(service *Service, projectID, componentID string) error {
-				return service.AddStorage(projectID, componentID)
-			},
-			getComponents: func(project *models.Project) []string { return project.Components.StorageConfigs },
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			service, tmpDir := setupTestService(t)
-			defer cleanupTestService(tmpDir)
-
-			targetProject, err := service.Create(&models.ProjectCreateRequest{Name: fmt.Sprintf("target-%s", tc.name)})
-			if err != nil {
-				t.Fatalf("failed to create target project: %v", err)
-			}
-			ownerProject, err := service.Create(&models.ProjectCreateRequest{Name: fmt.Sprintf("owner-%s", tc.name)})
-			if err != nil {
-				t.Fatalf("failed to create owner project: %v", err)
-			}
-
-			if err := tc.setupComponent(service, ownerProject.ID, tc.componentID); err != nil {
-				t.Fatalf("failed to save test component: %v", err)
-			}
-
-			err = tc.add(service, targetProject.ID, tc.componentID)
-			if !errors.Is(err, ErrComponentProjectMismatch) {
-				t.Fatalf("expected ErrComponentProjectMismatch, got: %v", err)
-			}
-
-			updatedProject, err := service.Get(targetProject.ID)
-			if err != nil {
-				t.Fatalf("failed to get target project: %v", err)
-			}
-			if slices.Contains(tc.getComponents(updatedProject), tc.componentID) {
-				t.Fatalf("component %s should not be associated with project %s", tc.componentID, targetProject.ID)
-			}
-		})
-	}
-}
-
-func TestAddComponentRejectsMissingComponent(t *testing.T) {
-	service, tmpDir := setupTestService(t)
-	defer cleanupTestService(tmpDir)
-
-	project, err := service.Create(&models.ProjectCreateRequest{Name: "missing-component-project"})
-	if err != nil {
-		t.Fatalf("failed to create project: %v", err)
-	}
-
-	err = service.AddPipeline(project.ID, "missing-pipeline")
-	if !errors.Is(err, ErrComponentNotFound) {
-		t.Fatalf("expected ErrComponentNotFound, got: %v", err)
 	}
 }

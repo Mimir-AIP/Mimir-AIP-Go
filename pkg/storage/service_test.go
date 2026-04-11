@@ -304,15 +304,6 @@ func TestDeleteStorageConfigRejectsReferencedResources(t *testing.T) {
 		t.Fatalf("failed to create storage config: %v", err)
 	}
 
-	project, err := store.GetProject("project-delete-refs")
-	if err != nil {
-		t.Fatalf("failed to load project: %v", err)
-	}
-	project.Components.StorageConfigs = []string{cfg.ID}
-	if err := store.SaveProject(project); err != nil {
-		t.Fatalf("failed to update project components: %v", err)
-	}
-
 	pipeline := &models.Pipeline{
 		ID:        "pipeline-delete-refs",
 		ProjectID: "project-delete-refs",
@@ -374,7 +365,7 @@ func TestDeleteStorageConfigRejectsReferencedResources(t *testing.T) {
 	}
 }
 
-func TestDeleteStorageConfigRemovesProjectMembership(t *testing.T) {
+func TestDeleteStorageConfigDeletesUnreferencedConfig(t *testing.T) {
 	store, err := metadatastore.NewSQLiteStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create metadata store: %v", err)
@@ -391,28 +382,11 @@ func TestDeleteStorageConfigRemovesProjectMembership(t *testing.T) {
 		t.Fatalf("failed to create storage config: %v", err)
 	}
 
-	project, err := store.GetProject("project-delete-ok")
-	if err != nil {
-		t.Fatalf("failed to load project: %v", err)
-	}
-	project.Components.StorageConfigs = []string{cfg.ID}
-	if err := store.SaveProject(project); err != nil {
-		t.Fatalf("failed to update project components: %v", err)
-	}
-
 	if err := svc.DeleteStorageConfig(cfg.ID); err != nil {
 		t.Fatalf("expected storage config deletion to succeed, got %v", err)
 	}
 
 	if _, err := store.GetStorageConfig(cfg.ID); err == nil {
 		t.Fatal("expected storage config to be deleted")
-	}
-
-	updatedProject, err := store.GetProject("project-delete-ok")
-	if err != nil {
-		t.Fatalf("failed to reload project: %v", err)
-	}
-	if len(updatedProject.Components.StorageConfigs) != 0 {
-		t.Fatalf("expected project storage membership to be cleaned up, got %#v", updatedProject.Components.StorageConfigs)
 	}
 }

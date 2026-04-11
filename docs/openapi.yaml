@@ -335,61 +335,6 @@ components:
                         $ref: '#/components/schemas/OrderByClause'
                     type: array
             type: object
-        ConnectorField:
-            properties:
-                default:
-                    description: Optional default value
-                description:
-                    description: Field description
-                    type: string
-                label:
-                    description: Human-readable field label
-                    type: string
-                name:
-                    description: Field key
-                    type: string
-                options:
-                    items:
-                        $ref: '#/components/schemas/ConnectorFieldOption'
-                    type: array
-                required:
-                    description: Whether the field is required
-                    type: boolean
-                type:
-                    description: text | number | boolean | select
-                    type: string
-            required:
-                - name
-                - label
-                - type
-                - required
-            type: object
-        ConnectorFieldOption:
-            properties:
-                label:
-                    description: Display label
-                    type: string
-                value:
-                    description: Option value
-                    type: string
-            required:
-                - value
-                - label
-            type: object
-        ConnectorScheduleRequest:
-            properties:
-                cron_schedule:
-                    description: Cron expression for recurring runs
-                    type: string
-                enabled:
-                    description: Whether the schedule starts enabled
-                    type: boolean
-                name:
-                    description: Optional schedule name override
-                    type: string
-            required:
-                - cron_schedule
-            type: object
         DigitalTwin:
             properties:
                 config:
@@ -3313,7 +3258,7 @@ paths:
                 - Pipelines
     /api/pipelines/{id}/checkpoints:
         get:
-            description: Returns persisted connector checkpoint state for a pipeline step.
+            description: Returns persisted pipeline checkpoint state for a pipeline step.
             parameters:
                 - description: Pipeline ID
                   in: path
@@ -3348,7 +3293,7 @@ paths:
             tags:
                 - Pipelines
         put:
-            description: Persists connector checkpoint state for a pipeline step with optimistic versioning.
+            description: Persists pipeline checkpoint state for a pipeline step with optimistic versioning.
             parameters:
                 - description: Pipeline ID
                   in: path
@@ -4304,8 +4249,6 @@ tags:
       name: Pipelines
     - description: Cron-based pipeline triggers
       name: Schedules
-    - description: Bundled ingestion templates that materialize into pipelines and schedules
-      name: Connectors
     - description: Cross-source resolution, review queues, and calibration metrics
       name: Analysis
     - description: Autonomous persisted findings generated from project storage data

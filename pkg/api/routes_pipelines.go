@@ -43,7 +43,7 @@ func init() {
 	})
 	doc.Register("GET", "/api/pipelines/{id}/checkpoints", doc.RouteDoc{
 		Summary:     "Get pipeline checkpoint",
-		Description: "Returns persisted connector checkpoint state for a pipeline step.",
+		Description: "Returns persisted pipeline checkpoint state for a pipeline step.",
 		Tags:        []string{"Pipelines"},
 		Params: []doc.Param{
 			doc.PParam("id", "Pipeline ID"),
@@ -54,7 +54,7 @@ func init() {
 	})
 	doc.Register("PUT", "/api/pipelines/{id}/checkpoints", doc.RouteDoc{
 		Summary:     "Save pipeline checkpoint",
-		Description: "Persists connector checkpoint state for a pipeline step with optimistic versioning.",
+		Description: "Persists pipeline checkpoint state for a pipeline step with optimistic versioning.",
 		Tags:        []string{"Pipelines"},
 		Params: []doc.Param{
 			doc.PParam("id", "Pipeline ID"),
@@ -82,10 +82,10 @@ func init() {
 	})
 	doc.Register("DELETE", "/api/pipelines/{id}", doc.RouteDoc{
 		Summary:     "Delete pipeline",
-		Description: "Deletes a pipeline.",
+		Description: "Permanently deletes a pipeline when no persisted resources still reference it.",
 		Tags:        []string{"Pipelines"},
 		Params:      []doc.Param{doc.PParam("id", "Pipeline ID")},
-		Responses:   doc.R(doc.NoContent(), doc.NotFound()),
+		Responses:   doc.R(doc.NoContent(), doc.NotFound(), doc.BadRequest()),
 	})
 
 	// ── Schedules ─────────────────────────────────────────────────────────────

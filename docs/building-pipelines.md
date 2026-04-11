@@ -100,7 +100,7 @@ Pipeline-level parameters passed at execution time are available as `{{context._
 
 ## Built-in plugin actions (`plugin: default`)
 
-The `default` (or `builtin`) plugin is always available with no installation required. Guided onboarding and bundled connector setup still create ordinary pipelines under the hood — they simply pre-fill these same built-in actions and checkpoint patterns for common source types.
+The `default` (or `builtin`) plugin is always available with no installation required. These actions are the direct building blocks for ordinary pipelines, whether you create them manually through the API/frontend or assemble them from version-controlled definitions.
 
 ### `http_request`
 

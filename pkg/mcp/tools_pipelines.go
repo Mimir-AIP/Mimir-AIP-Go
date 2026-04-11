@@ -85,6 +85,9 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 			mcp.WithString("description",
 				mcp.Description("Optional pipeline description"),
 			),
+			mcp.WithString("trigger_config_json",
+				mcp.Description("Optional JSON object for trigger_config, e.g. {\"allow_manual\":true,\"webhook\":true,\"secret\":\"token\"}"),
+			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			projectID := req.GetString("project_id", "")
@@ -104,6 +107,13 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 				Type:        models.PipelineType(pType),
 				Description: req.GetString("description", ""),
 				Steps:       steps,
+			}
+			if raw := req.GetString("trigger_config_json", ""); raw != "" {
+				var trigger models.PipelineTriggerConfig
+				if err := json.Unmarshal([]byte(raw), &trigger); err != nil {
+					return mcp.NewToolResultError("trigger_config_json must be a valid JSON object: " + err.Error()), nil
+				}
+				createReq.TriggerConfig = &trigger
 			}
 			pipeline, err := m.pipelineSvc.Create(createReq)
 			if err != nil {
@@ -144,6 +154,12 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 			triggerType := req.GetString("trigger_type", "manual")
 			if triggerType == "" {
 				triggerType = "manual"
+			}
+			if triggerType == "webhook" {
+				return mcp.NewToolResultError("webhook triggers must use the HTTP webhook endpoint"), nil
+			}
+			if triggerType == "manual" && pipeline.TriggerConfig != nil && !pipeline.TriggerConfig.AllowManual {
+				return mcp.NewToolResultError("manual trigger is disabled for this pipeline"), nil
 			}
 			triggeredBy := req.GetString("triggered_by", "mcp_request")
 			parameters := map[string]any{}
@@ -201,6 +217,9 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 			mcp.WithString("status",
 				mcp.Description("New status: active, inactive, or archived"),
 			),
+			mcp.WithString("trigger_config_json",
+				mcp.Description("Optional replacement JSON object for trigger_config"),
+			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			id := req.GetString("id", "")
@@ -221,6 +240,13 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 			if st := req.GetString("status", ""); st != "" {
 				ps := models.PipelineStatus(st)
 				updateReq.Status = &ps
+			}
+			if raw := req.GetString("trigger_config_json", ""); raw != "" {
+				var trigger models.PipelineTriggerConfig
+				if err := json.Unmarshal([]byte(raw), &trigger); err != nil {
+					return mcp.NewToolResultError("trigger_config_json must be a valid JSON object: " + err.Error()), nil
+				}
+				updateReq.TriggerConfig = &trigger
 			}
 			pipeline, err := m.pipelineSvc.Update(id, updateReq)
 			if err != nil {

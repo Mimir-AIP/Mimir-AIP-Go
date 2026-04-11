@@ -42,6 +42,9 @@
 			project_id: '',
 			type: 'ingestion',
 			steps: '[]',
+			allow_manual: true,
+			webhook: false,
+			webhook_secret: '',
 		});
 		const [scheduleForm, setScheduleForm] = React.useState({
 			name: '',
@@ -99,12 +102,20 @@
 				await apiCall('/api/pipelines', {
 					method: 'POST',
 					body: JSON.stringify({
-						...pipelineForm,
+						project_id: pipelineForm.project_id,
+						name: pipelineForm.name,
+						description: pipelineForm.description,
+						type: pipelineForm.type,
 						steps: JSON.parse(pipelineForm.steps),
+						trigger_config: {
+							allow_manual: pipelineForm.allow_manual,
+							webhook: pipelineForm.webhook,
+							secret: pipelineForm.webhook ? pipelineForm.webhook_secret : '',
+						},
 					}),
 				});
 				setShowPipelineModal(false);
-				setPipelineForm({ name: '', description: '', project_id: activeProject?.id || '', type: 'ingestion', steps: '[]' });
+				setPipelineForm({ name: '', description: '', project_id: activeProject?.id || '', type: 'ingestion', steps: '[]', allow_manual: true, webhook: false, webhook_secret: '' });
 				notify({ tone: 'success', message: 'Pipeline created.' });
 				loadData();
 			} catch (error) {
@@ -168,7 +179,7 @@
 		const handleExecutePipeline = async (id) => {
 			setExecutionStatus(prev => ({ ...prev, [id]: 'queued' }));
 			try {
-				const result = await apiCall(`/api/pipelines/${id}/execute`, { method: 'POST', body: JSON.stringify({}) });
+				const result = await apiCall(`/api/pipelines/${id}/trigger`, { method: 'POST', body: JSON.stringify({ trigger_type: 'manual' }) });
 				notify({ tone: 'success', message: result?.message || 'Pipeline run queued.' });
 			} catch (error) {
 				setExecutionStatus(prev => ({ ...prev, [id]: 'failed' }));
@@ -260,6 +271,20 @@
 						</div>
 						<FormField label="Pipeline Type" type="select" value={pipelineForm.type} onChange={(v) => setPipelineForm({ ...pipelineForm, type: v })} options={['ingestion', 'processing', 'output']} required />
 						<FormField label="Description" type="textarea" value={pipelineForm.description} onChange={(v) => setPipelineForm({ ...pipelineForm, description: v })} />
+						<div className="section-panel section-panel--neutral">
+							<div className="section-panel-copy"><strong>Trigger Configuration</strong></div>
+							<label className="checkbox-row">
+								<input type="checkbox" checked={pipelineForm.allow_manual} onChange={e => setPipelineForm({ ...pipelineForm, allow_manual: e.target.checked })} />
+								Allow manual trigger requests
+							</label>
+							<label className="checkbox-row">
+								<input type="checkbox" checked={pipelineForm.webhook} onChange={e => setPipelineForm({ ...pipelineForm, webhook: e.target.checked })} />
+								Enable authenticated webhook trigger
+							</label>
+							{pipelineForm.webhook ? (
+								<FormField label="Webhook Secret" value={pipelineForm.webhook_secret} onChange={(v) => setPipelineForm({ ...pipelineForm, webhook_secret: v })} required hint="The API redacts this secret in pipeline responses." />
+							) : null}
+						</div>
 						<div className="form-group">
 							<label>Steps</label>
 							<StepBuilder value={pipelineForm.steps} onChange={v => setPipelineForm({ ...pipelineForm, steps: v })} />

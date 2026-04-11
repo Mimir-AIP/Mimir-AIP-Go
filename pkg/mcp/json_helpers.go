@@ -17,3 +17,14 @@ func parseJSONMap(raw string) (map[string]any, error) {
 	}
 	return decoded, nil
 }
+
+func parseBool(raw string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}

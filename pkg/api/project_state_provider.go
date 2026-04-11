@@ -135,7 +135,7 @@ func (p *ProjectStateProvider) Summary(projectID string) (*models.ProjectStateSu
 		switch ontology.Status {
 		case "active":
 			activeOntologies++
-		case "draft", "needs_review":
+		case "draft":
 			ontologiesInProgress++
 		}
 	}

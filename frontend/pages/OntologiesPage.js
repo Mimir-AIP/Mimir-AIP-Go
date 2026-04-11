@@ -6,7 +6,14 @@
 	const { Button, FormField, Modal, Table } = root.components.primitives;
 
 	function emptyOntologyForm(projectId = '') {
-		return { name: '', project_id: projectId, description: '', version: '1.0', status: 'draft', content: '@prefix : <http://example.org/mimir#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n\n:Entity a owl:Class .' };
+		return {
+			name: '',
+			project_id: projectId,
+			description: '',
+			version: '1.0',
+			status: 'draft',
+			content: '@prefix : <http://example.org/mimir#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n\n:Entity a owl:Class .',
+		};
 	}
 
 	pages.OntologiesPage = function OntologiesPage() {
@@ -15,6 +22,9 @@
 		const [loading, setLoading] = React.useState(true);
 		const [loadError, setLoadError] = React.useState('');
 		const [showModal, setShowModal] = React.useState(false);
+		const [editingOntologyId, setEditingOntologyId] = React.useState('');
+		const [showContentModal, setShowContentModal] = React.useState(false);
+		const [contentPreview, setContentPreview] = React.useState('');
 		const [showExtractionModal, setShowExtractionModal] = React.useState(false);
 		const [storageConfigs, setStorageConfigs] = React.useState([]);
 		const [storageLoadError, setStorageLoadError] = React.useState('');
@@ -47,6 +57,30 @@
 			loadOntologies();
 		}, [loadOntologies]);
 
+		const openCreateModal = () => {
+			setEditingOntologyId('');
+			setFormData(emptyOntologyForm(activeProject?.id || ''));
+			setShowModal(true);
+		};
+
+		const openEditModal = (ontology) => {
+			setEditingOntologyId(ontology.id);
+			setFormData({
+				name: ontology.name || '',
+				project_id: ontology.project_id || activeProject?.id || '',
+				description: ontology.description || '',
+				version: ontology.version || '1.0',
+				status: ontology.status || 'draft',
+				content: ontology.content || '',
+			});
+			setShowModal(true);
+		};
+
+		const openContentModal = (ontology) => {
+			setContentPreview(ontology.content || '');
+			setShowContentModal(true);
+		};
+
 		const openExtractionModal = async () => {
 			setStorageLoadError('');
 			if (activeProject?.id) {
@@ -66,30 +100,43 @@
 		const handleSubmit = async (e) => {
 			e.preventDefault();
 			try {
-				await apiCall('/api/ontologies', {
-					method: 'POST',
-					body: JSON.stringify({
-						project_id: formData.project_id,
-						name: formData.name,
-						description: formData.description,
-						version: formData.version,
-						status: formData.status,
-						content: formData.content,
-					}),
-				});
+				const payload = {
+					project_id: formData.project_id,
+					name: formData.name,
+					description: formData.description,
+					version: formData.version,
+					status: formData.status,
+					content: formData.content,
+				};
+				if (editingOntologyId) {
+					await apiCall(`/api/ontologies/${editingOntologyId}?project_id=${formData.project_id}`, {
+						method: 'PUT',
+						body: JSON.stringify({
+							name: payload.name,
+							description: payload.description,
+							version: payload.version,
+							status: payload.status,
+							content: payload.content,
+						}),
+					});
+					notify({ tone: 'success', message: 'Ontology updated.' });
+				} else {
+					await apiCall('/api/ontologies', { method: 'POST', body: JSON.stringify(payload) });
+					notify({ tone: 'success', message: 'Ontology created.' });
+				}
 				setShowModal(false);
+				setEditingOntologyId('');
 				setFormData(emptyOntologyForm(activeProject?.id || ''));
-				notify({ tone: 'success', message: 'Ontology created.' });
 				loadOntologies();
 			} catch (error) {
-				notify({ tone: 'error', message: `Failed to create ontology: ${error.message}` });
+				notify({ tone: 'error', message: `Failed to save ontology: ${error.message}` });
 			}
 		};
 
 		const handleDelete = async (id) => {
 			const confirmed = await confirmAction({
 				title: 'Delete ontology',
-				message: 'Delete this ontology? Linked workflows may stop validating against it.',
+				message: 'Delete this ontology? Linked ML models, digital twins, or storage configs may still reference it.',
 				confirmLabel: 'Delete ontology',
 				variant: 'danger',
 			});
@@ -142,6 +189,7 @@
 			{ key: 'name', label: 'Name' },
 			{ key: 'project_id', label: 'Project ID' },
 			{ key: 'version', label: 'Version' },
+			{ key: 'source', label: 'Origin', render: (row) => row.is_generated ? 'Generated' : 'Manual' },
 			{ key: 'status', label: 'Status', render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span> },
 			{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleDateString() },
 		];
@@ -151,12 +199,12 @@
 				<div className="section-header">
 					<h2>Ontologies</h2>
 					<div className="inline-actions">
-						<Button label="+ New Ontology" onClick={() => setShowModal(true)} />
+						<Button label="+ New Ontology" onClick={openCreateModal} />
 						<Button label="Generate from Storage" onClick={openExtractionModal} variant="secondary" />
 					</div>
 				</div>
 
-				{activeProject ? <div className="page-notice"><strong>Project scope:</strong> showing ontologies for {activeProject.name}.</div> : null}
+				{activeProject ? <div className="page-notice"><strong>Project scope:</strong> showing ontologies for {activeProject.name}. Generated ontologies are updated in place from storage extraction runs.</div> : null}
 				{loadError ? <div className="error-message">{loadError}</div> : null}
 
 				{loading ? (
@@ -169,6 +217,8 @@
 						emptyState={activeProject ? 'No ontologies exist for this project yet.' : 'Select a project to inspect ontologies.'}
 						actions={(row) => (
 							<>
+								<Button label="View Content" onClick={() => openContentModal(row)} variant="secondary" />
+								<Button label="Edit" onClick={() => openEditModal(row)} variant="secondary" />
 								{row.status === 'draft' ? <Button label="Promote" onClick={() => handlePromote(row.id)} variant="secondary" /> : null}
 								<Button label="Delete" onClick={() => handleDelete(row.id)} variant="danger" />
 							</>
@@ -176,20 +226,24 @@
 					/>
 				)}
 
-				<Modal open={showModal} onClose={() => setShowModal(false)} title="Create New Ontology">
+				<Modal open={showModal} onClose={() => setShowModal(false)} title={editingOntologyId ? 'Edit Ontology' : 'Create New Ontology'}>
 					<form onSubmit={handleSubmit}>
 						<div className="form-grid">
 							<FormField label="Ontology Name" value={formData.name} onChange={(v) => setFormData({ ...formData, name: v })} required />
-							<FormField label="Project" type="select" value={formData.project_id} onChange={(v) => setFormData({ ...formData, project_id: v })} options={projectOptions} required />
+							<FormField label="Project" type="select" value={formData.project_id} onChange={(v) => setFormData({ ...formData, project_id: v })} options={projectOptions} required disabled={Boolean(editingOntologyId)} />
 						</div>
 						<div className="form-grid">
 							<FormField label="Version" value={formData.version} onChange={(v) => setFormData({ ...formData, version: v })} />
 							<FormField label="Status" type="select" value={formData.status} onChange={(v) => setFormData({ ...formData, status: v })} options={['draft', 'active', 'archived']} required />
 						</div>
 						<FormField label="Description" type="textarea" value={formData.description} onChange={(v) => setFormData({ ...formData, description: v })} />
-						<FormField label="Ontology Content (OWL/Turtle)" type="textarea" value={formData.content} onChange={(v) => setFormData({ ...formData, content: v })} required rows={10} />
-						<Button type="submit" label="Create Ontology" />
+						<FormField label="Ontology Content (OWL/Turtle)" type="textarea" value={formData.content} onChange={(v) => setFormData({ ...formData, content: v })} required rows={12} />
+						<Button type="submit" label={editingOntologyId ? 'Save Ontology' : 'Create Ontology'} />
 					</form>
+				</Modal>
+
+				<Modal open={showContentModal} onClose={() => setShowContentModal(false)} title="Ontology Content">
+					<pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.85rem' }}>{contentPreview}</pre>
 				</Modal>
 
 				<Modal open={showExtractionModal} onClose={() => setShowExtractionModal(false)} title="Generate Ontology from Storage">

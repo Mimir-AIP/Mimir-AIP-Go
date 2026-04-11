@@ -96,9 +96,17 @@ func (s *Service) configuredPlugin(storageConfig *models.StorageConfig) (models.
 
 // CreateStorageConfig creates a new storage configuration for a project
 func (s *Service) CreateStorageConfig(projectID, pluginType string, config map[string]interface{}) (*models.StorageConfig, error) {
-	// Validate plugin type
+	if err := s.ensureProjectExists(projectID); err != nil {
+		return nil, err
+	}
 	if _, err := s.GetPlugin(pluginType); err != nil {
 		return nil, fmt.Errorf("invalid plugin type: %w", err)
+	}
+	if config == nil {
+		config = map[string]interface{}{}
+	}
+	if err := s.validateStoragePluginConfig(pluginType, config); err != nil {
+		return nil, fmt.Errorf("invalid storage config: %w", err)
 	}
 
 	now := time.Now().Format(time.RFC3339)
@@ -111,14 +119,10 @@ func (s *Service) CreateStorageConfig(projectID, pluginType string, config map[s
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-
-	// Save storage config
 	if err := s.store.SaveStorageConfig(storageConfig); err != nil {
 		return nil, fmt.Errorf("failed to save storage config: %w", err)
 	}
-
 	log.Printf("Created storage config %s for project %s using plugin %s", storageConfig.ID, projectID, pluginType)
-
 	return storageConfig, nil
 }
 
@@ -138,23 +142,20 @@ func (s *Service) UpdateStorageConfig(storageID string, config map[string]interf
 	if err != nil {
 		return fmt.Errorf("storage config not found: %w", err)
 	}
-
 	if config != nil {
+		if err := s.validateStoragePluginConfig(storageConfig.PluginType, config); err != nil {
+			return fmt.Errorf("invalid storage config: %w", err)
+		}
 		storageConfig.Config = config
 	}
-
 	if active != nil {
 		storageConfig.Active = *active
 	}
-
 	storageConfig.UpdatedAt = time.Now().Format(time.RFC3339)
-
 	if err := s.store.SaveStorageConfig(storageConfig); err != nil {
 		return fmt.Errorf("failed to update storage config: %w", err)
 	}
-
 	log.Printf("Updated storage config %s", storageID)
-
 	return nil
 }
 
@@ -166,6 +167,52 @@ type StorageConfigInUseError struct {
 
 func (e *StorageConfigInUseError) Error() string {
 	return fmt.Sprintf("storage config %s is still referenced by %s", e.StorageID, strings.Join(e.References, ", "))
+}
+
+type StorageConfigProjectMismatchError struct {
+	StorageID         string
+	ExpectedProjectID string
+	ActualProjectID   string
+}
+
+func (e *StorageConfigProjectMismatchError) Error() string {
+	return fmt.Sprintf("storage config %s belongs to project %s, not %s", e.StorageID, e.ActualProjectID, e.ExpectedProjectID)
+}
+
+func (s *Service) ensureProjectExists(projectID string) error {
+	if strings.TrimSpace(projectID) == "" {
+		return fmt.Errorf("project_id is required")
+	}
+	if _, err := s.store.GetProject(projectID); err != nil {
+		return fmt.Errorf("project not found: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) getOwnedStorageConfig(projectID, storageID string) (*models.StorageConfig, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return nil, fmt.Errorf("project_id is required")
+	}
+	storageConfig, err := s.store.GetStorageConfig(storageID)
+	if err != nil {
+		return nil, fmt.Errorf("storage config not found: %w", err)
+	}
+	if storageConfig.ProjectID != projectID {
+		return nil, &StorageConfigProjectMismatchError{StorageID: storageID, ExpectedProjectID: projectID, ActualProjectID: storageConfig.ProjectID}
+	}
+	return storageConfig, nil
+}
+
+func (s *Service) GetOwnedStorageConfig(projectID, storageID string) (*models.StorageConfig, error) {
+	return s.getOwnedStorageConfig(projectID, storageID)
+}
+
+func (s *Service) validateStoragePluginConfig(pluginType string, config map[string]interface{}) error {
+	storageConfig := &models.StorageConfig{PluginType: pluginType, Config: config}
+	if _, err := s.configuredPlugin(storageConfig); err != nil {
+		return err
+	}
+	return nil
 }
 
 // DeleteStorageConfig deletes a storage configuration once no persisted project-owned resources still reference it.
@@ -281,36 +328,144 @@ func (s *Service) InitializeStorage(storageID string, ontology *models.OntologyD
 	return nil
 }
 
-// Store stores CIR data in the specified storage
-func (s *Service) Store(storageID string, cir *models.CIR) (*models.StorageResult, error) {
-	// Validate CIR
+func (s *Service) StoreForProject(projectID, storageID string, cir *models.CIR) (*models.StorageResult, error) {
+	storageConfig, err := s.getOwnedStorageConfig(projectID, storageID)
+	if err != nil {
+		return nil, err
+	}
+	return s.storeWithConfig(storageConfig, cir)
+}
+
+func (s *Service) RetrieveForProject(projectID, storageID string, query *models.CIRQuery) ([]*models.CIR, error) {
+	storageConfig, err := s.getOwnedStorageConfig(projectID, storageID)
+	if err != nil {
+		return nil, err
+	}
+	return s.retrieveWithConfig(storageConfig, query)
+}
+
+func (s *Service) UpdateForProject(projectID, storageID string, query *models.CIRQuery, updates *models.CIRUpdate) (*models.StorageResult, error) {
+	storageConfig, err := s.getOwnedStorageConfig(projectID, storageID)
+	if err != nil {
+		return nil, err
+	}
+	return s.updateWithConfig(storageConfig, query, updates)
+}
+
+func (s *Service) DeleteForProject(projectID, storageID string, query *models.CIRQuery) (*models.StorageResult, error) {
+	storageConfig, err := s.getOwnedStorageConfig(projectID, storageID)
+	if err != nil {
+		return nil, err
+	}
+	return s.deleteWithConfig(storageConfig, query)
+}
+
+func (s *Service) GetStorageMetadataForProject(projectID, storageID string) (*models.StorageMetadata, error) {
+	storageConfig, err := s.getOwnedStorageConfig(projectID, storageID)
+	if err != nil {
+		return nil, err
+	}
+	return s.metadataWithConfig(storageConfig)
+}
+
+func (s *Service) HealthCheckForProject(projectID, storageID string) (bool, error) {
+	storageConfig, err := s.getOwnedStorageConfig(projectID, storageID)
+	if err != nil {
+		return false, err
+	}
+	return s.healthWithConfig(storageConfig)
+}
+
+func (s *Service) storeWithConfig(storageConfig *models.StorageConfig, cir *models.CIR) (*models.StorageResult, error) {
 	if err := cir.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid CIR: %w", err)
 	}
-
-	storageConfig, err := s.store.GetStorageConfig(storageID)
-	if err != nil {
-		return nil, fmt.Errorf("storage config not found: %w", err)
-	}
-
 	if !storageConfig.Active {
 		return nil, fmt.Errorf("storage config is not active")
 	}
-
 	plugin, err := s.configuredPlugin(storageConfig)
 	if err != nil {
 		return nil, err
 	}
-
-	// Store data
 	result, err := plugin.Store(cir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to store data: %w", err)
 	}
-
-	log.Printf("Stored CIR data in storage %s, affected items: %d", storageID, result.AffectedItems)
-
+	log.Printf("Stored CIR data in storage %s, affected items: %d", storageConfig.ID, result.AffectedItems)
 	return result, nil
+}
+
+func (s *Service) retrieveWithConfig(storageConfig *models.StorageConfig, query *models.CIRQuery) ([]*models.CIR, error) {
+	if !storageConfig.Active {
+		return nil, fmt.Errorf("storage config is not active")
+	}
+	plugin, err := s.configuredPlugin(storageConfig)
+	if err != nil {
+		return nil, err
+	}
+	results, err := plugin.Retrieve(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve data: %w", err)
+	}
+	log.Printf("Retrieved %d CIR objects from storage %s", len(results), storageConfig.ID)
+	return results, nil
+}
+
+func (s *Service) updateWithConfig(storageConfig *models.StorageConfig, query *models.CIRQuery, updates *models.CIRUpdate) (*models.StorageResult, error) {
+	if !storageConfig.Active {
+		return nil, fmt.Errorf("storage config is not active")
+	}
+	plugin, err := s.configuredPlugin(storageConfig)
+	if err != nil {
+		return nil, err
+	}
+	result, err := plugin.Update(query, updates)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update data: %w", err)
+	}
+	log.Printf("Updated data in storage %s, affected items: %d", storageConfig.ID, result.AffectedItems)
+	return result, nil
+}
+
+func (s *Service) deleteWithConfig(storageConfig *models.StorageConfig, query *models.CIRQuery) (*models.StorageResult, error) {
+	if !storageConfig.Active {
+		return nil, fmt.Errorf("storage config is not active")
+	}
+	plugin, err := s.configuredPlugin(storageConfig)
+	if err != nil {
+		return nil, err
+	}
+	result, err := plugin.Delete(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete data: %w", err)
+	}
+	log.Printf("Deleted data from storage %s, affected items: %d", storageConfig.ID, result.AffectedItems)
+	return result, nil
+}
+
+func (s *Service) metadataWithConfig(storageConfig *models.StorageConfig) (*models.StorageMetadata, error) {
+	plugin, err := s.configuredPlugin(storageConfig)
+	if err != nil {
+		return nil, err
+	}
+	return plugin.GetMetadata()
+}
+
+func (s *Service) healthWithConfig(storageConfig *models.StorageConfig) (bool, error) {
+	plugin, err := s.configuredPlugin(storageConfig)
+	if err != nil {
+		return false, err
+	}
+	return plugin.HealthCheck()
+}
+
+// Store stores CIR data in the specified storage
+func (s *Service) Store(storageID string, cir *models.CIR) (*models.StorageResult, error) {
+	storageConfig, err := s.store.GetStorageConfig(storageID)
+	if err != nil {
+		return nil, fmt.Errorf("storage config not found: %w", err)
+	}
+	return s.storeWithConfig(storageConfig, cir)
 }
 
 // Retrieve retrieves data from storage using a query
@@ -319,25 +474,7 @@ func (s *Service) Retrieve(storageID string, query *models.CIRQuery) ([]*models.
 	if err != nil {
 		return nil, fmt.Errorf("storage config not found: %w", err)
 	}
-
-	if !storageConfig.Active {
-		return nil, fmt.Errorf("storage config is not active")
-	}
-
-	plugin, err := s.configuredPlugin(storageConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	// Retrieve data
-	results, err := plugin.Retrieve(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve data: %w", err)
-	}
-
-	log.Printf("Retrieved %d CIR objects from storage %s", len(results), storageID)
-
-	return results, nil
+	return s.retrieveWithConfig(storageConfig, query)
 }
 
 // Update updates data in storage
@@ -346,25 +483,7 @@ func (s *Service) Update(storageID string, query *models.CIRQuery, updates *mode
 	if err != nil {
 		return nil, fmt.Errorf("storage config not found: %w", err)
 	}
-
-	if !storageConfig.Active {
-		return nil, fmt.Errorf("storage config is not active")
-	}
-
-	plugin, err := s.configuredPlugin(storageConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	// Update data
-	result, err := plugin.Update(query, updates)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update data: %w", err)
-	}
-
-	log.Printf("Updated data in storage %s, affected items: %d", storageID, result.AffectedItems)
-
-	return result, nil
+	return s.updateWithConfig(storageConfig, query, updates)
 }
 
 // Delete deletes data from storage
@@ -373,25 +492,7 @@ func (s *Service) Delete(storageID string, query *models.CIRQuery) (*models.Stor
 	if err != nil {
 		return nil, fmt.Errorf("storage config not found: %w", err)
 	}
-
-	if !storageConfig.Active {
-		return nil, fmt.Errorf("storage config is not active")
-	}
-
-	plugin, err := s.configuredPlugin(storageConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	// Delete data
-	result, err := plugin.Delete(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete data: %w", err)
-	}
-
-	log.Printf("Deleted data from storage %s, affected items: %d", storageID, result.AffectedItems)
-
-	return result, nil
+	return s.deleteWithConfig(storageConfig, query)
 }
 
 // GetStorageMetadata retrieves metadata about the storage system
@@ -400,13 +501,7 @@ func (s *Service) GetStorageMetadata(storageID string) (*models.StorageMetadata,
 	if err != nil {
 		return nil, fmt.Errorf("storage config not found: %w", err)
 	}
-
-	plugin, err := s.configuredPlugin(storageConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return plugin.GetMetadata()
+	return s.metadataWithConfig(storageConfig)
 }
 
 // HealthCheck performs a health check on the storage
@@ -415,13 +510,7 @@ func (s *Service) HealthCheck(storageID string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("storage config not found: %w", err)
 	}
-
-	plugin, err := s.configuredPlugin(storageConfig)
-	if err != nil {
-		return false, err
-	}
-
-	return plugin.HealthCheck()
+	return s.healthWithConfig(storageConfig)
 }
 
 // GetIngestionHealth computes ingestion freshness/completeness/drift metrics

@@ -3860,11 +3860,17 @@ paths:
                 - Storage Plugins
     /api/storage/health:
         get:
-            description: Checks connectivity to the underlying backend for the given storage config ID.
+            description: Checks connectivity to the underlying backend for the given project-owned storage config ID.
             parameters:
                 - description: Storage config ID
                   in: query
                   name: config_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -3882,6 +3888,10 @@ paths:
                                         type: boolean
                                 type: object
                     description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
+                "404":
+                    description: Resource not found
             summary: Storage health check
             tags:
                 - Storage
@@ -3937,9 +3947,17 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "204":
                     description: No content
+                "403":
+                    description: Forbidden — storage config belongs to another project
                 "404":
                     description: Resource not found
                 "409":
@@ -3948,11 +3966,16 @@ paths:
             tags:
                 - Storage
         get:
-            description: ""
             parameters:
                 - description: Storage config ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -3963,17 +3986,24 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StorageConfig'
                     description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
                 "404":
                     description: Resource not found
             summary: Get storage config
             tags:
                 - Storage
         put:
-            description: ""
             parameters:
                 - description: Storage config ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -3992,6 +4022,8 @@ paths:
                     description: 200 OK
                 "400":
                     description: Bad request — invalid input
+                "403":
+                    description: Forbidden — storage config belongs to another project
                 "404":
                     description: Resource not found
             summary: Update storage config
@@ -3999,7 +4031,7 @@ paths:
                 - Storage
     /api/storage/delete:
         post:
-            description: Deletes matching CIR records from the specified storage backend.
+            description: Deletes matching CIR records from the specified project-owned storage backend.
             requestBody:
                 content:
                     application/json:
@@ -4013,6 +4045,10 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StorageResult'
                     description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
+                "404":
+                    description: Resource not found
             summary: Delete CIR data
             tags:
                 - Storage
@@ -4042,7 +4078,7 @@ paths:
                 - Storage
     /api/storage/retrieve:
         post:
-            description: Queries and returns CIR records from the specified storage backend.
+            description: Queries and returns CIR records from the specified project-owned storage backend.
             requestBody:
                 content:
                     application/json:
@@ -4058,12 +4094,16 @@ paths:
                                     $ref: '#/components/schemas/CIR'
                                 type: array
                     description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
+                "404":
+                    description: Resource not found
             summary: Retrieve CIR data
             tags:
                 - Storage
     /api/storage/store:
         post:
-            description: Writes one or more CIR records to the specified storage backend.
+            description: Writes one or more CIR records to the specified project-owned storage backend.
             requestBody:
                 content:
                     application/json:
@@ -4077,12 +4117,16 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StorageResult'
                     description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
+                "404":
+                    description: Resource not found
             summary: Store CIR data
             tags:
                 - Storage
     /api/storage/update:
         post:
-            description: Applies delta updates to matching CIR records in the specified storage backend.
+            description: Applies delta updates to matching CIR records in the specified project-owned storage backend.
             requestBody:
                 content:
                     application/json:
@@ -4096,6 +4140,10 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StorageResult'
                     description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
+                "404":
+                    description: Resource not found
             summary: Update CIR data
             tags:
                 - Storage

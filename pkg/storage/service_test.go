@@ -390,3 +390,44 @@ func TestDeleteStorageConfigDeletesUnreferencedConfig(t *testing.T) {
 		t.Fatal("expected storage config to be deleted")
 	}
 }
+
+func TestCreateStorageConfigRejectsMissingProject(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	svc := NewService(store)
+	svc.RegisterPlugin("mock", &mockStoragePlugin{})
+
+	_, err = svc.CreateStorageConfig("missing-project", "mock", map[string]interface{}{"connection_string": "mock://"})
+	if err == nil {
+		t.Fatal("expected create to fail when project does not exist")
+	}
+}
+
+func TestStoreForProjectRejectsProjectMismatch(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	saveTestProject(t, store, "project-a")
+	saveTestProject(t, store, "project-b")
+
+	svc := NewService(store)
+	svc.RegisterPlugin("mock", &mockStoragePlugin{})
+
+	cfg, err := svc.CreateStorageConfig("project-a", "mock", map[string]interface{}{"connection_string": "mock://a"})
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+
+	_, err = svc.StoreForProject("project-b", cfg.ID, &models.CIR{Version: models.CIRVersion, Source: models.CIRSource{Type: models.SourceTypeAPI, URI: "manual", Timestamp: time.Now().UTC(), Format: models.DataFormatJSON}, Data: map[string]interface{}{"k": "v"}})
+	var mismatchErr *StorageConfigProjectMismatchError
+	if !errors.As(err, &mismatchErr) {
+		t.Fatalf("expected StorageConfigProjectMismatchError, got %v", err)
+	}
+}

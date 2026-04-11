@@ -23,6 +23,25 @@ func NewStorageHandler(service *storage.Service) *StorageHandler {
 	}
 }
 
+func storageErrorStatus(err error) int {
+	var inUseErr *storage.StorageConfigInUseError
+	var projectMismatchErr *storage.StorageConfigProjectMismatchError
+	switch {
+	case err == nil:
+		return http.StatusOK
+	case errors.As(err, &inUseErr):
+		return http.StatusConflict
+	case errors.As(err, &projectMismatchErr):
+		return http.StatusForbidden
+	case strings.Contains(err.Error(), "not found"):
+		return http.StatusNotFound
+	case strings.Contains(err.Error(), "project_id is required"), strings.Contains(err.Error(), "plugin_type is required"), strings.Contains(err.Error(), "config_id query parameter is required"), strings.Contains(err.Error(), "invalid"):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
 // HandleStorageConfigs handles requests to /api/storage/configs
 func (h *StorageHandler) HandleStorageConfigs(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -69,13 +88,15 @@ func (h *StorageHandler) HandleStorageStore(w http.ResponseWriter, r *http.Reque
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
-
-	result, err := h.service.Store(req.StorageID, req.CIRData)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to store data: %v", err), http.StatusInternalServerError)
+	if req.ProjectID == "" {
+		http.Error(w, "project_id is required", http.StatusBadRequest)
 		return
 	}
-
+	result, err := h.service.StoreForProject(req.ProjectID, req.StorageID, req.CIRData)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to store data: %v", err), storageErrorStatus(err))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
@@ -92,13 +113,15 @@ func (h *StorageHandler) HandleStorageRetrieve(w http.ResponseWriter, r *http.Re
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
-
-	results, err := h.service.Retrieve(req.StorageID, req.Query)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to retrieve data: %v", err), http.StatusInternalServerError)
+	if req.ProjectID == "" {
+		http.Error(w, "project_id is required", http.StatusBadRequest)
 		return
 	}
-
+	results, err := h.service.RetrieveForProject(req.ProjectID, req.StorageID, req.Query)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to retrieve data: %v", err), storageErrorStatus(err))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
 }
@@ -115,13 +138,15 @@ func (h *StorageHandler) HandleStorageUpdate(w http.ResponseWriter, r *http.Requ
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
-
-	result, err := h.service.Update(req.StorageID, req.Query, req.Updates)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update data: %v", err), http.StatusInternalServerError)
+	if req.ProjectID == "" {
+		http.Error(w, "project_id is required", http.StatusBadRequest)
 		return
 	}
-
+	result, err := h.service.UpdateForProject(req.ProjectID, req.StorageID, req.Query, req.Updates)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update data: %v", err), storageErrorStatus(err))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
@@ -138,13 +163,15 @@ func (h *StorageHandler) HandleStorageDelete(w http.ResponseWriter, r *http.Requ
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
-
-	result, err := h.service.Delete(req.StorageID, req.Query)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to delete data: %v", err), http.StatusInternalServerError)
+	if req.ProjectID == "" {
+		http.Error(w, "project_id is required", http.StatusBadRequest)
 		return
 	}
-
+	result, err := h.service.DeleteForProject(req.ProjectID, req.StorageID, req.Query)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete data: %v", err), storageErrorStatus(err))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
@@ -169,56 +196,45 @@ func (h *StorageHandler) HandleIngestionHealth(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(report)
 }
 
-// HandleStorageHealth handles requests to GET /api/storage/health?config_id=<id>
+// HandleStorageHealth handles requests to GET /api/storage/health?config_id=<id>&project_id=<id>
 func (h *StorageHandler) HandleStorageHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
 	storageID := r.URL.Query().Get("config_id")
+	projectID := r.URL.Query().Get("project_id")
 	if storageID == "" {
 		http.Error(w, "config_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-
-	healthy, err := h.service.HealthCheck(storageID)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"healthy": false,
-			"error":   err.Error(),
-		})
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-
+	healthy, err := h.service.HealthCheckForProject(projectID, storageID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(storageErrorStatus(err))
+		json.NewEncoder(w).Encode(map[string]interface{}{"healthy": false, "error": err.Error()})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"healthy": healthy,
-	})
+	json.NewEncoder(w).Encode(map[string]interface{}{"healthy": healthy})
 }
 
 // listStorageConfigs lists all storage configurations
 func (h *StorageHandler) listStorageConfigs(w http.ResponseWriter, r *http.Request) {
-	// Check if filtering by project
 	projectID := r.URL.Query().Get("project_id")
-
-	var configs []*models.StorageConfig
-	var err error
-
-	if projectID != "" {
-		configs, err = h.service.GetProjectStorageConfigs(projectID)
-	} else {
-		// List all (would need to add this to service)
+	if projectID == "" {
 		http.Error(w, "project_id parameter is required", http.StatusBadRequest)
 		return
 	}
-
+	configs, err := h.service.GetProjectStorageConfigs(projectID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to list storage configs: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to list storage configs: %v", err), storageErrorStatus(err))
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(configs)
 }
@@ -230,28 +246,23 @@ func (h *StorageHandler) createStorageConfig(w http.ResponseWriter, r *http.Requ
 		PluginType string                 `json:"plugin_type"`
 		Config     map[string]interface{} `json:"config"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
-
 	if req.ProjectID == "" {
 		http.Error(w, "project_id is required", http.StatusBadRequest)
 		return
 	}
-
 	if req.PluginType == "" {
 		http.Error(w, "plugin_type is required", http.StatusBadRequest)
 		return
 	}
-
 	config, err := h.service.CreateStorageConfig(req.ProjectID, req.PluginType, req.Config)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create storage config: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to create storage config: %v", err), storageErrorStatus(err))
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(config)
@@ -259,58 +270,66 @@ func (h *StorageHandler) createStorageConfig(w http.ResponseWriter, r *http.Requ
 
 // getStorageConfig retrieves a storage configuration by ID
 func (h *StorageHandler) getStorageConfig(w http.ResponseWriter, r *http.Request, id string) {
-	config, err := h.service.GetStorageConfig(id)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get storage config: %v", err), http.StatusNotFound)
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-
+	config, err := h.service.GetOwnedStorageConfig(projectID, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get storage config: %v", err), storageErrorStatus(err))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(config)
 }
 
 // updateStorageConfig updates a storage configuration
 func (h *StorageHandler) updateStorageConfig(w http.ResponseWriter, r *http.Request, id string) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
+		return
+	}
 	var req struct {
 		Config map[string]interface{} `json:"config"`
 		Active *bool                  `json:"active"`
 	}
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
-
+	if _, err := h.service.GetOwnedStorageConfig(projectID, id); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update storage config: %v", err), storageErrorStatus(err))
+		return
+	}
 	if err := h.service.UpdateStorageConfig(id, req.Config, req.Active); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update storage config: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to update storage config: %v", err), storageErrorStatus(err))
 		return
 	}
-
-	// Get updated config
-	config, err := h.service.GetStorageConfig(id)
+	config, err := h.service.GetOwnedStorageConfig(projectID, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get updated config: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to get updated config: %v", err), storageErrorStatus(err))
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(config)
 }
 
 // deleteStorageConfig deletes a storage configuration
 func (h *StorageHandler) deleteStorageConfig(w http.ResponseWriter, r *http.Request, id string) {
-	if err := h.service.DeleteStorageConfig(id); err != nil {
-		status := http.StatusInternalServerError
-		var inUseErr *storage.StorageConfigInUseError
-		switch {
-		case errors.As(err, &inUseErr):
-			status = http.StatusConflict
-		case strings.Contains(err.Error(), "storage config not found"):
-			status = http.StatusNotFound
-		}
-		http.Error(w, fmt.Sprintf("Failed to delete storage config: %v", err), status)
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
 		return
 	}
-
+	if _, err := h.service.GetOwnedStorageConfig(projectID, id); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete storage config: %v", err), storageErrorStatus(err))
+		return
+	}
+	if err := h.service.DeleteStorageConfig(id); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete storage config: %v", err), storageErrorStatus(err))
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

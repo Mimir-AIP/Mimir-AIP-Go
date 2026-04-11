@@ -68,7 +68,7 @@
 			});
 			if (!confirmed) return;
 			try {
-				await apiCall(`/api/storage/configs/${id}`, { method: 'DELETE' });
+				await apiCall(`/api/storage/configs/${id}?project_id=${activeProject?.id || ''}`, { method: 'DELETE' });
 				notify({ tone: 'success', message: 'Storage configuration deleted.' });
 				loadConfigs();
 			} catch (error) {
@@ -79,7 +79,7 @@
 		const handleCheckHealth = async (id) => {
 			setHealthStatus(prev => ({ ...prev, [id]: 'checking' }));
 			try {
-				const result = await apiCall(`/api/storage/health?config_id=${id}`);
+				const result = await apiCall(`/api/storage/health?config_id=${id}&project_id=${activeProject?.id || ''}`);
 				const status = result.healthy ? 'ok' : 'error';
 				setHealthStatus(prev => ({ ...prev, [id]: status }));
 				notify({ tone: status === 'ok' ? 'success' : 'error', message: status === 'ok' ? 'Storage connection healthy.' : 'Storage connection failed health check.' });

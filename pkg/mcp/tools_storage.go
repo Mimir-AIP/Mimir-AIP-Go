@@ -15,18 +15,16 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// list_storage_configs
 	s.AddTool(
 		mcp.NewTool("list_storage_configs",
-			mcp.WithDescription("List storage configurations, optionally filtered by project"),
+			mcp.WithDescription("List storage configurations for a specific project"),
 			mcp.WithString("project_id",
-				mcp.Description("Filter by project ID; omit to get an informational response"),
+				mcp.Required(),
+				mcp.Description("Project ID"),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			projectID := req.GetString("project_id", "")
 			if projectID == "" {
-				data, _ := json.Marshal(map[string]string{
-					"message": "Provide project_id to list storage configs for a specific project",
-				})
-				return mcp.NewToolResultText(string(data)), nil
+				return mcp.NewToolResultError("project_id is required"), nil
 			}
 			configs, err := m.storageSvc.GetProjectStorageConfigs(projectID)
 			if err != nil {
@@ -77,21 +75,17 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// store_data
 	s.AddTool(
 		mcp.NewTool("store_data",
-			mcp.WithDescription("Store one or more CIR (Common Internal Representation) records in a storage backend"),
-			mcp.WithString("storage_id",
-				mcp.Required(),
-				mcp.Description("Storage config ID"),
-			),
-			mcp.WithString("data",
-				mcp.Required(),
-				mcp.Description(`JSON array of CIR objects. Minimal example: [{"version":"1.0","source":{"type":"api","uri":"manual","timestamp":"2024-01-01T00:00:00Z","format":"json"},"data":{"key":"value"},"metadata":{}}]`),
-			),
+			mcp.WithDescription("Store one or more CIR (Common Internal Representation) records in a project-owned storage backend"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("storage_id", mcp.Required(), mcp.Description("Storage config ID")),
+			mcp.WithString("data", mcp.Required(), mcp.Description(`JSON array of CIR objects. Minimal example: [{"version":"1.0","source":{"type":"api","uri":"manual","timestamp":"2024-01-01T00:00:00Z","format":"json"},"data":{"key":"value"},"metadata":{}}]`)),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			storageID := req.GetString("storage_id", "")
 			dataStr := req.GetString("data", "")
-			if storageID == "" || dataStr == "" {
-				return mcp.NewToolResultError("storage_id and data are required"), nil
+			if projectID == "" || storageID == "" || dataStr == "" {
+				return mcp.NewToolResultError("project_id, storage_id and data are required"), nil
 			}
 			var cirs []*models.CIR
 			if err := json.Unmarshal([]byte(dataStr), &cirs); err != nil {
@@ -100,27 +94,19 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 			if len(cirs) == 0 {
 				return mcp.NewToolResultError("data array must not be empty"), nil
 			}
-
-			// Set default timestamps if missing
-			for _, c := range cirs {
-				if c.Source.Timestamp.IsZero() {
-					c.Source.Timestamp = time.Now().UTC()
-				}
-			}
-
 			stored := 0
 			var lastErr error
 			for _, cir := range cirs {
-				if _, err := m.storageSvc.Store(storageID, cir); err != nil {
+				if cir.Source.Timestamp.IsZero() {
+					cir.Source.Timestamp = time.Now().UTC()
+				}
+				if _, err := m.storageSvc.StoreForProject(projectID, storageID, cir); err != nil {
 					lastErr = err
 				} else {
 					stored++
 				}
 			}
-			result := map[string]any{
-				"stored": stored,
-				"total":  len(cirs),
-			}
+			result := map[string]any{"stored": stored, "total": len(cirs)}
 			if lastErr != nil {
 				result["last_error"] = lastErr.Error()
 			}
@@ -132,35 +118,24 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// retrieve_data
 	s.AddTool(
 		mcp.NewTool("retrieve_data",
-			mcp.WithDescription("Retrieve CIR records from a storage backend"),
-			mcp.WithString("storage_id",
-				mcp.Required(),
-				mcp.Description("Storage config ID"),
-			),
-			mcp.WithString("entity_type",
-				mcp.Description("Filter records by entity type"),
-			),
-			mcp.WithString("limit",
-				mcp.Description("Maximum number of records to return (default 100)"),
-			),
+			mcp.WithDescription("Retrieve CIR records from a project-owned storage backend"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("storage_id", mcp.Required(), mcp.Description("Storage config ID")),
+			mcp.WithString("entity_type", mcp.Description("Filter records by entity type")),
+			mcp.WithString("limit", mcp.Description("Maximum number of records to return (default 100)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			storageID := req.GetString("storage_id", "")
-			if storageID == "" {
-				return mcp.NewToolResultError("storage_id is required"), nil
+			if projectID == "" || storageID == "" {
+				return mcp.NewToolResultError("project_id and storage_id are required"), nil
 			}
-			query := &models.CIRQuery{
-				EntityType: req.GetString("entity_type", ""),
-				Limit:      req.GetInt("limit", 100),
-			}
-			cirs, err := m.storageSvc.Retrieve(storageID, query)
+			query := &models.CIRQuery{EntityType: req.GetString("entity_type", ""), Limit: req.GetInt("limit", 100)}
+			cirs, err := m.storageSvc.RetrieveForProject(projectID, storageID, query)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			data, _ := json.Marshal(map[string]any{
-				"records": cirs,
-				"count":   len(cirs),
-			})
+			data, _ := json.Marshal(map[string]any{"records": cirs, "count": len(cirs)})
 			return mcp.NewToolResultText(string(data)), nil
 		},
 	)
@@ -168,18 +143,17 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// get_storage_config
 	s.AddTool(
 		mcp.NewTool("get_storage_config",
-			mcp.WithDescription("Get a specific storage configuration by ID"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("Storage config ID"),
-			),
+			mcp.WithDescription("Get a specific storage configuration by ID for a project"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Storage config ID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
 			}
-			config, err := m.storageSvc.GetStorageConfig(id)
+			config, err := m.storageSvc.GetOwnedStorageConfig(projectID, id)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -191,22 +165,20 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// update_storage_config
 	s.AddTool(
 		mcp.NewTool("update_storage_config",
-			mcp.WithDescription("Update a storage configuration's plugin config or active state"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("Storage config ID"),
-			),
-			mcp.WithString("config",
-				mcp.Description("JSON object with updated plugin-specific config"),
-			),
-			mcp.WithString("active",
-				mcp.Description("Set active state: true or false"),
-			),
+			mcp.WithDescription("Update a project-owned storage configuration's plugin config or active state"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Storage config ID")),
+			mcp.WithString("config", mcp.Description("JSON object with updated plugin-specific config")),
+			mcp.WithString("active", mcp.Description("Set active state: true or false")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
+			}
+			if _, err := m.storageSvc.GetOwnedStorageConfig(projectID, id); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
 			}
 			var cfg map[string]interface{}
 			if cfgStr := req.GetString("config", ""); cfgStr != "" {
@@ -229,16 +201,18 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// delete_storage_config
 	s.AddTool(
 		mcp.NewTool("delete_storage_config",
-			mcp.WithDescription("Delete a storage configuration by ID"),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("Storage config ID"),
-			),
+			mcp.WithDescription("Delete a project-owned storage configuration by ID"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Project ID")),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Storage config ID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			id := req.GetString("id", "")
-			if id == "" {
-				return mcp.NewToolResultError("id is required"), nil
+			if projectID == "" || id == "" {
+				return mcp.NewToolResultError("project_id and id are required"), nil
+			}
+			if _, err := m.storageSvc.GetOwnedStorageConfig(projectID, id); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
 			}
 			if err := m.storageSvc.DeleteStorageConfig(id); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
@@ -250,26 +224,19 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// update_data
 	s.AddTool(
 		mcp.NewTool("update_data",
-			mcp.WithDescription("Update CIR records in a storage backend matching a query"),
-			mcp.WithString("storage_id",
-				mcp.Required(),
-				mcp.Description("Storage config ID"),
-			),
-			mcp.WithString("query",
-				mcp.Required(),
-				mcp.Description(`JSON CIRQuery to select records e.g. {"entity_type":"Sensor","limit":100}`),
-			),
-			mcp.WithString("updates",
-				mcp.Required(),
-				mcp.Description(`JSON CIRUpdate with fields to set e.g. {"set_fields":{"status":"inactive"}}`),
-			),
+			mcp.WithDescription("Update CIR records in a project-owned storage backend matching a query"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("storage_id", mcp.Required(), mcp.Description("Storage config ID")),
+			mcp.WithString("query", mcp.Required(), mcp.Description(`JSON CIRQuery to select records e.g. {"entity_type":"Sensor","limit":100}`)),
+			mcp.WithString("updates", mcp.Required(), mcp.Description(`JSON CIRUpdate with fields to set e.g. {"set_fields":{"status":"inactive"}}`)),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			storageID := req.GetString("storage_id", "")
 			queryStr := req.GetString("query", "")
 			updatesStr := req.GetString("updates", "")
-			if storageID == "" || queryStr == "" || updatesStr == "" {
-				return mcp.NewToolResultError("storage_id, query, and updates are required"), nil
+			if projectID == "" || storageID == "" || queryStr == "" || updatesStr == "" {
+				return mcp.NewToolResultError("project_id, storage_id, query, and updates are required"), nil
 			}
 			var query models.CIRQuery
 			if err := json.Unmarshal([]byte(queryStr), &query); err != nil {
@@ -279,7 +246,7 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 			if err := json.Unmarshal([]byte(updatesStr), &updates); err != nil {
 				return mcp.NewToolResultError("updates must be valid JSON: " + err.Error()), nil
 			}
-			result, err := m.storageSvc.Update(storageID, &query, &updates)
+			result, err := m.storageSvc.UpdateForProject(projectID, storageID, &query, &updates)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -291,27 +258,23 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// delete_data
 	s.AddTool(
 		mcp.NewTool("delete_data",
-			mcp.WithDescription("Delete CIR records from a storage backend matching a query"),
-			mcp.WithString("storage_id",
-				mcp.Required(),
-				mcp.Description("Storage config ID"),
-			),
-			mcp.WithString("query",
-				mcp.Required(),
-				mcp.Description(`JSON CIRQuery to select records for deletion e.g. {"entity_type":"Sensor"}`),
-			),
+			mcp.WithDescription("Delete CIR records from a project-owned storage backend matching a query"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Owning project ID")),
+			mcp.WithString("storage_id", mcp.Required(), mcp.Description("Storage config ID")),
+			mcp.WithString("query", mcp.Required(), mcp.Description(`JSON CIRQuery to select records for deletion e.g. {"entity_type":"Sensor"}`)),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			storageID := req.GetString("storage_id", "")
 			queryStr := req.GetString("query", "")
-			if storageID == "" || queryStr == "" {
-				return mcp.NewToolResultError("storage_id and query are required"), nil
+			if projectID == "" || storageID == "" || queryStr == "" {
+				return mcp.NewToolResultError("project_id, storage_id and query are required"), nil
 			}
 			var query models.CIRQuery
 			if err := json.Unmarshal([]byte(queryStr), &query); err != nil {
 				return mcp.NewToolResultError("query must be valid JSON: " + err.Error()), nil
 			}
-			result, err := m.storageSvc.Delete(storageID, &query)
+			result, err := m.storageSvc.DeleteForProject(projectID, storageID, &query)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -323,30 +286,22 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 	// storage_health
 	s.AddTool(
 		mcp.NewTool("storage_health",
-			mcp.WithDescription("Check whether a storage backend is reachable and healthy"),
-			mcp.WithString("storage_id",
-				mcp.Required(),
-				mcp.Description("Storage config ID"),
-			),
+			mcp.WithDescription("Check whether a project-owned storage backend is reachable and healthy"),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Project ID")),
+			mcp.WithString("storage_id", mcp.Required(), mcp.Description("Storage config ID")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			projectID := req.GetString("project_id", "")
 			storageID := req.GetString("storage_id", "")
-			if storageID == "" {
-				return mcp.NewToolResultError("storage_id is required"), nil
+			if projectID == "" || storageID == "" {
+				return mcp.NewToolResultError("project_id and storage_id are required"), nil
 			}
-			healthy, err := m.storageSvc.HealthCheck(storageID)
+			healthy, err := m.storageSvc.HealthCheckForProject(projectID, storageID)
 			if err != nil {
-				result, _ := json.Marshal(map[string]any{
-					"storage_id": storageID,
-					"healthy":    false,
-					"error":      fmt.Sprintf("%v", err),
-				})
+				result, _ := json.Marshal(map[string]any{"storage_id": storageID, "healthy": false, "error": fmt.Sprintf("%v", err)})
 				return mcp.NewToolResultText(string(result)), nil
 			}
-			result, _ := json.Marshal(map[string]any{
-				"storage_id": storageID,
-				"healthy":    healthy,
-			})
+			result, _ := json.Marshal(map[string]any{"storage_id": storageID, "healthy": healthy})
 			return mcp.NewToolResultText(string(result)), nil
 		},
 	)

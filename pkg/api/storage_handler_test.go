@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -95,10 +97,97 @@ func TestDeleteStorageConfigReturnsConflictWhenReferenced(t *testing.T) {
 		t.Fatalf("failed to save pipeline: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/storage/configs/"+cfg.ID, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/storage/configs/"+cfg.ID+"?project_id="+project.ID, nil)
 	resp := httptest.NewRecorder()
 	server.mux.ServeHTTP(resp, req)
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("expected 409 Conflict, got %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestStorageHealthRequiresProjectOwnership(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "storage-health.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	q, err := queue.NewQueue(nil)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	projectA := &models.Project{ID: "project-a", Name: "project-a", Description: "A", Version: "v1", Status: models.ProjectStatusActive, Metadata: models.ProjectMetadata{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}}
+	projectB := &models.Project{ID: "project-b", Name: "project-b", Description: "B", Version: "v1", Status: models.ProjectStatusActive, Metadata: models.ProjectMetadata{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}}
+	if err := store.SaveProject(projectA); err != nil {
+		t.Fatalf("failed to save project A: %v", err)
+	}
+	if err := store.SaveProject(projectB); err != nil {
+		t.Fatalf("failed to save project B: %v", err)
+	}
+
+	storageSvc := storage.NewService(store)
+	storageSvc.RegisterPlugin("mock", &testStoragePlugin{})
+	handler := NewStorageHandler(storageSvc)
+	server := NewServer(q, "0", "")
+	server.RegisterHandler("/api/storage/health", handler.HandleStorageHealth)
+
+	cfg, err := storageSvc.CreateStorageConfig(projectA.ID, "mock", map[string]interface{}{"connection_string": "mock://health"})
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/storage/health?config_id="+cfg.ID+"&project_id="+projectB.ID, nil)
+	resp := httptest.NewRecorder()
+	server.mux.ServeHTTP(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden, got %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestStorageStoreRequiresProjectOwnership(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "storage-store.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+
+	q, err := queue.NewQueue(nil)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	projectA := &models.Project{ID: "project-a", Name: "project-a", Description: "A", Version: "v1", Status: models.ProjectStatusActive, Metadata: models.ProjectMetadata{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}}
+	projectB := &models.Project{ID: "project-b", Name: "project-b", Description: "B", Version: "v1", Status: models.ProjectStatusActive, Metadata: models.ProjectMetadata{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}}
+	if err := store.SaveProject(projectA); err != nil {
+		t.Fatalf("failed to save project A: %v", err)
+	}
+	if err := store.SaveProject(projectB); err != nil {
+		t.Fatalf("failed to save project B: %v", err)
+	}
+
+	storageSvc := storage.NewService(store)
+	storageSvc.RegisterPlugin("mock", &testStoragePlugin{})
+	handler := NewStorageHandler(storageSvc)
+	server := NewServer(q, "0", "")
+	server.RegisterHandler("/api/storage/store", handler.HandleStorageStore)
+
+	cfg, err := storageSvc.CreateStorageConfig(projectA.ID, "mock", map[string]interface{}{"connection_string": "mock://store"})
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+
+	body, _ := json.Marshal(models.StorageStoreRequest{
+		ProjectID: projectB.ID,
+		StorageID: cfg.ID,
+		CIRData:   &models.CIR{Version: models.CIRVersion, Source: models.CIRSource{Type: models.SourceTypeAPI, URI: "manual", Timestamp: time.Now().UTC(), Format: models.DataFormatJSON}, Data: map[string]interface{}{"k": "v"}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/storage/store", bytes.NewReader(body))
+	resp := httptest.NewRecorder()
+	server.mux.ServeHTTP(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden, got %d body=%s", resp.Code, resp.Body.String())
 	}
 }

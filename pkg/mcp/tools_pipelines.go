@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -253,6 +254,78 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			data, _ := json.Marshal(pipeline)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+	// get_pipeline_checkpoint
+	s.AddTool(
+		mcp.NewTool("get_pipeline_checkpoint",
+			mcp.WithDescription("Get persisted checkpoint state for a pipeline step"),
+			mcp.WithString("pipeline_id", mcp.Required(), mcp.Description("Pipeline ID")),
+			mcp.WithString("step_name", mcp.Required(), mcp.Description("Pipeline step name")),
+			mcp.WithString("scope", mcp.Description("Optional checkpoint scope")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			pipelineID := req.GetString("pipeline_id", "")
+			stepName := req.GetString("step_name", "")
+			if pipelineID == "" || stepName == "" {
+				return mcp.NewToolResultError("pipeline_id and step_name are required"), nil
+			}
+			pipelineDef, err := m.pipelineSvc.Get(pipelineID)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			checkpoint, err := m.pipelineSvc.GetCheckpoint(pipelineDef.ProjectID, pipelineID, stepName, req.GetString("scope", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(checkpoint)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// save_pipeline_checkpoint
+	s.AddTool(
+		mcp.NewTool("save_pipeline_checkpoint",
+			mcp.WithDescription("Save checkpoint state for a pipeline step using optimistic versioning"),
+			mcp.WithString("pipeline_id", mcp.Required(), mcp.Description("Pipeline ID")),
+			mcp.WithString("step_name", mcp.Required(), mcp.Description("Pipeline step name")),
+			mcp.WithString("scope", mcp.Description("Optional checkpoint scope")),
+			mcp.WithString("checkpoint_json", mcp.Required(), mcp.Description("JSON object representing checkpoint data")),
+			mcp.WithString("version", mcp.Description("Optional optimistic-lock version number")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			pipelineID := req.GetString("pipeline_id", "")
+			stepName := req.GetString("step_name", "")
+			if pipelineID == "" || stepName == "" {
+				return mcp.NewToolResultError("pipeline_id and step_name are required"), nil
+			}
+			decoded, err := parseJSONMap(req.GetString("checkpoint_json", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			pipelineDef, err := m.pipelineSvc.Get(pipelineID)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			checkpoint := &models.PipelineCheckpoint{
+				ProjectID:  pipelineDef.ProjectID,
+				PipelineID: pipelineID,
+				StepName:   stepName,
+				Scope:      req.GetString("scope", ""),
+				Checkpoint: decoded,
+			}
+			if rawVersion := req.GetString("version", ""); rawVersion != "" {
+				var version int
+				if _, err := fmt.Sscanf(rawVersion, "%d", &version); err != nil {
+					return mcp.NewToolResultError("version must be an integer"), nil
+				}
+				checkpoint.Version = version
+			}
+			if err := m.pipelineSvc.SaveCheckpoint(checkpoint); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(checkpoint)
 			return mcp.NewToolResultText(string(data)), nil
 		},
 	)

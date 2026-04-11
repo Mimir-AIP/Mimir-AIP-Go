@@ -182,6 +182,11 @@ func (s *Service) Update(id string, req *models.PipelineUpdateRequest) (*models.
 		pipeline.Steps = *req.Steps
 	}
 	if req.TriggerConfig != nil {
+		if pipeline.TriggerConfig != nil && pipeline.TriggerConfig.Webhook && req.TriggerConfig.Webhook && strings.TrimSpace(req.TriggerConfig.Secret) == "" {
+			preserved := *req.TriggerConfig
+			preserved.Secret = pipeline.TriggerConfig.Secret
+			req.TriggerConfig = &preserved
+		}
 		if err := validateTriggerConfig(req.TriggerConfig); err != nil {
 			return nil, err
 		}

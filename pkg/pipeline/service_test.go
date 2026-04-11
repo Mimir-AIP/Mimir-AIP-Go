@@ -360,26 +360,30 @@ func TestPipelineUpdate(t *testing.T) {
 	service, _, tmpDir := setupTestService(t)
 	defer cleanupTestService(tmpDir)
 
-	// Create a pipeline
 	created, err := service.Create(&models.PipelineCreateRequest{
 		ProjectID:   "test-project",
 		Name:        "test-pipeline",
 		Type:        models.PipelineTypeIngestion,
 		Description: "Original description",
 		Steps: []models.PipelineStep{
-			{Name: "step1", Plugin: "default", Action: "set_context"},
+			{Name: "step1", Plugin: "default", Action: "set_context", Parameters: map[string]interface{}{"key": "x", "value": "y"}},
 		},
+		TriggerConfig: &models.PipelineTriggerConfig{AllowManual: true, Webhook: true, Secret: "original-secret"},
 	})
 	if err != nil {
 		t.Fatalf("Failed to create pipeline: %v", err)
 	}
 
-	// Update the pipeline
 	newDesc := "Updated description"
 	newStatus := models.PipelineStatusInactive
 	updated, err := service.Update(created.ID, &models.PipelineUpdateRequest{
 		Description: &newDesc,
 		Status:      &newStatus,
+		TriggerConfig: &models.PipelineTriggerConfig{
+			AllowManual: false,
+			Webhook:     true,
+			Secret:      "",
+		},
 	})
 	if err != nil {
 		t.Fatalf("Failed to update pipeline: %v", err)
@@ -388,9 +392,14 @@ func TestPipelineUpdate(t *testing.T) {
 	if updated.Description != newDesc {
 		t.Errorf("Expected description %s, got %s", newDesc, updated.Description)
 	}
-
 	if updated.Status != newStatus {
 		t.Errorf("Expected status %s, got %s", newStatus, updated.Status)
+	}
+	if updated.TriggerConfig == nil || updated.TriggerConfig.Secret != "original-secret" {
+		t.Fatalf("expected webhook secret to be preserved on update, got %#v", updated.TriggerConfig)
+	}
+	if updated.TriggerConfig.AllowManual {
+		t.Fatalf("expected manual trigger to be updated to false")
 	}
 }
 

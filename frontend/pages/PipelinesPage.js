@@ -26,6 +26,27 @@
 		}
 	}
 
+	function buildTriggerSummary(triggerConfig) {
+		if (!triggerConfig) return 'Manual enabled';
+		const flags = [];
+		flags.push(triggerConfig.allow_manual === false ? 'Manual disabled' : 'Manual enabled');
+		if (triggerConfig.webhook) flags.push('Webhook enabled');
+		return flags.join(' · ');
+	}
+
+	function emptyPipelineForm(projectId = '') {
+		return {
+			name: '',
+			description: '',
+			project_id: projectId,
+			type: 'ingestion',
+			steps: '[]',
+			allow_manual: true,
+			webhook: false,
+			webhook_secret: '',
+		};
+	}
+
 	pages.PipelinesPage = function PipelinesPage() {
 		const { activeProject, projects } = React.useContext(ProjectContext);
 		const [pipelines, setPipelines] = React.useState([]);
@@ -33,19 +54,12 @@
 		const [loading, setLoading] = React.useState(true);
 		const [loadError, setLoadError] = React.useState('');
 		const [showPipelineModal, setShowPipelineModal] = React.useState(false);
+		const [editingPipelineId, setEditingPipelineId] = React.useState('');
 		const [showScheduleModal, setShowScheduleModal] = React.useState(false);
+		const [showCheckpointModal, setShowCheckpointModal] = React.useState(false);
 		const [selectedTab, setSelectedTab] = React.useState('Pipelines');
 		const [executionStatus, setExecutionStatus] = React.useState({});
-		const [pipelineForm, setPipelineForm] = React.useState({
-			name: '',
-			description: '',
-			project_id: '',
-			type: 'ingestion',
-			steps: '[]',
-			allow_manual: true,
-			webhook: false,
-			webhook_secret: '',
-		});
+		const [pipelineForm, setPipelineForm] = React.useState(emptyPipelineForm());
 		const [scheduleForm, setScheduleForm] = React.useState({
 			name: '',
 			pipelines: [],
@@ -53,10 +67,14 @@
 			cron_schedule: '',
 			enabled: true,
 		});
+		const [checkpointForm, setCheckpointForm] = React.useState({ pipeline_id: '', step_name: '', scope: '' });
+		const [checkpointData, setCheckpointData] = React.useState(null);
+		const [checkpointLoading, setCheckpointLoading] = React.useState(false);
+		const [checkpointError, setCheckpointError] = React.useState('');
 
 		React.useEffect(() => {
 			if (activeProject?.id) {
-				setPipelineForm(prev => ({ ...prev, project_id: activeProject.id }));
+				setPipelineForm(prev => ({ ...prev, project_id: prev.project_id || activeProject.id }));
 				setScheduleForm(prev => ({ ...prev, project_id: activeProject.id }));
 			}
 		}, [activeProject?.id]);
@@ -96,30 +114,62 @@
 			}
 		}, [activeProject?.id, loadData]));
 
+		const openCreatePipelineModal = () => {
+			setEditingPipelineId('');
+			setPipelineForm(emptyPipelineForm(activeProject?.id || ''));
+			setShowPipelineModal(true);
+		};
+
+		const openEditPipelineModal = (pipeline) => {
+			setEditingPipelineId(pipeline.id);
+			setPipelineForm({
+				name: pipeline.name || '',
+				description: pipeline.description || '',
+				project_id: pipeline.project_id || activeProject?.id || '',
+				type: pipeline.type || 'ingestion',
+				steps: JSON.stringify(pipeline.steps || [], null, 2),
+				allow_manual: pipeline.trigger_config?.allow_manual !== false,
+				webhook: Boolean(pipeline.trigger_config?.webhook),
+				webhook_secret: '',
+			});
+			setShowPipelineModal(true);
+		};
+
 		const handlePipelineSubmit = async (e) => {
 			e.preventDefault();
+			const body = {
+				project_id: pipelineForm.project_id,
+				name: pipelineForm.name,
+				description: pipelineForm.description,
+				type: pipelineForm.type,
+				steps: JSON.parse(pipelineForm.steps),
+				trigger_config: {
+					allow_manual: pipelineForm.allow_manual,
+					webhook: pipelineForm.webhook,
+					secret: pipelineForm.webhook ? pipelineForm.webhook_secret : '',
+				},
+			};
 			try {
-				await apiCall('/api/pipelines', {
-					method: 'POST',
-					body: JSON.stringify({
-						project_id: pipelineForm.project_id,
-						name: pipelineForm.name,
-						description: pipelineForm.description,
-						type: pipelineForm.type,
-						steps: JSON.parse(pipelineForm.steps),
-						trigger_config: {
-							allow_manual: pipelineForm.allow_manual,
-							webhook: pipelineForm.webhook,
-							secret: pipelineForm.webhook ? pipelineForm.webhook_secret : '',
-						},
-					}),
-				});
+				if (editingPipelineId) {
+					await apiCall(`/api/pipelines/${editingPipelineId}`, {
+						method: 'PUT',
+						body: JSON.stringify({
+							description: body.description,
+							steps: body.steps,
+							trigger_config: body.trigger_config,
+						}),
+					});
+					notify({ tone: 'success', message: 'Pipeline updated.' });
+				} else {
+					await apiCall('/api/pipelines', { method: 'POST', body: JSON.stringify(body) });
+					notify({ tone: 'success', message: 'Pipeline created.' });
+				}
 				setShowPipelineModal(false);
-				setPipelineForm({ name: '', description: '', project_id: activeProject?.id || '', type: 'ingestion', steps: '[]', allow_manual: true, webhook: false, webhook_secret: '' });
-				notify({ tone: 'success', message: 'Pipeline created.' });
+				setEditingPipelineId('');
+				setPipelineForm(emptyPipelineForm(activeProject?.id || ''));
 				loadData();
 			} catch (error) {
-				notify({ tone: 'error', message: `Failed to create pipeline: ${error.message}` });
+				notify({ tone: 'error', message: `Failed to save pipeline: ${error.message}` });
 			}
 		};
 
@@ -187,6 +237,50 @@
 			}
 		};
 
+		const openCheckpointModal = (pipeline) => {
+			setCheckpointForm({
+				pipeline_id: pipeline.id,
+				step_name: pipeline.steps?.[0]?.name || '',
+				scope: '',
+			});
+			setCheckpointData(null);
+			setCheckpointError('');
+			setShowCheckpointModal(true);
+		};
+
+		const handleCheckpointLoad = async (e) => {
+			e.preventDefault();
+			if (!checkpointForm.pipeline_id || !checkpointForm.step_name) return;
+			setCheckpointLoading(true);
+			setCheckpointError('');
+			setCheckpointData(null);
+			try {
+				const scopeQuery = checkpointForm.scope ? `&scope=${encodeURIComponent(checkpointForm.scope)}` : '';
+				const result = await apiCall(`/api/pipelines/${checkpointForm.pipeline_id}/checkpoints?step_name=${encodeURIComponent(checkpointForm.step_name)}${scopeQuery}`);
+				setCheckpointData(result);
+			} catch (error) {
+				setCheckpointError(error.message || 'Failed to load checkpoint.');
+			}
+			finally {
+				setCheckpointLoading(false);
+			}
+		};
+
+		const handleCheckpointReset = async () => {
+			if (!checkpointData) return;
+			try {
+				const scopeQuery = checkpointForm.scope ? `&scope=${encodeURIComponent(checkpointForm.scope)}` : '';
+				const result = await apiCall(`/api/pipelines/${checkpointForm.pipeline_id}/checkpoints?step_name=${encodeURIComponent(checkpointForm.step_name)}${scopeQuery}`, {
+					method: 'PUT',
+					body: JSON.stringify({ version: checkpointData.version, checkpoint: {} }),
+				});
+				setCheckpointData(result);
+				notify({ tone: 'success', message: 'Checkpoint reset.' });
+			} catch (error) {
+				notify({ tone: 'error', message: `Failed to reset checkpoint: ${error.message}` });
+			}
+		};
+
 		const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
 		const schedulePipelineOptions = pipelines
 			.filter(pipeline => !scheduleForm.project_id || pipeline.project_id === scheduleForm.project_id)
@@ -197,6 +291,8 @@
 			return (
 				<>
 					{execution ? <span className={`status-badge ${execution.className}`}>{execution.label}</span> : <Button label="Queue Run" onClick={() => handleExecutePipeline(row.id)} variant="secondary" />}
+					<Button label="Edit" onClick={() => openEditPipelineModal(row)} variant="secondary" />
+					<Button label="Checkpoint" onClick={() => openCheckpointModal(row)} variant="secondary" />
 					<Button label="Delete" onClick={() => handleDeletePipeline(row.id)} variant="danger" />
 				</>
 			);
@@ -204,11 +300,11 @@
 
 		const renderScheduleActions = (row) => <Button label="Delete" onClick={() => handleDeleteSchedule(row.id)} variant="danger" />;
 
-
 		const pipelineColumns = [
 			{ key: 'id', label: 'ID' },
 			{ key: 'name', label: 'Name' },
 			{ key: 'description', label: 'Description' },
+			{ key: 'trigger_config', label: 'Triggers', render: (row) => buildTriggerSummary(row.trigger_config) },
 			{ key: 'project_id', label: 'Project ID' },
 			{ key: 'created_at', label: 'Created', render: (row) => new Date(row.created_at).toLocaleDateString() },
 		];
@@ -231,7 +327,7 @@
 				<div className="section-header">
 					<h2>Pipelines & Schedules</h2>
 					<div className="inline-actions">
-						<Button label="+ New Pipeline" onClick={() => setShowPipelineModal(true)} />
+						<Button label="+ New Pipeline" onClick={openCreatePipelineModal} />
 						<Button label="+ New Schedule" onClick={() => setShowScheduleModal(true)} variant="secondary" />
 					</div>
 				</div>
@@ -263,13 +359,13 @@
 					/>
 				)}
 
-				<Modal open={showPipelineModal} onClose={() => setShowPipelineModal(false)} title="Create New Pipeline">
+				<Modal open={showPipelineModal} onClose={() => setShowPipelineModal(false)} title={editingPipelineId ? 'Edit Pipeline' : 'Create New Pipeline'}>
 					<form onSubmit={handlePipelineSubmit}>
 						<div className="form-grid">
-							<FormField label="Pipeline Name" value={pipelineForm.name} onChange={(v) => setPipelineForm({ ...pipelineForm, name: v })} required />
-							<FormField label="Project" type="select" value={pipelineForm.project_id} onChange={(v) => setPipelineForm({ ...pipelineForm, project_id: v })} options={projectOptions} required />
+							<FormField label="Pipeline Name" value={pipelineForm.name} onChange={(v) => setPipelineForm({ ...pipelineForm, name: v })} required disabled={Boolean(editingPipelineId)} />
+							<FormField label="Project" type="select" value={pipelineForm.project_id} onChange={(v) => setPipelineForm({ ...pipelineForm, project_id: v })} options={projectOptions} required disabled={Boolean(editingPipelineId)} />
 						</div>
-						<FormField label="Pipeline Type" type="select" value={pipelineForm.type} onChange={(v) => setPipelineForm({ ...pipelineForm, type: v })} options={['ingestion', 'processing', 'output']} required />
+						<FormField label="Pipeline Type" type="select" value={pipelineForm.type} onChange={(v) => setPipelineForm({ ...pipelineForm, type: v })} options={['ingestion', 'processing', 'output']} required disabled={Boolean(editingPipelineId)} />
 						<FormField label="Description" type="textarea" value={pipelineForm.description} onChange={(v) => setPipelineForm({ ...pipelineForm, description: v })} />
 						<div className="section-panel section-panel--neutral">
 							<div className="section-panel-copy"><strong>Trigger Configuration</strong></div>
@@ -282,15 +378,34 @@
 								Enable authenticated webhook trigger
 							</label>
 							{pipelineForm.webhook ? (
-								<FormField label="Webhook Secret" value={pipelineForm.webhook_secret} onChange={(v) => setPipelineForm({ ...pipelineForm, webhook_secret: v })} required hint="The API redacts this secret in pipeline responses." />
+								<FormField label="Webhook Secret" value={pipelineForm.webhook_secret} onChange={(v) => setPipelineForm({ ...pipelineForm, webhook_secret: v })} required={!editingPipelineId} hint={editingPipelineId ? 'Leave blank to keep the current secret. Provide a new value to rotate it.' : 'The API redacts this secret in pipeline responses.'} />
 							) : null}
 						</div>
 						<div className="form-group">
 							<label>Steps</label>
 							<StepBuilder value={pipelineForm.steps} onChange={v => setPipelineForm({ ...pipelineForm, steps: v })} />
 						</div>
-						<Button type="submit" label="Create Pipeline" />
+						<Button type="submit" label={editingPipelineId ? 'Save Pipeline' : 'Create Pipeline'} />
 					</form>
+				</Modal>
+
+				<Modal open={showCheckpointModal} onClose={() => setShowCheckpointModal(false)} title="Pipeline Checkpoint">
+					<form onSubmit={handleCheckpointLoad}>
+						<FormField label="Pipeline ID" value={checkpointForm.pipeline_id} onChange={(v) => setCheckpointForm({ ...checkpointForm, pipeline_id: v })} required />
+						<FormField label="Step Name" value={checkpointForm.step_name} onChange={(v) => setCheckpointForm({ ...checkpointForm, step_name: v })} required hint="Checkpoint state is stored per pipeline step." />
+						<FormField label="Scope" value={checkpointForm.scope} onChange={(v) => setCheckpointForm({ ...checkpointForm, scope: v })} hint="Optional checkpoint scope." />
+						<div className="inline-actions">
+							<Button type="submit" label={checkpointLoading ? 'Loading…' : 'Load Checkpoint'} disabled={checkpointLoading} />
+							{checkpointData ? <Button label="Reset Checkpoint" onClick={handleCheckpointReset} variant="secondary" /> : null}
+						</div>
+					</form>
+					{checkpointError ? <div className="error-message">{checkpointError}</div> : null}
+					{checkpointData ? (
+						<div className="section-panel section-panel--neutral">
+							<div className="section-panel-copy"><strong>Version:</strong> {checkpointData.version}</div>
+							<pre style={{ margin: '1rem 0 0', fontSize: '0.8rem', whiteSpace: 'pre-wrap' }}>{JSON.stringify(checkpointData.checkpoint || {}, null, 2)}</pre>
+						</div>
+					) : null}
 				</Modal>
 
 				<Modal open={showScheduleModal} onClose={() => setShowScheduleModal(false)} title="Create Recurring Job">

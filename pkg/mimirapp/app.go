@@ -15,7 +15,6 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/api"
 	automationpkg "github.com/mimir-aip/mimir-aip-go/pkg/automation"
 	"github.com/mimir-aip/mimir-aip-go/pkg/config"
-	"github.com/mimir-aip/mimir-aip-go/pkg/connectors"
 	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/execution"
 	"github.com/mimir-aip/mimir-aip-go/pkg/extraction"
@@ -183,7 +182,6 @@ func Run(cfg *config.Config, options Options) error {
 
 	extractionService := extraction.NewService(storageService).WithLLM(llmService)
 	analysisService := analysis.NewService(store, extractionService, storageService)
-	connectorService := connectors.NewService(pipelineService, schedulerService, storageService)
 	automationService := automationpkg.NewService(store)
 	mlmodelService := mlmodel.NewService(store, ontologyService, storageService, q)
 	dtService := digitaltwin.NewService(store, automationService, ontologyService, storageService, mlmodelService, q)
@@ -201,7 +199,7 @@ func Run(cfg *config.Config, options Options) error {
 	defer monitoringService.Stop()
 
 	server := api.NewServer(q, cfg.Port, cfg.WorkerAuthToken)
-	registerHandlers(server, store, q, cfg, projectService, pipelineService, schedulerService, connectorService, analysisService, pluginService, storageService, ontologyService, extractionService, mlmodelService, dtService, twinProcessor, automationService, adminService)
+	registerHandlers(server, store, q, cfg, projectService, pipelineService, schedulerService, analysisService, pluginService, storageService, ontologyService, extractionService, mlmodelService, dtService, twinProcessor, automationService, adminService)
 	if options.Frontend != nil {
 		server.RegisterHandler("/", func(w http.ResponseWriter, r *http.Request) {
 			options.Frontend.ServeHTTP(w, r)
@@ -225,7 +223,7 @@ func Run(cfg *config.Config, options Options) error {
 	return nil
 }
 
-func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *queue.Queue, cfg *config.Config, projectService *project.Service, pipelineService *pipeline.Service, schedulerService *scheduler.Service, connectorService *connectors.Service, analysisService *analysis.Service, pluginService *plugins.Service, storageService *storage.Service, ontologyService *ontology.Service, extractionService *extraction.Service, mlmodelService *mlmodel.Service, dtService *digitaltwin.Service, twinProcessor *digitaltwin.Processor, automationService *automationpkg.Service, adminService *adminpkg.Service) {
+func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *queue.Queue, cfg *config.Config, projectService *project.Service, pipelineService *pipeline.Service, schedulerService *scheduler.Service, analysisService *analysis.Service, pluginService *plugins.Service, storageService *storage.Service, ontologyService *ontology.Service, extractionService *extraction.Service, mlmodelService *mlmodel.Service, dtService *digitaltwin.Service, twinProcessor *digitaltwin.Processor, automationService *automationpkg.Service, adminService *adminpkg.Service) {
 	projectStateProvider := api.NewProjectStateProvider(store, q)
 	projectHandler := api.NewProjectHandler(projectService, projectStateProvider)
 	server.RegisterHandler("/api/projects", projectHandler.HandleProjects)
@@ -238,9 +236,6 @@ func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *
 	scheduleHandler := api.NewScheduleHandler(schedulerService)
 	server.RegisterHandler("/api/schedules", scheduleHandler.HandleSchedules)
 	server.RegisterHandler("/api/schedules/", scheduleHandler.HandleSchedule)
-
-	connectorsHandler := api.NewConnectorsHandler(connectorService)
-	server.RegisterHandler("/api/connectors", connectorsHandler.HandleConnectors)
 
 	analysisHandler := api.NewAnalysisHandler(analysisService)
 	server.RegisterHandler("/api/analysis/resolver", analysisHandler.HandleResolverRun)
@@ -286,7 +281,7 @@ func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *
 	server.RegisterHandler("/api/digital-twins/", dtHandler.HandleDigitalTwin)
 	server.RegisterWorkerHandler("/api/internal/twin-runs/", twinProcessingHandler.HandleInternalTwinRuns)
 
-	mcpSrv := mcpserver.New(projectService, pipelineService, connectorService, automationService, analysisService, twinProcessor, mlmodelService, dtService, storageService, ontologyService, extractionService, schedulerService, q)
+	mcpSrv := mcpserver.New(projectService, pipelineService, automationService, analysisService, twinProcessor, mlmodelService, dtService, storageService, ontologyService, extractionService, schedulerService, q)
 	mcpHandler := mcpSrv.SSEHandler("http://localhost:" + cfg.Port)
 	server.RegisterHandler("/mcp/", func(w http.ResponseWriter, r *http.Request) {
 		mcpHandler.ServeHTTP(w, r)

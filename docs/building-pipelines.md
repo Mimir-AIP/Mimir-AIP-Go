@@ -480,34 +480,6 @@ curl -X POST http://localhost:8080/api/schedules \
   }'
 ```
 
----
-
-## Connector-backed pipelines
-
-For self-serve onboarding and low-code ingestion, the orchestrator also exposes a bundled connector catalog at `/api/connectors`. Posting to that API does **not** create a special connector runtime — it materialises an ordinary pipeline plus an optional schedule that you can inspect and edit like any other project resource.
-
-```bash
-curl -X POST http://localhost:8080/api/connectors \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_id": "proj-123",
-    "kind": "http_json_poll",
-    "name": "Supplier feed",
-    "storage_id": "store-789",
-    "source_config": {
-      "url": "https://supplier.example.com/feed.json",
-      "item_path": "items"
-    },
-    "schedule": {
-      "cron_schedule": "0 * * * *",
-      "enabled": true
-    }
-  }'
-```
-
-Connector templates currently cover incremental SQL polling, HTTP JSON polling, RSS/Atom feeds, and CSV file-drop ingestion. Because the result is a standard pipeline, advanced users can continue refining the generated steps manually.
-
----
 
 
 ## Further reading

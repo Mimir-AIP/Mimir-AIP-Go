@@ -390,80 +390,6 @@ components:
             required:
                 - cron_schedule
             type: object
-        ConnectorSetupRequest:
-            properties:
-                description:
-                    description: Optional pipeline description
-                    type: string
-                kind:
-                    description: Connector template kind
-                    type: string
-                name:
-                    description: Pipeline name to create
-                    type: string
-                project_id:
-                    description: Owning project ID
-                    type: string
-                schedule:
-                    $ref: '#/components/schemas/ConnectorScheduleRequest'
-                source_config:
-                    additionalProperties: true
-                    type: object
-                storage_id:
-                    description: Destination storage configuration ID
-                    type: string
-            required:
-                - project_id
-                - kind
-                - name
-                - storage_id
-                - source_config
-            type: object
-        ConnectorSetupResponse:
-            properties:
-                pipeline:
-                    $ref: '#/components/schemas/Pipeline'
-                schedule:
-                    $ref: '#/components/schemas/Schedule'
-                template:
-                    $ref: '#/components/schemas/ConnectorTemplate'
-            required:
-                - template
-                - pipeline
-            type: object
-        ConnectorTemplate:
-            properties:
-                category:
-                    description: database | http | feed | file
-                    type: string
-                description:
-                    description: What this connector does
-                    type: string
-                fields:
-                    items:
-                        $ref: '#/components/schemas/ConnectorField'
-                    type: array
-                kind:
-                    description: Template identifier
-                    type: string
-                label:
-                    description: Display name
-                    type: string
-                pipeline_type:
-                    description: Pipeline type created by this connector
-                    type: string
-                supports_schedule:
-                    description: Whether recurring execution is supported
-                    type: boolean
-            required:
-                - kind
-                - label
-                - description
-                - category
-                - pipeline_type
-                - supports_schedule
-                - fields
-            type: object
         DigitalTwin:
             properties:
                 config:
@@ -1326,9 +1252,6 @@ components:
                 environment:
                     description: Environment label such as development or production
                     type: string
-                onboarding_mode:
-                    description: guided | advanced
-                    type: string
                 timezone:
                     description: Project timezone identifier
                     type: string
@@ -2008,41 +1931,6 @@ paths:
             summary: Get resolver precision metrics
             tags:
                 - Analysis
-    /api/connectors:
-        get:
-            description: Returns the generic ingestion connector catalog used by guided onboarding and self-serve setup flows.
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                items:
-                                    $ref: '#/components/schemas/ConnectorTemplate'
-                                type: array
-                    description: 200 OK
-            summary: List bundled connector templates
-            tags:
-                - Connectors
-        post:
-            description: Creates a standard pipeline and optional schedule from a bundled connector template.
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ConnectorSetupRequest'
-                required: true
-            responses:
-                "201":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ConnectorSetupResponse'
-                    description: Created
-                "400":
-                    description: Bad request — invalid input
-            summary: Materialize a bundled connector
-            tags:
-                - Connectors
     /api/digital-twins:
         get:
             description: Returns all digital twins for a project.

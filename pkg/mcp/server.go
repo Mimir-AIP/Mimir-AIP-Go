@@ -7,7 +7,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/mimir-aip/mimir-aip-go/pkg/analysis"
 	automationpkg "github.com/mimir-aip/mimir-aip-go/pkg/automation"
-	"github.com/mimir-aip/mimir-aip-go/pkg/connectors"
 	"github.com/mimir-aip/mimir-aip-go/pkg/digitaltwin"
 	"github.com/mimir-aip/mimir-aip-go/pkg/extraction"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
@@ -23,7 +22,6 @@ import (
 type MimirMCPServer struct {
 	projectSvc    *project.Service
 	pipelineSvc   *pipeline.Service
-	connectorSvc  *connectors.Service
 	automationSvc *automationpkg.Service
 	analysisSvc   *analysis.Service
 	twinProcessor *digitaltwin.Processor
@@ -40,7 +38,6 @@ type MimirMCPServer struct {
 func New(
 	projectSvc *project.Service,
 	pipelineSvc *pipeline.Service,
-	connectorSvc *connectors.Service,
 	automationSvc *automationpkg.Service,
 	analysisSvc *analysis.Service,
 	twinProcessor *digitaltwin.Processor,
@@ -55,7 +52,6 @@ func New(
 	return &MimirMCPServer{
 		projectSvc:    projectSvc,
 		pipelineSvc:   pipelineSvc,
-		connectorSvc:  connectorSvc,
 		automationSvc: automationSvc,
 		analysisSvc:   analysisSvc,
 		twinProcessor: twinProcessor,
@@ -78,7 +74,6 @@ func (m *MimirMCPServer) SSEHandler(baseURL string) http.Handler {
 	registerSystemTools(s, m)
 	registerProjectTools(s, m)
 	registerPipelineTools(s, m)
-	registerConnectorTools(s, m)
 	registerAnalysisTools(s, m)
 	registerMLModelTools(s, m)
 	registerDigitalTwinTools(s, m)

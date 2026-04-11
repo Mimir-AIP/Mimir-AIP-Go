@@ -30,19 +30,10 @@ type ProjectMetadata struct {
 	Tags      []string  `json:"tags" yaml:"tags"`
 }
 
-// ProjectOnboardingMode controls whether a project opens in guided or advanced setup mode.
-type ProjectOnboardingMode string
-
-const (
-	ProjectOnboardingModeAdvanced ProjectOnboardingMode = "advanced"
-	ProjectOnboardingModeGuided   ProjectOnboardingMode = "guided"
-)
-
 // ProjectSettings contains project configuration.
 type ProjectSettings struct {
-	Timezone       string                `json:"timezone" yaml:"timezone"`
-	Environment    string                `json:"environment" yaml:"environment"`
-	OnboardingMode ProjectOnboardingMode `json:"onboarding_mode,omitempty" yaml:"onboarding_mode,omitempty"`
+	Timezone    string `json:"timezone" yaml:"timezone"`
+	Environment string `json:"environment" yaml:"environment"`
 }
 
 // ProjectCreateRequest represents a request to create a new project.

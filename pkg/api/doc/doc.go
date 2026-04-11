@@ -110,7 +110,6 @@ func GenerateSpec() (string, error) {
 			M{"name": "Projects", "description": "Top-level organisational units"},
 			M{"name": "Pipelines", "description": "Ordered processing step sequences"},
 			M{"name": "Schedules", "description": "Cron-based pipeline triggers"},
-			M{"name": "Connectors", "description": "Bundled ingestion templates that materialize into pipelines and schedules"},
 			M{"name": "Analysis", "description": "Cross-source resolution, review queues, and calibration metrics"},
 			M{"name": "Insights", "description": "Autonomous persisted findings generated from project storage data"},
 			M{"name": "Plugins", "description": "Pipeline step executor plugins (Git-based, dynamic)"},

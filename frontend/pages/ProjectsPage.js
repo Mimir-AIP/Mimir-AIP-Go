@@ -1,24 +1,14 @@
 (() => {
 	const root = window.MimirApp = window.MimirApp || {};
 	const pages = root.pages = root.pages || {};
-	const { apiCall, getProjectOnboardingMode, notify, confirmAction } = root.lib;
+	const { apiCall, notify, confirmAction } = root.lib;
 	const { ProjectContext } = root.context;
 	const { Button, FormField, Modal, Table } = root.components.primitives;
-	const { GuidedOnboardingPanel } = root.components.connectors;
 
 	pages.ProjectsPage = function ProjectsPage() {
 		const { projects, activeProject, setActiveProject, refreshProjects } = React.useContext(ProjectContext);
 		const [showModal, setShowModal] = React.useState(false);
-		const [savingMode, setSavingMode] = React.useState(false);
-		const [formData, setFormData] = React.useState({ name: '', description: '', onboarding_mode: 'guided' });
-		const [modeDraft, setModeDraft] = React.useState(getProjectOnboardingMode(activeProject));
-
-		React.useEffect(() => {
-			setModeDraft(getProjectOnboardingMode(activeProject));
-		}, [activeProject?.id, activeProject?.settings?.onboarding_mode]);
-
-		const savedMode = getProjectOnboardingMode(activeProject);
-		const hasUnsavedModeChange = Boolean(activeProject?.id) && modeDraft !== savedMode;
+		const [formData, setFormData] = React.useState({ name: '', description: '' });
 
 		const handleSubmit = async (e) => {
 			e.preventDefault();
@@ -28,11 +18,10 @@
 					body: JSON.stringify({
 						name: formData.name,
 						description: formData.description,
-						settings: { onboarding_mode: formData.onboarding_mode },
 					}),
 				});
 				setShowModal(false);
-				setFormData({ name: '', description: '', onboarding_mode: 'guided' });
+				setFormData({ name: '', description: '' });
 				notify({ tone: 'success', message: 'Project created.' });
 				await refreshProjects();
 			} catch (error) {
@@ -74,28 +63,10 @@
 			}
 		};
 
-		const handleModeSave = async () => {
-			if (!activeProject?.id || !hasUnsavedModeChange) return;
-			setSavingMode(true);
-			try {
-				await apiCall(`/api/projects/${activeProject.id}`, {
-					method: 'PUT',
-					body: JSON.stringify({ settings: { ...activeProject.settings, onboarding_mode: modeDraft } }),
-				});
-				notify({ tone: 'success', message: `Onboarding mode saved as ${modeDraft}.` });
-				await refreshProjects(activeProject.id);
-			} catch (error) {
-				notify({ tone: 'error', message: `Failed to update onboarding mode: ${error.message}` });
-			} finally {
-				setSavingMode(false);
-			}
-		};
-
 		const columns = [
 			{ key: 'id', label: 'ID' },
 			{ key: 'name', label: 'Name' },
 			{ key: 'description', label: 'Description' },
-			{ key: 'onboarding_mode', label: 'Onboarding', render: row => getProjectOnboardingMode(row) },
 			{ key: 'status', label: 'Status', render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span> },
 			{ key: 'created_at', label: 'Created', render: (row) => new Date(row.metadata?.created_at || row.created_at).toLocaleDateString() },
 		];
@@ -128,43 +99,23 @@
 				<div className="section-panel">
 					<div className="section-panel-header">
 						<div>
-							<h3 className="section-panel-title">Onboarding</h3>
-							<p className="section-panel-copy">Choose between guided connector setup and the existing advanced manual workflow.</p>
+							<h3 className="section-panel-title">Active Workspace</h3>
+							<p className="section-panel-copy">Projects define workspace scope. Configure storage, pipelines, ontologies, ML models, and digital twins through their dedicated pages.</p>
 						</div>
 					</div>
 					{activeProject ? (
-						<>
-							<div className="form-grid">
-								<div className="form-group">
-									<label>Active Project</label>
-									<div className="field-static">{activeProject.name}</div>
-								</div>
-								<FormField
-									label="Onboarding Mode"
-									type="select"
-									value={modeDraft}
-									onChange={setModeDraft}
-									options={[{ value: 'guided', label: 'Guided' }, { value: 'advanced', label: 'Advanced' }]}
-									required
-									hint="Changes apply only after you save."
-								/>
+						<div className="form-grid">
+							<div className="form-group">
+								<label>Active Project</label>
+								<div className="field-static">{activeProject.name}</div>
 							</div>
-							{hasUnsavedModeChange ? (
-								<div className="page-notice page-notice--warning">
-									<strong>Unsaved change:</strong> the active mode is still {savedMode}. Save to switch the workspace.
-								</div>
-							) : null}
-							<div className="inline-actions">
-								<Button label={savingMode ? 'Saving…' : 'Save Onboarding Mode'} onClick={handleModeSave} variant="secondary" disabled={!hasUnsavedModeChange || savingMode} />
+							<div className="form-group">
+								<label>Status</label>
+								<div className="field-static">{activeProject.status}</div>
 							</div>
-							{savedMode === 'guided' ? (
-								<GuidedOnboardingPanel project={activeProject} />
-							) : (
-								<div className="empty-state">Advanced mode keeps the manual pages available: Storage, Pipelines, Ontologies, ML Models, and Digital Twins.</div>
-							)}
-						</>
+						</div>
 					) : (
-						<div className="empty-state">Select a project to configure onboarding, insights, and reviews.</div>
+						<div className="empty-state">Select a project to work on its resources.</div>
 					)}
 				</div>
 
@@ -172,14 +123,6 @@
 					<form onSubmit={handleSubmit}>
 						<FormField label="Project Name" value={formData.name} onChange={(v) => setFormData({ ...formData, name: v })} required />
 						<FormField label="Description" type="textarea" value={formData.description} onChange={(v) => setFormData({ ...formData, description: v })} />
-						<FormField
-							label="Onboarding Mode"
-							type="select"
-							value={formData.onboarding_mode}
-							onChange={(v) => setFormData({ ...formData, onboarding_mode: v })}
-							options={[{ value: 'guided', label: 'Guided' }, { value: 'advanced', label: 'Advanced' }]}
-							required
-						/>
 						<Button type="submit" label="Create Project" />
 					</form>
 				</Modal>

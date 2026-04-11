@@ -29,7 +29,7 @@ func TestProjectStateSummaryMarksPendingTwinApprovalsAsAttention(t *testing.T) {
 		Description: "demo",
 		Status:      models.ProjectStatusActive,
 		Metadata:    models.ProjectMetadata{CreatedAt: now, UpdatedAt: now},
-		Settings:    models.ProjectSettings{Timezone: "UTC", Environment: "development", OnboardingMode: models.ProjectOnboardingModeAdvanced},
+		Settings:    models.ProjectSettings{Timezone: "UTC", Environment: "development"},
 	}
 	ontology := &models.Ontology{ID: "ontology-1", ProjectID: project.ID, Name: "Factory Ontology", Content: "@prefix : <http://example.org/> .", Status: "active", Version: "1.0", CreatedAt: now, UpdatedAt: now}
 	twin := &models.DigitalTwin{ID: "twin-1", ProjectID: project.ID, OntologyID: ontology.ID, Name: "Factory", Status: "active", CreatedAt: now, UpdatedAt: now}

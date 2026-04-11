@@ -87,9 +87,6 @@ func (s *Service) Create(req *models.ProjectCreateRequest) (*models.Project, err
 	if project.Settings.Environment == "" {
 		project.Settings.Environment = "development"
 	}
-	if project.Settings.OnboardingMode == "" {
-		project.Settings.OnboardingMode = models.ProjectOnboardingModeAdvanced
-	}
 	if project.Metadata.Tags == nil {
 		project.Metadata.Tags = []string{}
 	}
@@ -167,9 +164,6 @@ func (s *Service) Update(id string, req *models.ProjectUpdateRequest) (*models.P
 		}
 		if req.Settings.Environment != "" {
 			project.Settings.Environment = req.Settings.Environment
-		}
-		if req.Settings.OnboardingMode != "" {
-			project.Settings.OnboardingMode = req.Settings.OnboardingMode
 		}
 	}
 	if req.Tags != nil {

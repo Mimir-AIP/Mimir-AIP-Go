@@ -2,9 +2,6 @@
 	const root = window.MimirApp = window.MimirApp || {};
 	const lib = root.lib = root.lib || {};
 
-	function getProjectOnboardingMode(project) {
-		return project?.settings?.onboarding_mode || 'advanced';
-	}
 
 	function deriveStorageConfigLabel(config) {
 		const details = config?.config || {};
@@ -21,7 +18,6 @@
 		}
 	}
 
-	lib.getProjectOnboardingMode = getProjectOnboardingMode;
 	lib.deriveStorageConfigLabel = deriveStorageConfigLabel;
 	lib.renderConfigPreview = renderConfigPreview;
 })();

@@ -33,9 +33,8 @@ func init() {
 			"tags":       Arr(M{"type": "string"}),
 		}),
 		"ProjectSettings": Props(nil, M{
-			"timezone":        Str("Project timezone identifier"),
-			"environment":     Str("Environment label such as development or production"),
-			"onboarding_mode": Str("guided | advanced"),
+			"timezone":    Str("Project timezone identifier"),
+			"environment": Str("Environment label such as development or production"),
 		}),
 		"Project": Props(nil, M{
 			"id":          Str("Project ID (UUID)"),
@@ -170,51 +169,6 @@ func init() {
 			"cron_schedule": Str("New cron expression"),
 			"enabled":       Bool("Enable or disable"),
 		}),
-
-		// ── Connectors ────────────────────────────────────────────────────────
-		"ConnectorFieldOption": Props([]string{"value", "label"}, M{
-			"value": Str("Option value"),
-			"label": Str("Display label"),
-		}),
-		"ConnectorField": Props([]string{"name", "label", "type", "required"}, M{
-			"name":        Str("Field key"),
-			"label":       Str("Human-readable field label"),
-			"type":        Str("text | number | boolean | select"),
-			"description": Str("Field description"),
-			"required":    Bool("Whether the field is required"),
-			"default":     M{"description": "Optional default value"},
-			"options":     ArrOf("ConnectorFieldOption"),
-		}),
-		"ConnectorTemplate": Props([]string{"kind", "label", "description", "category", "pipeline_type", "supports_schedule", "fields"}, M{
-			"kind":              Str("Template identifier"),
-			"label":             Str("Display name"),
-			"description":       Str("What this connector does"),
-			"category":          Str("database | http | feed | file"),
-			"pipeline_type":     Str("Pipeline type created by this connector"),
-			"supports_schedule": Bool("Whether recurring execution is supported"),
-			"fields":            ArrOf("ConnectorField"),
-		}),
-		"ConnectorScheduleRequest": Props([]string{"cron_schedule"}, M{
-			"name":          Str("Optional schedule name override"),
-			"cron_schedule": Str("Cron expression for recurring runs"),
-			"enabled":       Bool("Whether the schedule starts enabled"),
-		}),
-		"ConnectorSetupRequest": Props([]string{"project_id", "kind", "name", "storage_id", "source_config"}, M{
-			"project_id":    Str("Owning project ID"),
-			"kind":          Str("Connector template kind"),
-			"name":          Str("Pipeline name to create"),
-			"description":   Str("Optional pipeline description"),
-			"storage_id":    Str("Destination storage configuration ID"),
-			"source_config": M{"type": "object", "additionalProperties": true},
-			"schedule":      Ref("ConnectorScheduleRequest"),
-		}),
-		"ConnectorSetupResponse": Props([]string{"template", "pipeline"}, M{
-			"template": Ref("ConnectorTemplate"),
-			"pipeline": Ref("Pipeline"),
-			"schedule": Ref("Schedule"),
-		}),
-
-		// ── Pipeline Plugins ─────────────────────────────────────────────────
 		"Plugin": Props(nil, M{
 			"name":           Str("Plugin name"),
 			"version":        Str("Plugin version"),

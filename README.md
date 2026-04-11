@@ -1,6 +1,6 @@
 # Mimir AIP
 
-Mimir AIP is an ontology-driven platform for data aggregation, processing, and analysis. It provides a unified runtime for ingestion pipelines, machine learning model training and inference, digital twin management, guided or advanced project onboarding, and operator-driven project analysis — all backed by a persistent metadata store and exposed as [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tools for direct use by AI agents and LLM-based workflows. Mimir AIP is built in Go for performance and ease of deployment, with a React-based web frontend for user-friendly management. It runs on Kubernetes, supports a wide range of storage backends, and is extensible through runtime-loaded pipeline plugins, storage plugins, and LLM providers. The platform is designed to stay use-case agnostic: bundled connectors, review queues, and insight generation all compile down to the same core project resources rather than hard-coding one domain-specific workflow.
+Mimir AIP is an ontology-driven platform for data aggregation, processing, and analysis. It provides a unified runtime for ingestion pipelines, machine learning model training and inference, digital twin management, project-scoped storage and metadata, and operator-driven project analysis — all backed by a persistent metadata store and exposed as [Model Context Protocol (MCP)](https://modelcontextprotocol.io) tools for direct use by AI agents and LLM-based workflows. Mimir AIP is built in Go for performance and ease of deployment, with a React-based web frontend for user-friendly management. It runs on Kubernetes, supports a wide range of storage backends, and is extensible through runtime-loaded pipeline plugins, storage plugins, and LLM providers. The platform is designed to stay use-case agnostic: storage, pipelines, review queues, and insight generation all compile down to the same core project resources rather than hard-coding one domain-specific workflow.
 
 ---
 
@@ -20,7 +20,7 @@ Mimir AIP is an ontology-driven platform for data aggregation, processing, and a
 
 ## Architecture
 
-Mimir AIP consists of two binaries and an optional web frontend:
+Mimir AIP consists of an orchestrator, worker, local all-in-one launcher, and web frontend:
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -34,8 +34,8 @@ Mimir AIP consists of two binaries and an optional web frontend:
 │  ┌──────────┐  ┌────────────┐  ┌──────────────────┐  │
 │  │ Projects │  │ Pipelines  │  │   Ontologies     │  │
 │  │ Storage  │  │ Schedules  │  │   ML Models      │  │
-│  │Onboarding│  │ Connectors │  │   Digital Twins  │  │
-│  │ Analysis │  │   Queue    │  │ Insights / MCP   │  │
+│  │ Analysis │  │   Queue    │  │   Digital Twins  │  │
+│  │  Admin   │  │ Insights   │  │       MCP        │  │
 │  └──────────┘  └────┬───────┘  └──────────────────┘  │
 └─────────────────────┼───────────────────────────────┘
                       │  Kubernetes Jobs
@@ -54,11 +54,11 @@ Mimir AIP consists of two binaries and an optional web frontend:
           └───────────────────────┘
 ```
 
-**Orchestrator** — the long-running HTTP server. Manages persistent metadata in SQLite for projects, pipelines, schedules, ontologies, ML models, digital twins, storage configurations, analysis runs, review items, and insights. Exposes the REST API and MCP SSE endpoint. Also hosts the generic connector catalog, materializes bundled connectors into ordinary pipelines and schedules, and runs lightweight control-plane coordination such as queue-backed task state, health surfaces, and model monitoring. In full deployment mode it dispatches heavy execution (pipeline runs, ML training, inference, digital twin synchronisation) to **Workers** as Kubernetes Jobs; in local mode the same queue/task model executes work in-process without Kubernetes.
+**Orchestrator** — the long-running HTTP server. Manages persistent metadata in SQLite for projects, pipelines, schedules, ontologies, ML models, digital twins, storage configurations, analysis runs, review items, and insights. Exposes the REST API and MCP SSE endpoint, plus control-plane coordination such as queue-backed task state, storage health surfaces, and model monitoring. In full deployment mode it dispatches heavy execution (pipeline runs, ML training, inference, digital twin synchronisation) to **Workers** as Kubernetes Jobs; in local mode the same queue/task model executes work in-process without Kubernetes.
 
 **Worker** — a short-lived binary run as a Kubernetes Job in the full deployment path. Reads its task type and parameters from environment variables, calls the orchestrator API to fetch configuration, executes the work, and reports results back. Designed with scalability in mind, supporting concurrent workers across multiple Kubernetes clusters — the orchestrator dispatches jobs to a configurable cluster pool, spilling over from the primary cluster to remote or cloud clusters when capacity is reached.
 
-**Frontend** — a lightweight React single-page application served either by the standalone frontend server in split deployments or directly from the local all-in-one launcher. It communicates exclusively with the orchestrator REST API and exposes guided and advanced onboarding flows, bundled connector setup, and project-level insights and review surfaces.
+**Frontend** — a lightweight React single-page application served either by the standalone frontend server in split deployments or directly from the local all-in-one launcher. It communicates exclusively with the orchestrator REST API and exposes direct project, storage, pipeline, ontology, ML model, and digital twin management surfaces.
 
 ---
 
@@ -66,10 +66,8 @@ Mimir AIP consists of two binaries and an optional web frontend:
 
 | Term | Description |
 |------|-------------|
-| **Project** | Top-level organisational unit. Groups pipelines, ontologies, ML models, digital twins, and storage configurations, and stores project-wide preferences such as onboarding mode. |
-| **Onboarding Mode** | Project preference that selects either a guided setup flow (connector-driven) or the full advanced manual workflow. |
+| **Project** | Top-level organisational unit. Groups pipelines, ontologies, ML models, digital twins, and storage configurations. |
 | **Storage Config** | A connection definition for a storage backend (filesystem, PostgreSQL, MySQL, MongoDB, S3, Redis, Elasticsearch, or Neo4j). Data is stored and retrieved using the **CIR** (Common Internal Representation) format. |
-| **Connector Template** | A bundled, metadata-driven ingestion template that materialises into an ordinary pipeline plus an optional schedule. |
 | **Pipeline** | A named, ordered sequence of processing steps (ingestion → processing → output). Pipelines are executed asynchronously by workers. |
 | **Schedule** | A cron-based trigger that enqueues one or more pipelines on a recurring basis. |
 | **Ontology** | An OWL/Turtle vocabulary that defines the entity types, properties, and relationships for a project domain. Used to structure storage and constrain ML model training. |
@@ -84,15 +82,14 @@ Mimir AIP consists of two binaries and an optional web frontend:
 
 ## Typical project workflow
 
-1. Create or select a **Project** and choose either **guided** or **advanced** onboarding.
-2. Define a **Storage Config** for where normalised CIR data should land.
-3. Create a **Pipeline** manually, or materialise one from a bundled **Connector Template**; add a **Schedule** if the source should run incrementally.
+1. Create or select a **Project**.
+2. Define one or more **Storage Configs** for where normalised CIR data should land.
+3. Create a **Pipeline** and add a **Schedule** if the source should run incrementally.
 4. Generate or refine an **Ontology** from stored data and cross-source extraction results.
 5. Train **ML Models** and use the **Digital Twin** workspace to process ontology-grounded project state as new ingestion data arrives.
 6. Use the twin's **Insights**, **Alert Events**, and **Automations** to understand anomalies, queue manual export approvals when required, or trigger export actions automatically for resilient responses.
 
 ---
-
 
 ## Quick Start
 
@@ -272,10 +269,9 @@ Then start a Claude Code session — the full Mimir toolset will be available au
 
 | Category | Tools | Description |
 |----------|-------|-------------|
-| Projects | 8 | CRUD, clone, component associations |
-| Pipelines | 6 | CRUD, execute |
+| Projects | 8 | CRUD, archive, delete, clone, state summary |
+| Pipelines | 6 | CRUD, trigger, execute, checkpoints |
 | Schedules | 5 | CRUD |
-| Connectors | 2 | List bundled templates, materialize pipelines/schedules |
 | Analysis | 4 | Run resolver analysis, inspect metrics, list reviews, decide findings |
 | Insights | 2 | List and generate autonomous insights |
 | ML Models | 8 | CRUD, train, infer, recommend, monitor |

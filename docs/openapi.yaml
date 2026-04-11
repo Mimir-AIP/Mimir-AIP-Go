@@ -3858,13 +3858,13 @@ paths:
             summary: Get storage plugin
             tags:
                 - Storage Plugins
-    /api/storage/{id}/health:
+    /api/storage/health:
         get:
             description: Checks connectivity to the underlying backend for the given storage config ID.
             parameters:
                 - description: Storage config ID
-                  in: path
-                  name: id
+                  in: query
+                  name: config_id
                   required: true
                   schema:
                     type: string

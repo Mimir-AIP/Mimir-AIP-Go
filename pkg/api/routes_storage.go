@@ -74,11 +74,11 @@ func init() {
 	})
 
 	// ── Storage Health ─────────────────────────────────────────────────────────
-	doc.Register("GET", "/api/storage/{id}/health", doc.RouteDoc{
+	doc.Register("GET", "/api/storage/health", doc.RouteDoc{
 		Summary:     "Storage health check",
 		Description: "Checks connectivity to the underlying backend for the given storage config ID.",
 		Tags:        []string{"Storage"},
-		Params:      []doc.Param{doc.PParam("id", "Storage config ID")},
+		Params:      []doc.Param{doc.QParam("config_id", "Storage config ID", true)},
 		Responses: doc.R(doc.OK(doc.Props(nil, doc.M{
 			"healthy": doc.Bool("Whether the backend is reachable"),
 			"error":   doc.Str("Error message if unhealthy"),

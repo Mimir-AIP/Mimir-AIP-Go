@@ -117,10 +117,19 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 	// execute_pipeline
 	s.AddTool(
 		mcp.NewTool("execute_pipeline",
-			mcp.WithDescription("Enqueue a pipeline for asynchronous execution; returns a work task ID"),
+			mcp.WithDescription("Queue a pipeline run as an asynchronous work task"),
 			mcp.WithString("id",
 				mcp.Required(),
 				mcp.Description("Pipeline ID to execute"),
+			),
+			mcp.WithString("trigger_type",
+				mcp.Description("Optional trigger type: manual or system (default manual)"),
+			),
+			mcp.WithString("triggered_by",
+				mcp.Description("Optional trigger source identifier"),
+			),
+			mcp.WithString("parameters_json",
+				mcp.Description("Optional JSON object of execution parameters"),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -131,6 +140,19 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 			pipeline, err := m.pipelineSvc.Get(id)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
+			}
+			triggerType := req.GetString("trigger_type", "manual")
+			if triggerType == "" {
+				triggerType = "manual"
+			}
+			triggeredBy := req.GetString("triggered_by", "mcp_request")
+			parameters := map[string]any{}
+			if raw := req.GetString("parameters_json", ""); raw != "" {
+				decoded, err := parseJSONMap(raw)
+				if err != nil {
+					return mcp.NewToolResultError(err.Error()), nil
+				}
+				parameters = decoded
 			}
 			taskID := uuid.New().String()
 			task := &models.WorkTask{
@@ -143,8 +165,16 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 				TaskSpec: models.TaskSpec{
 					PipelineID: id,
 					ProjectID:  pipeline.ProjectID,
-					Parameters: map[string]any{"pipeline_id": id},
+					Parameters: map[string]any{
+						"pipeline_id":   id,
+						"pipeline_type": pipeline.Type,
+						"trigger_type":  triggerType,
+						"triggered_by":  triggeredBy,
+					},
 				},
+			}
+			for key, value := range parameters {
+				task.TaskSpec.Parameters[key] = value
 			}
 			if err := m.queue.Enqueue(task); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
@@ -204,7 +234,7 @@ func registerPipelineTools(s *server.MCPServer, m *MimirMCPServer) {
 	// delete_pipeline
 	s.AddTool(
 		mcp.NewTool("delete_pipeline",
-			mcp.WithDescription("Delete a pipeline by ID"),
+			mcp.WithDescription("Delete a pipeline by ID when no schedules, automations, twin actions, or active work tasks still reference it"),
 			mcp.WithString("id",
 				mcp.Required(),
 				mcp.Description("Pipeline ID"),

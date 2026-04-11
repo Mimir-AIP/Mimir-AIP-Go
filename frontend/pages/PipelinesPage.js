@@ -134,7 +134,7 @@
 		const handleDeletePipeline = async (id) => {
 			const confirmed = await confirmAction({
 				title: 'Delete pipeline',
-				message: 'Delete this pipeline? This removes it from future runs.',
+				message: 'Delete this pipeline? Mimir will block deletion while schedules, automations, twin actions, or active work tasks still reference it.',
 				confirmLabel: 'Delete pipeline',
 				variant: 'danger',
 			});
@@ -169,10 +169,10 @@
 			setExecutionStatus(prev => ({ ...prev, [id]: 'queued' }));
 			try {
 				const result = await apiCall(`/api/pipelines/${id}/execute`, { method: 'POST', body: JSON.stringify({}) });
-				notify({ tone: 'success', message: result?.message || 'Pipeline execution queued.' });
+				notify({ tone: 'success', message: result?.message || 'Pipeline run queued.' });
 			} catch (error) {
 				setExecutionStatus(prev => ({ ...prev, [id]: 'failed' }));
-				notify({ tone: 'error', message: `Failed to queue pipeline: ${error.message}` });
+				notify({ tone: 'error', message: `Failed to queue pipeline run: ${error.message}` });
 			}
 		};
 
@@ -185,7 +185,7 @@
 			const execution = summarizeExecutionState(executionStatus[row.id]);
 			return (
 				<>
-					{execution ? <span className={`status-badge ${execution.className}`}>{execution.label}</span> : <Button label="Execute" onClick={() => handleExecutePipeline(row.id)} variant="secondary" />}
+					{execution ? <span className={`status-badge ${execution.className}`}>{execution.label}</span> : <Button label="Queue Run" onClick={() => handleExecutePipeline(row.id)} variant="secondary" />}
 					<Button label="Delete" onClick={() => handleDeletePipeline(row.id)} variant="danger" />
 				</>
 			);
@@ -226,7 +226,7 @@
 				</div>
 
 				{activeProject ? (
-					<div className="page-notice"><strong>Project scope:</strong> showing pipelines and schedules for {activeProject.name}.</div>
+					<div className="page-notice"><strong>Project scope:</strong> showing pipelines and schedules for {activeProject.name}. Execution is asynchronous and queues work tasks for workers.</div>
 				) : null}
 				{loadError ? <div className="error-message">{loadError}</div> : null}
 

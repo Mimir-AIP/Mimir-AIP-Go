@@ -226,7 +226,8 @@ func (s *Service) Delete(id string) error {
 	return s.store.DeletePipeline(id)
 }
 
-// Execute executes a pipeline
+// Execute runs the in-process interpreter directly.
+// Production API/MCP entrypoints enqueue work tasks instead of calling this path synchronously.
 func (s *Service) Execute(pipelineID string, req *models.PipelineExecutionRequest) (*models.PipelineExecution, error) {
 	// Get pipeline
 	pipeline, err := s.store.GetPipeline(pipelineID)

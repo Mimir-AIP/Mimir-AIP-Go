@@ -12,6 +12,41 @@ import (
 )
 
 func registerMLModelTools(s *server.MCPServer, m *MimirMCPServer) {
+	// list_ml_providers
+	s.AddTool(
+		mcp.NewTool("list_ml_providers",
+			mcp.WithDescription("List builtin and plugin-backed ML providers"),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			providers, err := m.mlSvc.ListProviderMetadata()
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(providers)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
+	// get_ml_provider
+	s.AddTool(
+		mcp.NewTool("get_ml_provider",
+			mcp.WithDescription("Get metadata for a specific ML provider"),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Provider name")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			name := req.GetString("name", "")
+			if name == "" {
+				return mcp.NewToolResultError("name is required"), nil
+			}
+			provider, err := m.mlSvc.GetProviderMetadata(name)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, _ := json.Marshal(provider)
+			return mcp.NewToolResultText(string(data)), nil
+		},
+	)
+
 	// list_ml_models
 	s.AddTool(
 		mcp.NewTool("list_ml_models",
@@ -61,50 +96,40 @@ func registerMLModelTools(s *server.MCPServer, m *MimirMCPServer) {
 	s.AddTool(
 		mcp.NewTool("create_ml_model",
 			mcp.WithDescription("Create a new ML model definition for a project"),
-			mcp.WithString("project_id",
-				mcp.Required(),
-				mcp.Description("Project ID"),
-			),
-			mcp.WithString("ontology_id",
-				mcp.Required(),
-				mcp.Description("Ontology ID that defines the model's domain"),
-			),
-			mcp.WithString("name",
-				mcp.Required(),
-				mcp.Description("Model name"),
-			),
-			mcp.WithString("type",
-				mcp.Required(),
-				mcp.Description("Model type: decision_tree, random_forest, regression, or neural_network"),
-			),
-			mcp.WithString("description",
-				mcp.Description("Optional model description"),
-			),
-			mcp.WithString("config",
-				mcp.Description(`Optional JSON training config e.g. {"train_test_split":0.8,"random_seed":42,"max_depth":5}`),
-			),
+			mcp.WithString("project_id", mcp.Required(), mcp.Description("Project ID")),
+			mcp.WithString("ontology_id", mcp.Required(), mcp.Description("Ontology ID that defines the model's domain")),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Model name")),
+			mcp.WithString("type", mcp.Description("Builtin model type: decision_tree, random_forest, regression, or neural_network")),
+			mcp.WithString("provider", mcp.Description("Optional ML provider name (defaults to builtin)")),
+			mcp.WithString("provider_model", mcp.Description("Provider-specific model identifier")),
+			mcp.WithString("provider_config_json", mcp.Description("Optional provider-specific config as JSON object")),
+			mcp.WithString("description", mcp.Description("Optional model description")),
+			mcp.WithString("config", mcp.Description(`Optional JSON training config e.g. {"train_test_split":0.8,"random_seed":42,"max_depth":5}`)),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			projectID := req.GetString("project_id", "")
 			ontologyID := req.GetString("ontology_id", "")
 			name := req.GetString("name", "")
 			modelType := req.GetString("type", "")
-			if projectID == "" || ontologyID == "" || name == "" || modelType == "" {
-				return mcp.NewToolResultError("project_id, ontology_id, name, and type are required"), nil
+			provider := req.GetString("provider", "")
+			providerModel := req.GetString("provider_model", "")
+			if projectID == "" || ontologyID == "" || name == "" || (modelType == "" && provider == "") {
+				return mcp.NewToolResultError("project_id, ontology_id, name, and either type or provider are required"), nil
 			}
-			createReq := &models.ModelCreateRequest{
-				ProjectID:   projectID,
-				OntologyID:  ontologyID,
-				Name:        name,
-				Type:        models.ModelType(modelType),
-				Description: req.GetString("description", ""),
-			}
+			createReq := &models.ModelCreateRequest{ProjectID: projectID, OntologyID: ontologyID, Name: name, Type: models.ModelType(modelType), Provider: provider, ProviderModel: providerModel, Description: req.GetString("description", "")}
 			if cfgStr := req.GetString("config", ""); cfgStr != "" {
 				var cfg models.TrainingConfig
 				if err := json.Unmarshal([]byte(cfgStr), &cfg); err != nil {
 					return mcp.NewToolResultError("config must be valid JSON: " + err.Error()), nil
 				}
 				createReq.TrainingConfig = &cfg
+			}
+			if providerCfgStr := req.GetString("provider_config_json", ""); providerCfgStr != "" {
+				providerCfg, err := parseJSONMap(providerCfgStr)
+				if err != nil {
+					return mcp.NewToolResultError(err.Error()), nil
+				}
+				createReq.ProviderConfig = providerCfg
 			}
 			model, err := m.mlSvc.CreateModel(createReq)
 			if err != nil {

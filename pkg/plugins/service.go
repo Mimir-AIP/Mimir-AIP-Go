@@ -258,11 +258,9 @@ func (s *Service) validatePluginDefinition(def *models.PluginDefinition) error {
 	if def.Version == "" {
 		return fmt.Errorf("plugin version is required")
 	}
-	if len(def.Actions) == 0 {
-		return fmt.Errorf("plugin must define at least one action")
+	if len(def.Actions) == 0 && def.MLProvider == nil {
+		return fmt.Errorf("plugin must define at least one pipeline action or one ml_provider")
 	}
-
-	// Validate actions
 	actionNames := make(map[string]bool)
 	for _, action := range def.Actions {
 		if action.Name == "" {
@@ -273,6 +271,16 @@ func (s *Service) validatePluginDefinition(def *models.PluginDefinition) error {
 		}
 		actionNames[action.Name] = true
 	}
-
+	if def.MLProvider != nil {
+		if def.MLProvider.Name == "" {
+			def.MLProvider.Name = def.Name
+		}
+		if def.MLProvider.Name == "builtin" {
+			return fmt.Errorf("ml provider name 'builtin' is reserved")
+		}
+		if len(def.MLProvider.Models) == 0 {
+			return fmt.Errorf("ml_provider must define at least one model")
+		}
+	}
 	return nil
 }

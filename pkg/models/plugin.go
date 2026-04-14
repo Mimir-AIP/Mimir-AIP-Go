@@ -30,12 +30,14 @@ type Plugin struct {
 
 // PluginDefinition represents the parsed plugin.yaml content
 type PluginDefinition struct {
-	Name        string         `json:"name" yaml:"name"`
-	Version     string         `json:"version" yaml:"version"`
-	Description string         `json:"description,omitempty" yaml:"description,omitempty"`
-	Author      string         `json:"author,omitempty" yaml:"author,omitempty"`
-	Repository  string         `json:"repository,omitempty" yaml:"repository,omitempty"`
-	Actions     []ActionSchema `json:"actions" yaml:"actions"`
+	Name        string              `json:"name" yaml:"name"`
+	Version     string              `json:"version" yaml:"version"`
+	Description string              `json:"description,omitempty" yaml:"description,omitempty"`
+	Author      string              `json:"author,omitempty" yaml:"author,omitempty"`
+	Repository  string              `json:"repository,omitempty" yaml:"repository,omitempty"`
+	Domains     []string            `json:"domains,omitempty" yaml:"domains,omitempty"`
+	Actions     []ActionSchema      `json:"actions,omitempty" yaml:"actions,omitempty"`
+	MLProvider  *MLProviderMetadata `json:"ml_provider,omitempty" yaml:"ml_provider,omitempty"`
 }
 
 // ActionSchema defines the schema for a plugin action

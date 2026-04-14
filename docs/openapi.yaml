@@ -677,7 +677,6 @@ components:
                     type: string
                 is_recommended:
                     description: True if recommended by the recommendation engine
-                    type: boolean
                 metadata:
                     additionalProperties: true
                     type: object
@@ -695,6 +694,15 @@ components:
                     type: object
                 project_id:
                     description: Owning project ID
+                    type: string
+                provider:
+                    description: Provider name (builtin or plugin-backed)
+                    type: string
+                provider_config:
+                    additionalProperties: true
+                    type: object
+                provider_model:
+                    description: Provider-specific model identifier
                     type: string
                 recommendation_score:
                     description: Recommendation engine score
@@ -718,6 +726,51 @@ components:
                     description: Model version string
                     type: string
             type: object
+        MLProviderMetadata:
+            properties:
+                capabilities:
+                    items:
+                        type: string
+                    type: array
+                description:
+                    description: Description
+                    type: string
+                display_name:
+                    description: Human-readable provider name
+                    type: string
+                models:
+                    items:
+                        $ref: '#/components/schemas/MLProviderModel'
+                    type: array
+                name:
+                    description: Provider name
+                    type: string
+                supports_inference:
+                    description: Whether the provider can run inference
+                    type: boolean
+                supports_monitoring:
+                    description: Whether the provider supports monitoring hooks
+                    type: boolean
+                supports_training:
+                    description: Whether the provider can train models
+                    type: boolean
+            type: object
+        MLProviderModel:
+            properties:
+                capabilities:
+                    items:
+                        type: string
+                    type: array
+                description:
+                    description: Description
+                    type: string
+                display_name:
+                    description: Human-readable model name
+                    type: string
+                name:
+                    description: Provider model identifier
+                    type: string
+            type: object
         ModelCreateRequest:
             properties:
                 description:
@@ -732,6 +785,15 @@ components:
                 project_id:
                     description: Owning project ID
                     type: string
+                provider:
+                    description: Provider name (defaults to builtin)
+                    type: string
+                provider_config:
+                    additionalProperties: true
+                    type: object
+                provider_model:
+                    description: Provider-specific model identifier
+                    type: string
                 training_config:
                     description: Training configuration
                     type: object
@@ -745,7 +807,6 @@ components:
                 - project_id
                 - ontology_id
                 - name
-                - type
             type: object
         ModelRecommendationRequest:
             properties:
@@ -793,6 +854,9 @@ components:
                 performance_metrics:
                     description: Updated performance metrics
                     type: object
+                provider_config:
+                    additionalProperties: true
+                    type: object
                 status:
                     description: New status
                     type: string
@@ -805,9 +869,12 @@ components:
                 model_id:
                     description: ID of the model to train
                     type: string
-                storage_id:
-                    description: Storage config to load training data from
-                    type: string
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
+                training_config:
+                    type: object
             required:
                 - model_id
             type: object
@@ -2831,6 +2898,44 @@ paths:
             summary: Platform metrics
             tags:
                 - System
+    /api/ml-providers:
+        get:
+            description: Returns builtin and plugin-backed ML provider metadata available to the platform.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/MLProviderMetadata'
+                                type: array
+                    description: 200 OK
+            summary: List ML providers
+            tags:
+                - ML Models
+    /api/ml-providers/{name}:
+        get:
+            description: Returns metadata for a specific ML provider.
+            parameters:
+                - description: Provider name
+                  in: path
+                  name: name
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MLProviderMetadata'
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Get ML provider
+            tags:
+                - ML Models
+
     /api/ml-models:
         get:
             description: Returns all ML models for a project.

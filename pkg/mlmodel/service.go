@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel/training"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 	"github.com/mimir-aip/mimir-aip-go/pkg/queue"
 	"github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
@@ -27,6 +29,8 @@ type Service struct {
 	storageService       *storage.Service
 	queue                *queue.Queue
 	recommendationEngine *RecommendationEngine
+	providers            *ProviderRegistry
+	providerLoader       *pluginruntime.Loader[Provider]
 }
 
 // NewService creates a new ML model service
@@ -36,12 +40,15 @@ func NewService(
 	storageService *storage.Service,
 	q *queue.Queue,
 ) *Service {
+	providers := NewProviderRegistry()
+	providers.Register("builtin", NewBuiltinProvider())
 	return &Service{
 		store:                store,
 		ontologyService:      ontologyService,
 		storageService:       storageService,
 		queue:                q,
 		recommendationEngine: NewRecommendationEngine(),
+		providers:            providers,
 	}
 }
 
@@ -88,6 +95,102 @@ func (s *Service) getOwnedModel(projectID, modelID string) (*models.MLModel, err
 	return model, nil
 }
 
+func (s *Service) resolveProviderMetadata(providerName string) (models.MLProviderMetadata, error) {
+	provider, ok := s.providers.Get(providerName)
+	if ok {
+		return provider.Metadata(), nil
+	}
+	plugin, err := s.store.GetPlugin(providerName)
+	if err != nil {
+		return models.MLProviderMetadata{}, fmt.Errorf("provider not found: %w", err)
+	}
+	if plugin.PluginDefinition.MLProvider == nil {
+		return models.MLProviderMetadata{}, fmt.Errorf("plugin %s does not declare an ML provider", providerName)
+	}
+	return *plugin.PluginDefinition.MLProvider, nil
+}
+
+func (s *Service) resolveProviderForModel(model *models.MLModel) (Provider, error) {
+	providerName, _, err := normalizeProviderIdentity(model)
+	if err != nil {
+		return nil, err
+	}
+	provider, ok := s.providers.Get(providerName)
+	if ok {
+		return provider, nil
+	}
+	return s.loadExternalProvider(providerName)
+}
+
+func (s *Service) normalizeModelDefinition(req *models.ModelCreateRequest) (string, string, error) {
+	provider := req.Provider
+	providerModel := req.ProviderModel
+	if provider == "" {
+		provider = "builtin"
+	}
+	if provider == "builtin" {
+		if providerModel == "" {
+			providerModel = string(req.Type)
+		}
+		if providerModel == "" {
+			return "", "", fmt.Errorf("type is required for builtin provider")
+		}
+		req.Type = models.ModelType(providerModel)
+	}
+	metadata, err := s.resolveProviderMetadata(provider)
+	if err != nil {
+		return "", "", err
+	}
+	if providerModel == "" {
+		return "", "", fmt.Errorf("provider_model is required")
+	}
+	for _, candidate := range metadata.Models {
+		if candidate.Name == providerModel {
+			return provider, providerModel, nil
+		}
+	}
+	return "", "", fmt.Errorf("provider %s does not support model %s", provider, providerModel)
+}
+
+func (s *Service) ListProviderMetadata() ([]models.MLProviderMetadata, error) {
+	providers := make([]models.MLProviderMetadata, 0)
+	seen := make(map[string]bool)
+	for _, name := range s.providers.Names() {
+		provider, ok := s.providers.Get(name)
+		if !ok {
+			continue
+		}
+		metadata := provider.Metadata()
+		providers = append(providers, metadata)
+		seen[metadata.Name] = true
+	}
+	pluginsList, err := s.store.ListPlugins()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list plugins: %w", err)
+	}
+	for _, plugin := range pluginsList {
+		if plugin == nil || plugin.PluginDefinition.MLProvider == nil {
+			continue
+		}
+		metadata := *plugin.PluginDefinition.MLProvider
+		if seen[metadata.Name] {
+			continue
+		}
+		providers = append(providers, metadata)
+		seen[metadata.Name] = true
+	}
+	sort.Slice(providers, func(i, j int) bool { return providers[i].Name < providers[j].Name })
+	return providers, nil
+}
+
+func (s *Service) GetProviderMetadata(name string) (*models.MLProviderMetadata, error) {
+	metadata, err := s.resolveProviderMetadata(name)
+	if err != nil {
+		return nil, err
+	}
+	return &metadata, nil
+}
+
 func (s *Service) GetModelForProject(projectID, modelID string) (*models.MLModel, error) {
 	return s.getOwnedModel(projectID, modelID)
 }
@@ -103,6 +206,10 @@ func (s *Service) CreateModel(req *models.ModelCreateRequest) (*models.MLModel, 
 	if _, err := s.ontologyService.GetOntologyForProject(req.ProjectID, req.OntologyID); err != nil {
 		return nil, fmt.Errorf("failed to get ontology: %w", err)
 	}
+	providerName, providerModel, err := s.normalizeModelDefinition(req)
+	if err != nil {
+		return nil, err
+	}
 	model := &models.MLModel{
 		ID:             uuid.New().String(),
 		ProjectID:      req.ProjectID,
@@ -110,6 +217,9 @@ func (s *Service) CreateModel(req *models.ModelCreateRequest) (*models.MLModel, 
 		Name:           req.Name,
 		Description:    req.Description,
 		Type:           req.Type,
+		Provider:       providerName,
+		ProviderModel:  providerModel,
+		ProviderConfig: req.ProviderConfig,
 		Status:         models.ModelStatusDraft,
 		Version:        "1.0",
 		TrainingConfig: req.TrainingConfig,
@@ -133,6 +243,29 @@ func (s *Service) GetModel(id string) (*models.MLModel, error) {
 		return nil, fmt.Errorf("failed to get model: %w", err)
 	}
 	return model, nil
+}
+
+func (s *Service) inferModel(model *models.MLModel, input map[string]any) (any, float64, error) {
+	provider, err := s.resolveProviderForModel(model)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := provider.ValidateModel(model); err != nil {
+		return nil, 0, err
+	}
+	result, err := provider.Infer(&ProviderInferRequest{Model: model, Input: input})
+	if err != nil {
+		return nil, 0, err
+	}
+	return result.Output, result.Confidence, nil
+}
+
+func (s *Service) InferModel(modelID string, input map[string]any) (any, float64, error) {
+	model, err := s.store.GetMLModel(modelID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get model: %w", err)
+	}
+	return s.inferModel(model, input)
 }
 
 // UpdateModel updates an existing ML model
@@ -341,43 +474,43 @@ func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLMod
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-
-	// Get the model
 	model, err := s.store.GetMLModel(req.ModelID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get model: %w", err)
 	}
-
-	// Verify model is in correct state to start training
 	if model.Status == models.ModelStatusTraining {
 		return nil, fmt.Errorf("model is already training")
 	}
-
-	// Update training config if provided
+	providerName, providerModel, err := normalizeProviderIdentity(model)
+	if err != nil {
+		return nil, err
+	}
 	if req.TrainingConfig != nil {
 		model.TrainingConfig = req.TrainingConfig
 	}
-
 	workTask := &models.WorkTask{
 		ID:          uuid.New().String(),
 		Type:        models.WorkTaskTypeMLTraining,
 		ProjectID:   model.ProjectID,
-		Priority:    5, // Medium priority
+		Priority:    5,
 		Status:      models.WorkTaskStatusQueued,
 		SubmittedAt: time.Now().UTC(),
 		TaskSpec: models.TaskSpec{
 			ModelID:   model.ID,
 			ProjectID: model.ProjectID,
 			Parameters: map[string]any{
-				"model_id":    model.ID,
-				"ontology_id": model.OntologyID,
-				"storage_ids": req.StorageIDs,
-				"config":      model.TrainingConfig,
+				"model_id":        model.ID,
+				"ontology_id":     model.OntologyID,
+				"storage_ids":     req.StorageIDs,
+				"config":          model.TrainingConfig,
+				"provider":        providerName,
+				"provider_model":  providerModel,
+				"provider_config": model.ProviderConfig,
 			},
 		},
 		ResourceRequirements: models.ResourceRequirements{
-			CPU:    "2000m", // 2 CPU cores
-			Memory: "4Gi",   // 4GB RAM
+			CPU:    "2000m",
+			Memory: "4Gi",
 			GPU:    false,
 		},
 		DataAccess: models.DataAccess{
@@ -485,39 +618,35 @@ func (s *Service) CompleteTraining(modelID string, artifactData []byte, performa
 }
 
 // ValidateModel runs the trained model artifact against the provided data and returns performance metrics.
-// It deserializes the artifact, runs inference on each test row, and computes classification or regression metrics.
+// ValidateModel runs the trained model artifact against the provided data and returns performance metrics.
+// It resolves the model provider and runs normalized inference over each test row.
 func (s *Service) ValidateModel(modelID string, data *training.TrainingData) (*models.PerformanceMetrics, error) {
 	model, err := s.store.GetMLModel(modelID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get model: %w", err)
 	}
-
-	if model.ModelArtifactPath == "" {
-		return nil, fmt.Errorf("model %s has no trained artifact (status: %s)", modelID, model.Status)
-	}
-
-	artifactBytes, err := os.ReadFile(model.ModelArtifactPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read model artifact: %w", err)
-	}
-
-	var artifact struct {
-		ModelType  string         `json:"model_type"`
-		Parameters map[string]any `json:"parameters"`
-	}
-	if err := json.Unmarshal(artifactBytes, &artifact); err != nil {
-		return nil, fmt.Errorf("failed to parse artifact: %w", err)
-	}
-
 	predictions := make([]float64, len(data.TestFeatures))
 	for i, features := range data.TestFeatures {
-		pred, err := inferFromArtifact(artifact.ModelType, artifact.Parameters, features)
+		input := make(map[string]any, len(data.FeatureNames))
+		for idx, featureName := range data.FeatureNames {
+			if idx < len(features) {
+				input[featureName] = features[idx]
+			}
+		}
+		pred, _, err := s.inferModel(model, input)
 		if err != nil {
 			log.Printf("Warning: inference failed for row %d during validation: %v", i, err)
+			continue
 		}
-		predictions[i] = pred
+		switch v := pred.(type) {
+		case float64:
+			predictions[i] = v
+		case int:
+			predictions[i] = float64(v)
+		default:
+			return nil, fmt.Errorf("unsupported prediction output type %T during validation", pred)
+		}
 	}
-
 	return computePerformanceMetrics(model.Type, predictions, data.TestLabels), nil
 }
 

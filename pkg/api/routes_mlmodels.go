@@ -3,6 +3,21 @@ package api
 import "github.com/mimir-aip/mimir-aip-go/pkg/api/doc"
 
 func init() {
+	// ── ML Providers ───────────────────────────────────────────────────────────
+	doc.Register("GET", "/api/ml-providers", doc.RouteDoc{
+		Summary:     "List ML providers",
+		Description: "Returns builtin and plugin-backed ML provider metadata available to the platform.",
+		Tags:        []string{"ML Models"},
+		Responses:   doc.R(doc.OK(doc.ArrOf("MLProviderMetadata"))),
+	})
+	doc.Register("GET", "/api/ml-providers/{name}", doc.RouteDoc{
+		Summary:     "Get ML provider",
+		Description: "Returns metadata for a specific ML provider.",
+		Tags:        []string{"ML Models"},
+		Params:      []doc.Param{doc.PParam("name", "Provider name")},
+		Responses:   doc.R(doc.OK(doc.Ref("MLProviderMetadata")), doc.NotFound()),
+	})
+
 	// ── ML Models ──────────────────────────────────────────────────────────────
 	doc.Register("GET", "/api/ml-models", doc.RouteDoc{
 		Summary:     "List ML models",

@@ -28,7 +28,7 @@ const (
 	ModelStatusArchived   ModelStatus = "archived"   // Model archived
 )
 
-// MLModel represents a machine learning model
+// MLModel represents a machine learning model.
 type MLModel struct {
 	ID                  string                 `json:"id"`
 	ProjectID           string                 `json:"project_id"`
@@ -36,19 +36,56 @@ type MLModel struct {
 	Name                string                 `json:"name"`
 	Description         string                 `json:"description"`
 	Type                ModelType              `json:"type"`
+	Provider            string                 `json:"provider,omitempty"`
+	ProviderModel       string                 `json:"provider_model,omitempty"`
+	ProviderConfig      map[string]interface{} `json:"provider_config,omitempty"`
 	Status              ModelStatus            `json:"status"`
 	Version             string                 `json:"version"`
-	IsRecommended       bool                   `json:"is_recommended"`       // Was this the recommended type
-	RecommendationScore int                    `json:"recommendation_score"` // Score from recommendation engine
+	IsRecommended       bool                   `json:"is_recommended"`
+	RecommendationScore int                    `json:"recommendation_score"`
 	TrainingConfig      *TrainingConfig        `json:"training_config,omitempty"`
 	TrainingMetrics     *TrainingMetrics       `json:"training_metrics,omitempty"`
 	TrainingTaskID      string                 `json:"training_task_id,omitempty"`
-	ModelArtifactPath   string                 `json:"model_artifact_path,omitempty"` // Path to trained model file
+	InferenceTaskID     string                 `json:"inference_task_id,omitempty"`
+	ModelArtifactPath   string                 `json:"model_artifact_path,omitempty"`
 	PerformanceMetrics  *PerformanceMetrics    `json:"performance_metrics,omitempty"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`
 	CreatedAt           time.Time              `json:"created_at"`
 	UpdatedAt           time.Time              `json:"updated_at"`
 	TrainedAt           *time.Time             `json:"trained_at,omitempty"`
+}
+
+type MLProviderCapability string
+
+const (
+	MLProviderCapabilityTrain    MLProviderCapability = "train"
+	MLProviderCapabilityInfer    MLProviderCapability = "infer"
+	MLProviderCapabilityBatch    MLProviderCapability = "batch_infer"
+	MLProviderCapabilityMonitor  MLProviderCapability = "monitor"
+	MLProviderCapabilityGenerate MLProviderCapability = "generate"
+	MLProviderCapabilityExtract  MLProviderCapability = "extract"
+	MLProviderCapabilityEmbed    MLProviderCapability = "embed"
+	MLProviderCapabilityClassify MLProviderCapability = "classify"
+	MLProviderCapabilityRegress  MLProviderCapability = "regress"
+	MLProviderCapabilityAnomaly  MLProviderCapability = "anomaly"
+)
+
+type MLProviderModel struct {
+	Name         string                 `json:"name" yaml:"name"`
+	DisplayName  string                 `json:"display_name,omitempty" yaml:"display_name,omitempty"`
+	Description  string                 `json:"description,omitempty" yaml:"description,omitempty"`
+	Capabilities []MLProviderCapability `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+}
+
+type MLProviderMetadata struct {
+	Name               string                 `json:"name" yaml:"name"`
+	DisplayName        string                 `json:"display_name,omitempty" yaml:"display_name,omitempty"`
+	Description        string                 `json:"description,omitempty" yaml:"description,omitempty"`
+	Models             []MLProviderModel      `json:"models,omitempty" yaml:"models,omitempty"`
+	Capabilities       []MLProviderCapability `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	SupportsTraining   bool                   `json:"supports_training" yaml:"supports_training"`
+	SupportsInference  bool                   `json:"supports_inference" yaml:"supports_inference"`
+	SupportsMonitoring bool                   `json:"supports_monitoring,omitempty" yaml:"supports_monitoring,omitempty"`
 }
 
 // TrainingConfig holds configuration for model training
@@ -127,18 +164,21 @@ type DataAnalysis struct {
 	FeatureCount    int    `json:"feature_count"`
 }
 
-// ModelCreateRequest represents a request to create a new ML model
+// ModelCreateRequest represents a request to create a new ML model.
 type ModelCreateRequest struct {
 	ProjectID      string                 `json:"project_id"`
 	OntologyID     string                 `json:"ontology_id"`
 	Name           string                 `json:"name"`
 	Description    string                 `json:"description"`
-	Type           ModelType              `json:"type"`
+	Type           ModelType              `json:"type,omitempty"`
+	Provider       string                 `json:"provider,omitempty"`
+	ProviderModel  string                 `json:"provider_model,omitempty"`
+	ProviderConfig map[string]interface{} `json:"provider_config,omitempty"`
 	TrainingConfig *TrainingConfig        `json:"training_config,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// Validate checks if the ModelCreateRequest is valid
+// Validate checks if the ModelCreateRequest is valid.
 func (r *ModelCreateRequest) Validate() error {
 	if r.ProjectID == "" {
 		return fmt.Errorf("project_id is required")
@@ -149,30 +189,29 @@ func (r *ModelCreateRequest) Validate() error {
 	if r.Name == "" {
 		return fmt.Errorf("name is required")
 	}
-	if r.Type == "" {
-		return fmt.Errorf("type is required")
+	if r.Provider == "" && r.Type == "" {
+		return fmt.Errorf("either type or provider is required")
 	}
-	// Validate model type
-	validTypes := []ModelType{
-		ModelTypeDecisionTree,
-		ModelTypeRandomForest,
-		ModelTypeRegression,
-		ModelTypeNeuralNetwork,
+	if r.Provider != "" && r.ProviderModel == "" && r.Type == "" {
+		return fmt.Errorf("provider_model is required when provider is set")
 	}
-	valid := false
-	for _, t := range validTypes {
-		if r.Type == t {
-			valid = true
-			break
+	if r.Provider == "" && r.Type != "" {
+		validTypes := []ModelType{ModelTypeDecisionTree, ModelTypeRandomForest, ModelTypeRegression, ModelTypeNeuralNetwork}
+		valid := false
+		for _, t := range validTypes {
+			if r.Type == t {
+				valid = true
+				break
+			}
 		}
-	}
-	if !valid {
-		return fmt.Errorf("invalid model type: %s", r.Type)
+		if !valid {
+			return fmt.Errorf("invalid model type: %s", r.Type)
+		}
 	}
 	return nil
 }
 
-// ModelUpdateRequest represents a request to update an ML model
+// ModelUpdateRequest represents a request to update an ML model.
 type ModelUpdateRequest struct {
 	Name               *string                `json:"name,omitempty"`
 	Description        *string                `json:"description,omitempty"`
@@ -180,6 +219,7 @@ type ModelUpdateRequest struct {
 	TrainingMetrics    *TrainingMetrics       `json:"training_metrics,omitempty"`
 	PerformanceMetrics *PerformanceMetrics    `json:"performance_metrics,omitempty"`
 	Metadata           map[string]interface{} `json:"metadata,omitempty"`
+	ProviderConfig     map[string]interface{} `json:"provider_config,omitempty"`
 }
 
 // ModelRecommendationRequest represents a request for model recommendation

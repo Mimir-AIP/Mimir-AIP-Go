@@ -411,6 +411,22 @@ func init() {
 			"extraction_summary": M{"type": "object", "additionalProperties": true},
 		}),
 
+		"MLProviderModel": Props(nil, M{
+			"name":         Str("Provider model identifier"),
+			"display_name": Str("Human-readable model name"),
+			"description":  Str("Description"),
+			"capabilities": Arr(M{"type": "string"}),
+		}),
+		"MLProviderMetadata": Props(nil, M{
+			"name":                Str("Provider name"),
+			"display_name":        Str("Human-readable provider name"),
+			"description":         Str("Description"),
+			"models":              ArrOf("MLProviderModel"),
+			"capabilities":        Arr(M{"type": "string"}),
+			"supports_training":   Bool("Whether the provider can train models"),
+			"supports_inference":  Bool("Whether the provider can run inference"),
+			"supports_monitoring": Bool("Whether the provider supports monitoring hooks"),
+		}),
 		// ── ML Models ─────────────────────────────────────────────────────────
 		// ── ML Models ─────────────────────────────────────────────────────────
 		"MLModel": Props(nil, M{

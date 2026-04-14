@@ -271,6 +271,8 @@ func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *
 	server.RegisterHandler("/api/extraction/generate-ontology", extractionHandler.HandleExtractAndGenerate)
 
 	mlmodelHandler := api.NewMLModelHandler(mlmodelService)
+	server.RegisterHandler("/api/ml-providers", mlmodelHandler.HandleMLProviders)
+	server.RegisterHandler("/api/ml-providers/", mlmodelHandler.HandleMLProviders)
 	server.RegisterHandler("/api/ml-models", mlmodelHandler.HandleMLModels)
 	server.RegisterHandler("/api/ml-models/", mlmodelHandler.HandleMLModel)
 	server.RegisterHandler("/api/ml-models/recommend", mlmodelHandler.HandleMLModelRecommendation)

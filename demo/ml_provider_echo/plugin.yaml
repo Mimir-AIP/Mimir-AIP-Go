@@ -1,0 +1,30 @@
+name: demo-echo-provider
+version: 0.1.0
+description: Demo ML provider plugin that echoes and scores structured inputs.
+author: Mimir AIP
+domains:
+  - ml
+ml_provider:
+  name: demo-echo-provider
+  display_name: Demo Echo Provider
+  description: Inference-only demo provider useful for validating provider loading and normalized outputs.
+  supports_training: false
+  supports_inference: true
+  supports_monitoring: false
+  capabilities:
+    - infer
+    - generate
+    - classify
+  models:
+    - name: echo_classifier
+      display_name: Echo Classifier
+      description: Returns a simple label based on numeric input totals.
+      capabilities:
+        - infer
+        - classify
+    - name: echo_generator
+      display_name: Echo Generator
+      description: Returns a generated summary string from input fields.
+      capabilities:
+        - infer
+        - generate

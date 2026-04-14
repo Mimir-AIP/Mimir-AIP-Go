@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel/training"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	pipelinepkg "github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
@@ -97,6 +98,38 @@ func executeWorkTask(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	default:
 		return nil, fmt.Errorf("unknown work task type: %s", task.Type)
 	}
+}
+
+func resolveWorkerMLProvider(orchestratorURL string, model *models.MLModel) (mlmodel.Provider, error) {
+	providerName := model.Provider
+	if providerName == "" {
+		providerName = "builtin"
+	}
+	if providerName == "builtin" {
+		return mlmodel.NewBuiltinProvider(), nil
+	}
+	mlClient := plugins.NewMLClient(orchestratorURL, "/tmp/plugins/ml")
+	if _, err := mlClient.CompileProvider(providerName); err != nil {
+		return nil, err
+	}
+	return mlClient.LoadProvider(providerName)
+}
+
+func fetchModelWithOwnership(orchestratorURL, projectID, modelID string) (*models.MLModel, error) {
+	modelURL := fmt.Sprintf("%s/api/ml-models/%s?project_id=%s", orchestratorURL, modelID, projectID)
+	resp, err := http.Get(modelURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch model: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch model: status %d", resp.StatusCode)
+	}
+	var model models.MLModel
+	if err := json.NewDecoder(resp.Body).Decode(&model); err != nil {
+		return nil, fmt.Errorf("failed to decode model: %w", err)
+	}
+	return &model, nil
 }
 
 // executePipeline executes a pipeline work task
@@ -336,25 +369,11 @@ func fetchProjectStorageIDs(orchestratorURL, projectID string) []string {
 // executeMLTraining executes an ML training work task
 func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Training ML model: %s", task.TaskSpec.ModelID)
-
 	orchestratorURL := getOrchestratorURL()
-
-	modelURL := fmt.Sprintf("%s/api/ml-models/%s", orchestratorURL, task.TaskSpec.ModelID)
-	resp, err := http.Get(modelURL)
+	model, err := fetchModelWithOwnership(orchestratorURL, task.ProjectID, task.TaskSpec.ModelID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch model: %w", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch model: status %d", resp.StatusCode)
-	}
-
-	var model models.MLModel
-	if err := json.NewDecoder(resp.Body).Decode(&model); err != nil {
-		return nil, fmt.Errorf("failed to decode model: %w", err)
-	}
-
 	labelColumn := "label"
 	if lc, ok := task.TaskSpec.Parameters["label_column"].(string); ok && lc != "" {
 		labelColumn = lc
@@ -363,7 +382,6 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	if sr, ok := task.TaskSpec.Parameters["train_test_split"].(float64); ok && sr > 0 {
 		splitRatio = sr
 	}
-
 	var trainingData *training.TrainingData
 	if twinID, ok := task.TaskSpec.Parameters["digital_twin_id"].(string); ok && twinID != "" {
 		log.Printf("Loading training data from digital twin %s", twinID)
@@ -379,64 +397,41 @@ func executeMLTraining(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		reportTrainingFailure(orchestratorURL, task.TaskSpec.ModelID, err.Error())
 		return nil, fmt.Errorf("failed to load training data: %w", err)
 	}
-
-	factory := training.NewTrainerFactory()
-	trainer, err := factory.GetTrainer(model.Type)
+	provider, err := resolveWorkerMLProvider(orchestratorURL, model)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get trainer: %w", err)
+		return nil, fmt.Errorf("failed to resolve provider: %w", err)
 	}
-
-	log.Printf("Starting training for model type: %s", model.Type)
-	result, err := trainer.Train(trainingData, model.TrainingConfig)
+	result, err := provider.Train(&mlmodel.ProviderTrainRequest{Model: model, TrainingData: trainingData})
 	if err != nil {
 		reportTrainingFailure(orchestratorURL, task.TaskSpec.ModelID, err.Error())
 		return nil, fmt.Errorf("training failed: %w", err)
 	}
-
-	log.Printf("Training completed - Accuracy: %.2f, Precision: %.2f, Recall: %.2f, F1: %.2f",
-		result.PerformanceMetrics.Accuracy,
-		result.PerformanceMetrics.Precision,
-		result.PerformanceMetrics.Recall,
-		result.PerformanceMetrics.F1Score)
-
-	artifactData, err := json.Marshal(map[string]any{
-		"model_type":    string(model.Type),
-		"feature_names": trainingData.FeatureNames,
-		"parameters": map[string]any{
-			"model_data":         result.ModelData,
-			"feature_importance": result.FeatureImportance,
-		},
-		"metadata": map[string]any{
-			"trained_at":   time.Now().UTC().Format(time.RFC3339),
-			"label_column": labelColumn,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal artifact: %w", err)
-	}
-
-	if err := reportTrainingCompletion(orchestratorURL, task.TaskSpec.ModelID, artifactData, result.PerformanceMetrics); err != nil {
+	if err := reportTrainingCompletion(orchestratorURL, task.TaskSpec.ModelID, result.ArtifactData, result.PerformanceMetrics); err != nil {
 		log.Printf("Warning: failed to report training completion: %v", err)
 	}
-
-	return &models.WorkTaskResult{
-		WorkTaskID: task.ID,
-		Status:     models.WorkTaskStatusCompleted,
-		Metadata: map[string]any{
-			"model_id":            task.TaskSpec.ModelID,
-			"model_type":          string(model.Type),
-			"artifact_uploaded":   true,
-			"accuracy":            result.PerformanceMetrics.Accuracy,
-			"precision":           result.PerformanceMetrics.Precision,
-			"recall":              result.PerformanceMetrics.Recall,
-			"f1_score":            result.PerformanceMetrics.F1Score,
-			"training_epochs":     result.TrainingMetrics.Epoch,
-			"training_loss":       result.TrainingMetrics.TrainingLoss,
-			"validation_loss":     result.TrainingMetrics.ValidationLoss,
-			"training_accuracy":   result.TrainingMetrics.TrainingAccuracy,
-			"validation_accuracy": result.TrainingMetrics.ValidationAccuracy,
-		},
-	}, nil
+	metadata := map[string]any{
+		"model_id":          task.TaskSpec.ModelID,
+		"provider":          model.Provider,
+		"provider_model":    model.ProviderModel,
+		"artifact_uploaded": true,
+	}
+	if result.TrainingMetrics != nil {
+		metadata["training_epochs"] = result.TrainingMetrics.Epoch
+		metadata["training_loss"] = result.TrainingMetrics.TrainingLoss
+		metadata["validation_loss"] = result.TrainingMetrics.ValidationLoss
+		metadata["training_accuracy"] = result.TrainingMetrics.TrainingAccuracy
+		metadata["validation_accuracy"] = result.TrainingMetrics.ValidationAccuracy
+	}
+	if result.PerformanceMetrics != nil {
+		metadata["accuracy"] = result.PerformanceMetrics.Accuracy
+		metadata["precision"] = result.PerformanceMetrics.Precision
+		metadata["recall"] = result.PerformanceMetrics.Recall
+		metadata["f1_score"] = result.PerformanceMetrics.F1Score
+	}
+	for key, value := range result.AdditionalMetadata {
+		metadata[key] = value
+	}
+	return &models.WorkTaskResult{WorkTaskID: task.ID, Status: models.WorkTaskStatusCompleted, Metadata: metadata}, nil
 }
 
 // loadTrainingDataFromStorage retrieves CIR records from storage and converts them to training data.
@@ -469,6 +464,7 @@ func loadTrainingDataFromStorage(orchestratorURL string, task *models.WorkTask) 
 	for _, storageID := range storageIDs {
 		retrieveURL := fmt.Sprintf("%s/api/storage/retrieve", orchestratorURL)
 		body, _ := json.Marshal(map[string]any{
+			"project_id": task.ProjectID,
 			"storage_id": storageID,
 			"query":      map[string]any{},
 		})
@@ -731,28 +727,14 @@ func reportTrainingFailure(orchestratorURL, modelID, reason string) error {
 // executeMLInference loads data from storage, runs inference with the trained model, and reports results
 func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	log.Printf("Running inference with model: %s", task.TaskSpec.ModelID)
-
 	orchestratorURL := getOrchestratorURL()
-
-	modelURL := fmt.Sprintf("%s/api/ml-models/%s", orchestratorURL, task.TaskSpec.ModelID)
-	resp, err := http.Get(modelURL)
+	model, err := fetchModelWithOwnership(orchestratorURL, task.ProjectID, task.TaskSpec.ModelID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch model: %w", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch model: status %d", resp.StatusCode)
-	}
-
-	var model models.MLModel
-	if err := json.NewDecoder(resp.Body).Decode(&model); err != nil {
-		return nil, fmt.Errorf("failed to decode model: %w", err)
-	}
-
 	if model.ModelArtifactPath == "" {
 		return nil, fmt.Errorf("model has no trained artifact (status: %s)", model.Status)
 	}
-
 	inferenceData, err := loadTrainingDataFromStorage(orchestratorURL, task)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load inference data: %w", err)
@@ -760,49 +742,36 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	if len(inferenceData.TrainFeatures) == 0 && len(inferenceData.TestFeatures) == 0 {
 		return nil, fmt.Errorf("no data available for inference with model %s", task.TaskSpec.ModelID)
 	}
-
-	artifactData, err := os.ReadFile(model.ModelArtifactPath)
+	provider, err := resolveWorkerMLProvider(orchestratorURL, model)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read model artifact: %w", err)
+		return nil, fmt.Errorf("failed to resolve provider: %w", err)
 	}
-
-	var artifact struct {
-		ModelType    string         `json:"model_type"`
-		FeatureNames []string       `json:"feature_names"`
-		Parameters   map[string]any `json:"parameters"`
-	}
-	if err := json.Unmarshal(artifactData, &artifact); err != nil {
-		return nil, fmt.Errorf("failed to parse model artifact: %w", err)
-	}
-
+	artifact, _ := mlmodel.ReadBuiltinArtifactForWorker(model.ModelArtifactPath)
 	allRows := append(inferenceData.TrainFeatures, inferenceData.TestFeatures...)
 	results := make([]map[string]any, 0, len(allRows))
-
 	inferenceFailures := 0
 	for _, row := range allRows {
-		features := make([]float64, len(artifact.FeatureNames))
-		for i := range artifact.FeatureNames {
+		input := make(map[string]any)
+		featureNames := inferenceData.FeatureNames
+		if artifact != nil && len(artifact.FeatureNames) > 0 {
+			featureNames = artifact.FeatureNames
+		}
+		for i, featureName := range featureNames {
 			if i < len(row) {
-				features[i] = row[i]
+				input[featureName] = row[i]
 			}
 		}
-
-		pred, err := workerRunInference(artifact.ModelType, artifact.Parameters, features)
+		result, err := provider.Infer(&mlmodel.ProviderInferRequest{Model: model, Input: input})
 		if err != nil {
 			inferenceFailures++
 			log.Printf("Inference failed for row %v: %v", row, err)
 			continue
 		}
-		results = append(results, map[string]any{
-			"input":      row,
-			"prediction": pred,
-		})
+		results = append(results, map[string]any{"input": input, "prediction": result.Output, "confidence": result.Confidence, "metadata": result.Metadata})
 	}
-
 	if inferenceFailures > 0 {
 		return nil, fmt.Errorf("inference failed for %d/%d rows", inferenceFailures, len(allRows))
 	}
-
 	outputDir := fmt.Sprintf("/tmp/inference/%s", task.ID)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create inference output dir: %w", err)
@@ -815,9 +784,7 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 	if err := os.WriteFile(outputPath, resultsJSON, 0644); err != nil {
 		return nil, fmt.Errorf("failed to write inference results: %w", err)
 	}
-
 	log.Printf("Ran inference on %d rows using model %s", len(results), task.TaskSpec.ModelID)
-
 	return &models.WorkTaskResult{
 		WorkTaskID:     task.ID,
 		Status:         models.WorkTaskStatusCompleted,
@@ -825,6 +792,8 @@ func executeMLInference(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		Metadata: map[string]any{
 			"model_id":         task.TaskSpec.ModelID,
 			"predictions_made": len(results),
+			"provider":         model.Provider,
+			"provider_model":   model.ProviderModel,
 		},
 	}, nil
 }

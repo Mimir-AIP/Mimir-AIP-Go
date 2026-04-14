@@ -43,6 +43,36 @@ func mlErrorStatus(err error) int {
 	}
 }
 
+// HandleMLProviders handles requests for /api/ml-providers and /api/ml-providers/{name}
+func (h *MLModelHandler) HandleMLProviders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	providerName := strings.TrimPrefix(r.URL.Path, "/api/ml-providers/")
+	if providerName != r.URL.Path && providerName != "" {
+		h.handleGetMLProvider(w, r, providerName)
+		return
+	}
+	providers, err := h.service.ListProviderMetadata()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list ML providers: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(providers)
+}
+
+func (h *MLModelHandler) handleGetMLProvider(w http.ResponseWriter, r *http.Request, name string) {
+	provider, err := h.service.GetProviderMetadata(name)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get ML provider: %v", err), mlErrorStatus(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(provider)
+}
+
 // HandleMLModels handles requests for /api/ml-models
 // GET: List all models (optionally filtered by project_id)
 // POST: Create a new model

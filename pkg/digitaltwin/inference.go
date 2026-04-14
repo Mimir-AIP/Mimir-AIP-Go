@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -125,88 +124,9 @@ type ModelArtifact struct {
 	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// runInference executes the actual inference using the trained model artifact
+// runInference executes the actual inference using the ML service's provider abstraction.
 func (e *InferenceEngine) runInference(model *models.MLModel, input map[string]interface{}) (interface{}, float64, error) {
-	if model.ModelArtifactPath == "" {
-		return nil, 0, fmt.Errorf("model artifact path is empty")
-	}
-
-	artifactData, err := os.ReadFile(model.ModelArtifactPath)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read model artifact: %w", err)
-	}
-
-	var artifact ModelArtifact
-	if err := json.Unmarshal(artifactData, &artifact); err != nil {
-		return nil, 0, fmt.Errorf("failed to unmarshal artifact: %w", err)
-	}
-
-	// Build feature vector from artifact's feature name ordering
-	features := make([]float64, len(artifact.FeatureNames))
-	for i, featureName := range artifact.FeatureNames {
-		if val, ok := input[featureName]; ok {
-			switch v := val.(type) {
-			case float64:
-				features[i] = v
-			case int:
-				features[i] = float64(v)
-			case int64:
-				features[i] = float64(v)
-			case bool:
-				if v {
-					features[i] = 1
-				}
-			default:
-				features[i] = 0
-			}
-		}
-	}
-
-	switch artifact.ModelType {
-	case "decision_tree":
-		prediction, err := e.predictDecisionTree(&artifact, features)
-		if err != nil {
-			return nil, 0, err
-		}
-		confidence := 0.85
-		if model.PerformanceMetrics != nil && model.PerformanceMetrics.Accuracy > 0 {
-			confidence = model.PerformanceMetrics.Accuracy
-		}
-		return prediction, confidence, nil
-
-	case "random_forest":
-		prediction, err := e.predictRandomForest(&artifact, features)
-		if err != nil {
-			return nil, 0, err
-		}
-		confidence := 0.90
-		if model.PerformanceMetrics != nil && model.PerformanceMetrics.Accuracy > 0 {
-			confidence = model.PerformanceMetrics.Accuracy
-		}
-		return prediction, confidence, nil
-
-	case "regression":
-		prediction := e.predictRegression(&artifact, features)
-		confidence := 1.0
-		if model.PerformanceMetrics != nil && model.PerformanceMetrics.R2Score > 0 {
-			confidence = math.Max(0, model.PerformanceMetrics.R2Score)
-		}
-		return prediction, confidence, nil
-
-	case "neural_network":
-		prediction, err := e.predictNeuralNetwork(&artifact, features)
-		if err != nil {
-			return nil, 0, err
-		}
-		confidence := 0.88
-		if model.PerformanceMetrics != nil && model.PerformanceMetrics.Accuracy > 0 {
-			confidence = model.PerformanceMetrics.Accuracy
-		}
-		return prediction, confidence, nil
-
-	default:
-		return nil, 0, fmt.Errorf("unsupported model type: %s", artifact.ModelType)
-	}
+	return e.mlService.InferModel(model.ID, input)
 }
 
 // predictDecisionTree traverses the decision tree stored in the artifact

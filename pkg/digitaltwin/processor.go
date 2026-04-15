@@ -75,17 +75,23 @@ func (p *Processor) ReviewAlert(twinID, alertID string, req *models.AlertApprova
 	alert.ApprovalResolvedAt = &resolvedAt
 	alert.ApprovalActor = req.Actor
 	alert.ApprovalNote = req.Note
+	alert.ExecutionError = ""
 	switch req.Decision {
 	case models.AlertApprovalDecisionApprove:
 		workTask, err := p.twinService.actionManager.TriggerApprovedAlertEvent(alert)
 		if err != nil {
-			return nil, err
+			alert.ApprovalStatus = models.AlertApprovalStatusApproved
+			alert.ExecutionStatus = models.AlertExecutionStatusFailed
+			alert.ExecutionError = err.Error()
+			break
 		}
 		alert.ApprovalStatus = models.AlertApprovalStatusApproved
+		alert.ExecutionStatus = models.AlertExecutionStatusQueued
 		alert.TriggeredExportPipelineID = alert.RequestedExportPipelineID
 		alert.TriggeredWorkTaskID = workTask.ID
 	case models.AlertApprovalDecisionReject:
 		alert.ApprovalStatus = models.AlertApprovalStatusRejected
+		alert.ExecutionStatus = models.AlertExecutionStatusRejected
 	default:
 		return nil, fmt.Errorf("unsupported approval decision %q", req.Decision)
 	}
@@ -374,6 +380,7 @@ func (p *Processor) evaluateAlertEvents(run *models.TwinProcessingRun) (*alertEv
 			}
 			if action.Trigger.ApprovalMode == models.ActionApprovalModeManual {
 				alert.ApprovalStatus = models.AlertApprovalStatusPending
+				alert.ExecutionStatus = models.AlertExecutionStatusPendingApproval
 				alert.ApprovalRequestedAt = &now
 				alert.Message = fmt.Sprintf("%s Awaiting manual approval.", alert.Message)
 				result.PendingApprovalCount++
@@ -392,9 +399,12 @@ func (p *Processor) evaluateAlertEvents(run *models.TwinProcessingRun) (*alertEv
 				})
 				if triggerErr != nil {
 					result.ActionErrorCount++
+					alert.ExecutionStatus = models.AlertExecutionStatusFailed
+					alert.ExecutionError = triggerErr.Error()
 					alert.Message = fmt.Sprintf("%s Trigger failed: %v", alert.Message, triggerErr)
 				} else {
 					result.TriggeredActionCount++
+					alert.ExecutionStatus = models.AlertExecutionStatusQueued
 					alert.TriggeredExportPipelineID = action.Trigger.PipelineID
 					alert.TriggeredWorkTaskID = workTask.ID
 				}

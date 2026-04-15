@@ -27,6 +27,23 @@ func NewInferenceEngine(mlService *mlmodel.Service, store metadatastore.Metadata
 	}
 }
 
+func (e *InferenceEngine) loadOwnedTrainedModel(twin *models.DigitalTwin, modelID string) (*models.MLModel, error) {
+	if twin == nil {
+		return nil, fmt.Errorf("digital twin is required")
+	}
+	model, err := e.mlService.GetModelForProject(twin.ProjectID, modelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get model: %w", err)
+	}
+	if model.OntologyID != "" && twin.OntologyID != "" && model.OntologyID != twin.OntologyID {
+		return nil, fmt.Errorf("ml model %s is bound to ontology %s, not digital twin ontology %s", model.ID, model.OntologyID, twin.OntologyID)
+	}
+	if model.Status != models.ModelStatusTrained {
+		return nil, fmt.Errorf("model is not trained (status: %s)", model.Status)
+	}
+	return model, nil
+}
+
 // Predict runs a single prediction
 func (e *InferenceEngine) Predict(twin *models.DigitalTwin, req *models.PredictionRequest) (*models.Prediction, error) {
 	if req.UseCache {
@@ -36,13 +53,9 @@ func (e *InferenceEngine) Predict(twin *models.DigitalTwin, req *models.Predicti
 		}
 	}
 
-	model, err := e.mlService.GetModel(req.ModelID)
+	model, err := e.loadOwnedTrainedModel(twin, req.ModelID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get model: %w", err)
-	}
-
-	if model.Status != models.ModelStatusTrained {
-		return nil, fmt.Errorf("model is not trained (status: %s)", model.Status)
+		return nil, err
 	}
 
 	output, confidence, err := e.runInference(model, req.Input)
@@ -76,13 +89,9 @@ func (e *InferenceEngine) Predict(twin *models.DigitalTwin, req *models.Predicti
 
 // BatchPredict runs batch predictions
 func (e *InferenceEngine) BatchPredict(twin *models.DigitalTwin, req *models.BatchPredictionRequest) ([]*models.Prediction, error) {
-	model, err := e.mlService.GetModel(req.ModelID)
+	model, err := e.loadOwnedTrainedModel(twin, req.ModelID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get model: %w", err)
-	}
-
-	if model.Status != models.ModelStatusTrained {
-		return nil, fmt.Errorf("model is not trained (status: %s)", model.Status)
+		return nil, err
 	}
 
 	predictions := make([]*models.Prediction, 0, len(req.Inputs))

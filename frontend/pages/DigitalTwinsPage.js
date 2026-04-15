@@ -29,6 +29,16 @@
 			: 'status-pending';
 	}
 
+	function getExecutionBadgeClass(status) {
+		return status === 'queued'
+			? 'status-active'
+			: status === 'failed' || status === 'rejected'
+			? 'status-failed'
+			: status === 'pending_approval'
+			? 'status-pending'
+			: 'status-idle';
+	}
+
 	function createTwinPath(projectId, twinId = '', extra = {}) {
 		const params = new URLSearchParams();
 		if (projectId) params.set('project_id', projectId);
@@ -490,6 +500,7 @@
 		const alertColumns = [
 			{ key: 'severity', label: 'Severity', render: row => <span className={`status-badge status-${row.severity}`}>{row.severity}</span> },
 			{ key: 'approval_status', label: 'Approval', render: row => <span className={`status-badge ${getApprovalBadgeClass(row.approval_status)}`}>{row.approval_status || 'not_required'}</span> },
+			{ key: 'execution_status', label: 'Execution', render: row => <span className={`status-badge ${getExecutionBadgeClass(row.execution_status)}`}>{row.execution_status || 'not_applicable'}</span> },
 			{ key: 'title', label: 'Title' },
 			{ key: 'requested_export_pipeline_id', label: 'Requested Pipeline', render: row => row.requested_export_pipeline_id || '—' },
 			{ key: 'created_at', label: 'Created', render: row => new Date(row.created_at).toLocaleString() },
@@ -554,7 +565,8 @@
 								<Table columns={runColumns} data={runs.slice(0, 5)} emptyState="No processing runs yet." />
 							</div>
 							<div className="section-panel section-panel--neutral">
-								<div className="section-panel-header"><div><h3 className="section-panel-title">Recent Alerts</h3><p className="section-panel-copy">Manual approvals are surfaced here before export pipelines run.</p></div></div>
+							<div className="section-panel section-panel--neutral">
+								<div className="section-panel-header"><div><h3 className="section-panel-title">Recent Alerts</h3><p className="section-panel-copy">Manual approvals and automatic export queue outcomes are both surfaced here before downstream pipelines run.</p></div></div>
 								<Table columns={alertColumns} data={alerts.slice(0, 5)} emptyState="No alert events yet." actions={(row) => row.approval_status === 'pending' ? <><Button label="Approve" onClick={() => handleReviewAlert(row.id, 'approve')} variant="secondary" /><Button label="Reject" onClick={() => handleReviewAlert(row.id, 'reject')} variant="danger" /></> : null} />
 							</div>
 						</div>

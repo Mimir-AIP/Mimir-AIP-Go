@@ -34,7 +34,7 @@ type Service struct {
 }
 
 type DigitalTwinProjectMismatchError struct {
-	DigitalTwinID      string
+	DigitalTwinID     string
 	ExpectedProjectID string
 	ActualProjectID   string
 }
@@ -53,7 +53,7 @@ func (s *Service) getOwnedDigitalTwin(projectID, twinID string) (*models.Digital
 	}
 	if twin.ProjectID != projectID {
 		return nil, &DigitalTwinProjectMismatchError{
-			DigitalTwinID:      twin.ID,
+			DigitalTwinID:     twin.ID,
 			ExpectedProjectID: projectID,
 			ActualProjectID:   twin.ProjectID,
 		}
@@ -177,16 +177,7 @@ func (s *Service) BatchPredictForProject(projectID, twinID string, req *models.B
 }
 
 func (s *Service) GetEntityInTwin(twinID, entityID string) (*models.Entity, error) {
-	entity, err := s.getOwnedEntity(twinID, entityID)
-	if err != nil {
-		return nil, err
-	}
-	if entity.SourceDataID != nil {
-		if err := s.populateEntityFromSource(entity); err != nil {
-			fmt.Printf("Warning: failed to populate entity from source: %v\n", err)
-		}
-	}
-	return entity, nil
+	return s.getOwnedEntity(twinID, entityID)
 }
 
 func (s *Service) UpdateEntityInTwin(twinID, entityID string, req *models.EntityUpdateRequest) (*models.Entity, error) {
@@ -745,21 +736,12 @@ func (s *Service) markTwinSyncFailed(twin *models.DigitalTwin) {
 	}
 }
 
-// GetEntity retrieves an entity by ID
+// GetEntity retrieves an entity by ID.
 func (s *Service) GetEntity(id string) (*models.Entity, error) {
 	entity, err := s.store.GetEntity(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get entity: %w", err)
 	}
-
-	// If entity has source data, merge with CIR data
-	if entity.SourceDataID != nil {
-		if err := s.populateEntityFromSource(entity); err != nil {
-			// Log error but don't fail - entity might still have modifications
-			fmt.Printf("Warning: failed to populate entity from source: %v\n", err)
-		}
-	}
-
 	return entity, nil
 }
 
@@ -813,23 +795,12 @@ func (s *Service) UpdateEntity(entityID string, req *models.EntityUpdateRequest)
 	return entity, nil
 }
 
-// ListEntities lists all entities for a digital twin
+// ListEntities lists all entities for a digital twin.
 func (s *Service) ListEntities(twinID string) ([]*models.Entity, error) {
 	entities, err := s.store.ListEntitiesByDigitalTwin(twinID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list entities: %w", err)
 	}
-
-	// Populate entities from source data
-	for _, entity := range entities {
-		if entity.SourceDataID != nil {
-			if err := s.populateEntityFromSource(entity); err != nil {
-				// Log error but continue
-				fmt.Printf("Warning: failed to populate entity %s: %v\n", entity.ID, err)
-			}
-		}
-	}
-
 	return entities, nil
 }
 
@@ -1909,89 +1880,6 @@ func inferEntityTypeFromCIR(cir *models.CIR, ontologyClasses []string) string {
 	}
 
 	return "default"
-}
-
-// populateEntityFromSource merges source CIR data with entity modifications.
-//
-// For merged entities (those produced by cross-source entity resolution, which
-// store multiple source IDs in ComputedValues["source_ids"]), the Attributes
-// map was already fully populated at sync time from all contributing sources.
-// Re-fetching from a single CIR would lose the other sources' data, so we
-// instead just apply any delta modifications on top of the stored merge.
-//
-// For single-source entities the original behaviour is preserved: re-fetch the
-// CIR from storage and build a fresh merged view of source + modifications.
-func (s *Service) populateEntityFromSource(entity *models.Entity) error {
-	if entity.SourceDataID == nil {
-		return nil
-	}
-
-	// Detect merged multi-source entities.
-	if entity.ComputedValues != nil {
-		if sourceIDs, ok := entity.ComputedValues["source_ids"].([]interface{}); ok {
-			if len(sourceIDs) > 1 {
-				// Already fully merged at sync time — only apply deltas.
-				for k, v := range entity.Modifications {
-					if entity.Attributes == nil {
-						entity.Attributes = make(map[string]interface{})
-					}
-					entity.Attributes[k] = v
-				}
-				return nil
-			}
-		}
-	}
-
-	// Determine which single storage holds this entity.
-	storageID := ""
-	if entity.ComputedValues != nil {
-		// New format: source_ids list with exactly one entry.
-		if sourceIDs, ok := entity.ComputedValues["source_ids"].([]interface{}); ok && len(sourceIDs) == 1 {
-			if sid, ok := sourceIDs[0].(string); ok {
-				storageID = sid
-			}
-		}
-		// Legacy format: singular storage_id string.
-		if storageID == "" {
-			if sid, ok := entity.ComputedValues["storage_id"].(string); ok {
-				storageID = sid
-			}
-		}
-	}
-	if storageID == "" {
-		return nil
-	}
-
-	twin, err := s.store.GetDigitalTwin(entity.DigitalTwinID)
-	if err != nil {
-		return nil
-	}
-
-	// Retrieve all CIRs and find the matching one by URI.
-	cirs, err := s.storageService.RetrieveForProject(twin.ProjectID, storageID, &models.CIRQuery{})
-	if err != nil {
-		return nil // non-fatal
-	}
-
-	for _, cir := range cirs {
-		if cir.Source.URI == *entity.SourceDataID {
-			sourceData, err := cir.GetDataAsMap()
-			if err != nil {
-				continue
-			}
-			// Build merged view: source + delta modifications.
-			merged := make(map[string]interface{}, len(sourceData))
-			for k, v := range sourceData {
-				merged[k] = v
-			}
-			for k, v := range entity.Modifications {
-				merged[k] = v
-			}
-			entity.Attributes = merged
-			return nil
-		}
-	}
-	return nil
 }
 
 // StartCacheEviction runs a background goroutine that periodically deletes expired predictions.

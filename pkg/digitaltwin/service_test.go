@@ -3,10 +3,12 @@ package digitaltwin
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
+	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
 	"github.com/mimir-aip/mimir-aip-go/pkg/queue"
@@ -421,5 +423,66 @@ func TestSyncWithStorageRecordsRelationshipRevisionsAndSnapshot(t *testing.T) {
 	}
 	if len(state.Entities) == 0 || len(state.Relationships) == 0 {
 		t.Fatalf("expected reconstructed state to include entities and relationships, got %#v", state)
+	}
+}
+
+func TestPredictForProjectRejectsCrossProjectModel(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(filepath.Join(t.TempDir(), "digitaltwin-predict.db"))
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+	q, err := queue.NewQueue(store)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	storageSvc := storage.NewService(store)
+	ontologySvc := ontology.NewService(store)
+	mlSvc := mlmodel.NewService(store, ontologySvc, storageSvc, q)
+	service := NewService(store, nil, ontologySvc, storageSvc, mlSvc, q)
+
+	seedDigitalTwinProject(t, store, "project-1", "ontology-1")
+	seedDigitalTwinProject(t, store, "project-2", "ontology-2")
+
+	now := time.Now().UTC()
+	twin := &models.DigitalTwin{
+		ID:         "twin-1",
+		ProjectID:  "project-1",
+		OntologyID: "ontology-1",
+		Name:       "Factory Twin",
+		Status:     "active",
+		Config:     &models.DigitalTwinConfig{EnablePredictions: true},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to save digital twin: %v", err)
+	}
+	model := &models.MLModel{
+		ID:         "model-2",
+		ProjectID:  "project-2",
+		OntologyID: "ontology-2",
+		Name:       "Other Project Model",
+		Type:       models.ModelTypeRegression,
+		Status:     models.ModelStatusTrained,
+		Version:    "1.0",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := store.SaveMLModel(model); err != nil {
+		t.Fatalf("failed to save ml model: %v", err)
+	}
+
+	_, err = service.PredictForProject(twin.ProjectID, twin.ID, &models.PredictionRequest{
+		ModelID: model.ID,
+		Input:   map[string]interface{}{"temperature": 91},
+	})
+	if err == nil {
+		t.Fatal("expected cross-project model prediction to fail")
+	}
+	if !strings.Contains(err.Error(), "belongs to project") {
+		t.Fatalf("expected project ownership error, got %v", err)
 	}
 }

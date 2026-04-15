@@ -36,9 +36,11 @@ func digitalTwinErrorStatus(err error) int {
 		return http.StatusOK
 	case errors.As(err, &projectMismatchErr):
 		return http.StatusForbidden
+	case strings.Contains(err.Error(), "belongs to project"):
+		return http.StatusForbidden
 	case strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not belong"):
 		return http.StatusNotFound
-	case strings.Contains(err.Error(), "project_id is required") || strings.Contains(err.Error(), "invalid"):
+	case strings.Contains(err.Error(), "project_id is required") || strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "ontology"):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

@@ -663,6 +663,8 @@ func init() {
 			"requested_export_pipeline_id": Str("Export pipeline requested by the action"),
 			"requested_trigger_params":     M{"type": "object", "additionalProperties": true},
 			"approval_status":              Str("not_required | pending | approved | rejected"),
+			"execution_status":             Str("pending_approval | queued | failed | rejected | skipped | not_applicable"),
+			"execution_error":              Str("Pipeline queueing error when action execution failed"),
 			"approval_requested_at":        Str("When manual approval was requested"),
 			"approval_resolved_at":         Str("When manual approval was resolved"),
 			"approval_actor":               Str("Operator or actor that resolved the approval"),

@@ -158,33 +158,47 @@ const (
 	AlertApprovalDecisionReject  AlertApprovalDecision = "reject"
 )
 
+// AlertExecutionStatus tracks whether the matched action actually queued downstream work.
+type AlertExecutionStatus string
+
+const (
+	AlertExecutionStatusPendingApproval AlertExecutionStatus = "pending_approval"
+	AlertExecutionStatusQueued          AlertExecutionStatus = "queued"
+	AlertExecutionStatusFailed          AlertExecutionStatus = "failed"
+	AlertExecutionStatusRejected        AlertExecutionStatus = "rejected"
+	AlertExecutionStatusSkipped         AlertExecutionStatus = "skipped"
+	AlertExecutionStatusNotApplicable   AlertExecutionStatus = "not_applicable"
+)
+
 // AlertEvent is an append-only operational event emitted when automation
 // criteria are met during twin processing. Alerts are intentionally not
 // deduplicated by default; downstream export pipelines own routing/noise policy.
 type AlertEvent struct {
-	ID                        string              `json:"id"`
-	ProjectID                 string              `json:"project_id"`
-	DigitalTwinID             string              `json:"digital_twin_id"`
-	ProcessingRunID           string              `json:"processing_run_id"`
-	SourceInsightID           string              `json:"source_insight_id,omitempty"`
-	AutomationID              string              `json:"automation_id,omitempty"`
-	ActionID                  string              `json:"action_id,omitempty"`
-	Severity                  AlertSeverity       `json:"severity"`
-	Category                  string              `json:"category"`
-	Title                     string              `json:"title"`
-	Message                   string              `json:"message"`
-	OntologyContext           map[string]any      `json:"ontology_context,omitempty"`
-	EntityRefs                []string            `json:"entity_refs,omitempty"`
-	RequestedExportPipelineID string              `json:"requested_export_pipeline_id,omitempty"`
-	RequestedTriggerParams    map[string]any      `json:"requested_trigger_params,omitempty"`
-	ApprovalStatus            AlertApprovalStatus `json:"approval_status,omitempty"`
-	ApprovalRequestedAt       *time.Time          `json:"approval_requested_at,omitempty"`
-	ApprovalResolvedAt        *time.Time          `json:"approval_resolved_at,omitempty"`
-	ApprovalActor             string              `json:"approval_actor,omitempty"`
-	ApprovalNote              string              `json:"approval_note,omitempty"`
-	TriggeredExportPipelineID string              `json:"triggered_export_pipeline_id,omitempty"`
-	TriggeredWorkTaskID       string              `json:"triggered_work_task_id,omitempty"`
-	CreatedAt                 time.Time           `json:"created_at"`
+	ID                        string               `json:"id"`
+	ProjectID                 string               `json:"project_id"`
+	DigitalTwinID             string               `json:"digital_twin_id"`
+	ProcessingRunID           string               `json:"processing_run_id"`
+	SourceInsightID           string               `json:"source_insight_id,omitempty"`
+	AutomationID              string               `json:"automation_id,omitempty"`
+	ActionID                  string               `json:"action_id,omitempty"`
+	Severity                  AlertSeverity        `json:"severity"`
+	Category                  string               `json:"category"`
+	Title                     string               `json:"title"`
+	Message                   string               `json:"message"`
+	OntologyContext           map[string]any       `json:"ontology_context,omitempty"`
+	EntityRefs                []string             `json:"entity_refs,omitempty"`
+	RequestedExportPipelineID string               `json:"requested_export_pipeline_id,omitempty"`
+	RequestedTriggerParams    map[string]any       `json:"requested_trigger_params,omitempty"`
+	ApprovalStatus            AlertApprovalStatus  `json:"approval_status,omitempty"`
+	ExecutionStatus           AlertExecutionStatus `json:"execution_status,omitempty"`
+	ExecutionError            string               `json:"execution_error,omitempty"`
+	ApprovalRequestedAt       *time.Time           `json:"approval_requested_at,omitempty"`
+	ApprovalResolvedAt        *time.Time           `json:"approval_resolved_at,omitempty"`
+	ApprovalActor             string               `json:"approval_actor,omitempty"`
+	ApprovalNote              string               `json:"approval_note,omitempty"`
+	TriggeredExportPipelineID string               `json:"triggered_export_pipeline_id,omitempty"`
+	TriggeredWorkTaskID       string               `json:"triggered_work_task_id,omitempty"`
+	CreatedAt                 time.Time            `json:"created_at"`
 }
 
 // AlertApprovalRequest applies an operator decision to one pending alert.

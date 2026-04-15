@@ -131,11 +131,17 @@ func TestEvaluateAlertEventsQueuesPendingManualApproval(t *testing.T) {
 	if alert.ApprovalStatus != models.AlertApprovalStatusPending {
 		t.Fatalf("expected pending approval status, got %s", alert.ApprovalStatus)
 	}
+	if alert.ExecutionStatus != models.AlertExecutionStatusPendingApproval {
+		t.Fatalf("expected pending approval execution status, got %s", alert.ExecutionStatus)
+	}
 	if alert.RequestedExportPipelineID != pipeline.ID {
 		t.Fatalf("expected requested pipeline %s, got %s", pipeline.ID, alert.RequestedExportPipelineID)
 	}
 	if alert.TriggeredWorkTaskID != "" {
 		t.Fatalf("expected no triggered work task before approval, got %s", alert.TriggeredWorkTaskID)
+	}
+	if alert.ExecutionError != "" {
+		t.Fatalf("expected no execution error before approval, got %s", alert.ExecutionError)
 	}
 
 	tasks, err := q.ListWorkTasks()
@@ -165,6 +171,7 @@ func TestReviewAlertApproveQueuesExportAndUpdatesAction(t *testing.T) {
 		ProcessingRunID:           run.ID,
 		ActionID:                  action.ID,
 		ApprovalStatus:            models.AlertApprovalStatusPending,
+		ExecutionStatus:           models.AlertExecutionStatusPendingApproval,
 		RequestedExportPipelineID: pipeline.ID,
 		RequestedTriggerParams:    map[string]any{"alert_category": "overheat"},
 		CreatedAt:                 now,
@@ -193,8 +200,14 @@ func TestReviewAlertApproveQueuesExportAndUpdatesAction(t *testing.T) {
 	if updated.ApprovalStatus != models.AlertApprovalStatusApproved {
 		t.Fatalf("expected approved alert, got %s", updated.ApprovalStatus)
 	}
+	if updated.ExecutionStatus != models.AlertExecutionStatusQueued {
+		t.Fatalf("expected queued execution status, got %s", updated.ExecutionStatus)
+	}
 	if updated.TriggeredWorkTaskID == "" {
 		t.Fatal("expected triggered work task id to be recorded")
+	}
+	if updated.ExecutionError != "" {
+		t.Fatalf("expected no execution error, got %s", updated.ExecutionError)
 	}
 
 	queuedTask, err := q.GetWorkTask(updated.TriggeredWorkTaskID)

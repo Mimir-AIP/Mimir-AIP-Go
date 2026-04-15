@@ -50,7 +50,7 @@ func TestDigitalTwinSyncHistoryEndpoints(t *testing.T) {
 	}
 
 	listResp := httptest.NewRecorder()
-	listReq := httptest.NewRequest(http.MethodGet, "/api/digital-twins/twin-1/history/runs", nil)
+	listReq := httptest.NewRequest(http.MethodGet, "/api/digital-twins/twin-1/history/runs?project_id=project-1", nil)
 	handler.HandleDigitalTwin(listResp, listReq)
 	if listResp.Code != http.StatusOK {
 		t.Fatalf("expected 200 listing sync runs, got %d body=%s", listResp.Code, listResp.Body.String())
@@ -64,7 +64,7 @@ func TestDigitalTwinSyncHistoryEndpoints(t *testing.T) {
 	}
 
 	getResp := httptest.NewRecorder()
-	getReq := httptest.NewRequest(http.MethodGet, "/api/digital-twins/twin-1/history/runs/run-1", nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/digital-twins/twin-1/history/runs/run-1?project_id=project-1", nil)
 	handler.HandleDigitalTwin(getResp, getReq)
 	if getResp.Code != http.StatusOK {
 		t.Fatalf("expected 200 getting sync run, got %d body=%s", getResp.Code, getResp.Body.String())
@@ -119,7 +119,7 @@ func TestDigitalTwinStateAtRunEndpoint(t *testing.T) {
 		t.Fatalf("failed to save snapshot: %v", err)
 	}
 	resp := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/digital-twins/twin-1/state?at_run=run-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/digital-twins/twin-1/state?project_id=project-1&at_run=run-1", nil)
 	handler.HandleDigitalTwin(resp, req)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200 reconstructing state, got %d body=%s", resp.Code, resp.Body.String())

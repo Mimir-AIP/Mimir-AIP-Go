@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -26,6 +27,30 @@ func NewDigitalTwinHandler(service *digitaltwin.Service, processor *digitaltwin.
 		processor:         processor,
 		automationService: automationService,
 	}
+}
+
+func digitalTwinErrorStatus(err error) int {
+	var projectMismatchErr *digitaltwin.DigitalTwinProjectMismatchError
+	switch {
+	case err == nil:
+		return http.StatusOK
+	case errors.As(err, &projectMismatchErr):
+		return http.StatusForbidden
+	case strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not belong"):
+		return http.StatusNotFound
+	case strings.Contains(err.Error(), "project_id is required") || strings.Contains(err.Error(), "invalid"):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func projectIDFromRequest(r *http.Request) string {
+	return strings.TrimSpace(r.URL.Query().Get("project_id"))
+}
+
+func (h *DigitalTwinHandler) getOwnedTwin(r *http.Request, twinID string) (*models.DigitalTwin, error) {
+	return h.service.GetDigitalTwinForProject(projectIDFromRequest(r), twinID)
 }
 
 // HandleDigitalTwins handles requests for /api/digital-twins
@@ -156,9 +181,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinSyncRuns(w http.ResponseWriter, r 
 		}
 		limit = parsedLimit
 	}
-	runs, err := h.service.ListSyncRuns(twinID, limit)
+	runs, err := h.service.ListSyncRunsForProject(projectIDFromRequest(r), twinID, limit)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to list sync runs: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to list sync runs: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -170,9 +195,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinSyncRun(w http.ResponseWriter, r *
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	run, err := h.service.GetSyncRun(twinID, runID)
+	run, err := h.service.GetSyncRunForProject(projectIDFromRequest(r), twinID, runID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get sync run: %v", err), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("Failed to get sync run: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -228,9 +253,9 @@ func (h *DigitalTwinHandler) handleCreateDigitalTwin(w http.ResponseWriter, r *h
 
 // handleGetDigitalTwin handles GET /api/digital-twins/{id}
 func (h *DigitalTwinHandler) handleGetDigitalTwin(w http.ResponseWriter, r *http.Request, id string) {
-	twin, err := h.service.GetDigitalTwin(id)
+	twin, err := h.service.GetDigitalTwinForProject(projectIDFromRequest(r), id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 
@@ -246,9 +271,9 @@ func (h *DigitalTwinHandler) handleUpdateDigitalTwin(w http.ResponseWriter, r *h
 		return
 	}
 
-	twin, err := h.service.UpdateDigitalTwin(id, &req)
+	twin, err := h.service.UpdateDigitalTwinForProject(projectIDFromRequest(r), id, &req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update digital twin: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to update digital twin: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 
@@ -258,8 +283,8 @@ func (h *DigitalTwinHandler) handleUpdateDigitalTwin(w http.ResponseWriter, r *h
 
 // handleDeleteDigitalTwin handles DELETE /api/digital-twins/{id}
 func (h *DigitalTwinHandler) handleDeleteDigitalTwin(w http.ResponseWriter, r *http.Request, id string) {
-	if err := h.service.DeleteDigitalTwin(id); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to delete digital twin: %v", err), http.StatusInternalServerError)
+	if err := h.service.DeleteDigitalTwinForProject(projectIDFromRequest(r), id); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete digital twin: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 
@@ -273,9 +298,9 @@ func (h *DigitalTwinHandler) handleSyncDigitalTwin(w http.ResponseWriter, r *htt
 		return
 	}
 
-	task, err := h.service.EnqueueSync(id)
+	task, err := h.service.EnqueueSyncForProject(projectIDFromRequest(r), id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to sync digital twin: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to sync digital twin: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 
@@ -300,9 +325,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinState(w http.ResponseWriter, r *ht
 		http.Error(w, "at_run query parameter is required", http.StatusBadRequest)
 		return
 	}
-	state, err := h.service.GetStateAtRun(twinID, atRun)
+	state, err := h.service.GetStateAtRunForProject(projectIDFromRequest(r), twinID, atRun)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to reconstruct twin state: %v", err), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("Failed to reconstruct twin state: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -316,9 +341,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinEntities(w http.ResponseWriter, r 
 		return
 	}
 
-	entities, err := h.service.ListEntities(twinID)
+	entities, err := h.service.ListEntitiesForProject(projectIDFromRequest(r), twinID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to list entities: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to list entities: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 
@@ -328,16 +353,19 @@ func (h *DigitalTwinHandler) handleDigitalTwinEntities(w http.ResponseWriter, r 
 
 // handleDigitalTwinEntity handles GET/PUT /api/digital-twins/{twinID}/entities/{entityID}
 func (h *DigitalTwinHandler) handleDigitalTwinEntity(w http.ResponseWriter, r *http.Request, twinID, entityID string) {
+	if _, err := h.getOwnedTwin(r, twinID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		entity, err := h.service.GetEntity(entityID)
+		entity, err := h.service.GetEntityInTwin(twinID, entityID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get entity: %v", err), http.StatusNotFound)
+			http.Error(w, fmt.Sprintf("Failed to get entity: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(entity)
-
 	case http.MethodPut:
 		var req models.EntityUpdateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -348,15 +376,13 @@ func (h *DigitalTwinHandler) handleDigitalTwinEntity(w http.ResponseWriter, r *h
 			http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
 			return
 		}
-
-		entity, err := h.service.UpdateEntity(entityID, &req)
+		entity, err := h.service.UpdateEntityInTwin(twinID, entityID, &req)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to update entity: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to update entity: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(entity)
-
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -368,6 +394,10 @@ func (h *DigitalTwinHandler) handleDigitalTwinEntityHistory(w http.ResponseWrite
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if _, err := h.getOwnedTwin(r, twinID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+		return
+	}
 	limit := 20
 	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
 		parsedLimit, err := strconv.Atoi(rawLimit)
@@ -377,9 +407,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinEntityHistory(w http.ResponseWrite
 		}
 		limit = parsedLimit
 	}
-	revisions, err := h.service.GetEntityHistory(entityID, limit)
+	revisions, err := h.service.GetEntityHistoryInTwin(twinID, entityID, limit)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get entity history: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to get entity history: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -395,9 +425,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinEntityRelated(w http.ResponseWrite
 
 	relationshipType := r.URL.Query().Get("relationship")
 
-	entities, err := h.service.GetRelatedEntities(twinID, entityID, relationshipType)
+	entities, err := h.service.GetRelatedEntitiesForProject(projectIDFromRequest(r), twinID, entityID, relationshipType)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get related entities: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to get related entities: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 
@@ -423,9 +453,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinQuery(w http.ResponseWriter, r *ht
 		return
 	}
 
-	result, err := h.service.Query(twinID, &req)
+	result, err := h.service.QueryForProject(projectIDFromRequest(r), twinID, &req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to execute query: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to execute query: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 
@@ -462,9 +492,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinPredict(w http.ResponseWriter, r *
 			return
 		}
 
-		predictions, err := h.service.BatchPredict(twinID, &batchReq)
+		predictions, err := h.service.BatchPredictForProject(projectIDFromRequest(r), twinID, &batchReq)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to run batch predictions: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to run batch predictions: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 
@@ -484,9 +514,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinPredict(w http.ResponseWriter, r *
 			return
 		}
 
-		prediction, err := h.service.Predict(twinID, &predReq)
+		prediction, err := h.service.PredictForProject(projectIDFromRequest(r), twinID, &predReq)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to run prediction: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to run prediction: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 
@@ -498,6 +528,10 @@ func (h *DigitalTwinHandler) handleDigitalTwinPredict(w http.ResponseWriter, r *
 func (h *DigitalTwinHandler) handleDigitalTwinRuns(w http.ResponseWriter, r *http.Request, twinID string) {
 	switch r.Method {
 	case http.MethodGet:
+		if _, err := h.getOwnedTwin(r, twinID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+			return
+		}
 		limit := parsePositiveInt(r.URL.Query().Get("limit"), 50)
 		runs, err := h.processor.ListRuns(twinID, limit)
 		if err != nil {
@@ -507,6 +541,10 @@ func (h *DigitalTwinHandler) handleDigitalTwinRuns(w http.ResponseWriter, r *htt
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(runs)
 	case http.MethodPost:
+		if _, err := h.getOwnedTwin(r, twinID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+			return
+		}
 		run, err := h.processor.RequestRun(twinID, &models.TwinProcessingRunCreateRequest{
 			TriggerType: models.TwinProcessingTriggerTypeManual,
 			TriggerRef:  "api/manual",
@@ -528,6 +566,10 @@ func (h *DigitalTwinHandler) handleDigitalTwinRun(w http.ResponseWriter, r *http
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if _, err := h.getOwnedTwin(r, twinID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+		return
+	}
 	run, err := h.processor.GetRun(twinID, runID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get twin processing run: %v", err), http.StatusNotFound)
@@ -540,6 +582,10 @@ func (h *DigitalTwinHandler) handleDigitalTwinRun(w http.ResponseWriter, r *http
 func (h *DigitalTwinHandler) handleDigitalTwinAlerts(w http.ResponseWriter, r *http.Request, twinID string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, err := h.getOwnedTwin(r, twinID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 	limit := parsePositiveInt(r.URL.Query().Get("limit"), 100)
@@ -566,6 +612,10 @@ func (h *DigitalTwinHandler) handleDigitalTwinAlertApproval(w http.ResponseWrite
 		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
 		return
 	}
+	if _, err := h.getOwnedTwin(r, twinID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+		return
+	}
 	alert, err := h.processor.ReviewAlert(twinID, alertID, &req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to review alert event: %v", err), http.StatusBadRequest)
@@ -576,9 +626,9 @@ func (h *DigitalTwinHandler) handleDigitalTwinAlertApproval(w http.ResponseWrite
 }
 
 func (h *DigitalTwinHandler) handleDigitalTwinAutomations(w http.ResponseWriter, r *http.Request, twinID string) {
-	twin, err := h.service.GetDigitalTwin(twinID)
+	twin, err := h.getOwnedTwin(r, twinID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
 		return
 	}
 	switch r.Method {
@@ -625,6 +675,10 @@ func (h *DigitalTwinHandler) handleDigitalTwinAutomations(w http.ResponseWriter,
 }
 
 func (h *DigitalTwinHandler) handleDigitalTwinAutomation(w http.ResponseWriter, r *http.Request, twinID, automationID string) {
+	if _, err := h.getOwnedTwin(r, twinID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+		return
+	}
 	automation, err := h.automationService.Get(automationID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get automation: %v", err), http.StatusNotFound)
@@ -677,14 +731,13 @@ func parsePositiveInt(raw string, fallback int) int {
 func (h *DigitalTwinHandler) handleDigitalTwinScenarios(w http.ResponseWriter, r *http.Request, twinID string) {
 	switch r.Method {
 	case http.MethodGet:
-		scenarios, err := h.service.ListScenarios(twinID)
+		scenarios, err := h.service.ListScenariosForProject(projectIDFromRequest(r), twinID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to list scenarios: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to list scenarios: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(scenarios)
-
 	case http.MethodPost:
 		var req models.ScenarioCreateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -695,17 +748,14 @@ func (h *DigitalTwinHandler) handleDigitalTwinScenarios(w http.ResponseWriter, r
 			http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
 			return
 		}
-
-		scenario, err := h.service.CreateScenario(twinID, &req)
+		scenario, err := h.service.CreateScenarioForProject(projectIDFromRequest(r), twinID, &req)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to create scenario: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to create scenario: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(scenario)
-
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -713,23 +763,25 @@ func (h *DigitalTwinHandler) handleDigitalTwinScenarios(w http.ResponseWriter, r
 
 // handleDigitalTwinScenario handles GET/DELETE /api/digital-twins/{twinID}/scenarios/{scenarioID}
 func (h *DigitalTwinHandler) handleDigitalTwinScenario(w http.ResponseWriter, r *http.Request, twinID, scenarioID string) {
+	if _, err := h.getOwnedTwin(r, twinID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		scenario, err := h.service.GetScenario(scenarioID)
+		scenario, err := h.service.GetScenarioInTwin(twinID, scenarioID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get scenario: %v", err), http.StatusNotFound)
+			http.Error(w, fmt.Sprintf("Failed to get scenario: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(scenario)
-
 	case http.MethodDelete:
-		if err := h.service.DeleteScenario(scenarioID); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to delete scenario: %v", err), http.StatusInternalServerError)
+		if err := h.service.DeleteScenarioInTwin(twinID, scenarioID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to delete scenario: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -739,14 +791,13 @@ func (h *DigitalTwinHandler) handleDigitalTwinScenario(w http.ResponseWriter, r 
 func (h *DigitalTwinHandler) handleDigitalTwinActions(w http.ResponseWriter, r *http.Request, twinID string) {
 	switch r.Method {
 	case http.MethodGet:
-		actions, err := h.service.ListActions(twinID)
+		actions, err := h.service.ListActionsForProject(projectIDFromRequest(r), twinID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to list actions: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to list actions: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(actions)
-
 	case http.MethodPost:
 		var req models.ActionCreateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -757,17 +808,14 @@ func (h *DigitalTwinHandler) handleDigitalTwinActions(w http.ResponseWriter, r *
 			http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
 			return
 		}
-
-		action, err := h.service.CreateAction(twinID, &req)
+		action, err := h.service.CreateActionForProject(projectIDFromRequest(r), twinID, &req)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to create action: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to create action: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(action)
-
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -775,23 +823,25 @@ func (h *DigitalTwinHandler) handleDigitalTwinActions(w http.ResponseWriter, r *
 
 // handleDigitalTwinAction handles GET/DELETE /api/digital-twins/{twinID}/actions/{actionID}
 func (h *DigitalTwinHandler) handleDigitalTwinAction(w http.ResponseWriter, r *http.Request, twinID, actionID string) {
+	if _, err := h.getOwnedTwin(r, twinID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get digital twin: %v", err), digitalTwinErrorStatus(err))
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		action, err := h.service.GetAction(actionID)
+		action, err := h.service.GetActionInTwin(twinID, actionID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get action: %v", err), http.StatusNotFound)
+			http.Error(w, fmt.Sprintf("Failed to get action: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(action)
-
 	case http.MethodDelete:
-		if err := h.service.DeleteAction(actionID); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to delete action: %v", err), http.StatusInternalServerError)
+		if err := h.service.DeleteActionInTwin(twinID, actionID); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to delete action: %v", err), digitalTwinErrorStatus(err))
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}

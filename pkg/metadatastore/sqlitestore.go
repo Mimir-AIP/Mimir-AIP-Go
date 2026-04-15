@@ -2015,14 +2015,42 @@ func (s *SQLiteStore) ListDigitalTwinsByProject(projectID string) ([]*models.Dig
 	return twins, nil
 }
 
-// DeleteDigitalTwin deletes a digital twin
+// DeleteDigitalTwin deletes a digital twin and every persisted record scoped to it.
 func (s *SQLiteStore) DeleteDigitalTwin(id string) error {
-	query := `DELETE FROM digital_twins WHERE id = ?`
-	_, err := s.db.Exec(query, id)
-	if err != nil {
-		return fmt.Errorf("failed to delete digital twin: %w", err)
-	}
-	return nil
+	return s.retryOnBusy(func() error {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to begin digital twin delete transaction: %w", err)
+		}
+		defer tx.Rollback()
+
+		deleteStatements := []struct {
+			query string
+			args  []any
+		}{
+			{query: `DELETE FROM automations WHERE target_type = ? AND target_id = ?`, args: []any{models.AutomationTargetTypeDigitalTwin, id}},
+			{query: `DELETE FROM alert_events WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM twin_processing_runs WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM dt_predictions WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM dt_actions WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM dt_scenarios WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM dt_relationship_revisions WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM dt_snapshots WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM dt_sync_runs WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM dt_entity_revisions WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM dt_entities WHERE twin_id = ?`, args: []any{id}},
+			{query: `DELETE FROM digital_twins WHERE id = ?`, args: []any{id}},
+		}
+		for _, stmt := range deleteStatements {
+			if _, err := tx.Exec(stmt.query, stmt.args...); err != nil {
+				return fmt.Errorf("failed to execute digital twin delete step %q: %w", stmt.query, err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit digital twin delete transaction: %w", err)
+		}
+		return nil
+	}, 5)
 }
 
 // SaveAutomation saves one explicit automation policy.

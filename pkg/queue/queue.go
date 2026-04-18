@@ -108,45 +108,54 @@ func (q *Queue) Enqueue(task *models.WorkTask) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if task.SubmittedAt.IsZero() {
-		task.SubmittedAt = time.Now().UTC()
+	queuedTask := cloneWorkTask(task)
+	if queuedTask.SubmittedAt.IsZero() {
+		queuedTask.SubmittedAt = time.Now().UTC()
 	}
-	if task.Status == "" {
-		task.Status = models.WorkTaskStatusQueued
+	if queuedTask.Status == "" {
+		queuedTask.Status = models.WorkTaskStatusQueued
 	}
-	if err := q.persistTask(task); err != nil {
+	if err := q.persistTask(queuedTask); err != nil {
 		return err
 	}
-	heap.Push(q.pq, &PriorityQueueItem{TaskID: task.ID, Priority: priorityScore(task, task.SubmittedAt)})
-	q.workTasks[task.ID] = task
+	heap.Push(q.pq, &PriorityQueueItem{TaskID: queuedTask.ID, Priority: priorityScore(queuedTask, queuedTask.SubmittedAt)})
+	q.workTasks[queuedTask.ID] = queuedTask
 	return nil
 }
 
-// Dequeue retrieves the next work task from the queue
+// Dequeue retrieves the next work task from the queue and marks it spawned.
 func (q *Queue) Dequeue() (*models.WorkTask, error) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
-
 	if q.pq.Len() == 0 {
+		q.mu.Unlock()
 		return nil, nil // No tasks available
 	}
 
-	// Pop highest priority task
 	item := heap.Pop(q.pq).(*PriorityQueueItem)
-
-	// Retrieve task data
 	task, ok := q.workTasks[item.TaskID]
 	if !ok {
+		q.mu.Unlock()
 		return nil, fmt.Errorf("work task data not found: %s", item.TaskID)
 	}
-
-	// Note: We keep the task in q.workTasks for status tracking
-	// It will be cleaned up by UpdateWorkTaskStatus when completed
-
-	return task, nil
+	previous := cloneWorkTask(task)
+	task.Status = models.WorkTaskStatusSpawned
+	task.StartedAt = nil
+	task.ErrorMessage = ""
+	task.CompletedAt = nil
+	if err := q.persistTask(task); err != nil {
+		q.workTasks[item.TaskID] = previous
+		heap.Push(q.pq, item)
+		q.mu.Unlock()
+		return nil, err
+	}
+	taskSnapshot := cloneWorkTask(task)
+	listeners := append([]WorkTaskListener(nil), q.listeners...)
+	q.mu.Unlock()
+	q.notifyListeners(taskSnapshot, listeners)
+	return taskSnapshot, nil
 }
 
-// GetWorkTask retrieves a work task by ID
+// GetWorkTask retrieves a work task by ID.
 func (q *Queue) GetWorkTask(taskID string) (*models.WorkTask, error) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
@@ -156,7 +165,7 @@ func (q *Queue) GetWorkTask(taskID string) (*models.WorkTask, error) {
 		return nil, fmt.Errorf("work task not found: %s", taskID)
 	}
 
-	return task, nil
+	return cloneWorkTask(task), nil
 }
 
 // UpdateWorkTaskStatus updates the status of a work task.
@@ -171,11 +180,17 @@ func (q *Queue) UpdateWorkTaskStatus(taskID string, status models.WorkTaskStatus
 	task.Status = status
 	if errorMsg != "" {
 		task.ErrorMessage = errorMsg
+	} else if status != models.WorkTaskStatusFailed && status != models.WorkTaskStatusTimeout && status != models.WorkTaskStatusCancelled {
+		task.ErrorMessage = ""
 	}
 	now := time.Now().UTC()
 	switch status {
+	case models.WorkTaskStatusQueued, models.WorkTaskStatusScheduled, models.WorkTaskStatusSpawned:
+		task.StartedAt = nil
+		task.CompletedAt = nil
 	case models.WorkTaskStatusExecuting:
 		task.StartedAt = &now
+		task.CompletedAt = nil
 	case models.WorkTaskStatusCompleted, models.WorkTaskStatusFailed, models.WorkTaskStatusTimeout, models.WorkTaskStatusCancelled:
 		task.CompletedAt = &now
 	}
@@ -209,8 +224,12 @@ func (q *Queue) ApplyWorkTaskResult(taskID string, result *models.WorkTaskResult
 	task.ErrorMessage = result.ErrorMessage
 	now := time.Now().UTC()
 	switch result.Status {
+	case models.WorkTaskStatusQueued, models.WorkTaskStatusScheduled, models.WorkTaskStatusSpawned:
+		task.StartedAt = nil
+		task.CompletedAt = nil
 	case models.WorkTaskStatusExecuting:
 		task.StartedAt = &now
+		task.CompletedAt = nil
 	case models.WorkTaskStatusCompleted, models.WorkTaskStatusFailed, models.WorkTaskStatusTimeout, models.WorkTaskStatusCancelled:
 		task.CompletedAt = &now
 	}
@@ -255,7 +274,7 @@ func (q *Queue) QueueLength() (int64, error) {
 	return int64(q.pq.Len()), nil
 }
 
-// GetHighPriorityWorkTasks returns work tasks with priority above a threshold
+// GetHighPriorityWorkTasks returns queued work-task snapshots with priority above a threshold.
 func (q *Queue) GetHighPriorityWorkTasks(minPriority int) ([]*models.WorkTask, error) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
@@ -263,7 +282,7 @@ func (q *Queue) GetHighPriorityWorkTasks(minPriority int) ([]*models.WorkTask, e
 	var highPriorityTasks []*models.WorkTask
 	for _, task := range q.workTasks {
 		if task.Priority >= minPriority && task.Status == models.WorkTaskStatusQueued {
-			highPriorityTasks = append(highPriorityTasks, task)
+			highPriorityTasks = append(highPriorityTasks, cloneWorkTask(task))
 		}
 	}
 
@@ -277,7 +296,7 @@ func (q *Queue) ListWorkTasks() ([]*models.WorkTask, error) {
 
 	tasks := make([]*models.WorkTask, 0, len(q.workTasks))
 	for _, task := range q.workTasks {
-		tasks = append(tasks, task)
+		tasks = append(tasks, cloneWorkTask(task))
 	}
 	return tasks, nil
 }
@@ -325,7 +344,7 @@ func (q *Queue) CountActiveByType(taskType models.WorkTaskType) (int64, error) {
 	return count, nil
 }
 
-// PeekNext returns the highest-priority queued task without removing it from the queue.
+// PeekNext returns the highest-priority queued task snapshot without removing it from the queue.
 // Returns nil if no queued tasks exist.
 func (q *Queue) PeekNext() (*models.WorkTask, error) {
 	q.mu.RLock()
@@ -335,13 +354,12 @@ func (q *Queue) PeekNext() (*models.WorkTask, error) {
 		return nil, nil
 	}
 
-	// The heap root is the minimum (highest priority)
 	item := (*q.pq)[0]
 	task, ok := q.workTasks[item.TaskID]
 	if !ok {
 		return nil, fmt.Errorf("work task data not found: %s", item.TaskID)
 	}
-	return task, nil
+	return cloneWorkTask(task), nil
 }
 
 // RequeueWithRetry re-queues a failed task if it has remaining retries, otherwise marks it failed.
@@ -361,6 +379,8 @@ func (q *Queue) RequeueWithRetry(taskID string, reason string) error {
 		task.KubernetesJobName = ""
 		task.ClusterName = ""
 		task.ErrorMessage = ""
+		task.StartedAt = nil
+		task.CompletedAt = nil
 		if err := q.persistTask(task); err != nil {
 			q.workTasks[taskID] = previous
 			q.mu.Unlock()

@@ -44,10 +44,20 @@ func TestEnqueueDequeue(t *testing.T) {
 	if dequeuedTask == nil {
 		t.Fatal("Dequeued task is nil")
 	}
-
 	if dequeuedTask.ID != task.ID {
 		t.Errorf("Expected task ID %s, got %s", task.ID, dequeuedTask.ID)
 	}
+	if dequeuedTask.Status != models.WorkTaskStatusSpawned {
+		t.Fatalf("expected spawned status after dequeue, got %s", dequeuedTask.Status)
+	}
+	persisted, err := q.GetWorkTask(task.ID)
+	if err != nil {
+		t.Fatalf("failed to reload dequeued task: %v", err)
+	}
+	if persisted.Status != models.WorkTaskStatusSpawned {
+		t.Fatalf("expected persisted spawned status after dequeue, got %s", persisted.Status)
+	}
+
 }
 
 // TestQueueLength tests queue length tracking
@@ -123,6 +133,43 @@ func TestWorkTaskStatusUpdate(t *testing.T) {
 	}
 }
 
+func TestGetWorkTaskReturnsClone(t *testing.T) {
+	q, err := NewQueue(nil)
+	if err != nil {
+		t.Fatalf("Failed to create queue: %v", err)
+	}
+	task := &models.WorkTask{
+		ID:          "test-task-clone",
+		Type:        models.WorkTaskTypePipelineExecution,
+		Status:      models.WorkTaskStatusQueued,
+		Priority:    1,
+		SubmittedAt: time.Now(),
+		ProjectID:   "test-project",
+		TaskSpec: models.TaskSpec{
+			Parameters: map[string]interface{}{"key": "value"},
+		},
+	}
+	if err := q.Enqueue(task); err != nil {
+		t.Fatalf("Failed to enqueue task: %v", err)
+	}
+	loaded, err := q.GetWorkTask(task.ID)
+	if err != nil {
+		t.Fatalf("Failed to get task: %v", err)
+	}
+	loaded.Status = models.WorkTaskStatusFailed
+	loaded.TaskSpec.Parameters["key"] = "mutated"
+	reloaded, err := q.GetWorkTask(task.ID)
+	if err != nil {
+		t.Fatalf("Failed to reload task: %v", err)
+	}
+	if reloaded.Status != models.WorkTaskStatusQueued {
+		t.Fatalf("expected queued status in queue, got %s", reloaded.Status)
+	}
+	if reloaded.TaskSpec.Parameters["key"] != "value" {
+		t.Fatalf("expected task parameters to remain unchanged, got %#v", reloaded.TaskSpec.Parameters)
+	}
+}
+
 type recordingListener struct {
 	seen []*models.WorkTask
 }
@@ -184,6 +231,41 @@ func TestApplyWorkTaskResultStoresWorkerOutput(t *testing.T) {
 	}
 	if listener.seen[0].OutputLocation != result.OutputLocation {
 		t.Fatalf("Expected listener snapshot output location %s, got %s", result.OutputLocation, listener.seen[0].OutputLocation)
+	}
+}
+
+func TestRequeueWithRetryClearsLifecycleTimestamps(t *testing.T) {
+	q, err := NewQueue(nil)
+	if err != nil {
+		t.Fatalf("Failed to create queue: %v", err)
+	}
+	now := time.Now().UTC()
+	task := &models.WorkTask{
+		ID:          "retry-task",
+		Type:        models.WorkTaskTypePipelineExecution,
+		Status:      models.WorkTaskStatusFailed,
+		Priority:    1,
+		SubmittedAt: now.Add(-time.Hour),
+		StartedAt:   &now,
+		CompletedAt: &now,
+		ProjectID:   "test-project",
+		MaxRetries:  3,
+	}
+	if err := q.Enqueue(task); err != nil {
+		t.Fatalf("Failed to enqueue task: %v", err)
+	}
+	if err := q.RequeueWithRetry(task.ID, "OOMKilled"); err != nil {
+		t.Fatalf("Failed to requeue task: %v", err)
+	}
+	reloaded, err := q.GetWorkTask(task.ID)
+	if err != nil {
+		t.Fatalf("Failed to get task: %v", err)
+	}
+	if reloaded.Status != models.WorkTaskStatusQueued {
+		t.Fatalf("expected queued status after retry, got %s", reloaded.Status)
+	}
+	if reloaded.StartedAt != nil || reloaded.CompletedAt != nil {
+		t.Fatalf("expected lifecycle timestamps to be cleared on retry, got start=%v complete=%v", reloaded.StartedAt, reloaded.CompletedAt)
 	}
 }
 

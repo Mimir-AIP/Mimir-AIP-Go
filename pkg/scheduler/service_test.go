@@ -143,3 +143,43 @@ func TestDisableRemovesCronEntryAfterSave(t *testing.T) {
 		t.Fatalf("expected persisted next_run to be nil, got %v", persisted.NextRun)
 	}
 }
+
+func TestExecuteJobQueuesScheduledWorkTasks(t *testing.T) {
+	svc, cleanup := setupSchedulerService(t)
+	defer cleanup()
+
+	now := time.Now().UTC()
+	job := &models.Schedule{
+		ID:           "schedule-1",
+		ProjectID:    "project-1",
+		Name:         "hourly",
+		Pipelines:    []string{"pipeline-1"},
+		CronSchedule: "0 * * * *",
+		Enabled:      true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := svc.store.SaveSchedule(job); err != nil {
+		t.Fatalf("failed to save schedule: %v", err)
+	}
+
+	svc.executeJob(job)
+
+	tasks, err := svc.queue.ListWorkTasks()
+	if err != nil {
+		t.Fatalf("failed to list work tasks: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 queued work task, got %d", len(tasks))
+	}
+	task := tasks[0]
+	if task.Status != models.WorkTaskStatusScheduled {
+		t.Fatalf("expected scheduled task status, got %s", task.Status)
+	}
+	if task.TaskSpec.Parameters["trigger_type"] != "scheduled" {
+		t.Fatalf("expected trigger_type scheduled, got %#v", task.TaskSpec.Parameters["trigger_type"])
+	}
+	if task.TaskSpec.Parameters["triggered_by"] != job.ID {
+		t.Fatalf("expected triggered_by %s, got %#v", job.ID, task.TaskSpec.Parameters["triggered_by"])
+	}
+}

@@ -52,11 +52,16 @@
 			loadTasks();
 		}, [loadTasks]);
 
+		const activeCount = tasks.filter(task => ['spawned', 'executing'].includes(task.status)).length;
+		const retryingCount = tasks.filter(task => ['queued', 'scheduled'].includes(task.status) && (task.retry_count || 0) > 0).length;
+
 		const columns = [
 			{ key: 'id', label: 'Task ID' },
 			{ key: 'type', label: 'Type' },
 			{ key: 'priority', label: 'Priority' },
 			{ key: 'status', label: 'Status', render: (row) => <span className={`status-badge status-${row.status}`}>{row.status}</span> },
+			{ key: 'retry_count', label: 'Retries', render: (row) => row.retry_count || 0 },
+			{ key: 'retry_reason', label: 'Retry Reason', render: (row) => row.retry_reason || '—' },
 			{ key: 'project_id', label: 'Project ID' },
 			{ key: 'submitted_at', label: 'Submitted', render: (row) => new Date(row.submitted_at || row.created_at).toLocaleString() },
 			{ key: 'completed_at', label: 'Completed', render: (row) => row.completed_at ? new Date(row.completed_at).toLocaleString() : '—' },
@@ -68,6 +73,8 @@
 					<h2>Work Queue</h2>
 					<div className="inline-actions">
 						<span className="status-badge status-pending">{queueLength} queued</span>
+						<span className="status-badge status-active">{activeCount} active</span>
+						<span className="status-badge status-failed">{retryingCount} retrying</span>
 						<Button label="Refresh" onClick={loadTasks} variant="secondary" />
 					</div>
 				</div>

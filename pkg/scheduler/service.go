@@ -301,9 +301,9 @@ func (s *Service) executeJob(job *models.Schedule) {
 		workTask := &models.WorkTask{
 			ID:          uuid.New().String(),
 			Type:        models.WorkTaskTypePipelineExecution,
-			Status:      models.WorkTaskStatusQueued,
+			Status:      models.WorkTaskStatusScheduled,
 			Priority:    1, // Default priority for scheduled tasks
-			SubmittedAt: time.Now(),
+			SubmittedAt: time.Now().UTC(),
 			ProjectID:   pipeline.ProjectID,
 			TaskSpec: models.TaskSpec{
 				PipelineID: pipelineID,

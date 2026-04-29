@@ -74,8 +74,30 @@ components:
                 - condition
                 - trigger
             type: object
+        ActionSchema:
+            properties:
+                description:
+                    description: Action description
+                    type: string
+                name:
+                    description: Action name used in pipeline steps
+                    type: string
+                parameters:
+                    items:
+                        $ref: '#/components/schemas/ParameterSchema'
+                    type: array
+                returns:
+                    items:
+                        $ref: '#/components/schemas/ReturnSchema'
+                    type: array
+            required:
+                - name
+            type: object
         ActionTrigger:
             properties:
+                approval_mode:
+                    description: automatic | manual
+                    type: string
                 parameters:
                     additionalProperties: true
                     type: object
@@ -85,8 +107,40 @@ components:
             required:
                 - pipeline_id
             type: object
+        AlertApprovalRequest:
+            properties:
+                actor:
+                    description: Optional operator identity
+                    type: string
+                decision:
+                    description: approve | reject
+                    type: string
+                note:
+                    description: Optional approval note
+                    type: string
+            required:
+                - decision
+            type: object
         AlertEvent:
             properties:
+                action_id:
+                    description: Digital-twin action that matched
+                    type: string
+                approval_actor:
+                    description: Operator or actor that resolved the approval
+                    type: string
+                approval_note:
+                    description: Optional approval note
+                    type: string
+                approval_requested_at:
+                    description: When manual approval was requested
+                    type: string
+                approval_resolved_at:
+                    description: When manual approval was resolved
+                    type: string
+                approval_status:
+                    description: not_required | pending | approved | rejected
+                    type: string
                 automation_id:
                     description: Automation that emitted the alert
                     type: string
@@ -103,6 +157,12 @@ components:
                     items:
                         type: string
                     type: array
+                execution_error:
+                    description: Pipeline queueing error when action execution failed
+                    type: string
+                execution_status:
+                    description: pending_approval | queued | failed | rejected | skipped | not_applicable
+                    type: string
                 id:
                     description: Alert event ID (UUID)
                     type: string
@@ -118,6 +178,12 @@ components:
                 project_id:
                     description: Owning project ID
                     type: string
+                requested_export_pipeline_id:
+                    description: Export pipeline requested by the action
+                    type: string
+                requested_trigger_params:
+                    additionalProperties: true
+                    type: object
                 severity:
                     description: low | medium | high | critical
                     type: string
@@ -382,6 +448,8 @@ components:
                 prediction_cache_ttl:
                     description: Prediction cache TTL in seconds
                     type: integer
+                reconciliation:
+                    $ref: '#/components/schemas/DigitalTwinReconciliationPolicy'
                 storage_ids:
                     items:
                         type: string
@@ -407,6 +475,16 @@ components:
                 - project_id
                 - ontology_id
                 - name
+            type: object
+        DigitalTwinReconciliationPolicy:
+            properties:
+                source_priority:
+                    items:
+                        type: string
+                    type: array
+                strategy:
+                    description: source_priority | freshest
+                    type: string
             type: object
         DigitalTwinUpdateRequest:
             properties:
@@ -478,13 +556,79 @@ components:
                 - target_id
                 - target_type
             type: object
+        EntityRevision:
+            properties:
+                attributes:
+                    additionalProperties: true
+                    type: object
+                computed_values:
+                    additionalProperties: true
+                    type: object
+                digital_twin_id:
+                    description: Owning digital twin ID
+                    type: string
+                entity_id:
+                    description: Entity ID
+                    type: string
+                id:
+                    description: Entity revision ID (UUID)
+                    type: string
+                modifications:
+                    additionalProperties: true
+                    type: object
+                recorded_at:
+                    description: ISO-8601 timestamp when this revision was recorded
+                    type: string
+                relationships:
+                    items:
+                        $ref: '#/components/schemas/EntityRelationship'
+                    type: array
+                revision:
+                    description: Monotonic revision number
+                    type: integer
+            type: object
+        ExternalLLMProvider:
+            properties:
+                error_message:
+                    description: Compilation or load error, if status=error
+                    type: string
+                git_commit_hash:
+                    description: Commit SHA the current .so was compiled from
+                    type: string
+                installed_at:
+                    description: ISO-8601 installation timestamp
+                    type: string
+                name:
+                    description: Provider name derived from repository URL
+                    type: string
+                repository_url:
+                    description: Git repository URL
+                    type: string
+                status:
+                    description: active | error
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
+                    type: string
+            type: object
+        ExternalLLMProviderInstallRequest:
+            properties:
+                git_ref:
+                    description: 'Branch, tag, or commit SHA (default: main)'
+                    type: string
+                repository_url:
+                    description: HTTPS or SSH Git URL of the LLM provider repository
+                    type: string
+            required:
+                - repository_url
+            type: object
         ExternalStoragePlugin:
             properties:
                 author:
-                    description: Author from plugin.yaml
+                    description: Reserved for manifest-derived authors; empty when unavailable
                     type: string
                 description:
-                    description: Description from plugin.yaml
+                    description: Reserved for manifest-derived descriptions; empty when unavailable
                     type: string
                 error_message:
                     description: Compilation or load error, if status=error
@@ -496,7 +640,7 @@ components:
                     description: ISO-8601 installation timestamp
                     type: string
                 name:
-                    description: Plugin name (derived from repository URL)
+                    description: Plugin name derived from repository URL
                     type: string
                 repository_url:
                     description: Git repository URL
@@ -508,7 +652,7 @@ components:
                     description: ISO-8601 last-updated timestamp
                     type: string
                 version:
-                    description: Version from plugin.yaml
+                    description: Reserved for manifest-derived versions; empty when unavailable
                     type: string
             type: object
         ExternalStoragePluginInstallRequest:
@@ -517,25 +661,33 @@ components:
                     description: 'Branch, tag, or commit SHA (default: main)'
                     type: string
                 repository_url:
-                    description: HTTPS Git URL of the storage plugin repository
+                    description: HTTPS or SSH Git URL of the storage plugin repository
                     type: string
             required:
                 - repository_url
             type: object
         ExtractionRequest:
             properties:
-                ontology_id:
-                    description: Existing ontology to diff against (optional)
+                include_structured:
+                    description: Whether to extract from structured data
+                    type: boolean
+                include_unstructured:
+                    description: Whether to extract from unstructured data
+                    type: boolean
+                ontology_name:
+                    description: Name for the generated ontology
                     type: string
                 project_id:
                     description: Project ID
                     type: string
-                storage_id:
-                    description: Storage config ID to extract from
-                    type: string
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
             required:
                 - project_id
-                - storage_id
+                - storage_ids
+                - ontology_name
             type: object
         ExtractionResult:
             properties:
@@ -544,6 +696,18 @@ components:
                     type: object
                 ontology:
                     $ref: '#/components/schemas/Ontology'
+            type: object
+        FactoryResetResponse:
+            properties:
+                message:
+                    description: Human-readable summary of what the reset did and did not delete
+                    type: string
+                reset_at:
+                    description: ISO-8601 UTC timestamp when the reset completed
+                    type: string
+            required:
+                - reset_at
+                - message
             type: object
         IngestionHealthReport:
             properties:
@@ -677,11 +841,12 @@ components:
                     type: string
                 is_recommended:
                     description: True if recommended by the recommendation engine
+                    type: boolean
                 metadata:
                     additionalProperties: true
                     type: object
                 model_artifact_path:
-                    description: Path to the serialised model artifact
+                    description: Orchestrator-local path to the persisted model artifact
                     type: string
                 name:
                     description: Model name
@@ -695,15 +860,6 @@ components:
                 project_id:
                     description: Owning project ID
                     type: string
-                provider:
-                    description: Provider name (builtin or plugin-backed)
-                    type: string
-                provider_config:
-                    additionalProperties: true
-                    type: object
-                provider_model:
-                    description: Provider-specific model identifier
-                    type: string
                 recommendation_score:
                     description: Recommendation engine score
                     type: integer
@@ -716,6 +872,9 @@ components:
                 training_metrics:
                     description: Metrics recorded during training
                     type: object
+                training_task_id:
+                    description: Canonical async work-task handle while training is in progress
+                    type: string
                 type:
                     description: decision_tree | random_forest | regression | neural_network
                     type: string
@@ -771,113 +930,6 @@ components:
                     description: Provider model identifier
                     type: string
             type: object
-        ModelCreateRequest:
-            properties:
-                description:
-                    description: Description
-                    type: string
-                name:
-                    description: Model name
-                    type: string
-                ontology_id:
-                    description: Linked ontology ID
-                    type: string
-                project_id:
-                    description: Owning project ID
-                    type: string
-                provider:
-                    description: Provider name (defaults to builtin)
-                    type: string
-                provider_config:
-                    additionalProperties: true
-                    type: object
-                provider_model:
-                    description: Provider-specific model identifier
-                    type: string
-                training_config:
-                    description: Training configuration
-                    type: object
-                type:
-                    description: decision_tree | random_forest | regression | neural_network
-                    type: string
-                metadata:
-                    additionalProperties: true
-                    type: object
-            required:
-                - project_id
-                - ontology_id
-                - name
-            type: object
-        ModelRecommendationRequest:
-            properties:
-                ontology_id:
-                    description: Ontology to base recommendation on
-                    type: string
-                project_id:
-                    description: Project ID
-                    type: string
-            required:
-                - project_id
-                - ontology_id
-            type: object
-        ModelRecommendation:
-            properties:
-                all_scores:
-                    additionalProperties:
-                        type: integer
-                    type: object
-                data_analysis:
-                    type: object
-                ontology_analysis:
-                    type: object
-                reasoning:
-                    description: Explanation
-                    type: string
-                recommended_type:
-                    description: Recommended model type
-                    type: string
-                score:
-                    description: Score (0-100)
-                    type: integer
-            type: object
-        ModelUpdateRequest:
-            properties:
-                description:
-                    description: New description
-                    type: string
-                metadata:
-                    additionalProperties: true
-                    type: object
-                name:
-                    description: New name
-                    type: string
-                performance_metrics:
-                    description: Updated performance metrics
-                    type: object
-                provider_config:
-                    additionalProperties: true
-                    type: object
-                status:
-                    description: New status
-                    type: string
-                training_metrics:
-                    description: Updated training metrics
-                    type: object
-            type: object
-        MLTrainingRequest:
-            properties:
-                model_id:
-                    description: ID of the model to train
-                    type: string
-                storage_ids:
-                    items:
-                        type: string
-                    type: array
-                training_config:
-                    type: object
-            required:
-                - model_id
-            type: object
         MetricsResponse:
             properties:
                 queue:
@@ -897,6 +949,105 @@ components:
                 timestamp:
                     description: ISO-8601 UTC snapshot timestamp
                     type: string
+            type: object
+        ModelCreateRequest:
+            properties:
+                description:
+                    description: Description
+                    type: string
+                metadata:
+                    additionalProperties: true
+                    type: object
+                name:
+                    description: Model name
+                    type: string
+                ontology_id:
+                    description: Linked ontology ID
+                    type: string
+                project_id:
+                    description: Owning project ID
+                    type: string
+                training_config:
+                    description: Training configuration
+                    type: object
+                type:
+                    description: decision_tree | random_forest | regression | neural_network
+                    type: string
+            required:
+                - project_id
+                - ontology_id
+                - name
+                - type
+            type: object
+        ModelRecommendation:
+            properties:
+                all_scores:
+                    additionalProperties:
+                        type: integer
+                    type: object
+                data_analysis:
+                    description: Data analysis used in the recommendation
+                    type: object
+                ontology_analysis:
+                    description: Ontology analysis used in the recommendation
+                    type: object
+                reasoning:
+                    description: Explanation
+                    type: string
+                recommended_type:
+                    description: Recommended model type
+                    type: string
+                score:
+                    description: Score (0-100)
+                    type: integer
+            type: object
+        ModelRecommendationRequest:
+            properties:
+                ontology_id:
+                    description: Ontology to base recommendation on
+                    type: string
+                project_id:
+                    description: Project ID
+                    type: string
+            required:
+                - project_id
+                - ontology_id
+            type: object
+        ModelTrainingRequest:
+            properties:
+                model_id:
+                    description: ID of the model to train
+                    type: string
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
+                training_config:
+                    description: Optional training configuration override
+                    type: object
+            required:
+                - model_id
+            type: object
+        ModelUpdateRequest:
+            properties:
+                description:
+                    description: New description
+                    type: string
+                metadata:
+                    additionalProperties: true
+                    type: object
+                name:
+                    description: New name
+                    type: string
+                performance_metrics:
+                    description: Updated performance metrics
+                    type: object
+                status:
+                    description: New status
+                    type: string
+                training_metrics:
+                    description: Updated training metrics
+                    type: object
             type: object
         Ontology:
             properties:
@@ -962,7 +1113,7 @@ components:
                     description: New name
                     type: string
                 status:
-                    description: New status: draft | active | archived
+                    description: 'New status: draft | active | archived'
                     type: string
                 version:
                     description: New version string
@@ -978,6 +1129,24 @@ components:
                     type: string
             required:
                 - attribute
+            type: object
+        ParameterSchema:
+            properties:
+                description:
+                    description: Parameter description
+                    type: string
+                name:
+                    description: Parameter name
+                    type: string
+                required:
+                    description: Whether the parameter is required
+                    type: boolean
+                type:
+                    description: Parameter type
+                    type: string
+            required:
+                - name
+                - type
             type: object
         Pipeline:
             properties:
@@ -1003,6 +1172,8 @@ components:
                     items:
                         $ref: '#/components/schemas/PipelineStep'
                     type: array
+                trigger_config:
+                    $ref: '#/components/schemas/PipelineTriggerConfig'
                 type:
                     description: ingestion | processing | output
                     type: string
@@ -1058,6 +1229,8 @@ components:
                     items:
                         $ref: '#/components/schemas/PipelineStep'
                     type: array
+                trigger_config:
+                    $ref: '#/components/schemas/PipelineTriggerConfig'
                 type:
                     description: Pipeline type
                     type: string
@@ -1107,6 +1280,39 @@ components:
                 - plugin
                 - action
             type: object
+        PipelineTriggerConfig:
+            properties:
+                allow_manual:
+                    description: Whether the pipeline can be triggered manually or system-side through the trigger endpoint
+                    type: boolean
+                description:
+                    description: Optional operator-facing note about when this trigger should be used
+                    type: string
+                secret:
+                    description: Webhook secret used to authenticate remote trigger requests; redacted in pipeline responses
+                    type: string
+                webhook:
+                    description: Whether the pipeline accepts webhook-triggered execution
+                    type: boolean
+            type: object
+        PipelineTriggerRequest:
+            properties:
+                parameters:
+                    additionalProperties: true
+                    type: object
+                source_event_id:
+                    description: Optional upstream event identifier for dedupe/audit
+                    type: string
+                trigger_type:
+                    description: manual | webhook | system
+                    type: string
+                triggered_by:
+                    description: Who or what initiated this trigger
+                    type: string
+                webhook_token:
+                    description: Optional webhook token when not supplied via header or query parameter
+                    type: string
+            type: object
         PipelineUpdateRequest:
             properties:
                 description:
@@ -1119,31 +1325,108 @@ components:
                     items:
                         $ref: '#/components/schemas/PipelineStep'
                     type: array
+                trigger_config:
+                    $ref: '#/components/schemas/PipelineTriggerConfig'
             type: object
         Plugin:
             properties:
                 actions:
                     items:
-                        type: string
+                        $ref: '#/components/schemas/PluginAction'
                     type: array
                 author:
                     description: Plugin author
                     type: string
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
                 description:
                     description: Plugin description
                     type: string
-                installed_at:
-                    description: ISO-8601 installation timestamp
+                git_commit_hash:
+                    description: Commit SHA validated at install/update time
+                    type: string
+                id:
+                    description: Plugin ID
+                    type: string
+                last_loaded_at:
+                    description: ISO-8601 last worker/orchestrator load timestamp
                     type: string
                 name:
-                    description: Plugin name
+                    description: Manifest plugin name
                     type: string
+                plugin_definition:
+                    $ref: '#/components/schemas/PluginDefinition'
                 repository_url:
                     description: Git repository URL
+                    type: string
+                status:
+                    description: active | disabled | error
+                    type: string
+                updated_at:
+                    description: ISO-8601 last-updated timestamp
                     type: string
                 version:
                     description: Plugin version
                     type: string
+            type: object
+        PluginAction:
+            properties:
+                description:
+                    description: Action description
+                    type: string
+                id:
+                    description: Action ID
+                    type: string
+                name:
+                    description: Action name used in pipeline steps
+                    type: string
+                parameters:
+                    items:
+                        $ref: '#/components/schemas/ParameterSchema'
+                    type: array
+                plugin_id:
+                    description: Owning plugin ID
+                    type: string
+                returns:
+                    items:
+                        $ref: '#/components/schemas/ReturnSchema'
+                    type: array
+            required:
+                - id
+                - plugin_id
+                - name
+            type: object
+        PluginDefinition:
+            properties:
+                actions:
+                    items:
+                        $ref: '#/components/schemas/ActionSchema'
+                    type: array
+                author:
+                    description: Author
+                    type: string
+                description:
+                    description: Description
+                    type: string
+                domains:
+                    items:
+                        type: string
+                    type: array
+                ml_provider:
+                    $ref: '#/components/schemas/MLProviderMetadata'
+                name:
+                    description: Manifest plugin name
+                    type: string
+                repository:
+                    description: Declared repository URL
+                    type: string
+                version:
+                    description: Manifest version
+                    type: string
+            required:
+                - name
+                - version
             type: object
         PluginInstallRequest:
             properties:
@@ -1151,7 +1434,7 @@ components:
                     description: 'Branch, tag, or commit SHA (default: main)'
                     type: string
                 repository_url:
-                    description: HTTPS Git URL of the plugin repository
+                    description: HTTPS or SSH Git URL of the plugin repository
                     type: string
             required:
                 - repository_url
@@ -1159,7 +1442,7 @@ components:
         PluginUpdateRequest:
             properties:
                 git_ref:
-                    description: Branch, tag, or commit SHA to update to
+                    description: Branch, tag, or commit SHA to validate and update to
                     type: string
             type: object
         Prediction:
@@ -1277,6 +1560,21 @@ components:
                     description: ISO-8601 last-updated timestamp
                     type: string
             type: object
+        ProjectSectionState:
+            properties:
+                count:
+                    description: Associated item count
+                    type: integer
+                detail:
+                    description: Human-readable state detail
+                    type: string
+                pulse:
+                    description: Whether the frontend should animate the indicator
+                    type: boolean
+                status:
+                    description: inactive | in_progress | complete | error | attention
+                    type: string
+            type: object
         ProjectSettings:
             properties:
                 environment:
@@ -1285,6 +1583,29 @@ components:
                 timezone:
                     description: Project timezone identifier
                     type: string
+            type: object
+        ProjectStateSummary:
+            properties:
+                active_tasks:
+                    description: Number of active tasks for the project
+                    type: integer
+                generated_at:
+                    description: Snapshot timestamp
+                    type: string
+                project_id:
+                    description: Project ID
+                    type: string
+                queue_length:
+                    description: Current queue depth across all tasks
+                    type: integer
+                sections:
+                    additionalProperties:
+                        type: ProjectSectionState
+                    type: object
+            required:
+                - project_id
+                - generated_at
+                - sections
             type: object
         ProjectUpdateRequest:
             properties:
@@ -1304,6 +1625,17 @@ components:
                     description: New semantic version
                     type: string
             type: object
+        ReadinessResponse:
+            properties:
+                error:
+                    description: Readiness failure reason, when unavailable
+                    type: string
+                status:
+                    description: ready | not ready
+                    type: string
+            required:
+                - status
+            type: object
         ResolverRunRequest:
             properties:
                 project_id:
@@ -1316,6 +1648,21 @@ components:
             required:
                 - project_id
                 - storage_ids
+            type: object
+        ReturnSchema:
+            properties:
+                description:
+                    description: Return field description
+                    type: string
+                name:
+                    description: Return field name
+                    type: string
+                type:
+                    description: Return field type
+                    type: string
+            required:
+                - name
+                - type
             type: object
         ReviewDecisionEvent:
             properties:
@@ -1736,6 +2083,54 @@ components:
                 - query
                 - updates
             type: object
+        SystemHealthResponse:
+            properties:
+                failed_tasks:
+                    description: Number of failed tasks currently tracked in memory
+                    type: integer
+                queue_length:
+                    description: Current queue depth
+                    type: integer
+                ready:
+                    description: Whether the orchestrator can currently serve requests
+                    type: boolean
+                status:
+                    description: healthy | degraded | unhealthy
+                    type: string
+                tasks_by_status:
+                    additionalProperties:
+                        type: integer
+                    type: object
+                tasks_by_type:
+                    additionalProperties:
+                        type: integer
+                    type: object
+            required:
+                - status
+                - ready
+                - queue_length
+                - failed_tasks
+            type: object
+        TrainingCompleteRequest:
+            properties:
+                artifact_data_base64:
+                    description: Base64-encoded serialized model artifact uploaded by the worker
+                    type: string
+                performance_metrics:
+                    description: Final performance metrics for the trained model
+                    type: object
+            required:
+                - artifact_data_base64
+                - performance_metrics
+            type: object
+        TrainingFailRequest:
+            properties:
+                reason:
+                    description: Training failure reason recorded by the worker
+                    type: string
+            required:
+                - reason
+            type: object
         TwinProcessingRun:
             properties:
                 automation_id:
@@ -1815,6 +2210,144 @@ components:
                     description: queued | running | completed | failed | skipped
                     type: string
             type: object
+        TwinSyncRun:
+            properties:
+                ReconstructedTwinState:
+                    properties:
+                        digital_twin_id:
+                            description: Owning digital twin ID
+                            type: string
+                        entities:
+                            items:
+                                $ref: '#/components/schemas/Entity'
+                            type: array
+                        metadata:
+                            additionalProperties: true
+                            type: object
+                        relationships:
+                            items:
+                                $ref: '#/components/schemas/EntityRelationship'
+                            type: array
+                        snapshot_id:
+                            description: Snapshot used for reconstruction
+                            type: string
+                        sync_run_id:
+                            description: Sync run that anchors this reconstructed state
+                            type: string
+                    type: object
+                RelationshipRevision:
+                    properties:
+                        change_type:
+                            description: added | updated | removed
+                            type: string
+                        delta_data:
+                            additionalProperties: true
+                            type: object
+                        digital_twin_id:
+                            description: Owning digital twin ID
+                            type: string
+                        full_state:
+                            additionalProperties: true
+                            type: object
+                        id:
+                            description: Relationship revision ID (UUID)
+                            type: string
+                        ontology_version:
+                            description: Ontology version used when this edge was emitted
+                            type: string
+                        provenance:
+                            additionalProperties: true
+                            type: object
+                        recorded_at:
+                            description: ISO-8601 timestamp when this relationship revision was recorded
+                            type: string
+                        relationship_type:
+                            description: Relationship type
+                            type: string
+                        revision:
+                            description: Monotonic relationship revision number
+                            type: integer
+                        source_entity_id:
+                            description: Source entity ID
+                            type: string
+                        sync_run_id:
+                            description: Sync run that emitted this relationship change
+                            type: string
+                        target_entity_id:
+                            description: Target entity ID
+                            type: string
+                    type: object
+                TwinSnapshot:
+                    properties:
+                        created_at:
+                            description: ISO-8601 snapshot timestamp
+                            type: string
+                        digital_twin_id:
+                            description: Owning digital twin ID
+                            type: string
+                        entity_revision_high_watermark:
+                            description: Highest entity revision represented in the snapshot
+                            type: integer
+                        id:
+                            description: Twin snapshot ID (UUID)
+                            type: string
+                        metadata:
+                            additionalProperties: true
+                            type: object
+                        relationship_revision_high_watermark:
+                            description: Highest relationship revision represented in the snapshot
+                            type: integer
+                        snapshot_kind:
+                            description: full | checkpoint | branch_base
+                            type: string
+                        sync_run_id:
+                            description: Sync run that produced this snapshot
+                            type: string
+                    type: object
+                base_snapshot_id:
+                    description: Optional snapshot anchor ID
+                    type: string
+                completed_at:
+                    description: ISO-8601 run completion timestamp
+                    type: string
+                digital_twin_id:
+                    description: Owning digital twin ID
+                    type: string
+                entity_revision_high_watermark:
+                    description: Highest entity revision seen when the run completed
+                    type: integer
+                error:
+                    description: Failure reason when status=failed
+                    type: string
+                id:
+                    description: Twin sync run ID (UUID)
+                    type: string
+                ontology_version:
+                    description: Ontology version used during this sync run
+                    type: string
+                reconciliation_strategy:
+                    description: source_priority | freshest
+                    type: string
+                source_ids:
+                    items:
+                        type: string
+                    type: array
+                started_at:
+                    description: ISO-8601 run start timestamp
+                    type: string
+                status:
+                    description: running | completed | failed
+                    type: string
+                summary:
+                    additionalProperties: true
+                    type: object
+                trigger_type:
+                    description: manual | pipeline_completed | webhook | scheduled | system
+                    type: string
+                triggered_by:
+                    description: Trigger actor or reference
+                    type: string
+            type: object
         WorkTask:
             properties:
                 completed_at:
@@ -1851,7 +2384,7 @@ components:
                     description: ISO-8601 start timestamp
                     type: string
                 status:
-                    description: queued | running | completed | failed
+                    description: queued | scheduled | spawned | executing | completed | failed | timeout | cancelled
                     type: string
                 submitted_at:
                     description: ISO-8601 submission timestamp
@@ -1862,6 +2395,19 @@ components:
                 type:
                     description: pipeline_execution | ml_training | ml_inference | digital_twin_processing
                     type: string
+            type: object
+        WorkTaskListResponse:
+            properties:
+                queue_length:
+                    description: Number of currently queued tasks
+                    type: integer
+                tasks:
+                    items:
+                        $ref: '#/components/schemas/WorkTask'
+                    type: array
+            required:
+                - tasks
+                - queue_length
             type: object
         WorkTaskResult:
             properties:
@@ -1875,7 +2421,7 @@ components:
                     description: Worker output location, if any
                     type: string
                 status:
-                    description: completed | failed
+                    description: queued | scheduled | spawned | executing | completed | failed | timeout | cancelled
                     type: string
             required:
                 - status
@@ -1916,6 +2462,23 @@ info:
     version: 0.1.0
 openapi: 3.0.3
 paths:
+    /api/admin/settings/factory-reset:
+        post:
+            description: Deletes all persisted Mimir metadata and clears the in-memory work queue after confirming there are no queued or active tasks. External data stored in connected storage backends is not deleted.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/FactoryResetResponse'
+                    description: 200 OK
+                "409":
+                    description: Conflict — reset blocked while queued or active tasks exist
+                "500":
+                    description: Internal server error
+            summary: Factory reset metadata
+            tags:
+                - System
     /api/analysis/resolver:
         post:
             description: Detects cross-source links, persists a review queue for uncertain links, and records resolver calibration metrics.
@@ -2013,6 +2576,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "204":
                     description: No content
@@ -2027,6 +2596,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2048,6 +2623,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2081,6 +2662,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:
@@ -2099,6 +2686,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2130,6 +2723,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
                 - description: Action ID
                   in: path
                   name: actionId
@@ -2150,6 +2749,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2181,6 +2786,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
                 - description: Optional maximum number of alerts to return
                   in: query
                   name: limit
@@ -2201,6 +2812,48 @@ paths:
             summary: List alert events
             tags:
                 - Digital Twins
+    /api/digital-twins/{id}/alerts/{alertId}/approval:
+        post:
+            description: Applies an approve/reject decision to one alert event that is awaiting manual export approval.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Alert event ID
+                  in: path
+                  name: alertId
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AlertApprovalRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AlertEvent'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "404":
+                    description: Resource not found
+            summary: Review pending alert action
+            tags:
+                - Digital Twins
     /api/digital-twins/{id}/automations:
         get:
             description: Lists explicit automations scoped to this digital twin.
@@ -2208,6 +2861,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2231,6 +2890,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2262,6 +2927,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
                 - description: Automation ID
                   in: path
                   name: automationId
@@ -2282,6 +2953,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2309,6 +2986,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2348,6 +3031,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:
@@ -2367,6 +3056,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2397,6 +3092,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
                 - description: Entity ID
                   in: path
                   name: entityId
@@ -2423,6 +3124,46 @@ paths:
             summary: Update entity
             tags:
                 - Digital Twins
+    /api/digital-twins/{id}/entities/{entityId}/history:
+        get:
+            description: Returns recorded entity revisions, newest first. Use the optional `limit` query parameter to bound the result size.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Entity ID
+                  in: path
+                  name: entityId
+                  required: true
+                  schema:
+                    type: string
+                - description: Maximum number of revisions to return
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/EntityRevision'
+                                type: array
+                    description: 200 OK
+            summary: Get entity history
+            tags:
+                - Digital Twins
     /api/digital-twins/{id}/entities/{entityId}/related:
         get:
             description: Returns entities connected to the given entity by a typed relationship traversal.
@@ -2430,6 +3171,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2457,6 +3204,76 @@ paths:
             summary: Get related entities
             tags:
                 - Digital Twins
+    /api/digital-twins/{id}/history/runs:
+        get:
+            description: Returns digital twin synchronization/materialization runs, newest first. These are the version anchors for temporal twin history.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Optional maximum number of sync runs to return
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TwinSyncRun'
+                                type: array
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: List twin sync runs
+            tags:
+                - Digital Twins
+    /api/digital-twins/{id}/history/runs/{runId}:
+        get:
+            description: Returns one synchronization/materialization run by ID.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Twin sync run ID
+                  in: path
+                  name: runId
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TwinSyncRun'
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Get twin sync run
+            tags:
+                - Digital Twins
     /api/digital-twins/{id}/predict:
         post:
             description: Runs a single or batch inference using the twin's trained ML models. Provide a top-level 'inputs' array for batch mode; omit it for single-record mode.
@@ -2464,6 +3281,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2495,6 +3318,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             requestBody:
                 content:
                     application/json:
@@ -2520,6 +3349,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2552,6 +3387,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "202":
                     content:
@@ -2569,6 +3410,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2600,6 +3447,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:
@@ -2618,6 +3471,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2649,6 +3508,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
                 - description: Scenario ID
                   in: path
                   name: scenarioId
@@ -2672,6 +3537,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
                 - description: Scenario ID
                   in: path
                   name: scenarioId
@@ -2690,6 +3561,42 @@ paths:
             summary: Get scenario
             tags:
                 - Digital Twins
+    /api/digital-twins/{id}/state:
+        get:
+            description: Returns a read-only reconstructed digital twin graph from the checkpoint captured for one completed sync run.
+            parameters:
+                - description: Digital twin ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Sync run ID to reconstruct
+                  in: query
+                  name: at_run
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ReconstructedTwinState'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "404":
+                    description: Resource not found
+            summary: Get twin state at sync run
+            tags:
+                - Digital Twins
     /api/digital-twins/{id}/sync:
         post:
             description: Enqueues background work to refresh the twin's entity graph from its configured storage backends.
@@ -2697,6 +3604,12 @@ paths:
                 - description: Digital twin ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Project ID used to enforce digital twin ownership
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -2739,7 +3652,7 @@ paths:
                             schema:
                                 properties:
                                     extraction_summary:
-                                        additionalProperties: true
+                                        description: Entity and relationship counts
                                         type: object
                                     ontology:
                                         $ref: '#/components/schemas/Ontology'
@@ -2848,6 +3761,12 @@ paths:
                 - LLM
         post:
             description: Clones, compiles, and registers an LLM provider from a Git repository. Returns 201 on success, 422 when compilation fails.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExternalLLMProviderInstallRequest'
+                required: true
             responses:
                 "201":
                     content:
@@ -2855,6 +3774,8 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ExternalLLMProvider'
                     description: Created
+                "400":
+                    description: Bad request — invalid input
                 "422":
                     description: Processing failed — see error body
             summary: Install an external LLM provider
@@ -2887,7 +3808,7 @@ paths:
                 - LLM
     /api/metrics:
         get:
-            description: Returns task counts by status and type, plus the current queue depth.
+            description: Returns a queue snapshot with task counts by status and type.
             responses:
                 "200":
                     content:
@@ -2898,44 +3819,6 @@ paths:
             summary: Platform metrics
             tags:
                 - System
-    /api/ml-providers:
-        get:
-            description: Returns builtin and plugin-backed ML provider metadata available to the platform.
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                items:
-                                    $ref: '#/components/schemas/MLProviderMetadata'
-                                type: array
-                    description: 200 OK
-            summary: List ML providers
-            tags:
-                - ML Models
-    /api/ml-providers/{name}:
-        get:
-            description: Returns metadata for a specific ML provider.
-            parameters:
-                - description: Provider name
-                  in: path
-                  name: name
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/MLProviderMetadata'
-                    description: 200 OK
-                "404":
-                    description: Resource not found
-            summary: Get ML provider
-            tags:
-                - ML Models
-
     /api/ml-models:
         get:
             description: Returns all ML models for a project.
@@ -2988,11 +3871,21 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "204":
                     description: No content
+                "403":
+                    description: Forbidden — model belongs to another project
                 "404":
                     description: Resource not found
+                "409":
+                    description: Conflict — model is still referenced by twin actions, predictions, or active work tasks
             summary: Delete ML model
             tags:
                 - ML Models
@@ -3005,6 +3898,12 @@ paths:
                   required: true
                   schema:
                     type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
             responses:
                 "200":
                     content:
@@ -3012,6 +3911,8 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/MLModel'
                     description: 200 OK
+                "403":
+                    description: Forbidden — model belongs to another project
                 "404":
                     description: Resource not found
             summary: Get ML model
@@ -3023,6 +3924,12 @@ paths:
                 - description: Model ID
                   in: path
                   name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
                   required: true
                   schema:
                     type: string
@@ -3041,6 +3948,8 @@ paths:
                     description: 200 OK
                 "400":
                     description: Bad request — invalid input
+                "403":
+                    description: Forbidden — model belongs to another project
                 "404":
                     description: Resource not found
             summary: Update ML model
@@ -3048,7 +3957,7 @@ paths:
                 - ML Models
     /api/ml-models/{id}/training/complete:
         post:
-            description: Called by the worker job to record the trained artifact path and performance metrics.
+            description: Called by the worker job to upload the trained model artifact bytes and final performance metrics. The orchestrator persists the artifact and clears the model's `training_task_id`.
             parameters:
                 - description: Model ID
                   in: path
@@ -3080,7 +3989,7 @@ paths:
                 - ML Models
     /api/ml-models/{id}/training/fail:
         post:
-            description: Called by the worker job to record a training failure reason.
+            description: Called by the worker job to record a training failure reason and clear the model's `training_task_id`.
             parameters:
                 - description: Model ID
                   in: path
@@ -3092,11 +4001,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            properties:
-                                reason:
-                                    description: Failure reason
-                                    type: string
-                            type: object
+                            $ref: '#/components/schemas/TrainingFailRequest'
                 required: true
             responses:
                 "200":
@@ -3137,7 +4042,7 @@ paths:
                 - ML Models
     /api/ml-models/train:
         post:
-            description: Enqueues a Kubernetes training job for the specified model. Returns 202 Accepted immediately; poll the model's status field or listen on the WebSocket for completion.
+            description: Queues model training and returns the updated model immediately. The response now includes `training_task_id`, which is the canonical async handle for polling `/api/worktasks/{id}` or subscribing to `/ws/tasks`.
             requestBody:
                 content:
                     application/json:
@@ -3154,6 +4059,43 @@ paths:
                 "400":
                     description: Bad request — invalid input
             summary: Trigger model training
+            tags:
+                - ML Models
+    /api/ml-providers:
+        get:
+            description: Returns builtin and plugin-backed ML provider metadata available to the platform.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/MLProviderMetadata'
+                                type: array
+                    description: 200 OK
+            summary: List ML providers
+            tags:
+                - ML Models
+    /api/ml-providers/{name}:
+        get:
+            description: Returns metadata for a specific ML provider.
+            parameters:
+                - description: Provider name
+                  in: path
+                  name: name
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MLProviderMetadata'
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Get ML provider
             tags:
                 - ML Models
     /api/ontologies:
@@ -3200,6 +4142,7 @@ paths:
                 - Ontologies
     /api/ontologies/{id}:
         delete:
+            description: ""
             parameters:
                 - description: Ontology ID
                   in: path
@@ -3216,12 +4159,17 @@ paths:
             responses:
                 "204":
                     description: No content
+                "403":
+                    description: Forbidden — ontology belongs to another project
                 "404":
                     description: Resource not found
+                "409":
+                    description: Conflict — ontology is still referenced by other project resources
             summary: Delete ontology
             tags:
                 - Ontologies
         get:
+            description: ""
             parameters:
                 - description: Ontology ID
                   in: path
@@ -3242,12 +4190,15 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Ontology'
                     description: 200 OK
+                "403":
+                    description: Forbidden — ontology belongs to another project
                 "404":
                     description: Resource not found
             summary: Get ontology
             tags:
                 - Ontologies
         put:
+            description: ""
             parameters:
                 - description: Ontology ID
                   in: path
@@ -3276,6 +4227,8 @@ paths:
                     description: 200 OK
                 "400":
                     description: Bad request — invalid input
+                "403":
+                    description: Forbidden — ontology belongs to another project
                 "404":
                     description: Resource not found
             summary: Update ontology
@@ -3325,7 +4278,7 @@ paths:
                 - Pipelines
     /api/pipelines/{id}:
         delete:
-            description: Deletes a pipeline.
+            description: Permanently deletes a pipeline when no persisted resources still reference it.
             parameters:
                 - description: Pipeline ID
                   in: path
@@ -3338,6 +4291,8 @@ paths:
                     description: No content
                 "404":
                     description: Resource not found
+                "409":
+                    description: Conflict — pipeline is still referenced by schedules, automations, twin actions, or active work tasks
             summary: Delete pipeline
             tags:
                 - Pipelines
@@ -3496,9 +4451,69 @@ paths:
             summary: Execute pipeline
             tags:
                 - Pipelines
+    /api/pipelines/{id}/trigger:
+        post:
+            description: Queues a pipeline through its manual/system trigger path. Uses the pipeline's trigger configuration and records trigger provenance in the resulting work task.
+            parameters:
+                - description: Pipeline ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PipelineTriggerRequest'
+                required: true
+            responses:
+                "202":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkTask'
+                    description: Accepted — processing in background
+                "400":
+                    description: Bad request — invalid input
+                "404":
+                    description: Resource not found
+            summary: Trigger pipeline
+            tags:
+                - Pipelines
+    /api/pipelines/{id}/webhook:
+        post:
+            description: Authenticated webhook endpoint for remotely triggering a pipeline. Provide the configured webhook token via `X-Mimir-Webhook-Token`, query parameter `token`, or request body.
+            parameters:
+                - description: Pipeline ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PipelineTriggerRequest'
+                required: true
+            responses:
+                "202":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/WorkTask'
+                    description: Accepted — processing in background
+                "400":
+                    description: Bad request — invalid input
+                "404":
+                    description: Resource not found
+            summary: Webhook-trigger pipeline
+            tags:
+                - Pipelines
     /api/plugins:
         get:
-            description: Returns all installed pipeline step plugins.
+            description: Returns plugins installed from plugin.yaml manifests. Entries may expose pipeline actions, ML provider metadata, or both.
             responses:
                 "200":
                     content:
@@ -3508,11 +4523,11 @@ paths:
                                     $ref: '#/components/schemas/Plugin'
                                 type: array
                     description: 200 OK
-            summary: List pipeline plugins
+            summary: List pipeline and ML provider plugins
             tags:
                 - Plugins
         post:
-            description: Installs a pipeline step plugin from a Git repository. Workers clone and compile the plugin at runtime.
+            description: Clones a plugin.yaml repository, validates the manifest, compiles/loads required runtime symbols against the current host, then stores metadata. Workers compile their local artifact again when tasks run.
             requestBody:
                 content:
                     application/json:
@@ -3528,12 +4543,14 @@ paths:
                     description: Created
                 "400":
                     description: Bad request — invalid input
-            summary: Install pipeline plugin
+                "422":
+                    description: Processing failed — see error body
+            summary: Install pipeline or ML provider plugin
             tags:
                 - Plugins
     /api/plugins/{name}:
         delete:
-            description: ""
+            description: Removes plugin metadata. Go plugin code already opened by running worker/orchestrator processes cannot be unloaded; new tasks stop resolving the plugin after metadata deletion.
             parameters:
                 - description: Plugin name
                   in: path
@@ -3546,7 +4563,7 @@ paths:
                     description: No content
                 "404":
                     description: Resource not found
-            summary: Uninstall pipeline plugin
+            summary: Uninstall pipeline or ML provider plugin
             tags:
                 - Plugins
         get:
@@ -3571,7 +4588,7 @@ paths:
             tags:
                 - Plugins
         put:
-            description: Pulls the latest version from the plugin's repository.
+            description: Validates a new Git ref against the current host contract, then replaces the stored manifest metadata and action schema. Existing worker processes may retain already opened Go plugin symbols until they exit.
             parameters:
                 - description: Plugin name
                   in: path
@@ -3594,7 +4611,9 @@ paths:
                     description: 200 OK
                 "404":
                     description: Resource not found
-            summary: Update pipeline plugin
+                "422":
+                    description: Processing failed — see error body
+            summary: Update pipeline or ML provider plugin
             tags:
                 - Plugins
     /api/projects:
@@ -3657,25 +4676,6 @@ paths:
             summary: Delete project
             tags:
                 - Projects
-    /api/projects/{id}/archive:
-        post:
-            description: Archives a project by marking its status archived. Project resources remain persisted and can still be inspected explicitly.
-            parameters:
-                - description: Project ID
-                  in: path
-                  name: id
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "204":
-                    description: No content
-                "404":
-                    description: Resource not found
-            summary: Archive project
-            tags:
-                - Projects
-
         get:
             description: Returns a single project by ID.
             parameters:
@@ -3726,6 +4726,24 @@ paths:
             summary: Update project
             tags:
                 - Projects
+    /api/projects/{id}/archive:
+        post:
+            description: Archives a project by marking its status archived. Project resources remain persisted and can still be inspected explicitly.
+            parameters:
+                - description: Project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: No content
+                "404":
+                    description: Resource not found
+            summary: Archive project
+            tags:
+                - Projects
     /api/projects/{id}/clone:
         post:
             description: Deep-clones an existing project into a new draft project, copying persisted project-owned configuration and remapping internal references to the cloned resources.
@@ -3754,6 +4772,28 @@ paths:
                 "404":
                     description: Resource not found
             summary: Clone project
+            tags:
+                - Projects
+    /api/projects/{id}/state-summary:
+        get:
+            description: Returns a project-scoped backend activity summary for frontend section indicators.
+            parameters:
+                - description: Project ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectStateSummary'
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Get project state summary
             tags:
                 - Projects
     /api/reviews:
@@ -3993,74 +5033,6 @@ paths:
             summary: Get storage plugin
             tags:
                 - Storage Plugins
-    /api/storage/health:
-        get:
-            description: Checks connectivity to the underlying backend for the given project-owned storage config ID.
-            parameters:
-                - description: Storage config ID
-                  in: query
-                  name: config_id
-                  required: true
-                  schema:
-                    type: string
-                - description: Owning project ID
-                  in: query
-                  name: project_id
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                properties:
-                                    error:
-                                        description: Error message if unhealthy
-                                        type: string
-                                    healthy:
-                                        description: Whether the backend is reachable
-                                        type: boolean
-                                type: object
-                    description: 200 OK
-                "403":
-                    description: Forbidden — storage config belongs to another project
-                "404":
-                    description: Resource not found
-            summary: Storage health check
-            tags:
-                - Storage
-    /api/storage/metadata:
-        get:
-            description: Returns metadata and capability information for the given project-owned storage config ID.
-            parameters:
-                - description: Storage config ID
-                  in: query
-                  name: config_id
-                  required: true
-                  schema:
-                    type: string
-                - description: Owning project ID
-                  in: query
-                  name: project_id
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/StorageMetadata'
-                    description: 200 OK
-                "403":
-                    description: Forbidden — storage config belongs to another project
-                "404":
-                    description: Resource not found
-            summary: Storage metadata
-            tags:
-                - Storage
-
     /api/storage/configs:
         get:
             description: Returns all storage configurations for a project.
@@ -4132,6 +5104,7 @@ paths:
             tags:
                 - Storage
         get:
+            description: ""
             parameters:
                 - description: Storage config ID
                   in: path
@@ -4160,6 +5133,7 @@ paths:
             tags:
                 - Storage
         put:
+            description: ""
             parameters:
                 - description: Storage config ID
                   in: path
@@ -4211,11 +5185,50 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StorageResult'
                     description: 200 OK
+                "400":
+                    description: Bad request — invalid input
                 "403":
                     description: Forbidden — storage config belongs to another project
                 "404":
                     description: Resource not found
             summary: Delete CIR data
+            tags:
+                - Storage
+    /api/storage/health:
+        get:
+            description: Checks connectivity to the underlying backend for the given project-owned storage config ID.
+            parameters:
+                - description: Storage config ID
+                  in: query
+                  name: config_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                properties:
+                                    error:
+                                        description: Error message if unhealthy
+                                        type: string
+                                    healthy:
+                                        description: Whether the backend is reachable
+                                        type: boolean
+                                type: object
+                    description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
+                "404":
+                    description: Resource not found
+            summary: Storage health check
             tags:
                 - Storage
     /api/storage/ingestion-health:
@@ -4242,6 +5255,36 @@ paths:
             summary: Project ingestion health report
             tags:
                 - Storage
+    /api/storage/metadata:
+        get:
+            description: Returns metadata and capability information for the given project-owned storage config ID.
+            parameters:
+                - description: Storage config ID
+                  in: query
+                  name: config_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StorageMetadata'
+                    description: 200 OK
+                "403":
+                    description: Forbidden — storage config belongs to another project
+                "404":
+                    description: Resource not found
+            summary: Storage metadata
+            tags:
+                - Storage
     /api/storage/retrieve:
         post:
             description: Queries and returns CIR records from the specified project-owned storage backend.
@@ -4260,6 +5303,8 @@ paths:
                                     $ref: '#/components/schemas/CIR'
                                 type: array
                     description: 200 OK
+                "400":
+                    description: Bad request — invalid input
                 "403":
                     description: Forbidden — storage config belongs to another project
                 "404":
@@ -4283,6 +5328,8 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StorageResult'
                     description: 200 OK
+                "400":
+                    description: Bad request — invalid input
                 "403":
                     description: Forbidden — storage config belongs to another project
                 "404":
@@ -4306,6 +5353,8 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/StorageResult'
                     description: 200 OK
+                "400":
+                    description: Bad request — invalid input
                 "403":
                     description: Forbidden — storage config belongs to another project
                 "404":
@@ -4315,19 +5364,15 @@ paths:
                 - Storage
     /api/worktasks:
         get:
-            description: Returns the current queue depth.
+            description: Returns all known work tasks plus the current queue depth. Requires the worker auth token.
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                properties:
-                                    queue_length:
-                                        description: Number of queued tasks
-                                        type: integer
-                                type: object
+                                $ref: '#/components/schemas/WorkTaskListResponse'
                     description: 200 OK
-            summary: Get queue info
+            summary: List work tasks
             tags:
                 - Tasks
         post:
@@ -4373,7 +5418,7 @@ paths:
             tags:
                 - Tasks
         post:
-            description: Called by workers to report task completion or failure. Requires the worker auth token.
+            description: Called by workers to report task execution status, result metadata, output locations, or failure details. Requires the worker auth token.
             parameters:
                 - description: Work task ID
                   in: path
@@ -4403,18 +5448,16 @@ paths:
                 - Tasks
     /health:
         get:
-            description: Returns 200 when the orchestrator process is running.
+            description: Returns queue-backed orchestrator health. `status` is `healthy` when the queue is available with no failed tasks, and `degraded` when failed tasks are present.
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                properties:
-                                    status:
-                                        description: Always 'healthy'
-                                        type: string
-                                type: object
+                                $ref: '#/components/schemas/SystemHealthResponse'
                     description: 200 OK
+                "500":
+                    description: Internal server error
             summary: Health check
             tags:
                 - System
@@ -4434,21 +5477,31 @@ paths:
                 - System
     /ready:
         get:
-            description: Returns 200 when the queue is accessible and the orchestrator is ready to serve requests.
+            description: Returns 200 only when the queue is configured and readable by the orchestrator process.
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                properties:
-                                    status:
-                                        description: '''ready'' or ''not ready'''
-                                        type: string
-                                type: object
+                                $ref: '#/components/schemas/ReadinessResponse'
                     description: 200 OK
                 "500":
                     description: Internal server error
             summary: Readiness check
+            tags:
+                - System
+    /ws/tasks:
+        get:
+            description: WebSocket stream that emits `task_update` events whenever a work task status changes. Frontend clients use this for queue and training progress updates.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                description: WebSocket upgrade endpoint
+                                type: string
+                    description: 200 OK
+            summary: Task update WebSocket
             tags:
                 - System
 servers:

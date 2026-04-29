@@ -26,8 +26,10 @@ func init() {
 		Summary:     "Install an external LLM provider",
 		Description: "Clones, compiles, and registers an LLM provider from a Git repository. Returns 201 on success, 422 when compilation fails.",
 		Tags:        []string{"LLM"},
+		RequestBody: doc.JsonBody(doc.Ref("ExternalLLMProviderInstallRequest")),
 		Responses: doc.R(
 			doc.Created(doc.Ref("ExternalLLMProvider")),
+			doc.BadRequest(),
 			doc.Unprocessable(),
 		),
 	})

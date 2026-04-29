@@ -9,6 +9,8 @@
 		return { project_id: projectId, plugin_type: 'filesystem', config: '{}', active: true };
 	}
 
+	const BUILTIN_STORAGE_PLUGIN_OPTIONS = ['filesystem', 'postgresql', 'mysql', 'mongodb', 's3', 'redis', 'elasticsearch', 'neo4j'];
+
 	pages.StoragePage = function StoragePage() {
 		const { activeProject, projects } = React.useContext(ProjectContext);
 		const [configs, setConfigs] = React.useState([]);
@@ -23,6 +25,7 @@
 		const [ingestionHealth, setIngestionHealth] = React.useState(null);
 		const [ingestionHealthLoading, setIngestionHealthLoading] = React.useState(false);
 		const [formData, setFormData] = React.useState(emptyStorageForm());
+		const [storagePlugins, setStoragePlugins] = React.useState([]);
 
 		React.useEffect(() => {
 			if (activeProject?.id) {
@@ -61,10 +64,20 @@
 			}
 		}, [activeProject?.id]);
 
+		const loadStoragePlugins = React.useCallback(async () => {
+			try {
+				const plugins = await apiCall('/api/storage-plugins');
+				setStoragePlugins(plugins || []);
+			} catch {
+				setStoragePlugins([]);
+			}
+		}, []);
+
 		React.useEffect(() => {
 			loadConfigs();
 			loadIngestionHealth();
-		}, [loadConfigs, loadIngestionHealth]);
+			loadStoragePlugins();
+		}, [loadConfigs, loadIngestionHealth, loadStoragePlugins]);
 
 		const openCreateModal = () => {
 			setEditingConfigId('');
@@ -160,6 +173,10 @@
 		};
 
 		const projectOptions = projects.map(p => ({ value: p.id, label: p.name }));
+		const pluginTypeOptions = Array.from(new Set([
+			...BUILTIN_STORAGE_PLUGIN_OPTIONS,
+			...storagePlugins.filter(plugin => plugin.status === 'active').map(plugin => plugin.name),
+		])).map(plugin => ({ value: plugin, label: plugin }));
 		const columns = [
 			{ key: 'id', label: 'ID' },
 			{ key: 'label', label: 'Label', render: row => deriveStorageConfigLabel(row) },
@@ -249,7 +266,7 @@
 					<form onSubmit={handleSubmit}>
 						<div className="form-grid">
 							<FormField label="Project" type="select" value={formData.project_id} onChange={(v) => setFormData({ ...formData, project_id: v })} options={projectOptions} required disabled={Boolean(editingConfigId)} />
-							<FormField label="Plugin Type" value={formData.plugin_type} onChange={(v) => setFormData({ ...formData, plugin_type: v })} placeholder="filesystem, s3, postgres, mongodb..." required disabled={Boolean(editingConfigId)} />
+							<FormField label="Plugin Type" type="select" value={formData.plugin_type} onChange={(v) => setFormData({ ...formData, plugin_type: v })} options={pluginTypeOptions} required disabled={Boolean(editingConfigId)} hint="Built-in backends plus active external storage plugins." />
 						</div>
 						<FormField label="Configuration (JSON)" type="textarea" value={formData.config} onChange={(v) => setFormData({ ...formData, config: v })} placeholder='{"path": "./data"}' required />
 						<label className="checkbox-row">

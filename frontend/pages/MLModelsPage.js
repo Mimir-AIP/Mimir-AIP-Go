@@ -20,6 +20,8 @@
 			project_id: projectId,
 			ontology_id: '',
 			type: 'decision_tree',
+			provider: 'builtin',
+			provider_model: '',
 			description: '',
 			train_test_split: '0.8',
 			random_seed: '42',
@@ -78,6 +80,7 @@
 		const [trainingTarget, setTrainingTarget] = React.useState(null);
 		const [trainStorageIds, setTrainStorageIds] = React.useState([]);
 		const [availableStorageConfigs, setAvailableStorageConfigs] = React.useState([]);
+		const [mlProviders, setMLProviders] = React.useState([]);
 		const [availableOntologies, setAvailableOntologies] = React.useState([]);
 		const [recommendForm, setRecommendForm] = React.useState({ project_id: '', ontology_id: '' });
 		const [recommendOntologies, setRecommendOntologies] = React.useState([]);
@@ -98,6 +101,15 @@
 			} catch {
 				setAvailableOntologies([]);
 				return [];
+			}
+		}, []);
+
+		const loadMLProviders = React.useCallback(async () => {
+			try {
+				const providers = await apiCall('/api/ml-providers');
+				setMLProviders(providers || []);
+			} catch {
+				setMLProviders([]);
 			}
 		}, []);
 
@@ -130,7 +142,8 @@
 
 		React.useEffect(() => {
 			loadModels();
-		}, [loadModels]);
+			loadMLProviders();
+		}, [loadModels, loadMLProviders]);
 
 		useTaskWebSocket(React.useCallback((task) => {
 			if (!['ml_training', 'ml_inference'].includes(task.type)) return;
@@ -152,6 +165,10 @@
 			setShowModal(true);
 		};
 
+		const providerOptions = (mlProviders.length ? mlProviders : [{ name: 'builtin', display_name: 'Builtin Models' }]).map(provider => ({ value: provider.name, label: provider.display_name || provider.name }));
+		const selectedProvider = mlProviders.find(provider => provider.name === formData.provider);
+		const providerModelOptions = (selectedProvider?.models || []).map(model => ({ value: model.name, label: model.display_name || model.name }));
+
 		const handleSubmit = async (e) => {
 			e.preventDefault();
 			try {
@@ -162,7 +179,9 @@
 						ontology_id: formData.ontology_id,
 						name: formData.name,
 						description: formData.description,
-						type: formData.type,
+						type: formData.provider === 'builtin' ? formData.type : '',
+						provider: formData.provider === 'builtin' ? '' : formData.provider,
+						provider_model: formData.provider === 'builtin' ? '' : formData.provider_model,
 						training_config: normalizeTrainingConfig(formData),
 					}),
 				});
@@ -398,8 +417,12 @@
 							<FormField label="Project" type="select" value={formData.project_id} onChange={async (v) => { setFormData({ ...formData, project_id: v, ontology_id: '' }); await loadOntologiesForProject(v); }} options={projectOptions} required />
 						</div>
 						<div className="form-grid">
-							<FormField label="Ontology" type="select" value={formData.ontology_id} onChange={(v) => setFormData({ ...formData, ontology_id: v })} options={ontologyOptions} required />
-							<FormField label="Model Type" type="select" value={formData.type} onChange={(v) => setFormData({ ...formData, type: v })} options={MODEL_TYPE_OPTIONS} required />
+							<FormField label="Provider" type="select" value={formData.provider} onChange={(v) => setFormData({ ...formData, provider: v, provider_model: '', type: v === 'builtin' ? formData.type : '' })} options={providerOptions} required />
+							{formData.provider === 'builtin' ? (
+								<FormField label="Model Type" type="select" value={formData.type} onChange={(v) => setFormData({ ...formData, type: v })} options={MODEL_TYPE_OPTIONS} required />
+							) : (
+								<FormField label="Provider Model" type="select" value={formData.provider_model} onChange={(v) => setFormData({ ...formData, provider_model: v })} options={providerModelOptions} required hint="Models advertised by the selected ML provider plugin." />
+							)}
 						</div>
 						<FormField label="Description" type="textarea" value={formData.description} onChange={(v) => setFormData({ ...formData, description: v })} />
 						<div className="form-grid">

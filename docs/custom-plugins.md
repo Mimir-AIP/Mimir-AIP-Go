@@ -1,12 +1,34 @@
 # Custom Plugins for Mimir AIP
 
-Mimir supports three kinds of runtime-extensible plugins, all using the same pattern: implement a Go interface, host the code in a Git repository, and install via the REST API. Internally, all three now use the same shared runtime loader and cache path, so plugin authors get a consistent contract without Mimir hard-coding separate extension systems for each subsystem.
+Mimir has four runtime extension surfaces:
+
+1. **Pipeline step plugins** installed through `/api/plugins` and used by pipeline workers.
+2. **ML provider plugins** declared in `plugin.yaml` and installed through `/api/plugins`; provider metadata is listed through `/api/ml-providers`.
+3. **Storage plugins** installed through `/api/storage-plugins` and loaded by the orchestrator.
+4. **LLM provider plugins** installed through `/api/llm/providers` and loaded by the orchestrator.
+
+All four use the shared Go plugin runtime loader, but they do **not** share one cache directory. Cache paths are owned by the subsystem that loads the plugin. Go plugins are trusted in-process code: install only repositories you control or have audited.
 
 ---
 
-## Part 1 — Pipeline Step Plugins
+## Runtime model and safety boundaries
 
-Pipeline step plugins add new processing steps that workers execute inside pipelines. Workers clone, compile, and cache the `.so` on first use via the shared runtime loader.
+The loader clones the repository, optionally checks out the requested ref, flattens `.go` files from `actions/` into the repository root, removes plugin-local `go.mod`/`go.sum`, compiles the package inside the Mimir host module with `go build -buildmode=plugin`, then opens the expected exported symbol with `plugin.Open`.
+
+Important consequences:
+
+- The orchestrator validates `/api/plugins` installs against the current host before metadata is saved. Workers still compile their own local artifact before task execution.
+- Storage and LLM providers are compiled and opened by the orchestrator during install.
+- The worker image must include the Go toolchain and CGO support because pipeline and ML provider plugins compile inside worker pods.
+- Use immutable commit SHAs for production installs. Branch names such as `main` are convenient for development but are not repeatable.
+- Go plugins cannot be unloaded from a running process. Deleting a plugin removes metadata/cache entries for future operations, but already opened symbols may remain until the worker/orchestrator process exits.
+- Plugins run with the privileges of the process that loads them, including filesystem, network, and environment access.
+
+---
+
+## Pipeline step plugins
+
+Pipeline step plugins add new actions that workers execute inside pipeline steps.
 
 ### Interface
 
@@ -19,28 +41,39 @@ type Plugin interface {
 
 ### Repository structure
 
-```
+```text
 my-plugin/
 ├── plugin.go       # Required: must export var Plugin
-├── plugin.yaml     # Required: plugin manifest
-├── go.mod          # For local dev; DELETED by the worker before compilation
-└── actions/        # Optional: .go files here are flattened to root at compile time
-    ├── ingest.go
-    └── transform.go
+├── plugin.yaml     # Required manifest
+├── go.mod          # For local dev; removed before host-module compilation
+└── actions/        # Optional: .go files flattened to root at compile time
 ```
 
-> **Important:** The worker deletes your `go.mod` and `go.sum` before compilation. Your plugin is compiled as part of the host module, using its exact dependency versions. Keep `go.mod` only for IDE support.
-
 ### plugin.yaml
+
+`actions` must be structured action schemas, not a list of strings:
 
 ```yaml
 name: my-plugin
 version: "1.0.0"
 description: "Does something useful"
 author: "Your Name"
+domains:
+  - pipeline
 actions:
-  - ingest
-  - transform
+  - name: ingest
+    description: "Ingests records from a source"
+    parameters:
+      - name: url
+        type: string
+        required: true
+        description: "Source URL"
+    returns:
+      - name: records_ingested
+        type: number
+        description: "Number of records ingested"
+  - name: transform
+    description: "Transforms records already in pipeline context"
 ```
 
 ### plugin.go
@@ -49,7 +82,6 @@ actions:
 package main
 
 import (
-    "context"
     "fmt"
 
     "github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -60,46 +92,97 @@ type MyPlugin struct{}
 func (p *MyPlugin) Execute(action string, params map[string]interface{}, ctx *models.PipelineContext) (map[string]interface{}, error) {
     switch action {
     case "ingest":
-        return p.ingest(params, ctx)
+        return map[string]interface{}{"records_ingested": 42}, nil
     case "transform":
-        return p.transform(params, ctx)
+        return map[string]interface{}{"success": true}, nil
     default:
         return nil, fmt.Errorf("unknown action: %s", action)
     }
 }
 
-func (p *MyPlugin) ingest(params map[string]interface{}, ctx *models.PipelineContext) (map[string]interface{}, error) {
-    _ = context.Background() // use ctx for timeouts etc.
-    // ... your logic
-    return map[string]interface{}{"records_ingested": 42}, nil
-}
-
-func (p *MyPlugin) transform(params map[string]interface{}, ctx *models.PipelineContext) (map[string]interface{}, error) {
-    // ... your logic
-    return map[string]interface{}{"success": true}, nil
-}
-
-// Plugin is the symbol the worker loads via plugin.Lookup("Plugin").
+// Plugin is the symbol loaded with plugin.Lookup("Plugin").
 var Plugin MyPlugin
 ```
-
-The worker calls `plugin.Lookup("Plugin")` which returns `*MyPlugin`. Methods with pointer receivers on `*MyPlugin` satisfy the interface — this is why the export is a value type, not a pointer.
 
 ### Installing
 
 ```bash
 curl -X POST http://localhost:8080/api/plugins \
   -H "Content-Type: application/json" \
-  -d '{"repository_url": "https://github.com/your-org/my-plugin", "git_ref": "main"}'
+  -d '{"repository_url": "https://github.com/your-org/my-plugin", "git_ref": "<commit-sha>"}'
 ```
 
-The worker clones, compiles, and caches the `.so` automatically on next use via the shared runtime loader. For pipeline plugins, the install-time name comes from `plugin.yaml` (`name:`), so choose a stable manifest name and use that same name in pipeline step definitions.
+Use the manifest `name` in pipeline step definitions:
+
+```yaml
+steps:
+  - name: ingest-custom
+    plugin: my-plugin
+    action: ingest
+    parameters:
+      url: https://example.com/data.json
+```
 
 ---
 
-## Part 2 — Storage Plugins
+## ML provider plugins
 
-Storage plugins connect Mimir to any data backend. The orchestrator installs and reloads these plugins through the shared runtime loader at startup and on `POST /api/storage-plugins`.
+ML provider plugins add training/inference backends beyond the built-in tabular models. They are installed through `/api/plugins` because their metadata lives in `plugin.yaml`, then listed through `/api/ml-providers` for model creation.
+
+### plugin.yaml
+
+```yaml
+name: acme-ml
+version: "1.0.0"
+description: "Acme ML provider"
+author: "Acme"
+domains:
+  - ml
+ml_provider:
+  name: acme
+  display_name: Acme ML
+  description: External Acme training and inference provider
+  supports_training: true
+  supports_inference: true
+  capabilities:
+    - train
+    - infer
+  models:
+    - name: acme-classifier
+      display_name: Acme Classifier
+      capabilities:
+        - classify
+```
+
+### Runtime symbol
+
+The compiled package must export `MLProvider`, satisfying `pkg/mlmodel.Provider`.
+
+```go
+package main
+
+import (
+	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
+	"github.com/mimir-aip/mimir-aip-go/pkg/models"
+)
+
+type AcmeProvider struct{}
+
+func (p *AcmeProvider) Metadata() models.MLProviderMetadata { /* ... */ }
+func (p *AcmeProvider) ValidateModel(model *models.MLModel) error { return nil }
+func (p *AcmeProvider) Train(req *mlmodel.ProviderTrainRequest) (*mlmodel.ProviderTrainResult, error) { /* ... */ }
+func (p *AcmeProvider) Infer(req *mlmodel.ProviderInferRequest) (*mlmodel.ProviderInferResult, error) { /* ... */ }
+
+var MLProvider AcmeProvider
+```
+
+Install with the same `/api/plugins` endpoint as pipeline plugins. The frontend lists installed providers in the **Plugins → ML Providers** tab and exposes providers when creating ML models.
+
+---
+
+## Storage plugins
+
+Storage plugins connect Mimir to data backends. The orchestrator installs and reloads them through `/api/storage-plugins`.
 
 ### Interface
 
@@ -115,102 +198,34 @@ type StoragePlugin interface {
     GetMetadata() (*StorageMetadata, error)
     HealthCheck() (bool, error)
 }
-
-type PluginConfig struct {
-    ConnectionString string                 `json:"connection_string"`
-    Credentials      map[string]interface{} `json:"credentials,omitempty"`
-    Options          map[string]interface{} `json:"options,omitempty"`
-}
 ```
 
 ### Repository structure
 
-```
+```text
 my-storage-plugin/
 ├── plugin.go       # Required: must export var Plugin
-├── go.mod          # For local dev; DELETED by the loader before compilation
+├── go.mod          # For local dev; removed before host-module compilation
 └── actions/        # Optional: flattened at compile time
 ```
 
-### plugin.go
-
-```go
-package main
-
-import "github.com/mimir-aip/mimir-aip-go/pkg/models"
-
-type MyStoragePlugin struct {
-    cfg *models.PluginConfig
-}
-
-func (p *MyStoragePlugin) Initialize(config *models.PluginConfig) error {
-    p.cfg = config
-    // open connection using config.ConnectionString / config.Credentials
-    return nil
-}
-
-func (p *MyStoragePlugin) CreateSchema(ontology *models.OntologyDefinition) error {
-    // create tables / indexes / collections to match the ontology
-    return nil
-}
-
-func (p *MyStoragePlugin) Store(cir *models.CIR) (*models.StorageResult, error) {
-    // write the CIR record
-    return &models.StorageResult{Success: true, AffectedItems: 1}, nil
-}
-
-func (p *MyStoragePlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, error) {
-    // query and return CIR records
-    return nil, nil
-}
-
-func (p *MyStoragePlugin) Update(query *models.CIRQuery, updates *models.CIRUpdate) (*models.StorageResult, error) {
-    return &models.StorageResult{Success: true, AffectedItems: 0}, nil
-}
-
-func (p *MyStoragePlugin) Delete(query *models.CIRQuery) (*models.StorageResult, error) {
-    return &models.StorageResult{Success: true, AffectedItems: 0}, nil
-}
-
-func (p *MyStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
-    return &models.StorageMetadata{StorageType: "my-backend"}, nil
-}
-
-func (p *MyStoragePlugin) HealthCheck() (bool, error) {
-    // ping the backend
-    return true, nil
-}
-
-// Plugin is the symbol the orchestrator loads via plugin.Lookup("Plugin").
-var Plugin MyStoragePlugin
-```
+Storage plugin names are currently derived from the repository URL's last path segment, not from a manifest. `version`, `description`, and `author` fields in storage plugin records are reserved and may be empty.
 
 ### Installing
 
 ```bash
 curl -X POST http://localhost:8080/api/storage-plugins \
   -H "Content-Type: application/json" \
-  -d '{"repository_url": "https://github.com/your-org/my-storage-plugin", "git_ref": "v1.0.0"}'
+  -d '{"repository_url": "https://github.com/your-org/my-storage-plugin", "git_ref": "<commit-sha>"}'
 ```
 
-The orchestrator clones, compiles, caches, and loads the `.so` through the shared runtime loader, then registers it as a new storage backend type. From that point it is available as a `plugin_type` when creating storage configs.
-
-### Managing storage plugins
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/storage-plugins` | List installed external plugins |
-| `POST` | `/api/storage-plugins` | Install from Git repo |
-| `GET` | `/api/storage-plugins/{name}` | Get plugin metadata |
-| `DELETE` | `/api/storage-plugins/{name}` | Uninstall (204) |
-
-> **Note:** Go plugins cannot be unloaded from memory once opened. Uninstalling removes the registry entry and cached `.so`; a full orchestrator restart is required for complete removal.
+After installation, the plugin name appears as a selectable `plugin_type` when creating storage configs in the frontend.
 
 ---
 
-## Part 3 — LLM Provider Plugins
+## LLM provider plugins
 
-LLM provider plugins add new language model back-ends (beyond the built-in OpenRouter and OpenAI-compatible providers). The orchestrator installs them through the same shared runtime loader used by the other plugin categories.
+LLM provider plugins add language model backends beyond the built-in OpenRouter and OpenAI-compatible providers. The orchestrator installs them through `/api/llm/providers`.
 
 ### Interface
 
@@ -221,47 +236,17 @@ type Provider interface {
     ListModels(ctx context.Context) ([]Model, error)
     Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error)
 }
-
-type CompletionRequest struct {
-    Model       string
-    Messages    []Message  // {Role: "system"|"user"|"assistant", Content: string}
-    MaxTokens   int
-    Temperature float64
-}
-
-type CompletionResponse struct {
-    Content      string
-    Model        string
-    InputTokens  int
-    OutputTokens int
-}
-
-type Model struct {
-    ID            string `json:"id"`
-    Name          string `json:"name"`
-    ContextLength int    `json:"context_length"`
-    IsFree        bool   `json:"is_free"`
-    ProviderName  string `json:"provider_name"`
-}
 ```
 
-### Repository structure
+### Runtime symbol
 
-```
-my-llm-provider/
-├── plugin.go       # Required: must export var Plugin
-├── go.mod          # For local dev; DELETED by the loader before compilation
-└── actions/        # Optional: flattened at compile time
-```
-
-### plugin.go
+The package must export `Plugin` satisfying `pkg/llm.Provider`.
 
 ```go
 package main
 
 import (
     "context"
-    "fmt"
 
     "github.com/mimir-aip/mimir-aip-go/pkg/llm"
 )
@@ -269,23 +254,9 @@ import (
 type MyProvider struct{}
 
 func (p *MyProvider) Name() string { return "my-provider" }
+func (p *MyProvider) ListModels(ctx context.Context) ([]llm.Model, error) { /* ... */ }
+func (p *MyProvider) Complete(ctx context.Context, req llm.CompletionRequest) (llm.CompletionResponse, error) { /* ... */ }
 
-func (p *MyProvider) ListModels(ctx context.Context) ([]llm.Model, error) {
-    return []llm.Model{
-        {ID: "my-model-v1", Name: "My Model v1", ContextLength: 8192},
-    }, nil
-}
-
-func (p *MyProvider) Complete(ctx context.Context, req llm.CompletionRequest) (llm.CompletionResponse, error) {
-    // call your LLM API here
-    _ = req
-    return llm.CompletionResponse{
-        Content: "response text",
-        Model:   req.Model,
-    }, fmt.Errorf("not implemented")
-}
-
-// Plugin is the symbol the orchestrator loads via plugin.Lookup("Plugin").
 var Plugin MyProvider
 ```
 
@@ -294,36 +265,31 @@ var Plugin MyProvider
 ```bash
 curl -X POST http://localhost:8080/api/llm/providers \
   -H "Content-Type: application/json" \
-  -d '{"repository_url": "https://github.com/your-org/my-llm-provider", "git_ref": "main"}'
+  -d '{"repository_url": "https://github.com/your-org/my-llm-provider", "git_ref": "<commit-sha>"}'
 ```
 
-Returns `201` with the provider record on success, or `422` with an error body if compilation fails. The provider name is derived from the repository name.
-
-Once installed, activate it by setting `LLM_PROVIDER=<name>` in the orchestrator environment and restarting — or call `SetActiveProvider` programmatically.
-
-### Managing LLM providers
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/llm/providers` | List installed external providers |
-| `POST` | `/api/llm/providers` | Install from Git repo |
-| `GET` | `/api/llm/providers/{name}` | Get provider metadata |
-| `DELETE` | `/api/llm/providers/{name}` | Uninstall (204) |
-
-### Built-in providers
-
-Two providers are always registered without installation:
-
-| Name | Env vars | Notes |
-|------|----------|-------|
-| `openrouter` | `LLM_API_KEY` | Access to hundreds of models; set `LLM_MODEL=openrouter/free` for free tier |
-| `openai_compat` | `LLM_API_KEY`, `LLM_BASE_URL` | Any OpenAI-compatible endpoint (OpenAI, Ollama, vLLM, etc.) |
+The provider name is derived from the repository name. Activate an external provider through the LLM service configuration.
 
 ---
 
-## Runtime requirements
+## REST summary
 
-All three plugin types require the Go toolchain to be available inside the orchestrator/worker container at runtime (for `go build -buildmode=plugin`). The official Mimir Docker images are based on a Go builder image for this reason.
+| Surface | Install/list endpoint | Runtime symbol | Name source |
+|---|---|---|---|
+| Pipeline action plugin | `/api/plugins` | `Plugin` | `plugin.yaml:name` |
+| ML provider plugin | `/api/plugins`, listed via `/api/ml-providers` | `MLProvider` | `plugin.yaml:ml_provider.name` or `plugin.yaml:name` |
+| Storage plugin | `/api/storage-plugins` | `Plugin` | Repository URL basename |
+| LLM provider plugin | `/api/llm/providers` | `Plugin` | Repository URL basename |
+
+---
+
+## Operational recommendations
+
+- Prefer commit SHAs over branches for production installs.
+- Treat plugin repositories as privileged code. Review them like changes to the orchestrator or worker.
+- Expect first use on a new worker pod to pay clone/build cost unless artifacts have been prewarmed.
+- In distributed clusters, use rollout policies that avoid cold-start compile storms for the same plugin.
+- Restart workers/orchestrators after uninstalling or replacing plugins when strict removal is required.
 
 ---
 
@@ -331,4 +297,3 @@ All three plugin types require the Go toolchain to be available inside the orche
 
 - [Building pipelines](./building-pipelines.md) — how to use pipeline step plugins in a pipeline definition
 - [OpenAPI specification](./openapi.yaml) — all REST endpoints including plugin management APIs
-- [Reference pipeline plugin](https://github.com/Mimir-AIP/OpenLibraryMimirPlugin) — a complete, production example

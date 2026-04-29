@@ -301,6 +301,9 @@ func (s *Service) validateRuntimeBuild(def *models.PluginDefinition, repoURL, gi
 
 // cloneRepo clones a Git repository to the specified directory
 func (s *Service) cloneRepo(repoURL, gitRef, destDir string) error {
+	if err := pluginruntime.ValidateRepositoryURL(repoURL); err != nil {
+		return err
+	}
 	cmd := exec.Command("git", "clone", "--depth=1", "--branch", gitRef, repoURL, destDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

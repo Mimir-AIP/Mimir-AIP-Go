@@ -106,8 +106,8 @@ func (l *Loader[T]) CompileAndLoad(name, repoURL, gitRef, commitHash string) (T,
 	if name == "" {
 		return zero, "", fmt.Errorf("%s: extension name is required", l.spec.LogPrefix)
 	}
-	if strings.TrimSpace(repoURL) == "" {
-		return zero, "", fmt.Errorf("%s: repository URL is required", l.spec.LogPrefix)
+	if err := ValidateRepositoryURL(repoURL); err != nil {
+		return zero, "", fmt.Errorf("%s: %w", l.spec.LogPrefix, err)
 	}
 	if gitRef == "" {
 		gitRef = l.spec.DefaultGitRef

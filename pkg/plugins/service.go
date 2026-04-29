@@ -12,31 +12,57 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
+	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pipeline"
+	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 )
 
-// Service provides plugin metadata management
-// Note: Plugins are compiled by workers, not the orchestrator
-type Service struct {
-	store   metadatastore.MetadataStore
-	tempDir string // Directory for temporary Git clones
+// ValidationError means a plugin repository or manifest was reachable but does
+// not satisfy the current host runtime contract.
+type ValidationError struct {
+	Err error
 }
 
-// NewService creates a new plugin service
+func (e *ValidationError) Error() string { return e.Err.Error() }
+func (e *ValidationError) Unwrap() error { return e.Err }
+
+// Service provides plugin metadata management.
+type Service struct {
+	store   metadatastore.MetadataStore
+	tempDir string // Directory for temporary Git clones and validation builds
+	appDir  string // Host module root used for install-time plugin validation builds
+}
+
+// NewService creates a new plugin service.
 func NewService(store metadatastore.MetadataStore, tempDir string) (*Service, error) {
 	// Create temp directory if it doesn't exist
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
+	appDir := os.Getenv("APP_DIR")
+	if appDir == "" {
+		if _, err := os.Stat("/app/go.mod"); err == nil {
+			appDir = "/app"
+		} else if wd, err := os.Getwd(); err == nil {
+			appDir = wd
+		} else {
+			return nil, fmt.Errorf("resolve app directory: %w", err)
+		}
+	}
+
 	return &Service{
 		store:   store,
 		tempDir: tempDir,
+		appDir:  appDir,
 	}, nil
 }
 
-// InstallPlugin installs a plugin by storing its metadata
-// Workers will compile the plugin from source when needed
+// InstallPlugin installs a plugin by validating its manifest and runtime symbol,
+// then storing its metadata. Workers still compile their own local copy when a
+// task uses the plugin, but invalid repositories fail at install time instead of
+// later during pipeline execution.
 func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugin, error) {
 	// Create unique temp directory for this installation
 	installID := uuid.New().String()
@@ -52,19 +78,19 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 	}
 
 	if err := s.cloneRepo(req.RepositoryURL, gitRef, repoDir); err != nil {
-		return nil, fmt.Errorf("failed to clone repository: %w", err)
+		return nil, &ValidationError{Err: fmt.Errorf("failed to clone repository: %w", err)}
 	}
 
 	// Parse plugin.yaml
 	pluginDefPath := filepath.Join(repoDir, "plugin.yaml")
 	pluginDef, err := s.parsePluginDefinition(pluginDefPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse plugin definition: %w", err)
+		return nil, &ValidationError{Err: fmt.Errorf("failed to parse plugin definition: %w", err)}
 	}
 
 	// Validate plugin definition
 	if err := s.validatePluginDefinition(pluginDef); err != nil {
-		return nil, fmt.Errorf("invalid plugin definition: %w", err)
+		return nil, &ValidationError{Err: fmt.Errorf("invalid plugin definition: %w", err)}
 	}
 
 	// Check if plugin already exists
@@ -78,6 +104,10 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 	if err != nil {
 		log.Printf("Warning: Failed to get commit hash: %v", err)
 		commitHash = ""
+	}
+
+	if err := s.validateRuntimeBuild(pluginDef, req.RepositoryURL, gitRef, commitHash); err != nil {
+		return nil, &ValidationError{Err: err}
 	}
 
 	// Create plugin metadata (no binary - workers will compile from source)
@@ -118,7 +148,7 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 		return nil, fmt.Errorf("failed to save plugin: %w", err)
 	}
 
-	log.Printf("Successfully installed plugin %s version %s (workers will compile from source)", plugin.Name, plugin.Version)
+	log.Printf("Successfully installed plugin %s version %s", plugin.Name, plugin.Version)
 	return plugin, nil
 }
 
@@ -134,7 +164,9 @@ func (s *Service) GetPluginMetadata(name string) (*models.Plugin, error) {
 
 // UninstallPlugin removes a plugin
 func (s *Service) UninstallPlugin(name string) error {
-	// Remove from database
+	// Remove from database. Already loaded Go plugin code cannot be unloaded from
+	// running worker/orchestrator processes; new tasks will stop resolving it from
+	// metadata, but old processes may retain opened symbols until they exit.
 	return s.store.DeletePlugin(name)
 }
 
@@ -153,32 +185,39 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 
 	// Clone repository
 	if gitRef == "" {
-		gitRef = "main"
+		if existing.GitCommitHash != "" {
+			gitRef = existing.GitCommitHash
+		} else {
+			gitRef = "main"
+		}
 	}
 
 	if err := s.cloneRepo(existing.RepositoryURL, gitRef, repoDir); err != nil {
-		return nil, fmt.Errorf("failed to clone repository: %w", err)
+		return nil, &ValidationError{Err: fmt.Errorf("failed to clone repository: %w", err)}
 	}
 
 	// Parse plugin definition
 	pluginDefPath := filepath.Join(repoDir, "plugin.yaml")
 	pluginDef, err := s.parsePluginDefinition(pluginDefPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse plugin definition: %w", err)
+		return nil, &ValidationError{Err: fmt.Errorf("failed to parse plugin definition: %w", err)}
 	}
 
 	// Validate
 	if err := s.validatePluginDefinition(pluginDef); err != nil {
-		return nil, fmt.Errorf("invalid plugin definition: %w", err)
+		return nil, &ValidationError{Err: fmt.Errorf("invalid plugin definition: %w", err)}
 	}
 
 	// Ensure name matches
 	if pluginDef.Name != name {
-		return nil, fmt.Errorf("plugin name mismatch: expected %s, got %s", name, pluginDef.Name)
+		return nil, &ValidationError{Err: fmt.Errorf("plugin name mismatch: expected %s, got %s", name, pluginDef.Name)}
 	}
 
 	// Get commit hash
 	commitHash, _ := s.getCommitHash(repoDir)
+	if err := s.validateRuntimeBuild(pluginDef, existing.RepositoryURL, gitRef, commitHash); err != nil {
+		return nil, &ValidationError{Err: err}
+	}
 
 	// Update metadata (no binary - workers will compile from source)
 	now := time.Now()
@@ -210,8 +249,54 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 		return nil, fmt.Errorf("failed to save updated plugin: %w", err)
 	}
 
-	log.Printf("Successfully updated plugin %s to version %s (workers will compile from source)", name, existing.Version)
+	log.Printf("Successfully updated plugin %s to version %s", name, existing.Version)
 	return existing, nil
+}
+
+func (s *Service) validateRuntimeBuild(def *models.PluginDefinition, repoURL, gitRef, commitHash string) error {
+	if len(def.Actions) > 0 {
+		loader, err := pluginruntime.NewLoader(pluginruntime.BuildSpec[pipeline.Plugin]{
+			LogPrefix:      "pipeline plugin validation",
+			AppDir:         s.appDir,
+			CacheDir:       filepath.Join(s.tempDir, "validation-cache", "pipeline"),
+			TempDir:        filepath.Join(s.tempDir, "validation-cache", "pipeline", "tmp"),
+			HostPackageDir: "plugins",
+			ClonePrefix:    "pp-validate",
+			SymbolName:     "Plugin",
+			DefaultGitRef:  "main",
+			Resolver:       pluginruntime.ResolveSymbol[pipeline.Plugin],
+		})
+		if err != nil {
+			return fmt.Errorf("pipeline plugin validation unavailable: %w", err)
+		}
+		if _, _, err := loader.CompileAndLoad(def.Name, repoURL, gitRef, commitHash); err != nil {
+			return fmt.Errorf("pipeline plugin validation failed: %w", err)
+		}
+	}
+	if def.MLProvider != nil {
+		providerName := def.MLProvider.Name
+		if providerName == "" {
+			providerName = def.Name
+		}
+		loader, err := pluginruntime.NewLoader(pluginruntime.BuildSpec[mlmodel.Provider]{
+			LogPrefix:      "ml provider validation",
+			AppDir:         s.appDir,
+			CacheDir:       filepath.Join(s.tempDir, "validation-cache", "ml"),
+			TempDir:        filepath.Join(s.tempDir, "validation-cache", "ml", "tmp"),
+			HostPackageDir: "plugins",
+			ClonePrefix:    "mlp-validate",
+			SymbolName:     "MLProvider",
+			DefaultGitRef:  "main",
+			Resolver:       pluginruntime.ResolveSymbol[mlmodel.Provider],
+		})
+		if err != nil {
+			return fmt.Errorf("ml provider validation unavailable: %w", err)
+		}
+		if _, _, err := loader.CompileAndLoad(providerName, repoURL, gitRef, commitHash); err != nil {
+			return fmt.Errorf("ml provider validation failed: %w", err)
+		}
+	}
+	return nil
 }
 
 // cloneRepo clones a Git repository to the specified directory

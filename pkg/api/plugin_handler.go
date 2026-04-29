@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -92,6 +93,11 @@ func (h *PluginHandler) handleInstall(w http.ResponseWriter, r *http.Request) {
 
 	plugin, err := h.service.InstallPlugin(&req)
 	if err != nil {
+		var validationErr *plugins.ValidationError
+		if errors.As(err, &validationErr) {
+			http.Error(w, fmt.Sprintf("Failed to install plugin: %v", err), http.StatusUnprocessableEntity)
+			return
+		}
 		http.Error(w, fmt.Sprintf("Failed to install plugin: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -134,6 +140,11 @@ func (h *PluginHandler) handleUpdate(w http.ResponseWriter, r *http.Request, plu
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		var validationErr *plugins.ValidationError
+		if errors.As(err, &validationErr) {
+			http.Error(w, fmt.Sprintf("Failed to update plugin: %v", err), http.StatusUnprocessableEntity)
 			return
 		}
 		http.Error(w, fmt.Sprintf("Failed to update plugin: %v", err), http.StatusInternalServerError)

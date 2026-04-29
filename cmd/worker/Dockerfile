@@ -17,13 +17,9 @@ COPY . .
 # Use -trimpath to ensure reproducible builds for plugin compatibility
 RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/worker ./cmd/worker
 
-# Runtime stage - smaller base image with just what we need
-FROM debian:bookworm-slim
-
-# Install runtime dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates git && \
-    rm -rf /var/lib/apt/lists/*
+# Runtime stage — includes the Go toolchain because pipeline and ML provider plugins
+# are compiled with `go build -buildmode=plugin` inside worker pods.
+FROM golang:1.25
 
 WORKDIR /app
 
@@ -35,8 +31,8 @@ COPY --from=builder /app/go.mod /app/go.sum ./
 COPY --from=builder /app/pkg ./pkg
 COPY --from=builder /app/cmd ./cmd
 
-# Create directory for model artifacts
-RUN mkdir -p /tmp/models /tmp/plugins
+# Create directories for model artifacts and runtime plugin caches
+RUN mkdir -p /tmp/models /tmp/plugins /tmp/plugins/ml
 
 # Run the worker
 CMD ["./worker"]

@@ -187,15 +187,13 @@ func executePipeline(task *models.WorkTask) (*models.WorkTaskResult, error) {
 		log.Printf("Compiling plugin: %s", pluginName)
 		pluginPath, err := pluginClient.CompilePlugin(pluginName)
 		if err != nil {
-			log.Printf("Warning: Failed to compile plugin %s: %v", pluginName, err)
-			continue
+			return nil, fmt.Errorf("failed to compile plugin %s: %w", pluginName, err)
 		}
 
 		log.Printf("Loading plugin from: %s", pluginPath)
 		pluginInstance, err := pluginClient.LoadPlugin(pluginName)
 		if err != nil {
-			log.Printf("Warning: Failed to load plugin %s: %v", pluginName, err)
-			continue
+			return nil, fmt.Errorf("failed to load plugin %s: %w", pluginName, err)
 		}
 
 		pluginRegistry.Register(pluginName, pluginInstance)

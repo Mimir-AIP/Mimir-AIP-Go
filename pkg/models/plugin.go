@@ -26,6 +26,7 @@ type Plugin struct {
 	UpdatedAt        time.Time        `json:"updated_at"`
 	LastLoadedAt     *time.Time       `json:"last_loaded_at,omitempty"`
 	Actions          []PluginAction   `json:"actions"`
+	Artifacts        []PluginArtifact `json:"artifacts,omitempty"`
 }
 
 // PluginDefinition represents the parsed plugin.yaml content

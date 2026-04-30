@@ -519,6 +519,30 @@ CREATE INDEX IF NOT EXISTS idx_dt_predictions_twin_id ON dt_predictions(twin_id)
 CREATE INDEX IF NOT EXISTS idx_dt_predictions_entity_id ON dt_predictions(entity_id);
 CREATE INDEX IF NOT EXISTS idx_dt_predictions_cached_until ON dt_predictions(cached_until);
 
+	CREATE TABLE IF NOT EXISTS plugin_artifacts (
+		id TEXT PRIMARY KEY,
+		plugin_kind TEXT NOT NULL,
+		plugin_name TEXT NOT NULL,
+		source_repository TEXT NOT NULL,
+		source_ref TEXT NOT NULL,
+		source_commit TEXT NOT NULL,
+		digest TEXT NOT NULL,
+		local_path TEXT NOT NULL,
+		size_bytes INTEGER NOT NULL,
+		go_version TEXT NOT NULL,
+		goos TEXT NOT NULL,
+		goarch TEXT NOT NULL,
+		host_version TEXT NOT NULL,
+		symbol_name TEXT NOT NULL,
+		status TEXT NOT NULL,
+		error_message TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		UNIQUE(plugin_kind, plugin_name, source_commit, host_version, go_version, goos, goarch, symbol_name)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_plugin_artifacts_lookup ON plugin_artifacts(plugin_kind, plugin_name, status);
+
 	CREATE TABLE IF NOT EXISTS external_storage_plugins (
 		name TEXT PRIMARY KEY,
 		version TEXT NOT NULL DEFAULT '',

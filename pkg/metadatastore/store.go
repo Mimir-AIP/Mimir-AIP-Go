@@ -40,6 +40,11 @@ type MetadataStore interface {
 	ListPlugins() ([]*models.Plugin, error)
 	DeletePlugin(name string) error
 	UpdatePluginStatus(name string, status models.PluginStatus) error
+	SavePluginArtifact(artifact *models.PluginArtifact) error
+	GetPluginArtifact(id string) (*models.PluginArtifact, error)
+	GetActivePluginArtifact(kind models.PluginKind, name string) (*models.PluginArtifact, error)
+	ListPluginArtifacts(kind models.PluginKind, name string) ([]*models.PluginArtifact, error)
+	DeletePluginArtifacts(kind models.PluginKind, name string) error
 
 	// External storage plugin operations
 	SaveExternalStoragePlugin(plugin *models.ExternalStoragePlugin) error

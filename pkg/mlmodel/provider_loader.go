@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/pluginruntime"
 )
 
@@ -38,10 +39,11 @@ func (s *Service) loadExternalProvider(name string) (Provider, error) {
 	if plugin.PluginDefinition.MLProvider == nil {
 		return nil, fmt.Errorf("plugin %s does not declare an ML provider", name)
 	}
-	if _, _, err := s.providerLoader.CompileAndLoad(name, plugin.RepositoryURL, plugin.GitCommitHash, plugin.GitCommitHash); err != nil {
-		return nil, fmt.Errorf("failed to compile provider %s: %w", name, err)
+	artifact, err := s.store.GetActivePluginArtifact(models.PluginKindMLProvider, name)
+	if err != nil {
+		return nil, fmt.Errorf("provider artifact not found: %w", err)
 	}
-	provider, err := s.providerLoader.LoadCached(name)
+	provider, err := s.providerLoader.LoadPath(name, artifact.LocalPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load provider %s: %w", name, err)
 	}

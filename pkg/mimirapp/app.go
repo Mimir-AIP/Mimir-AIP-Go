@@ -247,6 +247,9 @@ func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *
 	pluginHandler := api.NewPluginHandler(pluginService)
 	server.RegisterHandler("/api/plugins", pluginHandler.HandlePlugins)
 	server.RegisterHandler("/api/plugins/", pluginHandler.HandlePlugin)
+	artifactHandler := api.NewPluginArtifactHandler(pluginService)
+	server.RegisterHandler("/api/plugin-artifacts", artifactHandler.HandleArtifacts)
+	server.RegisterHandler("/api/plugin-artifacts/", artifactHandler.HandleArtifact)
 
 	storageHandler := api.NewStorageHandler(storageService)
 	server.RegisterHandler("/api/storage/configs", storageHandler.HandleStorageConfigs)

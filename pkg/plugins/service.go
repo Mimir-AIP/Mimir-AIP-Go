@@ -202,6 +202,26 @@ func (s *Service) UninstallPlugin(name string) error {
 	return s.store.DeletePlugin(name)
 }
 
+func (s *Service) GetActiveArtifact(kind models.PluginKind, name string) (*models.PluginArtifact, error) {
+	return s.store.GetActivePluginArtifact(kind, name)
+}
+
+func (s *Service) GetArtifact(id string) (*models.PluginArtifact, error) {
+	return s.store.GetPluginArtifact(id)
+}
+
+func (s *Service) OpenArtifact(id string) (*models.PluginArtifact, *os.File, error) {
+	artifact, err := s.store.GetPluginArtifact(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	file, err := s.artifactStore.Open(artifact.LocalPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open plugin artifact: %w", err)
+	}
+	return artifact, file, nil
+}
+
 // UpdatePlugin updates a plugin to the latest version from Git
 func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, error) {
 	// Get existing plugin

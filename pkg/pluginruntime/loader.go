@@ -183,10 +183,13 @@ func (l *Loader[T]) CompileAndLoad(name, repoURL, gitRef, commitHash string) (T,
 
 // LoadCached loads a previously compiled extension from the shared cache.
 func (l *Loader[T]) LoadCached(name string) (T, error) {
+	return l.LoadPath(name, l.SoPath(name))
+}
+
+func (l *Loader[T]) LoadPath(name, artifactPath string) (T, error) {
 	var zero T
-	artifactPath := l.SoPath(name)
 	if _, err := os.Stat(artifactPath); os.IsNotExist(err) {
-		return zero, fmt.Errorf("%s: no cached .so for %s", l.spec.LogPrefix, name)
+		return zero, fmt.Errorf("%s: no .so for %s at %s", l.spec.LogPrefix, name, artifactPath)
 	}
 	plug, err := plugin.Open(artifactPath)
 	if err != nil {

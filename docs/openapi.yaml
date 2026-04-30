@@ -1334,6 +1334,10 @@ components:
                     items:
                         $ref: '#/components/schemas/PluginAction'
                     type: array
+                artifacts:
+                    items:
+                        $ref: '#/components/schemas/PluginArtifact'
+                    type: array
                 author:
                     description: Plugin author
                     type: string
@@ -1396,6 +1400,66 @@ components:
                 - id
                 - plugin_id
                 - name
+            type: object
+        PluginArtifact:
+            properties:
+                created_at:
+                    description: ISO-8601 creation timestamp
+                    type: string
+                digest:
+                    description: SHA-256 artifact digest
+                    type: string
+                error_message:
+                    description: Build/load error if status=error
+                    type: string
+                go_version:
+                    description: Go version used to compile the artifact
+                    type: string
+                goarch:
+                    description: Target GOARCH
+                    type: string
+                goos:
+                    description: Target GOOS
+                    type: string
+                host_version:
+                    description: Mimir host version used for build compatibility
+                    type: string
+                id:
+                    description: Artifact ID
+                    type: string
+                plugin_kind:
+                    description: pipeline | ml_provider | storage | llm_provider
+                    type: string
+                plugin_name:
+                    description: Plugin or provider name
+                    type: string
+                size_bytes:
+                    description: Artifact size in bytes
+                    type: integer
+                source_commit:
+                    description: Resolved source commit
+                    type: string
+                source_ref:
+                    description: Requested Git ref
+                    type: string
+                source_repository:
+                    description: Git repository URL
+                    type: string
+                status:
+                    description: building | active | error
+                    type: string
+                symbol_name:
+                    description: Runtime symbol loaded from the artifact
+                    type: string
+                updated_at:
+                    description: ISO-8601 update timestamp
+                    type: string
+            required:
+                - id
+                - plugin_kind
+                - plugin_name
+                - digest
+                - status
             type: object
         PluginDefinition:
             properties:
@@ -4511,6 +4575,82 @@ paths:
             summary: Webhook-trigger pipeline
             tags:
                 - Pipelines
+    /api/plugin-artifacts:
+        get:
+            description: Returns the active orchestrator-built artifact for a plugin kind/name pair. Workers use this metadata before downloading and verifying the artifact.
+            parameters:
+                - description: 'Plugin kind: pipeline | ml_provider | storage | llm_provider'
+                  in: query
+                  name: kind
+                  required: true
+                  schema:
+                    type: string
+                - description: Plugin or provider name
+                  in: query
+                  name: name
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PluginArtifact'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "404":
+                    description: Resource not found
+            summary: Get active plugin artifact
+            tags:
+                - Plugins
+    /api/plugin-artifacts/{id}:
+        get:
+            description: Returns metadata for one stored plugin artifact.
+            parameters:
+                - description: Artifact ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PluginArtifact'
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Get plugin artifact metadata
+            tags:
+                - Plugins
+    /api/plugin-artifacts/{id}/download:
+        get:
+            description: Streams the compiled .so artifact. Workers verify the SHA-256 digest from artifact metadata before loading it.
+            parameters:
+                - description: Artifact ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                description: Compiled Go plugin artifact
+                                format: binary
+                                type: string
+                    description: 200 OK
+                "404":
+                    description: Resource not found
+            summary: Download plugin artifact
+            tags:
+                - Plugins
     /api/plugins:
         get:
             description: Returns plugins installed from plugin.yaml manifests. Entries may expose pipeline actions, ML provider metadata, or both.

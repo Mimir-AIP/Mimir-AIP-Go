@@ -35,6 +35,15 @@
 		return value ? String(value).slice(0, 12) : '—';
 	}
 
+	function activeArtifact(row, kind) {
+		return (row?.artifacts || []).find(artifact => artifact.plugin_kind === kind && artifact.status === 'active');
+	}
+
+	function shortDigest(value) {
+		if (!value) return '—';
+		return String(value).replace(/^sha256:/, '').slice(0, 12);
+	}
+
 	pages.PluginsPage = function PluginsPage() {
 		const [activeTab, setActiveTab] = React.useState(TAB_PIPELINE);
 		const [plugins, setPlugins] = React.useState([]);
@@ -148,12 +157,14 @@
 			{ key: 'version', label: 'Version' },
 			{ key: 'actions', label: 'Actions', render: row => pluginActions(row).map(action => action.name).join(', ') || '—' },
 			{ key: 'git_commit_hash', label: 'Commit', render: row => shortCommit(row.git_commit_hash) },
+			{ key: 'artifact', label: 'Artifact', render: row => shortDigest(activeArtifact(row, 'pipeline')?.digest) },
 			{ key: 'status', label: 'Status', render: row => statusBadge(row.status) },
 		];
 		const providerColumns = [
 			{ key: 'name', label: 'Provider' },
 			{ key: 'display_name', label: 'Display Name' },
 			{ key: 'source', label: 'Source' },
+			{ key: 'artifact', label: 'Artifact', render: row => shortDigest(activeArtifact(row.plugin, 'ml_provider')?.digest) },
 			{ key: 'models', label: 'Models', render: row => (row.models || []).map(model => model.display_name || model.name).join(', ') || '—' },
 			{ key: 'capabilities', label: 'Capabilities', render: row => (row.capabilities || []).join(', ') || '—' },
 		];

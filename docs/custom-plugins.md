@@ -7,7 +7,7 @@ Mimir has four runtime extension surfaces:
 3. **Storage plugins** installed through `/api/storage-plugins` and loaded by the orchestrator.
 4. **LLM provider plugins** installed through `/api/llm/providers` and loaded by the orchestrator.
 
-All four use the shared Go plugin runtime loader, but they do **not** share one cache directory. Cache paths are owned by the subsystem that loads the plugin. Go plugins are trusted in-process code: install only repositories you control or have audited.
+All four use the shared Go plugin runtime loader. Pipeline and ML provider plugins are built once by the orchestrator into Mimir's embedded artifact store; workers download verified artifacts from the orchestrator API rather than cloning or compiling source. Storage and LLM plugins are currently loaded by the orchestrator directly. Go plugins are trusted in-process code: install only repositories you control or have audited.
 
 ---
 
@@ -17,9 +17,9 @@ The loader clones the repository, optionally checks out the requested ref, flatt
 
 Important consequences:
 
-- The orchestrator validates `/api/plugins` installs against the current host before metadata is saved. Workers still compile their own local artifact before task execution.
+- The orchestrator validates `/api/plugins` installs, compiles pipeline/ML provider artifacts, stores them under Mimir's managed artifact directory, and records SHA-256 provenance before metadata is used by workers.
+- Workers fetch compiled artifacts from `/api/plugin-artifacts/{id}/download`, verify the digest, cache locally, and call `plugin.Open`; local and cluster workers follow the same path.
 - Storage and LLM providers are compiled and opened by the orchestrator during install.
-- The worker image must include the Go toolchain and CGO support because pipeline and ML provider plugins compile inside worker pods.
 - Use immutable commit SHAs for production installs. Branch names such as `main` are convenient for development but are not repeatable.
 - Go plugins cannot be unloaded from a running process. Deleting a plugin removes metadata/cache entries for future operations, but already opened symbols may remain until the worker/orchestrator process exits.
 - Plugins run with the privileges of the process that loads them, including filesystem, network, and environment access.
@@ -287,8 +287,8 @@ The provider name is derived from the repository name. Activate an external prov
 
 - Prefer commit SHAs over branches for production installs.
 - Treat plugin repositories as privileged code. Review them like changes to the orchestrator or worker.
-- Expect first use on a new worker pod to pay clone/build cost unless artifacts have been prewarmed.
-- In distributed clusters, use rollout policies that avoid cold-start compile storms for the same plugin.
+- Expect first use on a new worker pod to pay artifact download cost, not clone/build cost.
+- In single-orchestrator cluster deployments, keep the orchestrator storage directory on persistent disk so embedded plugin artifacts survive restarts.
 - Restart workers/orchestrators after uninstalling or replacing plugins when strict removal is required.
 
 ---

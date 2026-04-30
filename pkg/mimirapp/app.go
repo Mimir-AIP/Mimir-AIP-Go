@@ -104,7 +104,7 @@ func Run(cfg *config.Config, options Options) error {
 	}
 
 	tempDir := filepath.Join(storageDir, "temp")
-	pluginService, err := plugins.NewService(store, tempDir)
+	pluginService, err := plugins.NewService(store, tempDir, filepath.Join(storageDir, "plugin-artifacts"))
 	if err != nil {
 		return fmt.Errorf("initialize plugin service: %w", err)
 	}

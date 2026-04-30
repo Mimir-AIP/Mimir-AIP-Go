@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,13 +30,14 @@ func (e *ValidationError) Unwrap() error { return e.Err }
 
 // Service provides plugin metadata management.
 type Service struct {
-	store   metadatastore.MetadataStore
-	tempDir string // Directory for temporary Git clones and validation builds
-	appDir  string // Host module root used for install-time plugin validation builds
+	store         metadatastore.MetadataStore
+	tempDir       string // Directory for temporary Git clones and validation builds
+	appDir        string // Host module root used for install-time plugin validation builds
+	artifactStore *ArtifactStore
 }
 
 // NewService creates a new plugin service.
-func NewService(store metadatastore.MetadataStore, tempDir string) (*Service, error) {
+func NewService(store metadatastore.MetadataStore, tempDir string, artifactDir ...string) (*Service, error) {
 	// Create temp directory if it doesn't exist
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
@@ -52,10 +54,20 @@ func NewService(store metadatastore.MetadataStore, tempDir string) (*Service, er
 		}
 	}
 
+	storeDir := filepath.Join(filepath.Dir(tempDir), "plugin-artifacts")
+	if len(artifactDir) > 0 && artifactDir[0] != "" {
+		storeDir = artifactDir[0]
+	}
+	artifacts, err := NewArtifactStore(storeDir)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Service{
-		store:   store,
-		tempDir: tempDir,
-		appDir:  appDir,
+		store:         store,
+		tempDir:       tempDir,
+		appDir:        appDir,
+		artifactStore: artifacts,
 	}, nil
 }
 
@@ -106,7 +118,8 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 		commitHash = ""
 	}
 
-	if err := s.validateRuntimeBuild(pluginDef, req.RepositoryURL, gitRef, commitHash); err != nil {
+	artifacts, err := s.buildRuntimeArtifacts(pluginDef, req.RepositoryURL, gitRef, commitHash)
+	if err != nil {
 		return nil, &ValidationError{Err: err}
 	}
 
@@ -127,6 +140,7 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		Actions:          make([]models.PluginAction, 0),
+		Artifacts:        artifacts,
 	}
 
 	// Create action entries
@@ -143,6 +157,12 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 		plugin.Actions = append(plugin.Actions, action)
 	}
 
+	for i := range artifacts {
+		if err := s.store.SavePluginArtifact(&artifacts[i]); err != nil {
+			return nil, fmt.Errorf("failed to save plugin artifact: %w", err)
+		}
+	}
+
 	// Save metadata to database (no binary)
 	if err := s.store.SavePlugin(plugin, nil); err != nil {
 		return nil, fmt.Errorf("failed to save plugin: %w", err)
@@ -154,12 +174,24 @@ func (s *Service) InstallPlugin(req *models.PluginInstallRequest) (*models.Plugi
 
 // ListPlugins lists all installed plugins
 func (s *Service) ListPlugins() ([]*models.Plugin, error) {
-	return s.store.ListPlugins()
+	plugins, err := s.store.ListPlugins()
+	if err != nil {
+		return nil, err
+	}
+	for _, plugin := range plugins {
+		_ = s.attachPluginArtifacts(plugin)
+	}
+	return plugins, nil
 }
 
 // GetPluginMetadata retrieves plugin metadata from the database
 func (s *Service) GetPluginMetadata(name string) (*models.Plugin, error) {
-	return s.store.GetPlugin(name)
+	plugin, err := s.store.GetPlugin(name)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.attachPluginArtifacts(plugin)
+	return plugin, nil
 }
 
 // UninstallPlugin removes a plugin
@@ -215,7 +247,8 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 
 	// Get commit hash
 	commitHash, _ := s.getCommitHash(repoDir)
-	if err := s.validateRuntimeBuild(pluginDef, existing.RepositoryURL, gitRef, commitHash); err != nil {
+	artifacts, err := s.buildRuntimeArtifacts(pluginDef, existing.RepositoryURL, gitRef, commitHash)
+	if err != nil {
 		return nil, &ValidationError{Err: err}
 	}
 
@@ -228,6 +261,7 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 	existing.PluginDefinition = *pluginDef
 	existing.UpdatedAt = now
 	existing.Status = models.PluginStatusActive
+	existing.Artifacts = artifacts
 
 	// Update actions
 	existing.Actions = make([]models.PluginAction, 0)
@@ -244,6 +278,12 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 		existing.Actions = append(existing.Actions, action)
 	}
 
+	for i := range artifacts {
+		if err := s.store.SavePluginArtifact(&artifacts[i]); err != nil {
+			return nil, fmt.Errorf("failed to save plugin artifact: %w", err)
+		}
+	}
+
 	// Save to database (no binary)
 	if err := s.store.SavePlugin(existing, nil); err != nil {
 		return nil, fmt.Errorf("failed to save updated plugin: %w", err)
@@ -253,25 +293,32 @@ func (s *Service) UpdatePlugin(name string, gitRef string) (*models.Plugin, erro
 	return existing, nil
 }
 
-func (s *Service) validateRuntimeBuild(def *models.PluginDefinition, repoURL, gitRef, commitHash string) error {
+func (s *Service) buildRuntimeArtifacts(def *models.PluginDefinition, repoURL, gitRef, commitHash string) ([]models.PluginArtifact, error) {
+	artifacts := make([]models.PluginArtifact, 0, 2)
 	if len(def.Actions) > 0 {
 		loader, err := pluginruntime.NewLoader(pluginruntime.BuildSpec[pipeline.Plugin]{
-			LogPrefix:      "pipeline plugin validation",
+			LogPrefix:      "pipeline plugin builder",
 			AppDir:         s.appDir,
-			CacheDir:       filepath.Join(s.tempDir, "validation-cache", "pipeline"),
-			TempDir:        filepath.Join(s.tempDir, "validation-cache", "pipeline", "tmp"),
+			CacheDir:       filepath.Join(s.tempDir, "build-cache", "pipeline"),
+			TempDir:        filepath.Join(s.tempDir, "build-cache", "pipeline", "tmp"),
 			HostPackageDir: "plugins",
-			ClonePrefix:    "pp-validate",
+			ClonePrefix:    "pp-build",
 			SymbolName:     "Plugin",
 			DefaultGitRef:  "main",
 			Resolver:       pluginruntime.ResolveSymbol[pipeline.Plugin],
 		})
 		if err != nil {
-			return fmt.Errorf("pipeline plugin validation unavailable: %w", err)
+			return nil, fmt.Errorf("pipeline plugin builder unavailable: %w", err)
 		}
-		if _, _, err := loader.CompileAndLoad(def.Name, repoURL, gitRef, commitHash); err != nil {
-			return fmt.Errorf("pipeline plugin validation failed: %w", err)
+		_, resolvedCommit, err := loader.CompileAndLoad(def.Name, repoURL, gitRef, commitHash)
+		if err != nil {
+			return nil, fmt.Errorf("pipeline plugin build failed: %w", err)
 		}
+		artifact, err := s.persistBuiltArtifact(models.PluginKindPipeline, def.Name, repoURL, gitRef, resolvedCommit, "Plugin", loader.SoPath(def.Name))
+		if err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, *artifact)
 	}
 	if def.MLProvider != nil {
 		providerName := def.MLProvider.Name
@@ -279,24 +326,87 @@ func (s *Service) validateRuntimeBuild(def *models.PluginDefinition, repoURL, gi
 			providerName = def.Name
 		}
 		loader, err := pluginruntime.NewLoader(pluginruntime.BuildSpec[mlmodel.Provider]{
-			LogPrefix:      "ml provider validation",
+			LogPrefix:      "ml provider builder",
 			AppDir:         s.appDir,
-			CacheDir:       filepath.Join(s.tempDir, "validation-cache", "ml"),
-			TempDir:        filepath.Join(s.tempDir, "validation-cache", "ml", "tmp"),
+			CacheDir:       filepath.Join(s.tempDir, "build-cache", "ml"),
+			TempDir:        filepath.Join(s.tempDir, "build-cache", "ml", "tmp"),
 			HostPackageDir: "plugins",
-			ClonePrefix:    "mlp-validate",
+			ClonePrefix:    "mlp-build",
 			SymbolName:     "MLProvider",
 			DefaultGitRef:  "main",
 			Resolver:       pluginruntime.ResolveSymbol[mlmodel.Provider],
 		})
 		if err != nil {
-			return fmt.Errorf("ml provider validation unavailable: %w", err)
+			return nil, fmt.Errorf("ml provider builder unavailable: %w", err)
 		}
-		if _, _, err := loader.CompileAndLoad(providerName, repoURL, gitRef, commitHash); err != nil {
-			return fmt.Errorf("ml provider validation failed: %w", err)
+		_, resolvedCommit, err := loader.CompileAndLoad(providerName, repoURL, gitRef, commitHash)
+		if err != nil {
+			return nil, fmt.Errorf("ml provider build failed: %w", err)
+		}
+		artifact, err := s.persistBuiltArtifact(models.PluginKindMLProvider, providerName, repoURL, gitRef, resolvedCommit, "MLProvider", loader.SoPath(providerName))
+		if err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, *artifact)
+	}
+	return artifacts, nil
+}
+
+func (s *Service) persistBuiltArtifact(kind models.PluginKind, name, repoURL, gitRef, commitHash, symbolName, builtPath string) (*models.PluginArtifact, error) {
+	localPath, digest, size, err := s.artifactStore.Put(kind, name, builtPath)
+	if err != nil {
+		return nil, fmt.Errorf("persist %s artifact for %s: %w", kind, name, err)
+	}
+	now := time.Now().UTC()
+	return &models.PluginArtifact{
+		ID:               uuid.New().String(),
+		PluginKind:       kind,
+		PluginName:       name,
+		SourceRepository: repoURL,
+		SourceRef:        gitRef,
+		SourceCommit:     commitHash,
+		Digest:           digest,
+		LocalPath:        localPath,
+		SizeBytes:        size,
+		GoVersion:        runtime.Version(),
+		GOOS:             runtime.GOOS,
+		GOARCH:           runtime.GOARCH,
+		HostVersion:      hostVersion(),
+		SymbolName:       symbolName,
+		Status:           models.PluginArtifactStatusActive,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}, nil
+}
+
+func (s *Service) attachPluginArtifacts(plugin *models.Plugin) error {
+	if plugin == nil {
+		return nil
+	}
+	artifacts := make([]models.PluginArtifact, 0)
+	if pipelineArtifacts, err := s.store.ListPluginArtifacts(models.PluginKindPipeline, plugin.Name); err == nil {
+		for _, artifact := range pipelineArtifacts {
+			artifacts = append(artifacts, *artifact)
 		}
 	}
+	providerName := plugin.Name
+	if plugin.PluginDefinition.MLProvider != nil && plugin.PluginDefinition.MLProvider.Name != "" {
+		providerName = plugin.PluginDefinition.MLProvider.Name
+	}
+	if mlArtifacts, err := s.store.ListPluginArtifacts(models.PluginKindMLProvider, providerName); err == nil {
+		for _, artifact := range mlArtifacts {
+			artifacts = append(artifacts, *artifact)
+		}
+	}
+	plugin.Artifacts = artifacts
 	return nil
+}
+
+func hostVersion() string {
+	if version := os.Getenv("MIMIR_VERSION"); version != "" {
+		return version
+	}
+	return "development"
 }
 
 // cloneRepo clones a Git repository to the specified directory

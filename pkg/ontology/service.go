@@ -149,6 +149,19 @@ func (s *Service) GetCompiledOntologyForProject(projectID, ontologyID string) (*
 	return compiled, nil
 }
 
+func (s *Service) ValidateOntology(req *models.OntologyValidationRequest) *models.OntologyValidationResponse {
+	if req == nil {
+		req = &models.OntologyValidationRequest{}
+	}
+	compiled, err := CompileOntologyContent("", req.ProjectID, req.Name, req.Version, req.Content)
+	valid := err == nil && !hasDiagnosticSeverity(compiled.Diagnostics, models.OntologyDiagnosticError)
+	return &models.OntologyValidationResponse{
+		Valid:       valid,
+		Compiled:    compiled,
+		Diagnostics: compiled.Diagnostics,
+	}
+}
+
 // GetProjectOntologies retrieves all ontologies for a project
 func (s *Service) GetProjectOntologies(projectID string) ([]*models.Ontology, error) {
 	return s.store.ListOntologiesByProject(projectID)

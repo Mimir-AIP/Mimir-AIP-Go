@@ -40,6 +40,21 @@ type OntologyUpdateRequest struct {
 	Status      *string `json:"status,omitempty"`
 }
 
+// OntologyValidationRequest validates ontology content without persisting it.
+type OntologyValidationRequest struct {
+	ProjectID string `json:"project_id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Version   string `json:"version,omitempty"`
+	Content   string `json:"content"`
+}
+
+// OntologyValidationResponse returns canonical compiler output and diagnostics.
+type OntologyValidationResponse struct {
+	Valid       bool                 `json:"valid"`
+	Compiled    *CompiledOntology    `json:"compiled,omitempty"`
+	Diagnostics []OntologyDiagnostic `json:"diagnostics,omitempty"`
+}
+
 // Validate checks if the Ontology is valid
 func (o *Ontology) Validate() error {
 	if o.ProjectID == "" {

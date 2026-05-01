@@ -267,6 +267,7 @@ func registerHandlers(server *api.Server, store metadatastore.MetadataStore, q *
 	server.RegisterHandler("/api/storage-plugins/", storagePluginHandler.HandleStoragePlugin)
 
 	ontologyHandler := api.NewOntologyHandler(ontologyService)
+	server.RegisterHandler("/api/ontologies/validate", ontologyHandler.HandleOntologyValidation)
 	server.RegisterHandler("/api/ontologies", ontologyHandler.HandleOntologies)
 	server.RegisterHandler("/api/ontologies/", ontologyHandler.HandleOntology)
 

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -65,5 +67,79 @@ func TestOntologyDeleteReturnsConflictWhenReferenced(t *testing.T) {
 	handler.HandleOntology(resp, req)
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("expected 409 Conflict, got %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestOntologyValidationEndpointReturnsDiagnostics(t *testing.T) {
+	handler, _, cleanup := setupOntologyHandlerTest(t)
+	defer cleanup()
+
+	body := bytes.NewBufferString(`{"content":"@prefix : <http://example.org/mimir#> .\n\n:Sensor a missing:Class ."}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/ontologies/validate", body)
+	resp := httptest.NewRecorder()
+	handler.HandleOntologyValidation(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d body=%s", resp.Code, resp.Body.String())
+	}
+	var validation models.OntologyValidationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&validation); err != nil {
+		t.Fatalf("failed to decode validation response: %v", err)
+	}
+	if validation.Valid {
+		t.Fatalf("expected invalid response")
+	}
+	if len(validation.Diagnostics) == 0 {
+		t.Fatalf("expected diagnostics")
+	}
+}
+
+func TestOntologyCompiledEndpointRequiresProjectOwnership(t *testing.T) {
+	handler, store, cleanup := setupOntologyHandlerTest(t)
+	defer cleanup()
+
+	created, err := ontology.NewService(store).CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "project-a",
+		Name:      "Compiled",
+		Content:   "@prefix : <http://example.org/mimir#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n\n:Entity a owl:Class .",
+		Status:    "draft",
+	})
+	if err != nil {
+		t.Fatalf("CreateOntology failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ontologies/"+created.ID+"/compiled?project_id=project-b", nil)
+	resp := httptest.NewRecorder()
+	handler.HandleOntology(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden, got %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestOntologyCompiledEndpointReturnsCanonicalGraph(t *testing.T) {
+	handler, store, cleanup := setupOntologyHandlerTest(t)
+	defer cleanup()
+
+	created, err := ontology.NewService(store).CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "project-a",
+		Name:      "Compiled",
+		Content:   "@prefix : <http://example.org/mimir#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n\n:Entity a owl:Class .",
+		Status:    "draft",
+	})
+	if err != nil {
+		t.Fatalf("CreateOntology failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ontologies/"+created.ID+"/compiled?project_id=project-a", nil)
+	resp := httptest.NewRecorder()
+	handler.HandleOntology(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d body=%s", resp.Code, resp.Body.String())
+	}
+	var compiled models.CompiledOntology
+	if err := json.NewDecoder(resp.Body).Decode(&compiled); err != nil {
+		t.Fatalf("failed to decode compiled ontology: %v", err)
+	}
+	if len(compiled.Classes) != 1 || compiled.Classes[0].ID != "Entity" {
+		t.Fatalf("unexpected compiled graph: %+v", compiled)
 	}
 }

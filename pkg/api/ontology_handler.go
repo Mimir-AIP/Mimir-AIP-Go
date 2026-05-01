@@ -26,9 +26,12 @@ func NewOntologyHandler(service *ontology.Service) *OntologyHandler {
 func ontologyErrorStatus(err error) int {
 	var projectMismatchErr *ontology.OntologyProjectMismatchError
 	var inUseErr *ontology.OntologyInUseError
+	var validationErr *ontology.OntologyValidationError
 	switch {
 	case err == nil:
 		return http.StatusOK
+	case errors.As(err, &validationErr):
+		return http.StatusBadRequest
 	case errors.As(err, &projectMismatchErr):
 		return http.StatusForbidden
 	case errors.As(err, &inUseErr):
@@ -61,10 +64,37 @@ func (h *OntologyHandler) HandleOntologies(w http.ResponseWriter, r *http.Reques
 // PUT /api/ontologies/{id} - Update ontology
 // DELETE /api/ontologies/{id} - Delete ontology
 func (h *OntologyHandler) HandleOntology(w http.ResponseWriter, r *http.Request) {
-	// Extract ontology ID from path
-	ontologyID := strings.TrimPrefix(r.URL.Path, "/api/ontologies/")
-	if idx := strings.Index(ontologyID, "/"); idx != -1 {
-		ontologyID = ontologyID[:idx]
+	relativePath := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/ontologies/"), "/")
+	parts := strings.Split(relativePath, "/")
+	ontologyID := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = parts[1]
+	}
+
+	if ontologyID == "" {
+		http.Error(w, "ontology ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if action != "" {
+		switch action {
+		case "compiled":
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.handleGetCompiled(w, r, ontologyID)
+		case "diagnostics":
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.handleGetDiagnostics(w, r, ontologyID)
+		default:
+			http.NotFound(w, r)
+		}
+		return
 	}
 
 	switch r.Method {
@@ -77,6 +107,21 @@ func (h *OntologyHandler) HandleOntology(w http.ResponseWriter, r *http.Request)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (h *OntologyHandler) HandleOntologyValidation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req models.OntologyValidationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	resp := h.service.ValidateOntology(&req)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handleList handles GET /api/ontologies
@@ -112,7 +157,7 @@ func (h *OntologyHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	ontology, err := h.service.CreateOntology(&req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create ontology: %v", err), ontologyErrorStatus(err))
+		h.writeOntologyError(w, "Failed to create ontology", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -136,6 +181,36 @@ func (h *OntologyHandler) handleGet(w http.ResponseWriter, r *http.Request, onto
 	json.NewEncoder(w).Encode(ontologyRecord)
 }
 
+func (h *OntologyHandler) handleGetCompiled(w http.ResponseWriter, r *http.Request, ontologyID string) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+	compiled, err := h.service.GetCompiledOntologyForProject(projectID, ontologyID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get compiled ontology: %v", err), ontologyErrorStatus(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(compiled)
+}
+
+func (h *OntologyHandler) handleGetDiagnostics(w http.ResponseWriter, r *http.Request, ontologyID string) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+	compiled, err := h.service.GetCompiledOntologyForProject(projectID, ontologyID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get ontology diagnostics: %v", err), ontologyErrorStatus(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(compiled.Diagnostics)
+}
+
 // handleUpdate handles PUT /api/ontologies/{id}
 func (h *OntologyHandler) handleUpdate(w http.ResponseWriter, r *http.Request, ontologyID string) {
 	projectID := r.URL.Query().Get("project_id")
@@ -150,7 +225,7 @@ func (h *OntologyHandler) handleUpdate(w http.ResponseWriter, r *http.Request, o
 	}
 	ontologyRecord, err := h.service.UpdateOntologyForProject(projectID, ontologyID, &req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update ontology: %v", err), ontologyErrorStatus(err))
+		h.writeOntologyError(w, "Failed to update ontology", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -169,4 +244,15 @@ func (h *OntologyHandler) handleDelete(w http.ResponseWriter, r *http.Request, o
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *OntologyHandler) writeOntologyError(w http.ResponseWriter, prefix string, err error) {
+	var validationErr *ontology.OntologyValidationError
+	if errors.As(err, &validationErr) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(models.OntologyValidationResponse{Valid: false, Diagnostics: validationErr.Diagnostics})
+		return
+	}
+	http.Error(w, fmt.Sprintf("%s: %v", prefix, err), ontologyErrorStatus(err))
 }

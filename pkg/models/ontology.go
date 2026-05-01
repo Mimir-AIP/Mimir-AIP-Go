@@ -63,6 +63,40 @@ type OntologySearchResult struct {
 	Diagnostic string             `json:"diagnostic,omitempty"`
 }
 
+// OntologyRetrieveRequest retrieves stored CIR records through compiled ontology semantics.
+type OntologyRetrieveRequest struct {
+	ProjectID  string                   `json:"project_id"`
+	ClassID    string                   `json:"class"`
+	Properties []string                 `json:"properties,omitempty"`
+	Filters    []OntologyRetrieveFilter `json:"filters,omitempty"`
+	StorageIDs []string                 `json:"storage_ids,omitempty"`
+	Limit      int                      `json:"limit,omitempty"`
+}
+
+// OntologyRetrieveFilter filters ontology-backed CIR properties.
+type OntologyRetrieveFilter struct {
+	Property string      `json:"property"`
+	Operator string      `json:"operator"`
+	Value    interface{} `json:"value"`
+}
+
+// OntologyRetrieveResponse returns CIR records projected through ontology terms.
+type OntologyRetrieveResponse struct {
+	OntologyID  string                   `json:"ontology_id"`
+	ContentHash string                   `json:"content_hash"`
+	Results     []OntologyRetrieveResult `json:"results"`
+	Count       int                      `json:"count"`
+}
+
+// OntologyRetrieveResult is one ontology-backed stored CIR match.
+type OntologyRetrieveResult struct {
+	StorageID  string                     `json:"storage_id"`
+	ClassID    string                     `json:"class_id"`
+	Properties map[string]interface{}     `json:"properties"`
+	Source     CIRSource                  `json:"source"`
+	Violations []SemanticMappingViolation `json:"violations,omitempty"`
+}
+
 // Validate checks if the Ontology is valid
 func (o *Ontology) Validate() error {
 	if o.ProjectID == "" {

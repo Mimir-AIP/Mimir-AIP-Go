@@ -1214,9 +1214,13 @@ func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology
 		return fmt.Errorf("failed to retrieve CIR data from storage %s: %w", storageID, err)
 	}
 
-	// Build ontology class names for entity type inference.
+	// Build ontology class names from the persisted compiled ontology. Metadata is a fallback for old rows.
 	var classNames []string
-	if entityTypes, ok := twin.Metadata["entity_types"]; ok {
+	if compiled, err := s.ontologyService.GetCompiledOntologyForProject(twin.ProjectID, twin.OntologyID); err == nil {
+		for _, class := range compiled.Classes {
+			classNames = append(classNames, class.ID)
+		}
+	} else if entityTypes, ok := twin.Metadata["entity_types"]; ok {
 		if etMap, ok := entityTypes.(map[string]interface{}); ok {
 			for name := range etMap {
 				classNames = append(classNames, name)
@@ -1263,12 +1267,25 @@ func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology
 		}
 
 		entityType := inferEntityTypeFromCIR(cir, classNames)
-		sourceID := cir.Source.URI
-
 		attrs := make(map[string]interface{}, len(dataMap))
-		for k, v := range dataMap {
-			attrs[k] = v
+		if cir.Metadata.Ontology != nil {
+			if cir.Metadata.Ontology.ClassID != "" {
+				entityType = cir.Metadata.Ontology.ClassID
+			}
+			for propertyID, property := range cir.Metadata.Ontology.Properties {
+				attrs[propertyID] = property.Value
+			}
+			if len(attrs) == 0 {
+				for k, v := range dataMap {
+					attrs[k] = v
+				}
+			}
+		} else {
+			for k, v := range dataMap {
+				attrs[k] = v
+			}
 		}
+		sourceID := cir.Source.URI
 
 		// Attempt entity resolution: find an existing entity of the same type
 		// that shares a key-field value with this CIR record.
@@ -1292,6 +1309,12 @@ func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology
 			mergeEntityAttributes(resolved, attrs, storageID, cir.Source.Timestamp.UTC(), policy)
 			appendSourceID(resolved, storageID)
 			resolved.UpdatedAt = now
+			if cir.Metadata.Ontology != nil {
+				if resolved.ComputedValues == nil {
+					resolved.ComputedValues = map[string]interface{}{}
+				}
+				resolved.ComputedValues["ontology_mapping"] = semanticMappingSummary(cir.Metadata.Ontology)
+			}
 
 			if err := s.store.SaveEntity(resolved); err != nil {
 				fmt.Printf("Warning: failed to merge entity from storage %s: %v\n", storageID, err)
@@ -1316,6 +1339,7 @@ func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology
 					"attribute_sources":        attributeSourceMap(attrs, storageID),
 					"attribute_timestamps":     attributeTimestampMap(attrs, cir.Source.Timestamp.UTC()),
 					"reconciliation_conflicts": map[string]interface{}{},
+					"ontology_mapping":         semanticMappingSummary(cir.Metadata.Ontology),
 				},
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -1335,6 +1359,21 @@ func (s *Service) syncFromStorage(twin *models.DigitalTwin, ont *models.Ontology
 	}
 
 	return nil
+}
+
+func semanticMappingSummary(mapping *models.CIRSemanticMapping) map[string]interface{} {
+	if mapping == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"ontology_id":     mapping.OntologyID,
+		"content_hash":    mapping.ContentHash,
+		"class_id":        mapping.ClassID,
+		"matched_by":      mapping.MatchedBy,
+		"property_count":  len(mapping.Properties),
+		"unmapped_fields": mapping.UnmappedFields,
+		"violations":      mapping.Violations,
+	}
 }
 
 func defaultReconciliationPolicy(twin *models.DigitalTwin) *models.TwinReconciliationPolicy {

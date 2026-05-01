@@ -86,6 +86,73 @@ func setupDigitalTwinService(t *testing.T) (*Service, *storage.Service, *queue.Q
 	}
 }
 
+func TestSyncWithStorageUsesSemanticCIRMapping(t *testing.T) {
+	service, storageSvc, _, cleanup := setupDigitalTwinService(t)
+	defer cleanup()
+	projectID := "project-semantic"
+
+	now := time.Now().UTC()
+	if err := service.store.SaveProject(&models.Project{ID: projectID, Name: projectID, Status: models.ProjectStatusActive, Metadata: models.ProjectMetadata{CreatedAt: now, UpdatedAt: now}}); err != nil {
+		t.Fatalf("failed to seed project: %v", err)
+	}
+	ontologyRecord, err := ontology.NewService(service.store).CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: projectID,
+		Name:      "Readings",
+		Content: `@prefix : <http://example.org/mimir#> .
+		@prefix owl: <http://www.w3.org/2002/07/owl#> .
+		@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+		@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+		:SensorReading a owl:Class .
+		:temperature a owl:DatatypeProperty ;
+		  rdfs:domain :SensorReading ;
+		  rdfs:range xsd:decimal .`,
+		Status: "active",
+	})
+	if err != nil {
+		t.Fatalf("failed to create ontology: %v", err)
+	}
+
+	cir := models.NewCIR(models.SourceTypeAPI, "api://readings", models.DataFormatJSON, map[string]interface{}{"rawTemp": 21.5})
+	cir.Metadata.Ontology = &models.CIRSemanticMapping{
+		OntologyID:  ontologyRecord.ID,
+		ContentHash: "sha256:test",
+		ClassID:     "SensorReading",
+		Properties: map[string]models.SemanticProperty{
+			"temperature": {PropertyID: "temperature", SourceField: "rawTemp", Value: 21.5, Range: []string{"decimal"}, Kind: "datatype"},
+		},
+	}
+
+	storageSvc.RegisterPlugin("semantic-sample", &twinSampleStoragePlugin{sample: []*models.CIR{cir}})
+	cfg, err := storageSvc.CreateStorageConfigWithOntology(projectID, "semantic-sample", map[string]interface{}{"connection_string": "mock://semantic"}, ontologyRecord.ID)
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+	twin := &models.DigitalTwin{ID: "semantic-twin", ProjectID: projectID, OntologyID: ontologyRecord.ID, Name: "Semantic Twin", Status: "active", CreatedAt: now, UpdatedAt: now, Config: &models.DigitalTwinConfig{StorageIDs: []string{cfg.ID}}}
+	if err := service.store.SaveDigitalTwin(twin); err != nil {
+		t.Fatalf("failed to seed twin: %v", err)
+	}
+	if err := service.SyncWithStorageWithOptions(twin.ID, nil); err != nil {
+		t.Fatalf("SyncWithStorageWithOptions failed: %v", err)
+	}
+	entities, err := service.store.ListEntitiesByDigitalTwin(twin.ID)
+	if err != nil {
+		t.Fatalf("failed to list entities: %v", err)
+	}
+	if len(entities) != 1 {
+		t.Fatalf("expected one semantic entity, got %d", len(entities))
+	}
+	if entities[0].Type != "SensorReading" {
+		t.Fatalf("expected SensorReading type, got %s", entities[0].Type)
+	}
+	if entities[0].Attributes["temperature"] != 21.5 {
+		t.Fatalf("expected ontology property attribute, got %+v", entities[0].Attributes)
+	}
+	if entities[0].ComputedValues["ontology_mapping"] == nil {
+		t.Fatalf("expected ontology mapping summary, got %+v", entities[0].ComputedValues)
+	}
+}
+
 func TestEnqueueSyncQueuesWorkAndMarksTwinSyncing(t *testing.T) {
 	service, _, q, cleanup := setupDigitalTwinService(t)
 	defer cleanup()

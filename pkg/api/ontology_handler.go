@@ -10,18 +10,22 @@ import (
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 	"github.com/mimir-aip/mimir-aip-go/pkg/ontology"
+	storagepkg "github.com/mimir-aip/mimir-aip-go/pkg/storage"
 )
 
 // OntologyHandler handles ontology-related HTTP requests
 type OntologyHandler struct {
 	service *ontology.Service
+	storage *storagepkg.Service
 }
 
 // NewOntologyHandler creates a new ontology handler
-func NewOntologyHandler(service *ontology.Service) *OntologyHandler {
-	return &OntologyHandler{
-		service: service,
+func NewOntologyHandler(service *ontology.Service, storageService ...*storagepkg.Service) *OntologyHandler {
+	handler := &OntologyHandler{service: service}
+	if len(storageService) > 0 {
+		handler.storage = storageService[0]
 	}
+	return handler
 }
 
 func ontologyErrorStatus(err error) int {
@@ -98,6 +102,12 @@ func (h *OntologyHandler) HandleOntology(w http.ResponseWriter, r *http.Request)
 				return
 			}
 			h.handleSearch(w, r, ontologyID)
+		case "retrieve":
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.handleRetrieve(w, r, ontologyID)
 		default:
 			http.NotFound(w, r)
 		}
@@ -240,6 +250,37 @@ func (h *OntologyHandler) handleSearch(w http.ResponseWriter, r *http.Request, o
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
+}
+
+func (h *OntologyHandler) handleRetrieve(w http.ResponseWriter, r *http.Request, ontologyID string) {
+	if h.storage == nil {
+		http.Error(w, "ontology retrieval is not configured", http.StatusInternalServerError)
+		return
+	}
+	var req models.OntologyRetrieveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	projectID := req.ProjectID
+	if projectID == "" {
+		projectID = r.URL.Query().Get("project_id")
+	}
+	if projectID == "" {
+		http.Error(w, "project_id is required", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.service.GetOntologyForProject(projectID, ontologyID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get ontology: %v", err), ontologyErrorStatus(err))
+		return
+	}
+	resp, err := h.storage.RetrieveByOntology(projectID, ontologyID, &req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to retrieve ontology data: %v", err), ontologyErrorStatus(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handleUpdate handles PUT /api/ontologies/{id}

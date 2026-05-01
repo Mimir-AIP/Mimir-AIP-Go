@@ -250,6 +250,9 @@ func (s *Service) inferModel(model *models.MLModel, input map[string]any) (any, 
 	if err != nil {
 		return nil, 0, err
 	}
+	if err := s.ensureModelOntologyCompatible(model); err != nil {
+		return nil, 0, err
+	}
 	if err := provider.ValidateModel(model); err != nil {
 		return nil, 0, err
 	}
@@ -488,6 +491,14 @@ func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLMod
 	if req.TrainingConfig != nil {
 		model.TrainingConfig = req.TrainingConfig
 	}
+	provenance, err := s.buildFeatureProvenance(model, req.StorageIDs)
+	if err != nil {
+		return nil, err
+	}
+	if model.Metadata == nil {
+		model.Metadata = map[string]interface{}{}
+	}
+	model.Metadata[modelMetadataFeatureProvenance] = provenance
 	workTask := &models.WorkTask{
 		ID:          uuid.New().String(),
 		Type:        models.WorkTaskTypeMLTraining,

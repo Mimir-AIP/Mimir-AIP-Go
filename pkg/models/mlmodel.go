@@ -88,6 +88,24 @@ type MLProviderMetadata struct {
 	SupportsMonitoring bool                   `json:"supports_monitoring,omitempty" yaml:"supports_monitoring,omitempty"`
 }
 
+// MLFeatureProvenance records ontology semantics used to build a training dataset.
+type MLFeatureProvenance struct {
+	OntologyID  string              `json:"ontology_id"`
+	ContentHash string              `json:"content_hash"`
+	StorageIDs  []string            `json:"storage_ids"`
+	Features    []MLSemanticFeature `json:"features"`
+	GeneratedAt time.Time           `json:"generated_at"`
+}
+
+// MLSemanticFeature identifies one ontology property observed in training data.
+type MLSemanticFeature struct {
+	ClassID      string   `json:"class_id"`
+	PropertyID   string   `json:"property_id"`
+	SourceFields []string `json:"source_fields,omitempty"`
+	StorageIDs   []string `json:"storage_ids,omitempty"`
+	Range        []string `json:"range,omitempty"`
+}
+
 // TrainingConfig holds configuration for model training
 type TrainingConfig struct {
 	TrainTestSplit      float64                `json:"train_test_split"` // e.g., 0.8 for 80% training, 20% testing

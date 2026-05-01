@@ -114,6 +114,87 @@ type ParsedOntology struct {
 	Individuals []TurtleIndividual `json:"individuals,omitempty"`
 }
 
+// OntologyDiagnosticSeverity classifies ontology compiler findings.
+type OntologyDiagnosticSeverity string
+
+const (
+	OntologyDiagnosticError   OntologyDiagnosticSeverity = "error"
+	OntologyDiagnosticWarning OntologyDiagnosticSeverity = "warning"
+	OntologyDiagnosticInfo    OntologyDiagnosticSeverity = "info"
+)
+
+// OntologyDiagnostic reports a validation, parsing, or semantic compiler finding.
+type OntologyDiagnostic struct {
+	Severity OntologyDiagnosticSeverity `json:"severity"`
+	Code     string                     `json:"code"`
+	Message  string                     `json:"message"`
+	Line     int                        `json:"line,omitempty"`
+	Column   int                        `json:"column,omitempty"`
+	Subject  string                     `json:"subject,omitempty"`
+}
+
+// CompiledOntology is the canonical semantic representation every ontology-backed subsystem should consume.
+type CompiledOntology struct {
+	OntologyID  string                     `json:"ontology_id"`
+	ProjectID   string                     `json:"project_id"`
+	Name        string                     `json:"name"`
+	Version     string                     `json:"version"`
+	ContentHash string                     `json:"content_hash"`
+	Prefixes    map[string]string          `json:"prefixes"`
+	Classes     []CompiledOntologyClass    `json:"classes"`
+	Properties  []CompiledOntologyProperty `json:"properties"`
+	Relations   []CompiledOntologyRelation `json:"relations"`
+	SearchTerms []OntologySearchTerm       `json:"search_terms"`
+	Diagnostics []OntologyDiagnostic       `json:"diagnostics,omitempty"`
+	CompiledAt  time.Time                  `json:"compiled_at"`
+}
+
+// CompiledOntologyClass captures the classes available to ingestion, storage, aggregation, twins, and ML.
+type CompiledOntologyClass struct {
+	ID          string   `json:"id"`
+	URI         string   `json:"uri"`
+	Name        string   `json:"name"`
+	Label       string   `json:"label,omitempty"`
+	Description string   `json:"description,omitempty"`
+	SubClassOf  []string `json:"subclass_of,omitempty"`
+	SearchTerms []string `json:"search_terms,omitempty"`
+}
+
+// CompiledOntologyProperty captures datatype and object properties with explicit domain/range semantics.
+type CompiledOntologyProperty struct {
+	ID          string   `json:"id"`
+	URI         string   `json:"uri"`
+	Name        string   `json:"name"`
+	Label       string   `json:"label,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Kind        string   `json:"kind"` // datatype | object | annotation | unknown
+	Domain      []string `json:"domain,omitempty"`
+	Range       []string `json:"range,omitempty"`
+	InverseOf   string   `json:"inverse_of,omitempty"`
+	SearchTerms []string `json:"search_terms,omitempty"`
+}
+
+// CompiledOntologyRelation is a searchable relationship edge derived from object properties.
+type CompiledOntologyRelation struct {
+	PropertyID string `json:"property_id"`
+	Name       string `json:"name"`
+	FromClass  string `json:"from_class"`
+	ToClass    string `json:"to_class"`
+	URI        string `json:"uri"`
+}
+
+// OntologySearchTerm makes ontology-backed retrieval straightforward across class/property labels and aliases.
+type OntologySearchTerm struct {
+	Term       string   `json:"term"`
+	Kind       string   `json:"kind"` // class | property | relation
+	ID         string   `json:"id"`
+	URI        string   `json:"uri"`
+	Weight     float64  `json:"weight"`
+	Aliases    []string `json:"aliases,omitempty"`
+	ClassID    string   `json:"class_id,omitempty"`
+	PropertyID string   `json:"property_id,omitempty"`
+}
+
 // OntologyExtractionRequest represents a request to extract ontology from CIR data
 type OntologyExtractionRequest struct {
 	ProjectID           string   `json:"project_id"`

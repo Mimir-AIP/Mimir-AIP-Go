@@ -42,19 +42,24 @@ func (e *OntologyInUseError) Error() string {
 	return fmt.Sprintf("ontology %s is still referenced by %s", e.OntologyID, strings.Join(e.References, ", "))
 }
 
+type OntologyValidationError struct {
+	Diagnostics []models.OntologyDiagnostic
+}
+
+func (e *OntologyValidationError) Error() string {
+	return "ontology validation failed"
+}
+
 func validOntologyStatus(status string) bool {
 	return status == "draft" || status == "active" || status == "archived"
 }
 
-func validateOntologyContent(content string) error {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
-		return fmt.Errorf("content is required")
+func compileOntologyForSave(ontology *models.Ontology) (*models.CompiledOntology, error) {
+	compiled, err := CompileOntology(ontology)
+	if err != nil {
+		return compiled, &OntologyValidationError{Diagnostics: compiled.Diagnostics}
 	}
-	if !strings.Contains(trimmed, "@prefix") {
-		return fmt.Errorf("ontology content must include Turtle prefixes")
-	}
-	return nil
+	return compiled, nil
 }
 
 func (s *Service) ensureProjectExists(projectID string) error {
@@ -100,9 +105,6 @@ func (s *Service) CreateOntology(req *models.OntologyCreateRequest) (*models.Ont
 	if !validOntologyStatus(req.Status) {
 		return nil, fmt.Errorf("status must be one of: draft, active, archived")
 	}
-	if err := validateOntologyContent(req.Content); err != nil {
-		return nil, err
-	}
 	now := time.Now()
 	ontology := &models.Ontology{
 		ID:          uuid.New().String(),
@@ -116,7 +118,11 @@ func (s *Service) CreateOntology(req *models.OntologyCreateRequest) (*models.Ont
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := s.store.SaveOntology(ontology); err != nil {
+	compiled, err := compileOntologyForSave(ontology)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.SaveOntologyWithCompilation(ontology, compiled); err != nil {
 		return nil, fmt.Errorf("failed to save ontology: %w", err)
 	}
 	log.Printf("Created ontology %s for project %s", ontology.ID, ontology.ProjectID)
@@ -130,6 +136,17 @@ func (s *Service) GetOntology(ontologyID string) (*models.Ontology, error) {
 
 func (s *Service) GetOntologyForProject(projectID, ontologyID string) (*models.Ontology, error) {
 	return s.getOwnedOntology(projectID, ontologyID)
+}
+
+func (s *Service) GetCompiledOntologyForProject(projectID, ontologyID string) (*models.CompiledOntology, error) {
+	if _, err := s.getOwnedOntology(projectID, ontologyID); err != nil {
+		return nil, err
+	}
+	compiled, err := s.store.GetCompiledOntology(ontologyID)
+	if err != nil {
+		return nil, fmt.Errorf("compiled ontology not found: %w", err)
+	}
+	return compiled, nil
 }
 
 // GetProjectOntologies retrieves all ontologies for a project
@@ -153,9 +170,6 @@ func (s *Service) UpdateOntology(ontologyID string, req *models.OntologyUpdateRe
 		ontology.Version = *req.Version
 	}
 	if req.Content != nil {
-		if err := validateOntologyContent(*req.Content); err != nil {
-			return nil, err
-		}
 		ontology.Content = *req.Content
 	}
 	if req.Status != nil {
@@ -164,8 +178,12 @@ func (s *Service) UpdateOntology(ontologyID string, req *models.OntologyUpdateRe
 		}
 		ontology.Status = *req.Status
 	}
+	compiled, err := compileOntologyForSave(ontology)
+	if err != nil {
+		return nil, err
+	}
 	ontology.UpdatedAt = time.Now()
-	if err := s.store.SaveOntology(ontology); err != nil {
+	if err := s.store.SaveOntologyWithCompilation(ontology, compiled); err != nil {
 		return nil, fmt.Errorf("failed to update ontology: %w", err)
 	}
 	log.Printf("Updated ontology %s", ontologyID)

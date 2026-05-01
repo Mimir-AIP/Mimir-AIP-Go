@@ -63,6 +63,7 @@ func CompileOntologyContent(ontologyID, projectID, name, version, content string
 	}
 	addCommonPrefixes(compiled.Prefixes)
 
+	trimmed = stripTurtleComments(trimmed)
 	statements, splitDiagnostics := splitStatements(trimmed)
 	compiled.Diagnostics = append(compiled.Diagnostics, splitDiagnostics...)
 	triples := make([]triple, 0)
@@ -129,6 +130,40 @@ func addCommonPrefixes(prefixes map[string]string) {
 			prefixes[prefix] = iri
 		}
 	}
+}
+
+func stripTurtleComments(content string) string {
+	var b strings.Builder
+	inIRI := false
+	inString := false
+	escaped := false
+	inComment := false
+	for _, r := range content {
+		if inComment {
+			if r == '\n' {
+				inComment = false
+				b.WriteRune(r)
+			}
+			continue
+		}
+		switch {
+		case escaped:
+			escaped = false
+		case inString && r == '\\':
+			escaped = true
+		case r == '"' && !inIRI:
+			inString = !inString
+		case r == '<' && !inString:
+			inIRI = true
+		case r == '>' && !inString:
+			inIRI = false
+		case r == '#' && !inIRI && !inString:
+			inComment = true
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func splitStatements(content string) ([]statement, []models.OntologyDiagnostic) {

@@ -65,6 +65,54 @@ func TestCreateOntology(t *testing.T) {
 	}
 }
 
+func TestCreateOntologyPersistsCompiledGraph(t *testing.T) {
+	service, store := setupOntologyService(t)
+	defer store.Close()
+
+	created, err := service.CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "test-project-id",
+		Name:      "Compiled Ontology",
+		Content:   "@prefix : <http://example.org/mimir#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n\n:Sensor a owl:Class ; rdfs:label \"Sensor\" .",
+		Status:    "draft",
+	})
+	if err != nil {
+		t.Fatalf("CreateOntology failed: %v", err)
+	}
+
+	compiled, err := service.GetCompiledOntologyForProject("test-project-id", created.ID)
+	if err != nil {
+		t.Fatalf("GetCompiledOntologyForProject failed: %v", err)
+	}
+	if compiled.OntologyID != created.ID {
+		t.Fatalf("expected compiled ontology id %s, got %s", created.ID, compiled.OntologyID)
+	}
+	if len(compiled.Classes) != 1 || compiled.Classes[0].ID != "Sensor" {
+		t.Fatalf("unexpected compiled classes: %+v", compiled.Classes)
+	}
+	if len(compiled.SearchTerms) == 0 {
+		t.Fatalf("expected persisted search terms")
+	}
+}
+
+func TestCreateOntologyRejectsCompilationErrors(t *testing.T) {
+	service, store := setupOntologyService(t)
+	defer store.Close()
+
+	_, err := service.CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "test-project-id",
+		Name:      "Invalid Ontology",
+		Content:   "@prefix : <http://example.org/mimir#> .\n\n:Sensor a missing:Class .",
+		Status:    "draft",
+	})
+	var validationErr *OntologyValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected OntologyValidationError, got %v", err)
+	}
+	if len(validationErr.Diagnostics) == 0 {
+		t.Fatalf("expected diagnostics on validation error")
+	}
+}
+
 func TestCreateOntologyRejectsMissingProject(t *testing.T) {
 	service, store := setupOntologyService(t)
 	defer store.Close()

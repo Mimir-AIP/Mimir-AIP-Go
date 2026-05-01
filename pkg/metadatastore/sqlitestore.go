@@ -292,6 +292,18 @@ func (s *SQLiteStore) initSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_ontologies_project_id ON ontologies(project_id);
 
+	CREATE TABLE IF NOT EXISTS ontology_compilations (
+		ontology_id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		content_hash TEXT NOT NULL,
+		compiled_at TEXT NOT NULL,
+		data TEXT NOT NULL,
+		FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE,
+		FOREIGN KEY (project_id) REFERENCES projects(id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_ontology_compilations_project_id ON ontology_compilations(project_id);
+
 	CREATE TABLE IF NOT EXISTS ml_models (
 		id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,

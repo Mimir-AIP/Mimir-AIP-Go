@@ -97,6 +97,41 @@ type OntologyRetrieveResult struct {
 	Violations []SemanticMappingViolation `json:"violations,omitempty"`
 }
 
+// OntologyAggregateRequest computes semantic aggregations over ontology-mapped CIR data.
+type OntologyAggregateRequest struct {
+	ProjectID  string                   `json:"project_id"`
+	ClassID    string                   `json:"class"`
+	Metric     OntologyAggregateMetric  `json:"metric"`
+	GroupBy    []string                 `json:"group_by,omitempty"`
+	Filters    []OntologyRetrieveFilter `json:"filters,omitempty"`
+	StorageIDs []string                 `json:"storage_ids,omitempty"`
+	Limit      int                      `json:"limit,omitempty"`
+}
+
+// OntologyAggregateMetric identifies the ontology property and function to aggregate.
+type OntologyAggregateMetric struct {
+	Property string `json:"property"`
+	Function string `json:"function"` // count | sum | avg | min | max
+}
+
+// OntologyAggregateResponse returns semantic aggregation output with ontology provenance.
+type OntologyAggregateResponse struct {
+	OntologyID  string                   `json:"ontology_id"`
+	ContentHash string                   `json:"content_hash"`
+	ClassID     string                   `json:"class_id"`
+	PropertyID  string                   `json:"property_id"`
+	Function    string                   `json:"function"`
+	Groups      []OntologyAggregateGroup `json:"groups"`
+	Count       int                      `json:"count"`
+}
+
+// OntologyAggregateGroup is one semantic aggregation bucket.
+type OntologyAggregateGroup struct {
+	Key   map[string]interface{} `json:"key"`
+	Value float64                `json:"value"`
+	Count int                    `json:"count"`
+}
+
 // Validate checks if the Ontology is valid
 func (o *Ontology) Validate() error {
 	if o.ProjectID == "" {

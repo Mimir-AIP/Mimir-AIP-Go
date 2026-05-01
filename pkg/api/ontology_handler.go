@@ -108,6 +108,12 @@ func (h *OntologyHandler) HandleOntology(w http.ResponseWriter, r *http.Request)
 				return
 			}
 			h.handleRetrieve(w, r, ontologyID)
+		case "aggregate":
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.handleAggregate(w, r, ontologyID)
 		default:
 			http.NotFound(w, r)
 		}
@@ -277,6 +283,37 @@ func (h *OntologyHandler) handleRetrieve(w http.ResponseWriter, r *http.Request,
 	resp, err := h.storage.RetrieveByOntology(projectID, ontologyID, &req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to retrieve ontology data: %v", err), ontologyErrorStatus(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *OntologyHandler) handleAggregate(w http.ResponseWriter, r *http.Request, ontologyID string) {
+	if h.storage == nil {
+		http.Error(w, "ontology aggregation is not configured", http.StatusInternalServerError)
+		return
+	}
+	var req models.OntologyAggregateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	projectID := req.ProjectID
+	if projectID == "" {
+		projectID = r.URL.Query().Get("project_id")
+	}
+	if projectID == "" {
+		http.Error(w, "project_id is required", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.service.GetOntologyForProject(projectID, ontologyID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get ontology: %v", err), ontologyErrorStatus(err))
+		return
+	}
+	resp, err := h.storage.AggregateByOntology(projectID, ontologyID, &req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to aggregate ontology data: %v", err), ontologyErrorStatus(err))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

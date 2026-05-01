@@ -401,6 +401,29 @@ components:
                         $ref: '#/components/schemas/OrderByClause'
                     type: array
             type: object
+        CIRSource:
+            properties:
+                format:
+                    description: csv | json | xml | text | binary
+                    type: string
+                parameters:
+                    additionalProperties: true
+                    type: object
+                timestamp:
+                    description: Ingestion timestamp
+                    type: string
+                type:
+                    description: api | file | database | stream
+                    type: string
+                uri:
+                    description: Source identifier
+                    type: string
+            required:
+                - type
+                - uri
+                - timestamp
+                - format
+            type: object
         CompiledOntology:
             properties:
                 classes:
@@ -978,6 +1001,31 @@ components:
             required:
                 - project_id
             type: object
+        MLFeatureProvenance:
+            properties:
+                content_hash:
+                    description: Compiled ontology hash observed at training start
+                    type: string
+                features:
+                    items:
+                        $ref: '#/components/schemas/MLSemanticFeature'
+                    type: array
+                generated_at:
+                    description: ISO-8601 provenance timestamp
+                    type: string
+                ontology_id:
+                    description: Training ontology ID
+                    type: string
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - ontology_id
+                - storage_ids
+                - features
+                - generated_at
+            type: object
         MLModel:
             properties:
                 created_at:
@@ -1079,6 +1127,30 @@ components:
                 name:
                     description: Provider model identifier
                     type: string
+            type: object
+        MLSemanticFeature:
+            properties:
+                class_id:
+                    description: Ontology class ID
+                    type: string
+                property_id:
+                    description: Ontology property ID
+                    type: string
+                range:
+                    items:
+                        type: string
+                    type: array
+                source_fields:
+                    items:
+                        type: string
+                    type: array
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - class_id
+                - property_id
             type: object
         MetricsResponse:
             properties:
@@ -1232,6 +1304,94 @@ components:
                     description: Version string
                     type: string
             type: object
+        OntologyAggregateGroup:
+            properties:
+                count:
+                    description: Number of records in the bucket
+                    type: integer
+                key:
+                    additionalProperties: true
+                    type: object
+                value:
+                    description: Aggregated metric value
+                    type: number
+            required:
+                - key
+                - value
+                - count
+            type: object
+        OntologyAggregateMetric:
+            properties:
+                function:
+                    description: count | sum | avg | min | max
+                    type: string
+                property:
+                    description: Ontology property to aggregate; optional for count
+                    type: string
+            required:
+                - function
+            type: object
+        OntologyAggregateRequest:
+            properties:
+                class:
+                    description: Ontology class ID/name/label to aggregate
+                    type: string
+                filters:
+                    items:
+                        $ref: '#/components/schemas/OntologyRetrieveFilter'
+                    type: array
+                group_by:
+                    items:
+                        type: string
+                    type: array
+                limit:
+                    description: Maximum input records scanned
+                    type: integer
+                metric:
+                    $ref: '#/components/schemas/OntologyAggregateMetric'
+                project_id:
+                    description: Owning project ID
+                    type: string
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - project_id
+                - metric
+            type: object
+        OntologyAggregateResponse:
+            properties:
+                class_id:
+                    description: Aggregated ontology class
+                    type: string
+                content_hash:
+                    description: Compiled ontology content hash
+                    type: string
+                count:
+                    description: Group count
+                    type: integer
+                function:
+                    description: Aggregation function
+                    type: string
+                groups:
+                    items:
+                        $ref: '#/components/schemas/OntologyAggregateGroup'
+                    type: array
+                ontology_id:
+                    description: Ontology ID
+                    type: string
+                property_id:
+                    description: Aggregated ontology property
+                    type: string
+            required:
+                - ontology_id
+                - content_hash
+                - class_id
+                - function
+                - groups
+                - count
+            type: object
         OntologyCreateRequest:
             properties:
                 content:
@@ -1281,6 +1441,91 @@ components:
                 - severity
                 - code
                 - message
+            type: object
+        OntologyRetrieveFilter:
+            properties:
+                operator:
+                    description: eq | neq | gt | gte | lt | lte | contains
+                    type: string
+                property:
+                    description: Ontology property ID/name/label
+                    type: string
+                value:
+                    description: Comparison value
+            required:
+                - property
+                - operator
+                - value
+            type: object
+        OntologyRetrieveRequest:
+            properties:
+                class:
+                    description: Ontology class ID/name/label to retrieve
+                    type: string
+                filters:
+                    items:
+                        $ref: '#/components/schemas/OntologyRetrieveFilter'
+                    type: array
+                limit:
+                    description: Maximum returned records
+                    type: integer
+                project_id:
+                    description: Owning project ID
+                    type: string
+                properties:
+                    items:
+                        type: string
+                    type: array
+                storage_ids:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - project_id
+            type: object
+        OntologyRetrieveResponse:
+            properties:
+                content_hash:
+                    description: Compiled ontology content hash
+                    type: string
+                count:
+                    description: Returned result count
+                    type: integer
+                ontology_id:
+                    description: Ontology ID
+                    type: string
+                results:
+                    items:
+                        $ref: '#/components/schemas/OntologyRetrieveResult'
+                    type: array
+            required:
+                - ontology_id
+                - content_hash
+                - results
+                - count
+            type: object
+        OntologyRetrieveResult:
+            properties:
+                class_id:
+                    description: Mapped ontology class
+                    type: string
+                properties:
+                    additionalProperties: true
+                    type: object
+                source:
+                    $ref: '#/components/schemas/CIRSource'
+                storage_id:
+                    description: Storage config that returned the CIR
+                    type: string
+                violations:
+                    items:
+                        $ref: '#/components/schemas/SemanticMappingViolation'
+                    type: array
+            required:
+                - storage_id
+                - class_id
+                - properties
+                - source
             type: object
         OntologySearchResult:
             properties:
@@ -2270,6 +2515,27 @@ components:
                     items:
                         type: string
                     type: array
+            type: object
+        SemanticMappingViolation:
+            properties:
+                actual:
+                    description: Observed value type
+                    type: string
+                code:
+                    description: Stable violation code
+                    type: string
+                expected:
+                    description: Expected ontology range/type
+                    type: string
+                field:
+                    description: Source field
+                    type: string
+                message:
+                    description: Human-readable violation
+                    type: string
+            required:
+                - code
+                - message
             type: object
         StorageConfig:
             properties:
@@ -4562,6 +4828,38 @@ paths:
             summary: Update ontology
             tags:
                 - Ontologies
+    /api/ontologies/{id}/aggregate:
+        post:
+            description: Computes count/sum/avg/min/max over ontology-mapped CIR properties, optionally grouped by ontology properties, and returns ontology hash provenance.
+            parameters:
+                - description: Ontology ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OntologyAggregateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OntologyAggregateResponse'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "403":
+                    description: Forbidden — ontology belongs to another project
+                "404":
+                    description: Resource not found
+            summary: Aggregate ontology-backed data
+            tags:
+                - Ontologies
     /api/ontologies/{id}/compiled:
         get:
             description: Returns the persisted canonical ontology graph consumed by storage, retrieval, digital twins, aggregation, and predictive features.
@@ -4622,6 +4920,38 @@ paths:
                 "404":
                     description: Resource not found
             summary: Get ontology diagnostics
+            tags:
+                - Ontologies
+    /api/ontologies/{id}/retrieve:
+        post:
+            description: Retrieves CIR records that were mapped to the compiled ontology, filtering/projecting by ontology class and properties with provenance back to storage and source metadata.
+            parameters:
+                - description: Ontology ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OntologyRetrieveRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OntologyRetrieveResponse'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "403":
+                    description: Forbidden — ontology belongs to another project
+                "404":
+                    description: Resource not found
+            summary: Retrieve ontology-backed data
             tags:
                 - Ontologies
     /api/ontologies/{id}/search:

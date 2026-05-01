@@ -66,6 +66,22 @@ func init() {
 		},
 		Responses: doc.R(doc.OK(doc.ArrOf("OntologySearchResult")), doc.BadRequest(), doc.NotFound(), map[string]doc.M{"403": {"description": "Forbidden — ontology belongs to another project"}}),
 	})
+	doc.Register("POST", "/api/ontologies/{id}/retrieve", doc.RouteDoc{
+		Summary:     "Retrieve ontology-backed data",
+		Description: "Retrieves CIR records that were mapped to the compiled ontology, filtering/projecting by ontology class and properties with provenance back to storage and source metadata.",
+		Tags:        []string{"Ontologies"},
+		Params:      []doc.Param{doc.PParam("id", "Ontology ID")},
+		RequestBody: doc.JsonBody(doc.Ref("OntologyRetrieveRequest")),
+		Responses:   doc.R(doc.OK(doc.Ref("OntologyRetrieveResponse")), doc.BadRequest(), doc.NotFound(), map[string]doc.M{"403": {"description": "Forbidden — ontology belongs to another project"}}),
+	})
+	doc.Register("POST", "/api/ontologies/{id}/aggregate", doc.RouteDoc{
+		Summary:     "Aggregate ontology-backed data",
+		Description: "Computes count/sum/avg/min/max over ontology-mapped CIR properties, optionally grouped by ontology properties, and returns ontology hash provenance.",
+		Tags:        []string{"Ontologies"},
+		Params:      []doc.Param{doc.PParam("id", "Ontology ID")},
+		RequestBody: doc.JsonBody(doc.Ref("OntologyAggregateRequest")),
+		Responses:   doc.R(doc.OK(doc.Ref("OntologyAggregateResponse")), doc.BadRequest(), doc.NotFound(), map[string]doc.M{"403": {"description": "Forbidden — ontology belongs to another project"}}),
+	})
 	doc.Register("PUT", "/api/ontologies/{id}", doc.RouteDoc{
 		Summary:     "Update ontology",
 		Tags:        []string{"Ontologies"},

@@ -549,7 +549,74 @@ func init() {
 			"compiled":    Ref("CompiledOntology"),
 			"diagnostics": ArrOf("OntologyDiagnostic"),
 		}),
+		"OntologyRetrieveFilter": Props([]string{"property", "operator", "value"}, M{
+			"property": Str("Ontology property ID/name/label"),
+			"operator": Str("eq | neq | gt | gte | lt | lte | contains"),
+			"value":    M{"description": "Comparison value"},
+		}),
+		"OntologyRetrieveRequest": Props([]string{"project_id"}, M{
+			"project_id":  Str("Owning project ID"),
+			"class":       Str("Ontology class ID/name/label to retrieve"),
+			"properties":  Arr(M{"type": "string"}),
+			"filters":     ArrOf("OntologyRetrieveFilter"),
+			"storage_ids": Arr(M{"type": "string"}),
+			"limit":       Int("Maximum returned records"),
+		}),
+		"OntologyRetrieveResult": Props([]string{"storage_id", "class_id", "properties", "source"}, M{
+			"storage_id": Str("Storage config that returned the CIR"),
+			"class_id":   Str("Mapped ontology class"),
+			"properties": M{"type": "object", "additionalProperties": true},
+			"source":     Ref("CIRSource"),
+			"violations": ArrOf("SemanticMappingViolation"),
+		}),
+		"OntologyRetrieveResponse": Props([]string{"ontology_id", "content_hash", "results", "count"}, M{
+			"ontology_id":  Str("Ontology ID"),
+			"content_hash": Str("Compiled ontology content hash"),
+			"results":      ArrOf("OntologyRetrieveResult"),
+			"count":        Int("Returned result count"),
+		}),
+		"OntologyAggregateMetric": Props([]string{"function"}, M{
+			"property": Str("Ontology property to aggregate; optional for count"),
+			"function": Str("count | sum | avg | min | max"),
+		}),
+		"OntologyAggregateRequest": Props([]string{"project_id", "metric"}, M{
+			"project_id":  Str("Owning project ID"),
+			"class":       Str("Ontology class ID/name/label to aggregate"),
+			"metric":      Ref("OntologyAggregateMetric"),
+			"group_by":    Arr(M{"type": "string"}),
+			"filters":     ArrOf("OntologyRetrieveFilter"),
+			"storage_ids": Arr(M{"type": "string"}),
+			"limit":       Int("Maximum input records scanned"),
+		}),
+		"OntologyAggregateGroup": Props([]string{"key", "value", "count"}, M{
+			"key":   M{"type": "object", "additionalProperties": true},
+			"value": M{"type": "number", "description": "Aggregated metric value"},
+			"count": Int("Number of records in the bucket"),
+		}),
+		"OntologyAggregateResponse": Props([]string{"ontology_id", "content_hash", "class_id", "function", "groups", "count"}, M{
+			"ontology_id":  Str("Ontology ID"),
+			"content_hash": Str("Compiled ontology content hash"),
+			"class_id":     Str("Aggregated ontology class"),
+			"property_id":  Str("Aggregated ontology property"),
+			"function":     Str("Aggregation function"),
+			"groups":       ArrOf("OntologyAggregateGroup"),
+			"count":        Int("Group count"),
+		}),
 
+		"SemanticMappingViolation": Props([]string{"code", "message"}, M{
+			"code":     Str("Stable violation code"),
+			"message":  Str("Human-readable violation"),
+			"field":    Str("Source field"),
+			"expected": Str("Expected ontology range/type"),
+			"actual":   Str("Observed value type"),
+		}),
+		"CIRSource": Props([]string{"type", "uri", "timestamp", "format"}, M{
+			"type":       Str("api | file | database | stream"),
+			"uri":        Str("Source identifier"),
+			"timestamp":  Str("Ingestion timestamp"),
+			"format":     Str("csv | json | xml | text | binary"),
+			"parameters": M{"type": "object", "additionalProperties": true},
+		}),
 		// ── Extraction ────────────────────────────────────────────────────────
 		"ExtractionRequest": Props([]string{"project_id", "storage_ids", "ontology_name"}, M{
 			"project_id":           Str("Project ID"),
@@ -581,6 +648,20 @@ func init() {
 		}),
 		// ── ML Models ─────────────────────────────────────────────────────────
 		// ── ML Models ─────────────────────────────────────────────────────────
+		"MLSemanticFeature": Props([]string{"class_id", "property_id"}, M{
+			"class_id":      Str("Ontology class ID"),
+			"property_id":   Str("Ontology property ID"),
+			"source_fields": Arr(M{"type": "string"}),
+			"storage_ids":   Arr(M{"type": "string"}),
+			"range":         Arr(M{"type": "string"}),
+		}),
+		"MLFeatureProvenance": Props([]string{"ontology_id", "storage_ids", "features", "generated_at"}, M{
+			"ontology_id":  Str("Training ontology ID"),
+			"content_hash": Str("Compiled ontology hash observed at training start"),
+			"storage_ids":  Arr(M{"type": "string"}),
+			"features":     ArrOf("MLSemanticFeature"),
+			"generated_at": Str("ISO-8601 provenance timestamp"),
+		}),
 		"MLModel": Props(nil, M{
 			"id":                   Str("ML model ID (UUID)"),
 			"project_id":           Str("Owning project ID"),

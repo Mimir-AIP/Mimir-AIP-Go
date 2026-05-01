@@ -401,6 +401,156 @@ components:
                         $ref: '#/components/schemas/OrderByClause'
                     type: array
             type: object
+        CompiledOntology:
+            properties:
+                classes:
+                    items:
+                        $ref: '#/components/schemas/CompiledOntologyClass'
+                    type: array
+                compiled_at:
+                    description: ISO-8601 compilation timestamp
+                    type: string
+                content_hash:
+                    description: SHA-256 hash of raw Turtle content
+                    type: string
+                diagnostics:
+                    items:
+                        $ref: '#/components/schemas/OntologyDiagnostic'
+                    type: array
+                name:
+                    description: Ontology name
+                    type: string
+                ontology_id:
+                    description: Source ontology ID
+                    type: string
+                prefixes:
+                    additionalProperties:
+                        type: string
+                    type: object
+                project_id:
+                    description: Owning project ID
+                    type: string
+                properties:
+                    items:
+                        $ref: '#/components/schemas/CompiledOntologyProperty'
+                    type: array
+                relations:
+                    items:
+                        $ref: '#/components/schemas/CompiledOntologyRelation'
+                    type: array
+                search_terms:
+                    items:
+                        $ref: '#/components/schemas/OntologySearchTerm'
+                    type: array
+                version:
+                    description: Ontology version
+                    type: string
+            required:
+                - ontology_id
+                - project_id
+                - content_hash
+                - prefixes
+                - classes
+                - properties
+                - relations
+                - search_terms
+                - compiled_at
+            type: object
+        CompiledOntologyClass:
+            properties:
+                description:
+                    description: Class description/comment
+                    type: string
+                id:
+                    description: Stable local class ID
+                    type: string
+                label:
+                    description: Preferred label
+                    type: string
+                name:
+                    description: Local class name
+                    type: string
+                search_terms:
+                    items:
+                        type: string
+                    type: array
+                subclass_of:
+                    items:
+                        type: string
+                    type: array
+                uri:
+                    description: Expanded class URI
+                    type: string
+            required:
+                - id
+                - uri
+                - name
+            type: object
+        CompiledOntologyProperty:
+            properties:
+                description:
+                    description: Property description/comment
+                    type: string
+                domain:
+                    items:
+                        type: string
+                    type: array
+                id:
+                    description: Stable local property ID
+                    type: string
+                inverse_of:
+                    description: Inverse property ID
+                    type: string
+                kind:
+                    description: datatype | object | annotation | unknown
+                    type: string
+                label:
+                    description: Preferred label
+                    type: string
+                name:
+                    description: Local property name
+                    type: string
+                range:
+                    items:
+                        type: string
+                    type: array
+                search_terms:
+                    items:
+                        type: string
+                    type: array
+                uri:
+                    description: Expanded property URI
+                    type: string
+            required:
+                - id
+                - uri
+                - name
+                - kind
+            type: object
+        CompiledOntologyRelation:
+            properties:
+                from_class:
+                    description: Domain class ID
+                    type: string
+                name:
+                    description: Relationship name
+                    type: string
+                property_id:
+                    description: Object property ID
+                    type: string
+                to_class:
+                    description: Range class ID
+                    type: string
+                uri:
+                    description: Expanded relationship URI
+                    type: string
+            required:
+                - property_id
+                - name
+                - from_class
+                - to_class
+                - uri
+            type: object
         DigitalTwin:
             properties:
                 config:
@@ -1063,6 +1213,9 @@ components:
                 id:
                     description: Ontology ID (UUID)
                     type: string
+                is_generated:
+                    description: Whether the ontology was generated from extraction
+                    type: boolean
                 name:
                     description: Ontology name
                     type: string
@@ -1074,6 +1227,9 @@ components:
                     type: string
                 updated_at:
                     description: ISO-8601 last-updated timestamp
+                    type: string
+                version:
+                    description: Version string
                     type: string
             type: object
         OntologyCreateRequest:
@@ -1101,6 +1257,83 @@ components:
                 - name
                 - content
             type: object
+        OntologyDiagnostic:
+            properties:
+                code:
+                    description: Stable diagnostic code
+                    type: string
+                column:
+                    description: 1-based source column when available
+                    type: integer
+                line:
+                    description: 1-based source line when available
+                    type: integer
+                message:
+                    description: Human-readable diagnostic message
+                    type: string
+                severity:
+                    description: error | warning | info
+                    type: string
+                subject:
+                    description: Related ontology term or statement
+                    type: string
+            required:
+                - severity
+                - code
+                - message
+            type: object
+        OntologySearchResult:
+            properties:
+                diagnostic:
+                    description: Optional retrieval diagnostic
+                    type: string
+                match:
+                    description: Candidate label/alias that matched
+                    type: string
+                score:
+                    description: Ranked match score
+                    type: number
+                term:
+                    $ref: '#/components/schemas/OntologySearchTerm'
+            required:
+                - term
+                - score
+                - match
+            type: object
+        OntologySearchTerm:
+            properties:
+                aliases:
+                    items:
+                        type: string
+                    type: array
+                class_id:
+                    description: Related class ID
+                    type: string
+                id:
+                    description: Matched term ID
+                    type: string
+                kind:
+                    description: class | property | relation
+                    type: string
+                property_id:
+                    description: Related property ID
+                    type: string
+                term:
+                    description: Preferred searchable term
+                    type: string
+                uri:
+                    description: Expanded URI
+                    type: string
+                weight:
+                    description: Base semantic ranking weight
+                    type: number
+            required:
+                - term
+                - kind
+                - id
+                - uri
+                - weight
+            type: object
         OntologyUpdateRequest:
             properties:
                 content:
@@ -1118,6 +1351,37 @@ components:
                 version:
                     description: New version string
                     type: string
+            type: object
+        OntologyValidationRequest:
+            properties:
+                content:
+                    description: OWL/Turtle content to validate
+                    type: string
+                name:
+                    description: Optional ontology name for context
+                    type: string
+                project_id:
+                    description: Optional owning project ID for context
+                    type: string
+                version:
+                    description: Optional ontology version for context
+                    type: string
+            required:
+                - content
+            type: object
+        OntologyValidationResponse:
+            properties:
+                compiled:
+                    $ref: '#/components/schemas/CompiledOntology'
+                diagnostics:
+                    items:
+                        $ref: '#/components/schemas/OntologyDiagnostic'
+                    type: array
+                valid:
+                    description: Whether the content compiled without error diagnostics
+                    type: boolean
+            required:
+                - valid
             type: object
         OrderByClause:
             properties:
@@ -3374,7 +3638,7 @@ paths:
                 - Digital Twins
     /api/digital-twins/{id}/query:
         post:
-            description: Runs the digital twin's supported SPARQL-style SELECT query subset against the persisted entity graph.
+            description: Runs the digital twin's supported SPARQL-style SELECT subset against the persisted entity graph. Malformed or unsupported queries return 400 rather than falling back to an entity listing.
             parameters:
                 - description: Digital twin ID
                   in: path
@@ -3403,7 +3667,7 @@ paths:
                     description: 200 OK
                 "400":
                     description: Bad request — invalid input
-            summary: Execute SPARQL query
+            summary: Execute supported graph query
             tags:
                 - Digital Twins
     /api/digital-twins/{id}/runs:
@@ -3702,7 +3966,7 @@ paths:
                 - Digital Twins
     /api/extraction/generate-ontology:
         post:
-            description: Runs the extraction algorithm over the specified storage backends and generates or updates a project ontology directly.
+            description: Runs extraction over storage backends and creates or updates a generated ontology; persisted ontology content is compiled into the canonical graph before use by downstream systems.
             requestBody:
                 content:
                     application/json:
@@ -4296,6 +4560,135 @@ paths:
                 "404":
                     description: Resource not found
             summary: Update ontology
+            tags:
+                - Ontologies
+    /api/ontologies/{id}/compiled:
+        get:
+            description: Returns the persisted canonical ontology graph consumed by storage, retrieval, digital twins, aggregation, and predictive features.
+            parameters:
+                - description: Ontology ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CompiledOntology'
+                    description: 200 OK
+                "403":
+                    description: Forbidden — ontology belongs to another project
+                "404":
+                    description: Resource not found
+            summary: Get compiled ontology
+            tags:
+                - Ontologies
+    /api/ontologies/{id}/diagnostics:
+        get:
+            description: Returns compiler diagnostics from the persisted ontology compilation.
+            parameters:
+                - description: Ontology ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/OntologyDiagnostic'
+                                type: array
+                    description: 200 OK
+                "403":
+                    description: Forbidden — ontology belongs to another project
+                "404":
+                    description: Resource not found
+            summary: Get ontology diagnostics
+            tags:
+                - Ontologies
+    /api/ontologies/{id}/search:
+        get:
+            description: Searches compiled class, property, and relation terms so downstream retrieval can resolve user language into ontology-backed entities and relationship paths.
+            parameters:
+                - description: Ontology ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+                - description: Owning project ID
+                  in: query
+                  name: project_id
+                  required: true
+                  schema:
+                    type: string
+                - description: Search text; empty returns highest-weight terms
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+                - description: Maximum results, default 20
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/OntologySearchResult'
+                                type: array
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+                "403":
+                    description: Forbidden — ontology belongs to another project
+                "404":
+                    description: Resource not found
+            summary: Search ontology terms
+            tags:
+                - Ontologies
+    /api/ontologies/validate:
+        post:
+            description: Compiles OWL/Turtle content into Mimir's canonical ontology graph without persisting it. Error diagnostics make the response invalid; warnings are returned but do not block persistence.
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OntologyValidationRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OntologyValidationResponse'
+                    description: 200 OK
+                "400":
+                    description: Bad request — invalid input
+            summary: Validate ontology content
             tags:
                 - Ontologies
     /api/pipelines:
@@ -5196,7 +5589,7 @@ paths:
             tags:
                 - Storage
         post:
-            description: Creates a new storage backend configuration for a project.
+            description: Creates a new storage backend configuration for a project. When ontology_id is supplied, the backend schema is initialized from the persisted compiled ontology before the config is activated.
             requestBody:
                 content:
                     application/json:

@@ -159,7 +159,7 @@ func init() {
 		Params:      twinParams(doc.QParam("at_run", "Sync run ID to reconstruct", true)),
 		Responses:   doc.R(doc.OK(doc.Ref("ReconstructedTwinState")), doc.NotFound(), doc.BadRequest()),
 	})
-	
+
 	doc.Register("GET", "/api/digital-twins/{id}/entities/{entityId}", doc.RouteDoc{
 		Summary:   "Get entity",
 		Tags:      []string{"Digital Twins"},
@@ -190,8 +190,8 @@ func init() {
 
 	// ── SPARQL Query ───────────────────────────────────────────────────────────
 	doc.Register("POST", "/api/digital-twins/{id}/query", doc.RouteDoc{
-		Summary:     "Execute SPARQL query",
-		Description: "Runs the digital twin's supported SPARQL-style SELECT query subset against the persisted entity graph.",
+		Summary:     "Execute supported graph query",
+		Description: "Runs the digital twin's supported SPARQL-style SELECT subset against the persisted entity graph. Malformed or unsupported queries return 400 rather than falling back to an entity listing.",
 		Tags:        []string{"Digital Twins"},
 		Params:      twinParams(),
 		RequestBody: doc.JsonBody(doc.Ref("QueryRequest")),

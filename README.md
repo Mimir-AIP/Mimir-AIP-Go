@@ -70,7 +70,7 @@ Mimir AIP consists of an orchestrator, worker, local all-in-one launcher, and we
 | **Storage Config** | A connection definition for a storage backend (filesystem, PostgreSQL, MySQL, MongoDB, S3, Redis, Elasticsearch, or Neo4j). Data is stored and retrieved using the **CIR** (Common Internal Representation) format. |
 | **Pipeline** | A named, ordered sequence of processing steps (ingestion → processing → output). Pipelines are executed asynchronously by workers. |
 | **Schedule** | A cron-based trigger that enqueues one or more pipelines on a recurring basis. |
-| **Ontology** | An OWL/Turtle vocabulary that defines the entity types, properties, and relationships for a project domain. Used to structure storage and constrain ML model training. |
+| **Ontology** | An OWL/Turtle vocabulary that defines entity types, properties, and relationships for a project domain. Mimir compiles each persisted ontology into a canonical graph with diagnostics and searchable terms; storage configs can initialize backend schema from that compiled graph. |
 | **CIR** | Common Internal Representation — the normalised record format used across all storage backends. Each CIR contains a `source` block (provenance), a `data` block (the payload), and a `metadata` block. |
 | **Insight** | A persisted autonomous finding, such as an anomaly spike, trend break, or co-occurrence surge, generated from project storage data. |
 | **Review Item** | A persisted reviewable finding — currently used for cross-source link decisions — whose accepted or rejected outcome improves future scoring. |
@@ -83,9 +83,9 @@ Mimir AIP consists of an orchestrator, worker, local all-in-one launcher, and we
 ## Typical project workflow
 
 1. Create or select a **Project**.
-2. Define one or more **Storage Configs** for where normalised CIR data should land.
+2. Define one or more **Storage Configs** for where normalised CIR data should land; optionally bind each config to a compiled ontology so backend schema is initialized from the semantic model.
 3. Create a **Pipeline** and add a **Schedule** if the source should run incrementally.
-4. Generate or refine an **Ontology** from stored data and cross-source extraction results.
+4. Generate or refine an **Ontology** from stored data and cross-source extraction results, validate it, and use compiled ontology search to resolve classes, properties, and relationships later.
 5. Train **ML Models** and use the **Digital Twin** workspace to process ontology-grounded project state as new ingestion data arrives.
 6. Use the twin's **Insights**, **Alert Events**, and **Automations** to understand anomalies, queue manual export approvals when required, or trigger export actions automatically for resilient responses.
 

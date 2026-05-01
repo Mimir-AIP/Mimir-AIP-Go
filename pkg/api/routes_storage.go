@@ -13,7 +13,7 @@ func init() {
 	})
 	doc.Register("POST", "/api/storage/configs", doc.RouteDoc{
 		Summary:     "Create storage config",
-		Description: "Creates a new storage backend configuration for a project.",
+		Description: "Creates a new storage backend configuration for a project. When ontology_id is supplied, the backend schema is initialized from the persisted compiled ontology before the config is activated.",
 		Tags:        []string{"Storage"},
 		RequestBody: doc.JsonBody(doc.Ref("StorageConfigCreateRequest")),
 		Responses:   doc.R(doc.Created(doc.Ref("StorageConfig")), doc.BadRequest()),

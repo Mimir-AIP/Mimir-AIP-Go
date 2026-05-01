@@ -6,7 +6,7 @@
 	const { Button, FormField, Modal, Table } = root.components.primitives;
 
 	function emptyStorageForm(projectId = '') {
-		return { project_id: projectId, plugin_type: 'filesystem', config: '{}', active: true };
+		return { project_id: projectId, plugin_type: 'filesystem', config: '{}', ontology_id: '', active: true };
 	}
 
 	const BUILTIN_STORAGE_PLUGIN_OPTIONS = ['filesystem', 'postgresql', 'mysql', 'mongodb', 's3', 'redis', 'elasticsearch', 'neo4j'];
@@ -26,6 +26,7 @@
 		const [ingestionHealthLoading, setIngestionHealthLoading] = React.useState(false);
 		const [formData, setFormData] = React.useState(emptyStorageForm());
 		const [storagePlugins, setStoragePlugins] = React.useState([]);
+		const [ontologies, setOntologies] = React.useState([]);
 
 		React.useEffect(() => {
 			if (activeProject?.id) {
@@ -73,11 +74,25 @@
 			}
 		}, []);
 
+		const loadOntologies = React.useCallback(async () => {
+			if (!activeProject?.id) {
+				setOntologies([]);
+				return;
+			}
+			try {
+				const data = await apiCall(`/api/ontologies?project_id=${activeProject.id}`);
+				setOntologies(data || []);
+			} catch {
+				setOntologies([]);
+			}
+		}, [activeProject?.id]);
+
 		React.useEffect(() => {
 			loadConfigs();
 			loadIngestionHealth();
 			loadStoragePlugins();
-		}, [loadConfigs, loadIngestionHealth, loadStoragePlugins]);
+			loadOntologies();
+		}, [loadConfigs, loadIngestionHealth, loadStoragePlugins, loadOntologies]);
 
 		const openCreateModal = () => {
 			setEditingConfigId('');
@@ -92,6 +107,7 @@
 				plugin_type: config.plugin_type,
 				config: JSON.stringify(config.config || {}, null, 2),
 				active: config.active !== false,
+				ontology_id: config.ontology_id || '',
 			});
 			setShowModal(true);
 		};
@@ -103,6 +119,7 @@
 					project_id: formData.project_id,
 					plugin_type: formData.plugin_type,
 					config: JSON.parse(formData.config),
+					ontology_id: formData.ontology_id || '',
 				};
 				if (editingConfigId) {
 					await apiCall(`/api/storage/configs/${editingConfigId}?project_id=${formData.project_id}`, {
@@ -177,12 +194,17 @@
 			...BUILTIN_STORAGE_PLUGIN_OPTIONS,
 			...storagePlugins.filter(plugin => plugin.status === 'active').map(plugin => plugin.name),
 		])).map(plugin => ({ value: plugin, label: plugin }));
+		const ontologyOptions = [
+			{ value: '', label: 'No ontology binding' },
+			...ontologies.map(ontology => ({ value: ontology.id, label: `${ontology.name} · ${ontology.status}` })),
+		];
 		const columns = [
 			{ key: 'id', label: 'ID' },
 			{ key: 'label', label: 'Label', render: row => deriveStorageConfigLabel(row) },
 			{ key: 'plugin_type', label: 'Plugin Type' },
 			{ key: 'active', label: 'Status', render: row => <span className={`status-badge ${row.active ? 'status-active' : 'status-inactive'}`}>{row.active ? 'Active' : 'Inactive'}</span> },
 			{ key: 'config', label: 'Config', render: row => <pre style={{ margin: 0, fontSize: '0.75rem', maxWidth: '320px', whiteSpace: 'pre-wrap' }}>{renderConfigPreview(row.config)}</pre> },
+			{ key: 'ontology_id', label: 'Ontology', render: row => row.ontology_id || '—' },
 			{ key: 'created_at', label: 'Created', render: row => new Date(row.created_at).toLocaleDateString() },
 		];
 
@@ -267,6 +289,7 @@
 						<div className="form-grid">
 							<FormField label="Project" type="select" value={formData.project_id} onChange={(v) => setFormData({ ...formData, project_id: v })} options={projectOptions} required disabled={Boolean(editingConfigId)} />
 							<FormField label="Plugin Type" type="select" value={formData.plugin_type} onChange={(v) => setFormData({ ...formData, plugin_type: v })} options={pluginTypeOptions} required disabled={Boolean(editingConfigId)} hint="Built-in backends plus active external storage plugins." />
+							<FormField label="Ontology" type="select" value={formData.ontology_id || ''} onChange={(v) => setFormData({ ...formData, ontology_id: v })} options={ontologyOptions} disabled={Boolean(editingConfigId)} hint="Optional. On create, Mimir initializes storage schema from the compiled ontology before activating the config." />
 						</div>
 						<FormField label="Configuration (JSON)" type="textarea" value={formData.config} onChange={(v) => setFormData({ ...formData, config: v })} placeholder='{"path": "./data"}' required />
 						<label className="checkbox-row">

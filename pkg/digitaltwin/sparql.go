@@ -41,12 +41,12 @@ func (e *SPARQLEngine) Execute(twin *models.DigitalTwin, req *models.QueryReques
 		return nil, fmt.Errorf("failed to get entities: %w", err)
 	}
 
-	// Parse query
+	// Parse query. Unsupported or malformed queries must fail explicitly; returning
+	// plausible entity listings for invalid queries hides ontology/query mistakes.
 	tokens := tokenizeSPARQL(query)
 	parsedQuery, err := parseSPARQL(tokens)
 	if err != nil {
-		// Fall back to simple listing on parse failure
-		return e.simpleEntityListing(entities, req.Limit), nil
+		return nil, fmt.Errorf("invalid supported SPARQL subset query: %w", err)
 	}
 
 	// Override limit from request if provided and no LIMIT in query
@@ -75,40 +75,6 @@ func (e *SPARQLEngine) Execute(twin *models.DigitalTwin, req *models.QueryReques
 		Count:    len(rows),
 		Metadata: map[string]interface{}{"query_type": "sparql"},
 	}, nil
-}
-
-// simpleEntityListing returns a simplified result when SPARQL parsing fails
-func (e *SPARQLEngine) simpleEntityListing(entities []*models.Entity, limit int) *models.QueryResult {
-	rows := make([]map[string]interface{}, 0)
-	for _, entity := range entities {
-		row := map[string]interface{}{
-			"entity_id":   entity.ID,
-			"entity_type": entity.Type,
-		}
-		for k, v := range entity.Attributes {
-			row[k] = v
-		}
-		rows = append(rows, row)
-		if limit > 0 && len(rows) >= limit {
-			break
-		}
-	}
-
-	columns := []string{"entity_id", "entity_type"}
-	if len(rows) > 0 {
-		for k := range rows[0] {
-			if k != "entity_id" && k != "entity_type" {
-				columns = append(columns, k)
-			}
-		}
-	}
-
-	return &models.QueryResult{
-		Columns:  columns,
-		Rows:     rows,
-		Count:    len(rows),
-		Metadata: map[string]interface{}{"query_type": "simple_listing"},
-	}
 }
 
 // ─── Tokenizer ───────────────────────────────────────────────────────────────

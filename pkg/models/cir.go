@@ -55,6 +55,36 @@ type CIRMetadata struct {
 	RecordCount     int                    `json:"record_count,omitempty"`     // Number of records/items (for structured data)
 	SchemaInference map[string]interface{} `json:"schema_inference,omitempty"` // Optional inferred schema information
 	QualityMetrics  map[string]interface{} `json:"quality_metrics,omitempty"`  // Optional data quality indicators
+	Ontology        *CIRSemanticMapping    `json:"ontology,omitempty"`         // Ontology-guided semantic mapping/validation metadata
+}
+
+// CIRSemanticMapping records how a CIR record maps into a compiled project ontology.
+type CIRSemanticMapping struct {
+	OntologyID     string                      `json:"ontology_id"`
+	ContentHash    string                      `json:"content_hash"`
+	ClassID        string                      `json:"class_id,omitempty"`
+	MatchedBy      string                      `json:"matched_by,omitempty"`
+	Properties     map[string]SemanticProperty `json:"properties,omitempty"`
+	UnmappedFields []string                    `json:"unmapped_fields,omitempty"`
+	Violations     []SemanticMappingViolation  `json:"violations,omitempty"`
+}
+
+// SemanticProperty captures a value mapped from source CIR data to an ontology property.
+type SemanticProperty struct {
+	PropertyID  string      `json:"property_id"`
+	SourceField string      `json:"source_field"`
+	Value       interface{} `json:"value"`
+	Range       []string    `json:"range,omitempty"`
+	Kind        string      `json:"kind"`
+}
+
+// SemanticMappingViolation describes ontology mapping or validation issues that should remain visible downstream.
+type SemanticMappingViolation struct {
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Field    string `json:"field,omitempty"`
+	Expected string `json:"expected,omitempty"`
+	Actual   string `json:"actual,omitempty"`
 }
 
 // NewCIR creates a new CIR instance with the current version

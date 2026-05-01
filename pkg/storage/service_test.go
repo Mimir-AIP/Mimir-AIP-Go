@@ -30,6 +30,34 @@ func saveTestProject(t *testing.T, store *metadatastore.SQLiteStore, projectID s
 	}
 }
 
+type cirCapturingStoragePlugin struct {
+	captured **models.CIR
+}
+
+func (m *cirCapturingStoragePlugin) Initialize(config *models.PluginConfig) error { return nil }
+func (m *cirCapturingStoragePlugin) CreateSchema(ontology *models.OntologyDefinition) error {
+	return nil
+}
+func (m *cirCapturingStoragePlugin) Store(cir *models.CIR) (*models.StorageResult, error) {
+	if m.captured != nil {
+		*m.captured = cir
+	}
+	return &models.StorageResult{Success: true, AffectedItems: 1}, nil
+}
+func (m *cirCapturingStoragePlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, error) {
+	return []*models.CIR{}, nil
+}
+func (m *cirCapturingStoragePlugin) Update(query *models.CIRQuery, updates *models.CIRUpdate) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 0}, nil
+}
+func (m *cirCapturingStoragePlugin) Delete(query *models.CIRQuery) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 0}, nil
+}
+func (m *cirCapturingStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
+	return &models.StorageMetadata{StorageType: "cir-capture"}, nil
+}
+func (m *cirCapturingStoragePlugin) HealthCheck() (bool, error) { return true, nil }
+
 type mockStoragePlugin struct{}
 
 func (m *mockStoragePlugin) Initialize(config *models.PluginConfig) error           { return nil }
@@ -117,6 +145,44 @@ func (m *statefulStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
 }
 
 func (m *statefulStoragePlugin) HealthCheck() (bool, error) { return true, nil }
+
+func TestStoreForProjectAddsOntologyMapping(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+	saveTestProject(t, store, "project-1")
+
+	ontologyRecord, err := ontologysvc.NewService(store).CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "project-1",
+		Name:      "Readings",
+		Content:   semanticMappingOntology,
+		Status:    "active",
+	})
+	if err != nil {
+		t.Fatalf("failed to create ontology: %v", err)
+	}
+
+	var captured *models.CIR
+	svc := NewService(store)
+	svc.RegisterPlugin("cir-capture", &cirCapturingStoragePlugin{captured: &captured})
+	cfg, err := svc.CreateStorageConfigWithOntology("project-1", "cir-capture", map[string]interface{}{"connection_string": "mock://capture"}, ontologyRecord.ID)
+	if err != nil {
+		t.Fatalf("CreateStorageConfigWithOntology failed: %v", err)
+	}
+
+	cir := models.NewCIR(models.SourceTypeAPI, "api://sensor-readings", models.DataFormatJSON, map[string]interface{}{"entity_type": "SensorReading", "temperature": 22.4})
+	if _, err := svc.StoreForProject("project-1", cfg.ID, cir); err != nil {
+		t.Fatalf("StoreForProject failed: %v", err)
+	}
+	if captured == nil || captured.Metadata.Ontology == nil {
+		t.Fatalf("expected stored CIR to include ontology mapping, got %+v", captured)
+	}
+	if captured.Metadata.Ontology.ClassID != "SensorReading" {
+		t.Fatalf("expected SensorReading mapping, got %+v", captured.Metadata.Ontology)
+	}
+}
 
 func TestCreateStorageConfigWithOntologyInitializesSchema(t *testing.T) {
 	store, err := metadatastore.NewSQLiteStore(":memory:")

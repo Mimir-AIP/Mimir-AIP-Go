@@ -495,6 +495,17 @@ func (s *Service) storeWithConfig(storageConfig *models.StorageConfig, cir *mode
 	if err != nil {
 		return nil, err
 	}
+	if storageConfig.OntologyID != "" {
+		compiled, err := s.store.GetCompiledOntology(storageConfig.OntologyID)
+		if err != nil {
+			return nil, fmt.Errorf("compiled ontology not found for storage %s: %w", storageConfig.ID, err)
+		}
+		mapping, err := mapCIRToOntology(cir, compiled)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map CIR to ontology: %w", err)
+		}
+		cir.Metadata.Ontology = mapping
+	}
 	result, err := plugin.Store(cir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to store data: %w", err)

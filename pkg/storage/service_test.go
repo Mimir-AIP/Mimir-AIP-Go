@@ -8,6 +8,7 @@ import (
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
+	ontologysvc "github.com/mimir-aip/mimir-aip-go/pkg/ontology"
 )
 
 func saveTestProject(t *testing.T, store *metadatastore.SQLiteStore, projectID string) {
@@ -50,6 +51,34 @@ func (m *mockStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
 }
 func (m *mockStoragePlugin) HealthCheck() (bool, error) { return true, nil }
 
+type schemaCapturingStoragePlugin struct {
+	captured **models.OntologyDefinition
+}
+
+func (m *schemaCapturingStoragePlugin) Initialize(config *models.PluginConfig) error { return nil }
+func (m *schemaCapturingStoragePlugin) CreateSchema(ontology *models.OntologyDefinition) error {
+	if m.captured != nil {
+		*m.captured = ontology
+	}
+	return nil
+}
+func (m *schemaCapturingStoragePlugin) Store(cir *models.CIR) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 1}, nil
+}
+func (m *schemaCapturingStoragePlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, error) {
+	return []*models.CIR{}, nil
+}
+func (m *schemaCapturingStoragePlugin) Update(query *models.CIRQuery, updates *models.CIRUpdate) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 0}, nil
+}
+func (m *schemaCapturingStoragePlugin) Delete(query *models.CIRQuery) (*models.StorageResult, error) {
+	return &models.StorageResult{Success: true, AffectedItems: 0}, nil
+}
+func (m *schemaCapturingStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
+	return &models.StorageMetadata{StorageType: "schema-capture"}, nil
+}
+func (m *schemaCapturingStoragePlugin) HealthCheck() (bool, error) { return true, nil }
+
 type statefulStoragePlugin struct {
 	connectionString string
 }
@@ -88,6 +117,86 @@ func (m *statefulStoragePlugin) GetMetadata() (*models.StorageMetadata, error) {
 }
 
 func (m *statefulStoragePlugin) HealthCheck() (bool, error) { return true, nil }
+
+func TestCreateStorageConfigWithOntologyInitializesSchema(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+	saveTestProject(t, store, "project-1")
+
+	ontologyService := ontologysvc.NewService(store)
+	ontologyRecord, err := ontologyService.CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "project-1",
+		Name:      "Plant",
+		Content: `@prefix : <http://example.org/mimir#> .
+		@prefix owl: <http://www.w3.org/2002/07/owl#> .
+		@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+		@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+		:Sensor a owl:Class .
+		:Reading a owl:Class .
+		:temperature a owl:DatatypeProperty ;
+		  rdfs:domain :Reading ;
+		  rdfs:range xsd:decimal .
+		:hasReading a owl:ObjectProperty ;
+		  rdfs:domain :Sensor ;
+		  rdfs:range :Reading .`,
+		Status: "active",
+	})
+	if err != nil {
+		t.Fatalf("failed to create ontology: %v", err)
+	}
+
+	var captured *models.OntologyDefinition
+	plugin := &schemaCapturingStoragePlugin{captured: &captured}
+	svc := NewService(store)
+	svc.RegisterPlugin("schema-capture", plugin)
+	cfg, err := svc.CreateStorageConfigWithOntology("project-1", "schema-capture", map[string]interface{}{"connection_string": "mock://schema"}, ontologyRecord.ID)
+	if err != nil {
+		t.Fatalf("CreateStorageConfigWithOntology failed: %v", err)
+	}
+	if cfg.OntologyID != ontologyRecord.ID {
+		t.Fatalf("expected storage config ontology_id %s, got %s", ontologyRecord.ID, cfg.OntologyID)
+	}
+	if captured == nil {
+		t.Fatalf("expected plugin schema initialization")
+	}
+	if len(captured.Entities) != 2 {
+		t.Fatalf("expected 2 entities, got %+v", captured.Entities)
+	}
+	if len(captured.Relationships) != 1 || captured.Relationships[0].Name != "hasReading" {
+		t.Fatalf("expected hasReading relationship, got %+v", captured.Relationships)
+	}
+}
+
+func TestCreateStorageConfigWithOntologyRejectsProjectMismatch(t *testing.T) {
+	store, err := metadatastore.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create metadata store: %v", err)
+	}
+	defer store.Close()
+	saveTestProject(t, store, "project-1")
+	saveTestProject(t, store, "project-2")
+
+	ontologyRecord, err := ontologysvc.NewService(store).CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "project-2",
+		Name:      "Other",
+		Content:   "@prefix : <http://example.org/mimir#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n\n:Entity a owl:Class .",
+		Status:    "active",
+	})
+	if err != nil {
+		t.Fatalf("failed to create ontology: %v", err)
+	}
+
+	svc := NewService(store)
+	svc.RegisterPlugin("schema-capture", &schemaCapturingStoragePlugin{})
+	_, err = svc.CreateStorageConfigWithOntology("project-1", "schema-capture", map[string]interface{}{"connection_string": "mock://schema"}, ontologyRecord.ID)
+	if err == nil || !strings.Contains(err.Error(), "belongs to project") {
+		t.Fatalf("expected project mismatch error, got %v", err)
+	}
+}
 
 func TestStorageOperationsUseIsolatedPluginInstances(t *testing.T) {
 	store, err := metadatastore.NewSQLiteStore(":memory:")

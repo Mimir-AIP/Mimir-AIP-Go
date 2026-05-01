@@ -51,11 +51,16 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 				mcp.Required(),
 				mcp.Description(`JSON object with plugin-specific config e.g. {"path":"/data"} for filesystem or {"connection_string":"postgres://..."} for postgresql`),
 			),
+			mcp.WithString("ontology_id",
+
+				mcp.Description("Optional ontology ID used to initialize backend schema from the compiled ontology"),
+			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			projectID := req.GetString("project_id", "")
 			pluginType := req.GetString("type", "")
 			configStr := req.GetString("config", "")
+			ontologyID := req.GetString("ontology_id", "")
 			if projectID == "" || pluginType == "" || configStr == "" {
 				return mcp.NewToolResultError("project_id, type, and config are required"), nil
 			}
@@ -63,7 +68,7 @@ func registerStorageTools(s *server.MCPServer, m *MimirMCPServer) {
 			if err := json.Unmarshal([]byte(configStr), &cfg); err != nil {
 				return mcp.NewToolResultError("config must be a valid JSON object: " + err.Error()), nil
 			}
-			storageConfig, err := m.storageSvc.CreateStorageConfig(projectID, pluginType, cfg)
+			storageConfig, err := m.storageSvc.CreateStorageConfigWithOntology(projectID, pluginType, cfg, ontologyID)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}

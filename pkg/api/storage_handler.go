@@ -270,6 +270,7 @@ func (h *StorageHandler) createStorageConfig(w http.ResponseWriter, r *http.Requ
 		ProjectID  string                 `json:"project_id"`
 		PluginType string                 `json:"plugin_type"`
 		Config     map[string]interface{} `json:"config"`
+		OntologyID string                 `json:"ontology_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
@@ -283,7 +284,7 @@ func (h *StorageHandler) createStorageConfig(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "plugin_type is required", http.StatusBadRequest)
 		return
 	}
-	config, err := h.service.CreateStorageConfig(req.ProjectID, req.PluginType, req.Config)
+	config, err := h.service.CreateStorageConfigWithOntology(req.ProjectID, req.PluginType, req.Config, req.OntologyID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create storage config: %v", err), storageErrorStatus(err))
 		return

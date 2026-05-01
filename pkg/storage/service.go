@@ -94,12 +94,19 @@ func (s *Service) configuredPlugin(storageConfig *models.StorageConfig) (models.
 	return plugin, nil
 }
 
-// CreateStorageConfig creates a new storage configuration for a project
+// CreateStorageConfig creates a new storage configuration for a project.
 func (s *Service) CreateStorageConfig(projectID, pluginType string, config map[string]interface{}) (*models.StorageConfig, error) {
+	return s.CreateStorageConfigWithOntology(projectID, pluginType, config, "")
+}
+
+// CreateStorageConfigWithOntology creates a storage configuration and, when ontologyID is provided,
+// initializes the backend schema from the persisted compiled ontology before making the config active.
+func (s *Service) CreateStorageConfigWithOntology(projectID, pluginType string, config map[string]interface{}, ontologyID string) (*models.StorageConfig, error) {
 	if err := s.ensureProjectExists(projectID); err != nil {
 		return nil, err
 	}
-	if _, err := s.GetPlugin(pluginType); err != nil {
+	plugin, err := s.GetPlugin(pluginType)
+	if err != nil {
 		return nil, fmt.Errorf("invalid plugin type: %w", err)
 	}
 	if config == nil {
@@ -109,12 +116,42 @@ func (s *Service) CreateStorageConfig(projectID, pluginType string, config map[s
 		return nil, fmt.Errorf("invalid storage config: %w", err)
 	}
 
+	var ontologyDefinition *models.OntologyDefinition
+	ontologyID = strings.TrimSpace(ontologyID)
+	if ontologyID != "" {
+		ontologyRecord, err := s.store.GetOntology(ontologyID)
+		if err != nil {
+			return nil, fmt.Errorf("ontology not found: %w", err)
+		}
+		if ontologyRecord.ProjectID != projectID {
+			return nil, fmt.Errorf("ontology %s belongs to project %s, not %s", ontologyID, ontologyRecord.ProjectID, projectID)
+		}
+		compiled, err := s.store.GetCompiledOntology(ontologyID)
+		if err != nil {
+			return nil, fmt.Errorf("compiled ontology not found for storage initialization: %w", err)
+		}
+		ontologyDefinition = ontologyDefinitionFromCompiled(compiled)
+
+		pluginConfig := &models.PluginConfig{
+			ConnectionString: getConnectionString(config),
+			Credentials:      getCredentials(config),
+			Options:          getOptions(config),
+		}
+		if err := plugin.Initialize(pluginConfig); err != nil {
+			return nil, fmt.Errorf("failed to initialize storage plugin: %w", err)
+		}
+		if err := plugin.CreateSchema(ontologyDefinition); err != nil {
+			return nil, fmt.Errorf("failed to create ontology-backed storage schema: %w", err)
+		}
+	}
+
 	now := time.Now().Format(time.RFC3339)
 	storageConfig := &models.StorageConfig{
 		ID:         uuid.New().String(),
 		ProjectID:  projectID,
 		PluginType: pluginType,
 		Config:     config,
+		OntologyID: ontologyID,
 		Active:     true,
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -326,6 +363,77 @@ func (s *Service) InitializeStorage(storageID string, ontology *models.OntologyD
 	log.Printf("Initialized storage %s with plugin %s", storageID, storageConfig.PluginType)
 
 	return nil
+}
+
+func ontologyDefinitionFromCompiled(compiled *models.CompiledOntology) *models.OntologyDefinition {
+	if compiled == nil {
+		return nil
+	}
+	propertiesByDomain := map[string][]models.CompiledOntologyProperty{}
+	for _, property := range compiled.Properties {
+		if property.Kind != "datatype" {
+			continue
+		}
+		if len(property.Domain) == 0 {
+			continue
+		}
+		for _, domain := range property.Domain {
+			propertiesByDomain[domain] = append(propertiesByDomain[domain], property)
+		}
+	}
+
+	definition := &models.OntologyDefinition{
+		Entities:      make([]models.EntityDefinition, 0, len(compiled.Classes)),
+		Relationships: make([]models.RelationshipDefinition, 0, len(compiled.Relations)),
+	}
+	for _, class := range compiled.Classes {
+		attributes := make([]models.AttributeDefinition, 0)
+		primaryKey := make([]string, 0)
+		for _, property := range propertiesByDomain[class.ID] {
+			attr := models.AttributeDefinition{Name: property.Name, Type: storageTypeFromOntologyRange(property.Range), Nullable: true}
+			attributes = append(attributes, attr)
+			if isIdentityProperty(class.ID, property.Name) {
+				primaryKey = append(primaryKey, property.Name)
+			}
+		}
+		sort.Slice(attributes, func(i, j int) bool { return attributes[i].Name < attributes[j].Name })
+		definition.Entities = append(definition.Entities, models.EntityDefinition{Name: class.Name, Attributes: attributes, PrimaryKey: primaryKey})
+	}
+	for _, relation := range compiled.Relations {
+		definition.Relationships = append(definition.Relationships, models.RelationshipDefinition{Name: relation.Name, FromEntity: relation.FromClass, ToEntity: relation.ToClass, Type: "many-to-many"})
+	}
+	sort.Slice(definition.Entities, func(i, j int) bool { return definition.Entities[i].Name < definition.Entities[j].Name })
+	sort.Slice(definition.Relationships, func(i, j int) bool {
+		if definition.Relationships[i].FromEntity != definition.Relationships[j].FromEntity {
+			return definition.Relationships[i].FromEntity < definition.Relationships[j].FromEntity
+		}
+		return definition.Relationships[i].Name < definition.Relationships[j].Name
+	})
+	return definition
+}
+
+func storageTypeFromOntologyRange(ranges []string) string {
+	if len(ranges) == 0 {
+		return "string"
+	}
+	switch strings.ToLower(ranges[0]) {
+	case "integer", "int", "long", "short", "decimal", "float", "double":
+		return "number"
+	case "boolean", "bool":
+		return "boolean"
+	case "date", "datetime", "time":
+		return "date"
+	case "json", "object":
+		return "json"
+	default:
+		return "string"
+	}
+}
+
+func isIdentityProperty(classID, propertyName string) bool {
+	property := strings.ToLower(propertyName)
+	class := strings.ToLower(classID)
+	return property == "id" || property == class+"id" || property == class+"_id"
 }
 
 func (s *Service) StoreForProject(projectID, storageID string, cir *models.CIR) (*models.StorageResult, error) {

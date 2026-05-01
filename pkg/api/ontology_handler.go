@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -91,6 +92,12 @@ func (h *OntologyHandler) HandleOntology(w http.ResponseWriter, r *http.Request)
 				return
 			}
 			h.handleGetDiagnostics(w, r, ontologyID)
+		case "search":
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.handleSearch(w, r, ontologyID)
 		default:
 			http.NotFound(w, r)
 		}
@@ -209,6 +216,30 @@ func (h *OntologyHandler) handleGetDiagnostics(w http.ResponseWriter, r *http.Re
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(compiled.Diagnostics)
+}
+
+func (h *OntologyHandler) handleSearch(w http.ResponseWriter, r *http.Request, ontologyID string) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+	limit := 20
+	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 {
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		limit = parsed
+	}
+	results, err := h.service.SearchOntologyTermsForProject(projectID, ontologyID, r.URL.Query().Get("q"), limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to search ontology: %v", err), ontologyErrorStatus(err))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }
 
 // handleUpdate handles PUT /api/ontologies/{id}

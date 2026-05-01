@@ -3,6 +3,7 @@ package ontology
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -160,6 +161,54 @@ func (s *Service) ValidateOntology(req *models.OntologyValidationRequest) *model
 		Compiled:    compiled,
 		Diagnostics: compiled.Diagnostics,
 	}
+}
+
+func (s *Service) SearchOntologyTermsForProject(projectID, ontologyID, query string, limit int) ([]models.OntologySearchResult, error) {
+	compiled, err := s.GetCompiledOntologyForProject(projectID, ontologyID)
+	if err != nil {
+		return nil, err
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	results := make([]models.OntologySearchResult, 0)
+	for _, term := range compiled.SearchTerms {
+		score, match := scoreOntologyTerm(term, query)
+		if query != "" && score == 0 {
+			continue
+		}
+		results = append(results, models.OntologySearchResult{Term: term, Score: score, Match: match})
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+		return results[i].Term.Term < results[j].Term.Term
+	})
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
+}
+
+func scoreOntologyTerm(term models.OntologySearchTerm, query string) (float64, string) {
+	if query == "" {
+		return term.Weight, term.Term
+	}
+	candidates := append([]string{term.Term, term.ID}, term.Aliases...)
+	for _, candidate := range candidates {
+		candidateLower := strings.ToLower(strings.TrimSpace(candidate))
+		switch {
+		case candidateLower == query:
+			return term.Weight + 1.0, candidate
+		case strings.Contains(candidateLower, query):
+			return term.Weight + 0.5, candidate
+		case strings.Contains(query, candidateLower) && candidateLower != "":
+			return term.Weight + 0.25, candidate
+		}
+	}
+	return 0, ""
 }
 
 // GetProjectOntologies retrieves all ontologies for a project

@@ -55,6 +55,14 @@ type OntologyValidationResponse struct {
 	Diagnostics []OntologyDiagnostic `json:"diagnostics,omitempty"`
 }
 
+// OntologySearchResult is a ranked semantic term match from a compiled ontology.
+type OntologySearchResult struct {
+	Term       OntologySearchTerm `json:"term"`
+	Score      float64            `json:"score"`
+	Match      string             `json:"match"`
+	Diagnostic string             `json:"diagnostic,omitempty"`
+}
+
 // Validate checks if the Ontology is valid
 func (o *Ontology) Validate() error {
 	if o.ProjectID == "" {

@@ -113,6 +113,30 @@ func TestCreateOntologyRejectsCompilationErrors(t *testing.T) {
 	}
 }
 
+func TestSearchOntologyTermsForProjectRanksSemanticTerms(t *testing.T) {
+	service, store := setupOntologyService(t)
+	defer store.Close()
+
+	created, err := service.CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "test-project-id",
+		Name:      "Searchable",
+		Content:   compiledOntologyFixture,
+		Status:    "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateOntology failed: %v", err)
+	}
+	results, err := service.SearchOntologyTermsForProject("test-project-id", created.ID, "reading", 10)
+	if err != nil {
+		t.Fatalf("SearchOntologyTermsForProject failed: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatalf("expected search results")
+	}
+	if results[0].Term.ID != "Reading" && results[0].Term.ID != "hasReading" {
+		t.Fatalf("expected reading-related top result, got %+v", results[0])
+	}
+}
 func TestCreateOntologyRejectsMissingProject(t *testing.T) {
 	service, store := setupOntologyService(t)
 	defer store.Close()

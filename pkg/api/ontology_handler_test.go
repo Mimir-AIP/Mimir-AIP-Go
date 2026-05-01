@@ -143,3 +143,32 @@ func TestOntologyCompiledEndpointReturnsCanonicalGraph(t *testing.T) {
 		t.Fatalf("unexpected compiled graph: %+v", compiled)
 	}
 }
+
+func TestOntologySearchEndpointReturnsSemanticTerms(t *testing.T) {
+	handler, store, cleanup := setupOntologyHandlerTest(t)
+	defer cleanup()
+
+	created, err := ontology.NewService(store).CreateOntology(&models.OntologyCreateRequest{
+		ProjectID: "project-a",
+		Name:      "Searchable",
+		Content:   "@prefix : <http://example.org/mimir#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n\n:Sensor a owl:Class ; rdfs:label \"Sensor\" .",
+		Status:    "draft",
+	})
+	if err != nil {
+		t.Fatalf("CreateOntology failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ontologies/"+created.ID+"/search?project_id=project-a&q=sensor", nil)
+	resp := httptest.NewRecorder()
+	handler.HandleOntology(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d body=%s", resp.Code, resp.Body.String())
+	}
+	var results []models.OntologySearchResult
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		t.Fatalf("failed to decode search results: %v", err)
+	}
+	if len(results) == 0 || results[0].Term.ID != "Sensor" {
+		t.Fatalf("expected Sensor search result, got %+v", results)
+	}
+}

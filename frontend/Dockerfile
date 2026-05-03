@@ -22,6 +22,7 @@ WORKDIR /app
 COPY --from=builder /app/frontend-server .
 COPY --from=builder /app/frontend/index.html .
 COPY --from=builder /app/frontend/styles.css .
+COPY --from=builder /app/frontend/styles ./styles
 COPY --from=builder /app/frontend/app.js .
 COPY --from=builder /app/frontend/lib ./lib
 COPY --from=builder /app/frontend/context ./context

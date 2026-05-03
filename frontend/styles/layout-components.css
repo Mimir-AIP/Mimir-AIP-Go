@@ -1,0 +1,303 @@
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
+
+h1, h2, h3, h4 {
+	color: var(--text);
+	font-weight: 600;
+	line-height: 1.3;
+}
+
+h3 {
+	font-size: 0.9375rem;
+}
+
+.accent {
+	color: var(--accent);
+}
+
+/* ============================================================
+   CONTENT SECTIONS
+   ============================================================ */
+
+.content-section {
+	margin-bottom: 32px;
+}
+
+.section-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 20px;
+}
+
+.section-header h2 {
+	font-family: var(--font-display);
+	font-size: 1.25rem;
+	font-weight: 600;
+	color: var(--text);
+	letter-spacing: 0.02em;
+}
+
+/* ============================================================
+   INTERNAL PAGE TABS
+   Used within pages (Pipelines, Digital Twins) — NOT the sidebar nav
+   ============================================================ */
+
+.tabs-container {
+	display: flex;
+	gap: 2px;
+	margin-bottom: 20px;
+	border-bottom: 1px solid var(--border);
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: thin;
+}
+
+/* Override global button rule for tabs — nested selector wins */
+.tabs-container .tab {
+	background: transparent;
+	border: none;
+	border-bottom: 2px solid transparent;
+	border-radius: 0;
+	padding: 8px 14px;
+	margin-bottom: -1px;
+	color: var(--text-secondary);
+	font-family: var(--font-body);
+	font-size: 0.8125rem;
+	font-weight: 400;
+	cursor: pointer;
+	transition: color 0.12s, border-color 0.12s;
+	letter-spacing: 0.01em;
+}
+
+.tabs-container .tab:hover {
+	color: var(--text);
+	background: transparent;
+	filter: none;
+	opacity: 1;
+}
+
+.tabs-container .tab.active {
+	color: var(--accent);
+	border-bottom-color: var(--accent);
+	font-weight: 500;
+	background: transparent;
+}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+
+.table-container {
+	overflow-x: auto;
+	overflow-y: hidden;
+	-webkit-overflow-scrolling: touch;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+}
+
+.table-action-group {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.table-action-group > * {
+	flex-shrink: 0;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+table {
+	width: 100%;
+	font-family: var(--font-body);
+	color: var(--text);
+	background: transparent;
+	border-collapse: collapse;
+	font-size: 0.8125rem;
+	table-layout: auto;
+}
+
+thead th {
+	border-bottom: 1px solid var(--border-strong);
+	padding: 11px 14px;
+	text-align: left;
+	font-weight: 500;
+	font-size: 0.75rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	vertical-align: top;
+	white-space: nowrap;
+}
+
+tbody td {
+	border-bottom: 1px solid var(--border);
+	padding: 13px 14px;
+	color: var(--text);
+	vertical-align: top;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+tbody tr:hover {
+	background: var(--bg-elevated);
+}
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+
+form {
+	font-family: var(--font-body);
+	color: var(--text);
+}
+
+.form-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 12px;
+	margin-bottom: 12px;
+}
+
+.form-grid > * {
+	min-width: 0;
+}
+
+.form-group {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.form-group label {
+	font-weight: 500;
+	font-size: 0.75rem;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.form-hint {
+	font-size: 0.75rem;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+
+input, select, textarea {
+	background: var(--bg-elevated);
+	color: var(--text);
+	font-family: var(--font-body);
+	border: 1px solid var(--border-strong);
+	padding: 8px 10px;
+	border-radius: var(--radius);
+	font-size: 0.875rem;
+	transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+textarea {
+	min-height: 110px;
+	resize: vertical;
+}
+
+input:focus, select:focus, textarea:focus {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+select option {
+	background: var(--bg-elevated);
+	color: var(--text);
+}
+
+button[type="submit"] {
+	margin-top: 10px;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+
+button {
+	background: var(--accent);
+	color: var(--text-inverse);
+	font-family: var(--font-body);
+	border: none;
+	padding: 8px 16px;
+	cursor: pointer;
+	transition: filter 0.12s, background 0.12s, box-shadow 0.12s, transform 0.12s;
+	border-radius: var(--radius);
+	font-weight: 500;
+	font-size: 0.8125rem;
+	letter-spacing: 0.01em;
+}
+
+button {
+	white-space: nowrap;
+	will-change: transform;
+}
+
+button:hover {
+	filter: brightness(1.1);
+	opacity: 1;
+}
+
+button:focus-visible,
+.nav-item:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+button:active {
+	transform: translateY(1px);
+}
+
+button:disabled {
+	opacity: 0.35;
+	cursor: not-allowed;
+	filter: none;
+	transform: none;
+}
+
+button.secondary {
+	background: var(--bg-elevated);
+	color: var(--text);
+	box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+button.secondary:hover {
+	background: var(--bg-hover);
+	box-shadow: inset 0 0 0 1px var(--accent-border);
+	color: var(--text);
+	filter: none;
+}
+
+button.danger {
+	background: rgba(185, 28, 28, 0.18);
+	color: #fca5a5;
+	box-shadow: inset 0 0 0 1px rgba(185, 28, 28, 0.3);
+}
+
+button.danger:hover {
+	background: rgba(185, 28, 28, 0.32);
+	filter: none;
+}
+

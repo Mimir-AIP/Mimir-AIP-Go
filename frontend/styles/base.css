@@ -1,0 +1,312 @@
+/* ============================================================
+   MIMIR AIP — Design System v2
+   ============================================================ */
+
+:root {
+	/* Navy depth layers */
+	--bg-base:     #070d1a;
+	--bg-surface:  #0c1526;
+	--bg-elevated: #111e35;
+	--bg-hover:    #162040;
+
+	/* Brand orange — used surgically */
+	--accent:        #ff9900;
+	--accent-subtle: rgba(255, 153, 0, 0.10);
+	--accent-border: rgba(255, 153, 0, 0.28);
+
+	/* Text scale */
+	--text:           #dce8f8;
+	--text-primary:   #dce8f8;
+	--text-secondary: #7aaac8;
+	--text-muted:     #4d708f;
+	--text-inverse:   #060c18;
+
+	/* Structural borders — slate, not orange */
+	--border:        #101e30;
+	--border-strong: #192d47;
+
+	/* Compat aliases used in app.js inline styles */
+	--background: var(--bg-base);
+	--surface:    var(--bg-surface);
+
+	/* Fonts */
+	--font-display: 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+	--font-body:    'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+	--font-mono:    'SFMono-Regular', 'JetBrains Mono', 'Consolas', 'Liberation Mono', monospace;
+	--font-family:  var(--font-body);
+
+	/* Layout */
+	--topbar-height: 52px;
+	--sidebar-width: 210px;
+	--radius:        5px;
+	--radius-lg:     8px;
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+
+*, *::before, *::after {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+html, body {
+	height: 100%;
+}
+
+body {
+	background: var(--bg-base);
+	color: var(--text);
+	font-family: var(--font-body);
+	/* Fluid type: 14px at mobile, 18px at large desktop */
+	font-size: clamp(14px, 0.6vw + 11.5px, 18px);
+	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
+}
+
+#root {
+	height: 100%;
+}
+
+/* ============================================================
+   APP SHELL — Topbar + Sidebar + Content
+   ============================================================ */
+
+.app-shell {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+}
+
+/* ── Topbar ── */
+
+.app-topbar {
+	height: var(--topbar-height);
+	flex-shrink: 0;
+	background: var(--bg-surface);
+	border-bottom: 1px solid var(--border);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 20px;
+	position: sticky;
+	top: 0;
+	z-index: 100;
+}
+
+.topbar-brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.topbar-logo {
+	color: var(--accent);
+	font-size: 1.1rem;
+	line-height: 1;
+	flex-shrink: 0;
+}
+
+.topbar-name {
+	font-family: var(--font-display);
+	font-size: 0.9375rem;
+	font-weight: 700;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--text);
+}
+
+.topbar-meta {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+}
+
+.topbar-meta > * {
+	min-width: 0;
+}
+
+.topbar-version {
+	display: block;
+	max-width: min(48vw, 720px);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.topbar-version {
+	font-family: var(--font-mono);
+	font-size: 0.6875rem;
+	color: var(--text-muted);
+	letter-spacing: 0.08em;
+}
+
+/* ── App body (sidebar + main) ── */
+
+.app-body {
+	display: flex;
+	flex: 1;
+}
+
+/* ── Sidebar ── */
+
+.app-sidebar {
+	width: var(--sidebar-width);
+	flex-shrink: 0;
+	background: var(--bg-surface);
+	border-right: 1px solid var(--border);
+	position: sticky;
+	top: var(--topbar-height);
+	height: calc(100vh - var(--topbar-height));
+	overflow-y: auto;
+}
+
+.sidebar-nav {
+	padding: 8px 0;
+}
+
+/* Nav items — use high-specificity selector to guarantee override of global button rule */
+.app-sidebar .nav-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 10px 20px;
+	background: transparent;
+	border: none;
+	border-left: 2px solid transparent;
+	border-radius: 0;
+	color: var(--text-secondary);
+	font-family: var(--font-body);
+	font-size: 0.875rem;
+	font-weight: 400;
+	cursor: pointer;
+	text-align: left;
+	transition: color 0.12s, background 0.12s, border-color 0.12s;
+	letter-spacing: 0.01em;
+}
+.app-sidebar .nav-item:hover {
+	color: var(--text);
+	background: var(--accent-subtle);
+	border-left-color: var(--accent-border);
+	filter: none;
+	opacity: 1;
+}
+.app-sidebar .nav-item.active {
+	color: var(--accent);
+	background: var(--accent-subtle);
+	border-left-color: var(--accent);
+	font-weight: 500;
+}
+.app-sidebar .nav-item.active:hover {
+	filter: none;
+	opacity: 1;
+}
+.nav-status-indicator {
+	width: 10px;
+	height: 10px;
+	border-radius: 999px;
+	flex-shrink: 0;
+	background: currentColor;
+	box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+}
+.nav-status-indicator.status-inactive { color: #94a3b8; }
+.nav-status-indicator.status-in_progress { color: #f59e0b; }
+.nav-status-indicator.status-complete { color: #34d399; }
+.nav-status-indicator.status-error { color: #f87171; }
+.nav-status-indicator.status-attention { color: #34d399; }
+.nav-status-indicator.is-pulsing {
+	animation: navPulse 1.4s ease-in-out infinite;
+}
+.nav-item-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.nav-item-label {
+	line-height: 1.1;
+}
+.nav-item-detail {
+	margin-top: 3px;
+	font-size: 0.625rem;
+	font-family: var(--font-mono);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+@keyframes navPulse {
+	0%, 100% {
+		transform: scale(1);
+		box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45);
+	}
+	50% {
+		transform: scale(1.15);
+		box-shadow: 0 0 0 7px rgba(52, 211, 153, 0);
+	}
+}
+
+.sidebar-project-selector {
+	padding: 12px 16px 16px;
+	border-top: 1px solid var(--border);
+	margin-top: 8px;
+}
+
+.sidebar-project-selector label {
+	display: block;
+	font-size: 0.65rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+	margin-bottom: 6px;
+}
+
+.sidebar-project-selector select {
+	width: 100%;
+	padding: 6px 8px;
+	background: var(--surface);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	font-family: var(--font-body);
+	font-size: 0.8rem;
+	cursor: pointer;
+}
+
+.sidebar-section-label {
+	padding: 16px 18px 4px;
+	font-size: 0.6rem;
+	font-weight: 600;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+
+/* ── Main content ── */
+
+.app-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.app-container {
+	padding: clamp(20px, 3vw, 48px) clamp(20px, 4vw, 56px);
+}
+
+.app-container > * {
+	min-width: 0;
+}
+
+.content-section,
+.card,
+.section-panel {
+	min-width: 0;
+	content-visibility: auto;
+	contain-intrinsic-size: 280px;
+}
+

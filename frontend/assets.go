@@ -9,7 +9,7 @@ import (
 
 // Assets contains the packaged frontend files used by the local all-in-one launcher.
 //
-//go:embed index.html styles.css app.js lib context hooks components pages vendor
+//go:embed index.html styles.css styles app.js lib context hooks components pages vendor
 var Assets embed.FS
 
 func Handler() http.Handler {

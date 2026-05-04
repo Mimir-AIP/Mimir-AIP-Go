@@ -39,6 +39,8 @@ Thumbs.db
 
 # Dependencies (will be downloaded in build)
 vendor/
+!frontend/vendor/
+!frontend/vendor/**
 
 # Kubernetes and deployment
 k8s/

@@ -19,6 +19,8 @@ go.work
 
 # Dependency directories
 vendor/
+!frontend/vendor/
+!frontend/vendor/**
 
 # IDE files
 .vscode/

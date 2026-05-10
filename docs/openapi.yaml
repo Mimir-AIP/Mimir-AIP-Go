@@ -5390,7 +5390,7 @@ paths:
             tags:
                 - Plugins
         post:
-            description: Clones a plugin.yaml repository, validates the manifest, compiles/loads required runtime symbols against the current host, then stores metadata. Workers compile their local artifact again when tasks run.
+            description: Clones a plugin.yaml repository, validates the manifest, compiles/loads required runtime symbols against the current host, then stores metadata and managed artifacts. Workers download verified artifacts from the orchestrator when tasks run.
             requestBody:
                 content:
                     application/json:

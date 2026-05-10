@@ -12,7 +12,7 @@ func init() {
 	})
 	doc.Register("POST", "/api/plugins", doc.RouteDoc{
 		Summary:     "Install pipeline or ML provider plugin",
-		Description: "Clones a plugin.yaml repository, validates the manifest, compiles/loads required runtime symbols against the current host, then stores metadata. Workers compile their local artifact again when tasks run.",
+		Description: "Clones a plugin.yaml repository, validates the manifest, compiles/loads required runtime symbols against the current host, then stores metadata and managed artifacts. Workers download verified artifacts from the orchestrator when tasks run.",
 		Tags:        []string{"Plugins"},
 		RequestBody: doc.JsonBody(doc.Ref("PluginInstallRequest")),
 		Responses:   doc.R(doc.Created(doc.Ref("Plugin")), doc.BadRequest(), doc.Unprocessable()),

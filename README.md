@@ -246,7 +246,7 @@ docker compose down
 
 ## MCP Integration
 
-Mimir AIP exposes 68 MCP tools over a Server-Sent Events (SSE) transport at `/mcp/sse`. Any MCP-compatible client can connect.
+Mimir AIP exposes 75 MCP tools over a Server-Sent Events (SSE) transport at `/mcp/sse`. Any MCP-compatible client can connect. The MCP tool count and categories are derived from the tool registrations in `pkg/mcp/tools_*.go`, which are wired into the server in `pkg/mcp/server.go`.
 
 ### Claude Code
 
@@ -267,39 +267,38 @@ Then start a Claude Code session — the full Mimir toolset will be available au
 
 ### Tool categories
 
-| Category | Tools | Description |
-|----------|-------|-------------|
-| Projects | 8 | CRUD, archive, delete, clone, state summary |
-| Pipelines | 6 | CRUD, trigger, execute, checkpoints |
-| Schedules | 5 | CRUD |
-| Analysis | 4 | Run resolver analysis, inspect metrics, list reviews, decide findings |
-| Insights | 2 | List and generate autonomous insights |
-| ML Models | 8 | CRUD, train, infer, recommend, monitor |
-| Digital Twins | 11 | CRUD, process runs, alerts, automations, query |
-| Ontologies | 8 | CRUD, heuristic text bootstrap, extract from storage, inspect ontology text |
-| Storage | 10 | Config CRUD, store/retrieve/update/delete data, health and ingestion health |
-| Tasks | 4 | Submit, list, get, and update work tasks |
-| System | 5 | Health, readiness, metrics, OpenAPI, and task websocket |
+| Category | MCP tools | Description |
+|----------|-----------|-------------|
+| Projects | 7 | List, get, create, update, archive, delete, and clone projects |
+| Pipelines | 8 | CRUD, execute, and checkpoint tools |
+| Schedules | 5 | CRUD for cron schedules |
+| Analysis and insights | 6 | Resolver analysis, metrics, review decisions, and autonomous insights |
+| ML Models | 10 | Providers, CRUD, training, inference, and recommendations |
+| Digital Twins | 11 | CRUD, process runs, alert events, automations, and query |
+| Ontologies | 8 | CRUD, heuristic text bootstrap, storage extraction, and ontology generation |
+| Storage | 16 | Config CRUD, CIR store/retrieve/update/delete, metadata, health, ingestion health, and storage plugin management |
+| Tasks | 3 | List, get, and wait for work tasks |
+| System | 1 | Orchestrator health check |
 
 ---
 
 ## Configuration Reference
 
-All runtime configuration is supplied via environment variables. In local mode you typically set them directly in your shell; in Kubernetes they are provided through the Helm chart ConfigMap and workload manifests.
+All runtime configuration is supplied via environment variables. In local mode you typically set them directly in your shell; in Kubernetes they are provided through the Helm chart ConfigMap and workload manifests. Go binary defaults come from `pkg/config/config.go`; Helm deployment defaults come from `helm/mimir-aip/values.yaml` and `helm/mimir-aip/templates/configmap.yaml`.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENVIRONMENT` | `production` | Runtime label (`production` or `development`) |
-| `LOG_LEVEL` | `info` | Log verbosity (`debug`, `info`, `warn`, `error`) |
-| `PORT` | `8080` | HTTP port for the orchestrator or local all-in-one launcher |
-| `EXECUTION_MODE` | `kubernetes` | Execution backend: `kubernetes` for worker-job dispatch, `local` for in-process local execution |
-| `STORAGE_DIR` | local mode: OS user config dir; container mode: `/app/data` | Directory for the SQLite database and local runtime state |
-| `MIN_WORKERS` | `1` | Minimum concurrent worker jobs in Kubernetes mode |
-| `MAX_WORKERS` | `10` | Maximum concurrent worker jobs or local execution slots |
-| `QUEUE_THRESHOLD` | `5` | Queued tasks before spinning up an additional worker in Kubernetes mode |
-| `WORKER_NAMESPACE` | _(release namespace)_ | Kubernetes namespace workers are spawned into |
-| `WORKER_SERVICE_ACCOUNT` | `mimir-worker` | Service account assigned to worker jobs |
-| `WORKER_AUTH_TOKEN` | _(empty)_ | Optional bearer token protecting worker-facing task update endpoints |
+| Variable | Go binary default | Helm/container default | Description |
+|----------|-------------------|------------------------|-------------|
+| `ENVIRONMENT` | `development` | `production` | Runtime label (`production` or `development`) |
+| `LOG_LEVEL` | `info` | `info` | Log verbosity (`debug`, `info`, `warn`, `error`) |
+| `PORT` | `8080` | `8080` | HTTP port for the orchestrator or local all-in-one launcher |
+| `EXECUTION_MODE` | `kubernetes` | `kubernetes` | Execution backend: `kubernetes` for worker-job dispatch, `local` for in-process local execution |
+| `STORAGE_DIR` | local mode: OS user config dir; non-local mode: `<environment>-data` | `/app/data` | Directory for the SQLite database and local runtime state |
+| `MIN_WORKERS` | `1` | `1` | Minimum concurrent worker jobs in Kubernetes mode |
+| `MAX_WORKERS` | `50` | `10` | Maximum concurrent worker jobs or local execution slots |
+| `QUEUE_THRESHOLD` | `5` | `5` | Queued tasks before spinning up an additional worker in Kubernetes mode |
+| `WORKER_NAMESPACE` | `mimir-aip` | Helm release namespace unless overridden | Kubernetes namespace workers are spawned into |
+| `WORKER_SERVICE_ACCOUNT` | `worker-service-account` | `mimir-worker` | Service account assigned to worker jobs |
+| `WORKER_AUTH_TOKEN` | _(empty)_ | _(empty)_ | Optional bearer token protecting worker-facing task update endpoints |
 
 ---
 

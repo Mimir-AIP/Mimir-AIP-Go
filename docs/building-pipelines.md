@@ -18,29 +18,38 @@ The `type` field affects how the orchestrator categorises and schedules the pipe
 
 ## Pipeline structure
 
-Pipelines are defined as JSON (via the API) or YAML (for version-controlled definitions). The schema is identical in both formats.
+The REST API creates and updates pipelines with JSON request bodies. The Go pipeline models also carry YAML tags, so YAML is a convenient checked-in representation for generated or manually managed definitions, but there is no separate YAML import endpoint in the current REST API.
+
+Implementation source of truth: `pkg/models/pipeline.go` defines the schema, `pkg/pipeline/service.go` executes steps, and `pkg/api/pipeline_handler.go` decodes REST create/update requests.
 
 ```yaml
 name: My Pipeline
 type: ingestion                  # ingestion | processing | output
 description: "Optional description"
+trigger_config:
+  allow_manual: true
+  webhook: false
 steps:
-  - name: step-one
+  - name: fetch
     plugin: default              # built-in plugin (or name of an installed custom plugin)
     action: http_request         # action exposed by that plugin
     parameters:
       url: "https://api.example.com/data"
       method: GET
-    output:
-      raw_body: "{{context.step-one.response.body}}"
 
-  - name: step-two
+  - name: parse
     plugin: default
     action: parse_json
     parameters:
-      data: "{{context.step-one.raw_body}}"
-    output:
-      records: "{{context.step-two.parsed}}"
+      data: "{{context.fetch.response.body}}"
+
+  - name: store-records
+    plugin: default
+    action: store_cir_batch
+    parameters:
+      storage_id: "{{context._parameters.storage_id}}"
+      items: "{{context.parse.parsed.items}}"
+      source_uri: "https://api.example.com/data"
 ```
 
 ### Top-level fields
@@ -50,6 +59,7 @@ steps:
 | `name` | Yes | Human-readable pipeline name |
 | `type` | Yes | `ingestion`, `processing`, or `output` |
 | `description` | No | Free-text description |
+| `trigger_config` | No | Optional manual/webhook trigger settings (`allow_manual`, `webhook`, `secret`, `description`) |
 | `steps` | Yes | Ordered list of pipeline steps |
 
 ### Step fields
@@ -57,33 +67,54 @@ steps:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Unique step identifier (used in template references) |
-| `plugin` | Yes | `default` for built-in actions, or the name of a custom plugin |
-| `action` | Yes | The action to invoke on that plugin |
+| `plugin` | Yes unless `for_each` is set | `default` for built-in actions, `builtin` as an alias, or the name of a custom plugin |
+| `action` | Yes unless `for_each` is set | The action to invoke on that plugin |
 | `parameters` | No | Key-value map passed to the action. Values can be template strings |
-| `output` | No | Named values to extract from the step result into context |
+| `output` | No | Aliases values that are already present in the pipeline context before the current step result is stored. Plugin result keys are automatically stored under the step name after the step succeeds. |
+| `for_each` | No | Iterates over a resolved array and executes nested `steps` for each item. When present, `plugin` and `action` are ignored. |
+
+### `for_each` fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `items` | Yes | Template expression resolving to a JSON array |
+| `as` | Yes | Loop variable name exposed at `{{context._loop.<as>}}` |
+| `steps` | Yes | Sub-steps executed once per item |
+
+```yaml
+- name: process-items
+  for_each:
+    items: "{{context.parse.parsed.items}}"
+    as: item
+    steps:
+      - name: store-item
+        plugin: default
+        action: store_cir
+        parameters:
+          storage_id: "{{context._parameters.storage_id}}"
+          data: "{{context._loop.item}}"
+```
 
 ---
 
 ## Context and templates
 
-Steps share data via a **pipeline context**. The template syntax is `{{context.<step-name>.<key>}}`, with optional dot-chaining for nested keys.
+Steps share data via a **pipeline context**. The template syntax is `{{context.<step-name>.<key>}}`, with optional dot-chaining for nested keys. After a step succeeds, every key returned by the plugin action is stored under that step's name.
 
 ```yaml
-# Step 1 sets data
+# Step 1 returns response.status_code, response.body, and response.headers
 - name: fetch
   plugin: default
   action: http_request
   parameters:
     url: "https://api.example.com/items"
-  output:
-    body: "{{context.fetch.response.body}}"
 
-# Step 2 reads it
+# Step 2 reads the body returned by Step 1
 - name: parse
   plugin: default
   action: parse_json
   parameters:
-    data: "{{context.fetch.body}}"
+    data: "{{context.fetch.response.body}}"
 ```
 
 Pipeline-level parameters passed at execution time are available as `{{context._parameters.<key>}}`:
@@ -98,9 +129,9 @@ Pipeline-level parameters passed at execution time are available as `{{context._
 
 ---
 
-## Built-in plugin actions (`plugin: default`)
+## Built-in plugin actions (`plugin: default` or `plugin: builtin`)
 
-The `default` (or `builtin`) plugin is always available with no installation required. These actions are the direct building blocks for ordinary pipelines, whether you create them manually through the API/frontend or assemble them from version-controlled definitions.
+The `default` and `builtin` plugin names both resolve to the built-in action plugin. The current built-in action set is defined in `pkg/pipeline/service.go` and dispatched in `pkg/pipeline/plugin.go`.
 
 ### `http_request`
 
@@ -126,9 +157,6 @@ Makes an HTTP request.
       Content-Type: "application/json"
       Authorization: "Bearer {{context._parameters.api_token}}"
     body: '{"query": "all"}'
-  output:
-    status: "{{context.call-api.response.status_code}}"
-    body:   "{{context.call-api.response.body}}"
 ```
 
 ### `poll_http_json`
@@ -210,8 +238,6 @@ Parses a JSON string into a structured value.
   action: parse_json
   parameters:
     data: "{{context.call-api.body}}"
-  output:
-    items: "{{context.decode.parsed}}"
 ```
 
 ### `set_context`
@@ -265,8 +291,6 @@ Conditional branching.
     condition: "{{context.fetch.response.status_code}}"
     if_true: "ok"
     if_false: "failed"
-  output:
-    status_label: "{{context.check.result}}"
 ```
 
 ### `goto`
@@ -388,6 +412,78 @@ Fetches a CSV document from a URL, parses rows into structured objects, and appl
 | `checkpoint` | No | — | Previous checkpoint object from `load_checkpoint` or a prior run |
 
 **Output keys:** `items`, `headers`, `new_count`, `total_count`, `checkpoint`
+
+
+### `ingest_csv`
+
+Parses CSV content supplied directly in the `csv_data` parameter and applies the same dedupe checkpoint model as `ingest_csv_url`.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `csv_data` | Yes | — | CSV document content |
+| `delimiter` | No | `,` | Single-character delimiter |
+| `has_header` | No | `true` | Whether the first row is a header row |
+| `checkpoint` | No | — | Previous checkpoint object from `load_checkpoint` or a prior run |
+| `max_checkpoint_items` | No | `200` | Maximum remembered row hashes |
+
+**Output keys:** `items`, `headers`, `new_count`, `total_count`, `checkpoint`
+
+### `store_cir`
+
+Stores one CIR record through a configured Mimir storage backend. Storage-backed built-in actions require the pipeline runtime to have storage integration configured; local and worker execution paths inject this dependency.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `storage_id` | Yes | — | Storage config ID |
+| `data` | Yes | — | Record data as an object or JSON string |
+| `source_uri` | No | `pipeline://ingestion` | Provenance URI |
+| `source_type` | No | `api` | CIR source type |
+| `format` | No | `json` | CIR data format |
+
+**Output keys:** `stored`, `affected_items`
+
+### `store_cir_batch`
+
+Stores an array of records as individual CIR entries.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `storage_id` | Yes | — | Storage config ID |
+| `items` | Yes | — | Array of records, or a template resolving to a JSON array |
+| `source_uri` | No | `pipeline://ingestion` | Provenance URI |
+| `source_type` | No | `api` | CIR source type |
+| `format` | No | `json` | CIR data format |
+
+**Output keys:** `stored`, `total`
+
+### `send_email`
+
+Sends a plain-text email through SMTP.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `to` | Yes | — | Recipient address |
+| `subject` | No | — | Email subject |
+| `body` | No | — | Plain-text body |
+| `from` | No | `username` | Sender address |
+| `smtp_host` | Yes unless `$SMTP_HOST` is set | `$SMTP_HOST` | SMTP host |
+| `smtp_port` | No | `$SMTP_PORT` or `587` | SMTP port |
+| `username` | No | `$SMTP_USERNAME` | SMTP username |
+| `password` | No | `$SMTP_PASSWORD` | SMTP password |
+
+**Output keys:** `sent`, `to`
+
+### `send_webhook`
+
+Posts a JSON payload to an HTTP endpoint.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `url` | Yes | — | Webhook endpoint URL |
+| `payload` | No | `{}` | JSON body as a map or string; template strings supported |
+| `headers` | No | — | Additional HTTP headers |
+
+**Output keys:** `sent`, `status_code`, `response`
 
 
 ---

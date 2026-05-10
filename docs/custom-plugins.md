@@ -9,6 +9,8 @@ Mimir has four runtime extension surfaces:
 
 All four use the shared Go plugin runtime loader. Pipeline and ML provider plugins are built once by the orchestrator into Mimir's embedded artifact store; workers download verified artifacts from the orchestrator API rather than cloning or compiling source. Storage and LLM plugins are currently loaded by the orchestrator directly. Go plugins are trusted in-process code: install only repositories you control or have audited.
 
+Implementation source of truth: `pkg/pluginruntime/loader.go` implements the shared clone/build/cache/open flow; `pkg/plugins/service.go`, `pkg/plugins/client.go`, and `pkg/plugins/ml_client.go` implement pipeline/ML plugin artifact build and worker download; `pkg/storage/external_plugins.go` implements storage plugins; `pkg/llm/service.go` and `pkg/llm/loader.go` implement external LLM providers.
+
 ---
 
 ## Runtime model and safety boundaries
@@ -156,7 +158,7 @@ ml_provider:
 
 ### Runtime symbol
 
-The compiled package must export `MLProvider`, satisfying `pkg/mlmodel.Provider`.
+The compiled package must export `MLProvider`, satisfying the provider interface defined in `pkg/mlmodel/provider.go`.
 
 ```go
 package main
@@ -240,7 +242,7 @@ type Provider interface {
 
 ### Runtime symbol
 
-The package must export `Plugin` satisfying `pkg/llm.Provider`.
+The package must export `Plugin`, satisfying the provider interface defined in `pkg/llm/provider.go`.
 
 ```go
 package main
@@ -282,6 +284,20 @@ The provider name is derived from the repository name. Activate an external prov
 | LLM provider plugin | `/api/llm/providers` | `Plugin` | Repository URL basename |
 
 ---
+
+## Implementation references
+
+| Claim | Source file |
+|---|---|
+| Shared runtime loader clones, flattens `actions/`, removes plugin-local modules, builds with `go build -buildmode=plugin`, and opens symbols | `pkg/pluginruntime/loader.go` |
+| Pipeline and ML plugins are installed from `plugin.yaml` manifests and persisted with compiled artifacts | `pkg/plugins/service.go` |
+| Workers download and verify pipeline plugin artifacts before `plugin.Open` | `pkg/plugins/client.go` |
+| Workers download and verify ML provider artifacts before `plugin.Open` | `pkg/plugins/ml_client.go` |
+| Storage plugin names come from the repository basename and are loaded by the orchestrator | `pkg/storage/external_plugins.go` |
+| LLM provider names come from the repository basename and are loaded by the orchestrator | `pkg/llm/loader.go`, `pkg/llm/service.go` |
+
+---
+
 
 ## Operational recommendations
 

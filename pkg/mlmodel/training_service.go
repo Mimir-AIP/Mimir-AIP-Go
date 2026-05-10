@@ -90,7 +90,9 @@ func (s *Service) StartTraining(req *models.ModelTrainingRequest) (*models.MLMod
 		model.Status = models.ModelStatusDraft
 		model.TrainingTaskID = ""
 		model.UpdatedAt = time.Now().UTC()
-		s.store.SaveMLModel(model)
+		if rollbackErr := s.store.SaveMLModel(model); rollbackErr != nil {
+			return nil, fmt.Errorf("failed to enqueue training task: %w; additionally failed to roll back model state: %v", err, rollbackErr)
+		}
 		return nil, fmt.Errorf("failed to enqueue training task: %w", err)
 	}
 

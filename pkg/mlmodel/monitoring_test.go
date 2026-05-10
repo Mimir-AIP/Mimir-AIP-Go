@@ -131,7 +131,7 @@ func TestCheckModelUsesArtifactFeatureSchema(t *testing.T) {
 		"model_type":    "decision_tree",
 		"feature_names": []string{"feature_a", "feature_b"},
 		"parameters": map[string]any{
-			"model_data": map[string]any{"is_leaf": true, "value": 1.0},
+			"model_data": map[string]any{"IsLeaf": true, "Value": 1.0},
 		},
 		"metadata": map[string]any{"label_column": "label"},
 	})
@@ -153,5 +153,81 @@ func TestCheckModelUsesArtifactFeatureSchema(t *testing.T) {
 	}
 	if err := monitoringSvc.CheckModel(persisted); err != nil {
 		t.Fatalf("CheckModel returned error: %v", err)
+	}
+}
+
+func TestCheckModelQueuesRetrainingWhenPerformanceDegrades(t *testing.T) {
+	monitoringSvc, mlSvc, storageSvc, cleanup := setupMonitoringService(t)
+	defer cleanup()
+
+	storageSvc.RegisterPlugin("monitoring-degraded", &monitoringSamplePlugin{sample: []*models.CIR{
+		{
+			Version: models.CIRVersion,
+			Source:  models.CIRSource{Type: models.SourceTypeDatabase, URI: "db://monitor/degraded", Timestamp: time.Now().UTC(), Format: models.DataFormatJSON},
+			Data: map[string]interface{}{
+				"label":     0.0,
+				"feature_a": 1.0,
+			},
+		},
+	}})
+	cfg, err := storageSvc.CreateStorageConfig("project-1", "monitoring-degraded", map[string]interface{}{"connection_string": "mock://degraded"})
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+
+	t.Setenv("MODEL_ARTIFACT_DIR", t.TempDir())
+	artifactBytes, err := json.Marshal(map[string]any{
+		"model_type":    "decision_tree",
+		"feature_names": []string{"feature_a"},
+		"parameters": map[string]any{
+			"model_data": map[string]any{"IsLeaf": true, "Value": 1.0},
+		},
+		"metadata": map[string]any{"label_column": "label"},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal artifact: %v", err)
+	}
+
+	model, err := mlSvc.CreateModel(&models.ModelCreateRequest{ProjectID: "project-1", OntologyID: "ontology-1", Name: "degrading-tree", Type: models.ModelTypeDecisionTree})
+	if err != nil {
+		t.Fatalf("failed to create model: %v", err)
+	}
+	model.Metadata = map[string]interface{}{
+		modelMetadataFeatureProvenance: &models.MLFeatureProvenance{OntologyID: "ontology-1", StorageIDs: []string{cfg.ID}, GeneratedAt: time.Now().UTC()},
+	}
+	if err := mlSvc.store.SaveMLModel(model); err != nil {
+		t.Fatalf("failed to save model provenance: %v", err)
+	}
+	if err := mlSvc.CompleteTraining(model.ID, artifactBytes, &models.PerformanceMetrics{Accuracy: 1.0}); err != nil {
+		t.Fatalf("failed to complete training: %v", err)
+	}
+
+	persisted, err := mlSvc.GetModel(model.ID)
+	if err != nil {
+		t.Fatalf("failed to reload model: %v", err)
+	}
+	if err := monitoringSvc.CheckModel(persisted); err != nil {
+		t.Fatalf("CheckModel returned error: %v", err)
+	}
+
+	reloaded, err := mlSvc.GetModel(model.ID)
+	if err != nil {
+		t.Fatalf("failed to reload retraining model: %v", err)
+	}
+	if reloaded.Status != models.ModelStatusTraining {
+		t.Fatalf("expected degraded model to be queued for retraining, got status %s", reloaded.Status)
+	}
+	if reloaded.TrainingTaskID == "" {
+		t.Fatal("expected retraining task id")
+	}
+	if reloaded.Metadata["retraining_reason"] != "performance_degradation" {
+		t.Fatalf("expected retraining metadata, got %#v", reloaded.Metadata)
+	}
+	task, err := mlSvc.queue.GetWorkTask(reloaded.TrainingTaskID)
+	if err != nil {
+		t.Fatalf("failed to load retraining task: %v", err)
+	}
+	if len(task.DataAccess.InputDatasets) != 1 || task.DataAccess.InputDatasets[0] != cfg.ID {
+		t.Fatalf("expected retraining to use provenance storage %s, got %#v", cfg.ID, task.DataAccess.InputDatasets)
 	}
 }

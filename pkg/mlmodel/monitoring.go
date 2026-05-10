@@ -138,6 +138,7 @@ func (m *MonitoringService) CheckModel(model *models.MLModel) error {
 	}
 
 	data := &training.TrainingData{
+		FeatureNames: artifact.FeatureNames,
 		TestFeatures: features,
 		TestLabels:   labels,
 	}
@@ -162,6 +163,29 @@ func (m *MonitoringService) CheckModel(model *models.MLModel) error {
 			model.ID, model.Name, drop*100, baselineAccuracy*100, currentMetrics.Accuracy*100)
 		model.Status = models.ModelStatusDegraded
 		model.PerformanceMetrics.DegradationDetected = true
+		if err := m.store.SaveMLModel(model); err != nil {
+			return fmt.Errorf("failed to save degraded model after monitoring: %w", err)
+		}
+		storageIDs := provenanceStorageIDs(model)
+		if len(storageIDs) == 0 {
+			storageIDs = storageConfigIDs(storageConfigs)
+		}
+		if len(storageIDs) == 0 {
+			return fmt.Errorf("model %s degraded but no storage IDs are available for retraining", model.ID)
+		}
+		retrainingModel, err := m.mlService.StartTraining(&models.ModelTrainingRequest{ModelID: model.ID, StorageIDs: storageIDs})
+		if err != nil {
+			return fmt.Errorf("model %s degraded but retraining could not be queued: %w", model.ID, err)
+		}
+		if retrainingModel.Metadata == nil {
+			retrainingModel.Metadata = make(map[string]interface{})
+		}
+		retrainingModel.Metadata["retraining_triggered_at"] = now.Format(time.RFC3339)
+		retrainingModel.Metadata["retraining_reason"] = "performance_degradation"
+		if err := m.store.SaveMLModel(retrainingModel); err != nil {
+			return fmt.Errorf("failed to persist retraining metadata for model %s: %w", model.ID, err)
+		}
+		return nil
 	}
 
 	if err := m.store.SaveMLModel(model); err != nil {
@@ -203,6 +227,16 @@ func extractFeaturesAndLabels(cirs []*models.CIR, featureNames []string, labelCo
 	}
 
 	return features, labels
+}
+
+func storageConfigIDs(configs []*models.StorageConfig) []string {
+	ids := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		if cfg != nil && cfg.ID != "" {
+			ids = append(ids, cfg.ID)
+		}
+	}
+	return ids
 }
 
 func numericValue(v interface{}) (float64, bool) {

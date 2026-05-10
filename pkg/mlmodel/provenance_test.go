@@ -1,6 +1,7 @@
 package mlmodel
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
@@ -73,5 +74,67 @@ func TestStartTrainingRecordsOntologyFeatureProvenance(t *testing.T) {
 	}
 	if len(provenance.Features) != 1 || provenance.Features[0].PropertyID != "temperature" {
 		t.Fatalf("expected temperature feature provenance, got %+v", provenance.Features)
+	}
+}
+
+func TestOntologyHashDriftBlocksInferenceAfterTrainingProvenancePersists(t *testing.T) {
+	svc, cleanup := setupTrainingService(t)
+	defer cleanup()
+
+	ontologyRecord, err := svc.ontologyService.CreateOntology(&models.OntologyCreateRequest{ProjectID: "project-1", Name: "Drift Ontology", Content: `@prefix : <http://example.org/mimir#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:Reading a owl:Class .
+:temperature a owl:DatatypeProperty ;
+  rdfs:domain :Reading ;
+  rdfs:range xsd:decimal .`, Status: "active"})
+	if err != nil {
+		t.Fatalf("failed to create ontology: %v", err)
+	}
+
+	compiled, err := svc.store.GetCompiledOntology(ontologyRecord.ID)
+	if err != nil {
+		t.Fatalf("failed to load compiled ontology: %v", err)
+	}
+	cir := models.NewCIR(models.SourceTypeAPI, "api://ml", models.DataFormatJSON, map[string]interface{}{"temperature": 25.0})
+	cir.Metadata.Ontology = &models.CIRSemanticMapping{OntologyID: ontologyRecord.ID, ContentHash: compiled.ContentHash, ClassID: "Reading", Properties: map[string]models.SemanticProperty{"temperature": {PropertyID: "temperature", SourceField: "temperature", Value: 25.0, Range: []string{"decimal"}, Kind: "datatype"}}}
+
+	svc.storageService.RegisterPlugin("ml-drift", &mlProvenanceStoragePlugin{sample: []*models.CIR{cir}})
+	cfg, err := svc.storageService.CreateStorageConfigWithOntology("project-1", "ml-drift", map[string]interface{}{"connection_string": "mock://ml-drift"}, ontologyRecord.ID)
+	if err != nil {
+		t.Fatalf("failed to create storage config: %v", err)
+	}
+	model, err := svc.CreateModel(&models.ModelCreateRequest{ProjectID: "project-1", OntologyID: ontologyRecord.ID, Name: "drift-model", Type: models.ModelTypeRegression})
+	if err != nil {
+		t.Fatalf("failed to create model: %v", err)
+	}
+	if _, err := svc.StartTraining(&models.ModelTrainingRequest{ModelID: model.ID, StorageIDs: []string{cfg.ID}}); err != nil {
+		t.Fatalf("StartTraining failed: %v", err)
+	}
+
+	updatedContent := `@prefix : <http://example.org/mimir#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:Reading a owl:Class .
+:temperature a owl:DatatypeProperty ;
+  rdfs:domain :Reading ;
+  rdfs:range xsd:decimal .
+:humidity a owl:DatatypeProperty ;
+  rdfs:domain :Reading ;
+  rdfs:range xsd:decimal .`
+	if _, err := svc.ontologyService.UpdateOntology(ontologyRecord.ID, &models.OntologyUpdateRequest{Content: &updatedContent}); err != nil {
+		t.Fatalf("failed to update ontology: %v", err)
+	}
+
+	_, _, err = svc.InferModel(model.ID, map[string]any{"temperature": 25.0})
+	if err == nil {
+		t.Fatal("expected ontology hash drift to block inference")
+	}
+	if !strings.Contains(err.Error(), "model ontology hash mismatch") {
+		t.Fatalf("expected ontology hash mismatch, got %v", err)
 	}
 }

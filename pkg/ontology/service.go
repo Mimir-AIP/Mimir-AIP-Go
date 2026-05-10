@@ -414,8 +414,14 @@ func generateTurtleFromExtraction(result *models.ExtractionResult) string {
 	}
 
 	// Write entity type classes.
-	builder.WriteString("# Entity Types (Classes)\n")
+	entityTypeNames := make([]string, 0, len(entityTypes))
 	for className := range entityTypes {
+		entityTypeNames = append(entityTypeNames, className)
+	}
+	sort.Strings(entityTypeNames)
+
+	builder.WriteString("# Entity Types (Classes)\n")
+	for _, className := range entityTypeNames {
 		builder.WriteString(fmt.Sprintf(":%s a owl:Class ;\n", className))
 		builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" .\n\n", className))
 	}
@@ -454,7 +460,13 @@ func generateTurtleFromExtraction(result *models.ExtractionResult) string {
 	}
 
 	builder.WriteString("# Datatype Properties (Attributes)\n")
-	for propName, spec := range propsByName {
+	propNames := make([]string, 0, len(propsByName))
+	for propName := range propsByName {
+		propNames = append(propNames, propName)
+	}
+	sort.Strings(propNames)
+	for _, propName := range propNames {
+		spec := propsByName[propName]
 		builder.WriteString(fmt.Sprintf(":%s a owl:DatatypeProperty ;\n", propName))
 		builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" ;\n", propName))
 		if spec.domainType != "" && spec.domainType != "Entity" {
@@ -496,7 +508,13 @@ func generateTurtleFromExtraction(result *models.ExtractionResult) string {
 	}
 
 	builder.WriteString("# Object Properties (Relationships)\n")
-	for propName, rel := range relationTypes {
+	relationNames := make([]string, 0, len(relationTypes))
+	for propName := range relationTypes {
+		relationNames = append(relationNames, propName)
+	}
+	sort.Strings(relationNames)
+	for _, propName := range relationNames {
+		rel := relationTypes[propName]
 		builder.WriteString(fmt.Sprintf(":%s a owl:ObjectProperty ;\n", propName))
 		builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" ;\n", propName))
 		builder.WriteString(fmt.Sprintf("    rdfs:domain :%s ;\n", rel.from))
@@ -507,9 +525,25 @@ func generateTurtleFromExtraction(result *models.ExtractionResult) string {
 	// distinguish them from intra-source structural relationships.
 	if len(result.CrossSourceLinks) > 0 {
 		builder.WriteString("# Cross-Source Identity Links\n")
-		for _, link := range result.CrossSourceLinks {
+		links := append([]models.CrossSourceLink(nil), result.CrossSourceLinks...)
+		sort.Slice(links, func(i, j int) bool {
+			if links[i].ColumnA != links[j].ColumnA {
+				return links[i].ColumnA < links[j].ColumnA
+			}
+			if links[i].ColumnB != links[j].ColumnB {
+				return links[i].ColumnB < links[j].ColumnB
+			}
+			if links[i].EntityTypeA != links[j].EntityTypeA {
+				return links[i].EntityTypeA < links[j].EntityTypeA
+			}
+			return links[i].EntityTypeB < links[j].EntityTypeB
+		})
+		for _, link := range links {
 			typeA := capitalize(link.EntityTypeA)
 			typeB := capitalize(link.EntityTypeB)
+			if typeA == "" || typeB == "" {
+				continue
+			}
 			propName := toCamelCase(link.ColumnA + "_links_" + link.ColumnB)
 			builder.WriteString(fmt.Sprintf(":%s a owl:ObjectProperty ;\n", propName))
 			builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" ;\n", propName))

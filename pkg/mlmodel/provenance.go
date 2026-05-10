@@ -84,6 +84,43 @@ func (s *Service) ensureModelOntologyCompatible(model *models.MLModel) error {
 	return nil
 }
 
+func provenanceStorageIDs(model *models.MLModel) []string {
+	if model == nil || model.Metadata == nil {
+		return nil
+	}
+	raw, ok := model.Metadata[modelMetadataFeatureProvenance]
+	if !ok {
+		return nil
+	}
+	switch provenance := raw.(type) {
+	case *models.MLFeatureProvenance:
+		return append([]string(nil), provenance.StorageIDs...)
+	case models.MLFeatureProvenance:
+		return append([]string(nil), provenance.StorageIDs...)
+	case map[string]interface{}:
+		return stringsFromInterfaceSlice(provenance["storage_ids"])
+	default:
+		return nil
+	}
+}
+
+func stringsFromInterfaceSlice(raw any) []string {
+	switch values := raw.(type) {
+	case []string:
+		return append([]string(nil), values...)
+	case []interface{}:
+		ids := make([]string, 0, len(values))
+		for _, value := range values {
+			if id, ok := value.(string); ok && id != "" {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	default:
+		return nil
+	}
+}
+
 func appendUnique(values []string, value string) []string {
 	if value == "" {
 		return values

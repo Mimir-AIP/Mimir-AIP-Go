@@ -56,11 +56,9 @@ func (s *Service) ExtractFromStorage(projectID string, storageIDs []string, incl
 	cirsByStorage := make(map[string][]*models.CIR, len(storageIDs))
 
 	for _, storageID := range storageIDs {
-		cirs, err := s.storageService.RetrieveForProject(projectID, storageID, &models.CIRQuery{Limit: 1000})
+		cirs, err := s.retrieveAllFromStorage(projectID, storageID)
 		if err != nil {
-			// Non-fatal: log and continue so one bad source doesn't abort everything.
-			fmt.Printf("Warning: cross-source profiling: failed to retrieve from %s: %v\n", storageID, err)
-			continue
+			return nil, fmt.Errorf("retrieve extraction data from storage %s: %w", storageID, err)
 		}
 		cirsByStorage[storageID] = cirs
 		profiles := BuildColumnProfilesFromCIRs(storageID, cirs)
@@ -93,6 +91,23 @@ func (s *Service) ExtractFromStorage(projectID string, storageIDs []string, incl
 	return result, nil
 }
 
+const extractionRetrievePageSize = 1000
+
+func (s *Service) retrieveAllFromStorage(projectID, storageID string) ([]*models.CIR, error) {
+	var all []*models.CIR
+	for offset := 0; ; {
+		page, err := s.storageService.RetrieveForProject(projectID, storageID, &models.CIRQuery{Limit: extractionRetrievePageSize, Offset: offset})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if len(page) < extractionRetrievePageSize {
+			return all, nil
+		}
+		offset += len(page)
+	}
+}
+
 // ─── Structured path ──────────────────────────────────────────────────────────
 
 // extractStructuredFromStorageWithCIRs runs structured extraction using
@@ -103,6 +118,13 @@ func (s *Service) extractStructuredFromStorageWithCIRs(_ string, storageIDs []st
 
 	for _, storageID := range storageIDs {
 		cirItems := cirsByStorage[storageID]
+		if tabularCIR := tabularCIRFromRetrievedRows(cirItems); tabularCIR != nil {
+			if tabResult, ok := ExtractSchemaFromTabularCIR(tabularCIR); ok {
+				allEntities = append(allEntities, tabResult.Entities...)
+				allRelationships = append(allRelationships, tabResult.Relationships...)
+				continue
+			}
+		}
 		for _, cir := range cirItems {
 			// Try row-entity extraction first for structured record tables.
 			// This produces one entity per row with the entity type inferred
@@ -132,6 +154,30 @@ func (s *Service) extractStructuredFromStorageWithCIRs(_ string, storageIDs []st
 		Relationships: allRelationships,
 		Source:        "structured",
 	}, nil
+}
+
+func tabularCIRFromRetrievedRows(cirs []*models.CIR) *models.CIR {
+	rows := make([]interface{}, 0, len(cirs))
+	var template *models.CIR
+	for _, cir := range cirs {
+		if cir == nil {
+			continue
+		}
+		row, ok := cir.Data.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		if template == nil {
+			template = cir
+		}
+		rows = append(rows, row)
+	}
+	if template == nil || len(rows) == 0 {
+		return nil
+	}
+	tabular := models.NewCIR(template.Source.Type, template.Source.URI, template.Source.Format, rows)
+	tabular.Metadata = template.Metadata
+	return tabular
 }
 
 // ─── Unstructured path: corpus-level statistical extraction ──────────────────

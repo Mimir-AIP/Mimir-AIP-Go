@@ -80,3 +80,19 @@ func TestDeleteModelRejectsReferencedModel(t *testing.T) {
 		t.Fatalf("expected ModelInUseError, got %v", err)
 	}
 }
+
+func TestBuildFeatureVectorRejectsMissingAndNonNumericFeatures(t *testing.T) {
+	if _, err := buildFeatureVector([]string{"temperature", "humidity"}, map[string]any{"temperature": 21.5}); err == nil {
+		t.Fatal("expected missing feature error")
+	}
+	if _, err := buildFeatureVector([]string{"temperature"}, map[string]any{"temperature": "warm"}); err == nil {
+		t.Fatal("expected non-numeric feature error")
+	}
+	features, err := buildFeatureVector([]string{"temperature", "occupied"}, map[string]any{"temperature": int32(21), "occupied": true})
+	if err != nil {
+		t.Fatalf("expected valid features, got %v", err)
+	}
+	if len(features) != 2 || features[0] != 21 || features[1] != 1 {
+		t.Fatalf("unexpected feature vector: %#v", features)
+	}
+}

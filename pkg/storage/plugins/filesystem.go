@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -158,23 +159,12 @@ func (f *FilesystemPlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, erro
 		return nil, fmt.Errorf("invalid query: %w", err)
 	}
 
-	// Determine which entity directory to search
-	entityType := query.EntityType
-	if entityType == "" {
-		entityType = "default"
-	}
-
-	entityDir := filepath.Join(f.basePath, entityType)
-
-	// Check if directory exists
-	if _, err := os.Stat(entityDir); os.IsNotExist(err) {
-		return []*models.CIR{}, nil // Return empty list if entity type doesn't exist
-	}
-
-	// Read all files in the entity directory
-	files, err := os.ReadDir(entityDir)
+	entityDirs, err := f.entityDirs(query.EntityType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read entity directory: %w", err)
+		return nil, err
+	}
+	if len(entityDirs) == 0 {
+		return []*models.CIR{}, nil
 	}
 
 	results := make([]*models.CIR, 0)
@@ -182,40 +172,70 @@ func (f *FilesystemPlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, erro
 	offset := query.Offset
 	limit := query.Limit
 
-	for _, file := range files {
-		if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
-			continue
-		}
-
-		filePath := filepath.Join(entityDir, file.Name())
-		data, err := os.ReadFile(filePath)
+	for _, entityDir := range entityDirs {
+		files, err := os.ReadDir(entityDir)
 		if err != nil {
-			continue // Skip files that can't be read
+			return nil, fmt.Errorf("failed to read entity directory: %w", err)
 		}
 
-		var cir models.CIR
-		if err := json.Unmarshal(data, &cir); err != nil {
-			continue // Skip invalid JSON
-		}
+		for _, file := range files {
+			if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
+				continue
+			}
 
-		if !f.matchesFilters(&cir, query.Filters) {
-			continue
-		}
+			filePath := filepath.Join(entityDir, file.Name())
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				continue // Skip files that can't be read
+			}
 
-		if matched < offset {
+			var cir models.CIR
+			if err := json.Unmarshal(data, &cir); err != nil {
+				continue // Skip invalid JSON
+			}
+
+			if !f.matchesFilters(&cir, query.Filters) {
+				continue
+			}
+
+			if matched < offset {
+				matched++
+				continue
+			}
+
+			results = append(results, &cir)
 			matched++
-			continue
-		}
 
-		results = append(results, &cir)
-		matched++
-
-		if limit > 0 && len(results) >= limit {
-			break
+			if limit > 0 && len(results) >= limit {
+				return results, nil
+			}
 		}
 	}
 
 	return results, nil
+}
+
+func (f *FilesystemPlugin) entityDirs(entityType string) ([]string, error) {
+	if entityType != "" {
+		entityDir := filepath.Join(f.basePath, entityType)
+		if _, err := os.Stat(entityDir); os.IsNotExist(err) {
+			return nil, nil
+		}
+		return []string{entityDir}, nil
+	}
+
+	entries, err := os.ReadDir(f.basePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read base directory: %w", err)
+	}
+	dirs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirs = append(dirs, filepath.Join(f.basePath, entry.Name()))
+		}
+	}
+	sort.Strings(dirs)
+	return dirs, nil
 }
 
 // matchesFilters checks if a CIR object matches the query filters

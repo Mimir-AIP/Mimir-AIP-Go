@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel/training"
@@ -100,7 +101,10 @@ func (p *BuiltinProvider) Infer(req *ProviderInferRequest) (*ProviderInferResult
 	if err != nil {
 		return nil, err
 	}
-	features := buildFeatureVector(artifact.FeatureNames, req.Input)
+	features, err := buildFeatureVector(artifact.FeatureNames, req.Input)
+	if err != nil {
+		return nil, err
+	}
 	output, confidence, err := inferBuiltinArtifact(req.Model, artifact, features)
 	if err != nil {
 		return nil, err
@@ -117,34 +121,60 @@ type BuiltinArtifact struct {
 	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
-func buildFeatureVector(featureNames []string, input map[string]any) []float64 {
+func buildFeatureVector(featureNames []string, input map[string]any) ([]float64, error) {
 	features := make([]float64, len(featureNames))
 	for i, featureName := range featureNames {
-		if val, ok := input[featureName]; ok {
-			switch v := val.(type) {
-			case float64:
-				features[i] = v
-			case int:
-				features[i] = float64(v)
-			case int64:
-				features[i] = float64(v)
-			case bool:
-				if v {
-					features[i] = 1
-				}
+		val, ok := input[featureName]
+		if !ok {
+			return nil, fmt.Errorf("missing required feature %q", featureName)
+		}
+		switch v := val.(type) {
+		case float64:
+			features[i] = v
+		case float32:
+			features[i] = float64(v)
+		case int:
+			features[i] = float64(v)
+		case int64:
+			features[i] = float64(v)
+		case int32:
+			features[i] = float64(v)
+		case bool:
+			if v {
+				features[i] = 1
 			}
+		default:
+			return nil, fmt.Errorf("feature %q must be numeric or boolean, got %T", featureName, val)
 		}
 	}
-	return features
+	return features, nil
 }
 
 func ReadBuiltinArtifactForWorker(path string) (*BuiltinArtifact, error) {
 	return readBuiltinArtifact(path)
 }
 
+type builtinArtifactCacheEntry struct {
+	modTime  time.Time
+	size     int64
+	artifact *BuiltinArtifact
+}
+
+var builtinArtifactCache sync.Map
+
 func readBuiltinArtifact(path string) (*BuiltinArtifact, error) {
 	if path == "" {
 		return nil, fmt.Errorf("model artifact path is empty")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat model artifact: %w", err)
+	}
+	if cached, ok := builtinArtifactCache.Load(path); ok {
+		entry := cached.(builtinArtifactCacheEntry)
+		if entry.modTime.Equal(info.ModTime()) && entry.size == info.Size() {
+			return entry.artifact, nil
+		}
 	}
 	artifactData, err := os.ReadFile(path)
 	if err != nil {
@@ -157,6 +187,7 @@ func readBuiltinArtifact(path string) (*BuiltinArtifact, error) {
 	if artifact.ProviderModel == "" {
 		artifact.ProviderModel = artifact.ModelType
 	}
+	builtinArtifactCache.Store(path, builtinArtifactCacheEntry{modTime: info.ModTime(), size: info.Size(), artifact: &artifact})
 	return &artifact, nil
 }
 

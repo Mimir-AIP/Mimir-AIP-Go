@@ -301,7 +301,7 @@ func (r *PredictionRequest) Validate() error {
 	}
 	// Input may be omitted when entity_id is provided; the service will
 	// auto-populate it from the entity's attributes and related entities.
-	if (r.Input == nil || len(r.Input) == 0) && r.EntityID == "" {
+	if len(r.Input) == 0 && r.EntityID == "" {
 		return fmt.Errorf("input is required (or provide entity_id to auto-populate from entity attributes)")
 	}
 	return nil

@@ -515,8 +515,8 @@ func generateTurtleFromExtraction(result *models.ExtractionResult) string {
 			builder.WriteString(fmt.Sprintf("    rdfs:label \"%s\" ;\n", propName))
 			builder.WriteString(fmt.Sprintf("    rdfs:domain :%s ;\n", typeA))
 			builder.WriteString(fmt.Sprintf("    rdfs:range :%s ;\n", typeB))
-			builder.WriteString(fmt.Sprintf("    :crossSourceLink \"true\"^^xsd:boolean ;\n"))
-			builder.WriteString(fmt.Sprintf("    :linkConfidence \"%s\"^^xsd:float ;\n", fmt.Sprintf("%.3f", link.Confidence)))
+			builder.WriteString("    :crossSourceLink \"true\"^^xsd:boolean ;\n")
+			builder.WriteString(fmt.Sprintf("    :linkConfidence \"%.3f\"^^xsd:float ;\n", link.Confidence))
 			builder.WriteString(fmt.Sprintf("    :joinColumnA \"%s\" ;\n", link.ColumnA))
 			builder.WriteString(fmt.Sprintf("    :joinColumnB \"%s\" .\n\n", link.ColumnB))
 		}

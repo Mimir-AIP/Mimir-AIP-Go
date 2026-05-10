@@ -1,7 +1,6 @@
 package plugins_test
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -11,7 +10,7 @@ import (
 
 func TestFilesystemPlugin(t *testing.T) {
 	// Create temp directory for test
-	tempDir, err := ioutil.TempDir("", "storage-test-*")
+	tempDir, err := os.MkdirTemp("", "storage-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -154,7 +153,7 @@ func TestFilesystemPlugin(t *testing.T) {
 
 func TestFilesystemPluginStoreArray(t *testing.T) {
 	// Create temp directory for test
-	tempDir, err := ioutil.TempDir("", "storage-test-*")
+	tempDir, err := os.MkdirTemp("", "storage-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}

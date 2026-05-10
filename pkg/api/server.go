@@ -101,7 +101,15 @@ func (s *Server) RegisterWorkerHandler(path string, handler http.HandlerFunc) {
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%s", s.port)
 	log.Printf("Starting API server on %s", addr)
-	return http.ListenAndServe(addr, s.mux)
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           s.mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	return server.ListenAndServe()
 }
 
 func (s *Server) queueSnapshot() (*queue.Snapshot, error) {

@@ -37,17 +37,6 @@ func commonKeyFieldNames(entitiesA, entitiesB []*models.Entity) []string {
 	return shared
 }
 
-// hasRelationship returns true if entity already has a relationship of the
-// given type pointing to targetID.
-func hasRelationship(e *models.Entity, relType, targetID string) bool {
-	for _, r := range e.Relationships {
-		if r.Type == relType && r.TargetID == targetID {
-			return true
-		}
-	}
-	return false
-}
-
 // toCamelCaseRel converts a field name like "student_id" → "StudentId"
 // for use in relationship type names.
 func toCamelCaseRel(s string) string {

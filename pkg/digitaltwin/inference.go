@@ -1,15 +1,12 @@
 package digitaltwin
 
 import (
-	"encoding/json"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/mimir-aip/mimir-aip-go/pkg/metadatastore"
 	"github.com/mimir-aip/mimir-aip-go/pkg/mlmodel"
-	mltraining "github.com/mimir-aip/mimir-aip-go/pkg/mlmodel/training"
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
 )
 
@@ -138,61 +135,6 @@ func (e *InferenceEngine) runInference(model *models.MLModel, input map[string]i
 	return e.mlService.InferModel(model.ID, input)
 }
 
-// predictDecisionTree traverses the decision tree stored in the artifact
-func (e *InferenceEngine) predictDecisionTree(artifact *ModelArtifact, features []float64) (interface{}, error) {
-	modelDataRaw, ok := artifact.Parameters["model_data"]
-	if !ok {
-		return 0.0, nil
-	}
-
-	modelJSON, err := json.Marshal(modelDataRaw)
-	if err != nil {
-		return 0.0, fmt.Errorf("failed to marshal tree data: %w", err)
-	}
-
-	var node mltraining.DecisionTreeModel
-	if err := json.Unmarshal(modelJSON, &node); err != nil {
-		return 0.0, fmt.Errorf("failed to unmarshal decision tree: %w", err)
-	}
-
-	return mltraining.TraverseTree(&node, features), nil
-}
-
-// predictRandomForest runs ensemble prediction with majority vote
-func (e *InferenceEngine) predictRandomForest(artifact *ModelArtifact, features []float64) (interface{}, error) {
-	modelDataRaw, ok := artifact.Parameters["model_data"]
-	if !ok {
-		return 0.0, nil
-	}
-
-	modelJSON, err := json.Marshal(modelDataRaw)
-	if err != nil {
-		return 0.0, fmt.Errorf("failed to marshal RF data: %w", err)
-	}
-
-	var rf mltraining.RandomForestArtifact
-	if err := json.Unmarshal(modelJSON, &rf); err != nil {
-		return 0.0, fmt.Errorf("failed to unmarshal random forest: %w", err)
-	}
-
-	// Majority vote across trees
-	votes := make(map[float64]int)
-	for _, tree := range rf.Trees {
-		pred := math.Round(mltraining.TraverseTree(tree, features))
-		votes[pred]++
-	}
-
-	bestCount := 0
-	bestClass := 0.0
-	for class, count := range votes {
-		if count > bestCount {
-			bestCount = count
-			bestClass = class
-		}
-	}
-	return bestClass, nil
-}
-
 // predictRegression runs linear regression: y = w·x + b
 func (e *InferenceEngine) predictRegression(artifact *ModelArtifact, features []float64) interface{} {
 	modelDataRaw, ok := artifact.Parameters["model_data"]
@@ -228,75 +170,6 @@ func (e *InferenceEngine) predictRegression(artifact *ModelArtifact, features []
 		}
 	}
 	return prediction
-}
-
-// predictNeuralNetwork runs a forward pass through the stored network weights
-func (e *InferenceEngine) predictNeuralNetwork(artifact *ModelArtifact, features []float64) (interface{}, error) {
-	weightsRaw, ok := artifact.Parameters["weights"]
-	if !ok {
-		return 0.0, nil
-	}
-	biasesRaw, ok := artifact.Parameters["biases"]
-	if !ok {
-		return 0.0, nil
-	}
-
-	weightsJSON, err := json.Marshal(weightsRaw)
-	if err != nil {
-		return 0.0, fmt.Errorf("failed to marshal NN weights: %w", err)
-	}
-	biasesJSON, err := json.Marshal(biasesRaw)
-	if err != nil {
-		return 0.0, fmt.Errorf("failed to marshal NN biases: %w", err)
-	}
-
-	var weights [][][]float64
-	var biases [][]float64
-	if err := json.Unmarshal(weightsJSON, &weights); err != nil {
-		return 0.0, fmt.Errorf("failed to unmarshal NN weights: %w", err)
-	}
-	if err := json.Unmarshal(biasesJSON, &biases); err != nil {
-		return 0.0, fmt.Errorf("failed to unmarshal NN biases: %w", err)
-	}
-
-	// Forward pass
-	a := make([]float64, len(features))
-	copy(a, features)
-
-	for l, w := range weights {
-		outSize := len(w)
-		z := make([]float64, outSize)
-		for j := 0; j < outSize; j++ {
-			z[j] = biases[l][j]
-			for k, ak := range a {
-				if k < len(w[j]) {
-					z[j] += w[j][k] * ak
-				}
-			}
-		}
-		a = make([]float64, outSize)
-		isOutput := l == len(weights)-1
-		for j := range z {
-			if isOutput {
-				a[j] = inferSigmoid(z[j])
-			} else {
-				a[j] = inferRelu(z[j])
-			}
-		}
-	}
-
-	if len(a) > 0 {
-		return a[0], nil
-	}
-	return 0.0, nil
-}
-
-func inferSigmoid(x float64) float64 { return 1.0 / (1.0 + math.Exp(-x)) }
-func inferRelu(x float64) float64 {
-	if x > 0 {
-		return x
-	}
-	return 0
 }
 
 // getCachedPrediction retrieves a cached prediction if still valid

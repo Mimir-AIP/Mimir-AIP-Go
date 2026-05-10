@@ -382,7 +382,7 @@ func (s *Service) executeForEach(step models.PipelineStep, execution *models.Pip
 
 	// Resolve the items array. Items is a template string referencing context.
 	var items []interface{}
-	dpPlugin, ok := s.plugins.Get("default")
+	dpPlugin, _ := s.plugins.Get("default")
 	dp, ok := dpPlugin.(*DefaultPlugin)
 	if !ok {
 		return 0, fmt.Errorf("for_each requires the default plugin to be registered")

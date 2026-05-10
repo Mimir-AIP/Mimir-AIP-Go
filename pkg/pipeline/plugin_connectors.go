@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -163,7 +162,7 @@ func (p *DefaultPlugin) pollCSVDrop(params map[string]interface{}, ctx *models.P
 	items := make([]interface{}, 0)
 	orderedSeen := append([]string{}, checkpoint.Seen...)
 	for _, candidate := range candidates {
-		bytes, err := ioutil.ReadFile(candidate.path)
+		bytes, err := os.ReadFile(candidate.path)
 		if err != nil {
 			return nil, fmt.Errorf("poll_csv_drop: failed to read %s: %w", candidate.path, err)
 		}

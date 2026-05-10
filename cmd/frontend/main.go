@@ -6,6 +6,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"time"
 )
 
 func main() {
@@ -59,7 +60,15 @@ func main() {
 
 	log.Printf("Frontend server starting on port %s", port)
 	log.Printf("Proxying API requests to: %s", apiURL)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           http.DefaultServeMux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	log.Fatal(server.ListenAndServe())
 }
 
 func joinURLPath(basePath, requestPath string) string {

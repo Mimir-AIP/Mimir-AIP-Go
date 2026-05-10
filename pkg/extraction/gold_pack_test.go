@@ -219,9 +219,6 @@ func goldStructuredCIR(domain goldDomain) *models.CIR {
 	// Use the first source as a representative structured dataset for mixed-mode budget checks.
 	src := domain.Sources[0]
 	rows := make([]map[string]interface{}, len(src.Rows))
-	for i := range src.Rows {
-		rows[i] = src.Rows[i]
-	}
+	copy(rows, src.Rows)
 	return makeCIR(domain.Name+"-structured", src.EntityType, rows)
 }
-

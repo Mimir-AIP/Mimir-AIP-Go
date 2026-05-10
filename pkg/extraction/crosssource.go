@@ -448,38 +448,6 @@ func normaliseColumnTokens(name string) []string {
 	return tokens
 }
 
-// ─── Key field detection for entity resolution ───────────────────────────────
-
-// detectKeyFields returns the attribute names in a record that are likely to
-// be stable identifiers (suitable as join keys for entity resolution).
-// It uses the same heuristics as isKeyColumn: key-like token in the name.
-// Numeric keys and string keys are both included.
-func detectKeyFields(attributes map[string]interface{}) []string {
-	var keys []string
-	for k := range attributes {
-		if isKeyColumn(k, 1.0) { // pass 1.0 so only name-based heuristic applies here
-			keys = append(keys, k)
-		}
-	}
-	sort.Strings(keys) // deterministic order
-	return keys
-}
-
-// keyValue returns a canonical string representation of a key field value,
-// used for equality comparison across records.
-func keyValue(v interface{}) string {
-	if v == nil {
-		return ""
-	}
-	s := fmt.Sprintf("%v", v)
-	// Normalise numeric representations: "1.0" == "1", "42.000" == "42"
-	if strings.Contains(s, ".") {
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-	}
-	return strings.TrimSpace(s)
-}
-
 // ─── Deduplication ────────────────────────────────────────────────────────────
 
 // deduplicateLinks removes redundant cross-source links, keeping the

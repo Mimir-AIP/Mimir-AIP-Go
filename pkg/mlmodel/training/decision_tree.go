@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/mimir-aip/mimir-aip-go/pkg/models"
-	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
 
@@ -295,43 +294,6 @@ func calculateClassificationMetrics(predictions, actual []float64) *models.Perfo
 	}
 }
 
-func calculateRegressionMetrics(predictions, actual []float64) *models.PerformanceMetrics {
-	if len(predictions) != len(actual) {
-		return &models.PerformanceMetrics{}
-	}
-
-	// RMSE
-	sumSquaredError := 0.0
-	for i := range predictions {
-		diff := predictions[i] - actual[i]
-		sumSquaredError += diff * diff
-	}
-	rmse := math.Sqrt(sumSquaredError / float64(len(predictions)))
-
-	// MAE
-	sumAbsError := 0.0
-	for i := range predictions {
-		sumAbsError += math.Abs(predictions[i] - actual[i])
-	}
-	mae := sumAbsError / float64(len(predictions))
-
-	// R² Score
-	meanActual := mean(actual)
-	ssTotal := 0.0
-	ssRes := 0.0
-	for i := range actual {
-		ssTotal += math.Pow(actual[i]-meanActual, 2)
-		ssRes += math.Pow(actual[i]-predictions[i], 2)
-	}
-	r2 := 1.0 - (ssRes / ssTotal)
-
-	return &models.PerformanceMetrics{
-		RMSE:    rmse,
-		MAE:     mae,
-		R2Score: r2,
-	}
-}
-
 // countFeatureSplits counts how many times each feature index appears as a split in the tree
 func countFeatureSplits(node *DecisionTreeModel, counts []float64) {
 	if node == nil || node.IsLeaf {
@@ -430,20 +392,4 @@ func TraverseTree(node *DecisionTreeModel, features []float64) float64 {
 		return TraverseTree(node.Left, features)
 	}
 	return TraverseTree(node.Right, features)
-}
-
-// Matrix helpers using gonum
-func toMatrix(data [][]float64) *mat.Dense {
-	if len(data) == 0 {
-		return mat.NewDense(0, 0, nil)
-	}
-	rows := len(data)
-	cols := len(data[0])
-	flat := make([]float64, rows*cols)
-	for i, row := range data {
-		for j, val := range row {
-			flat[i*cols+j] = val
-		}
-	}
-	return mat.NewDense(rows, cols, flat)
 }

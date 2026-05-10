@@ -45,9 +45,7 @@ func (h *PluginArtifactHandler) HandleArtifact(w http.ResponseWriter, r *http.Re
 	}
 	artifactID := strings.TrimPrefix(r.URL.Path, "/api/plugin-artifacts/")
 	artifactID = strings.Trim(artifactID, "/")
-	if strings.HasSuffix(artifactID, "/download") {
-		artifactID = strings.TrimSuffix(artifactID, "/download")
-	}
+	artifactID = strings.TrimSuffix(artifactID, "/download")
 	artifactID = strings.Trim(artifactID, "/")
 	if artifactID == "" {
 		http.Error(w, "artifact id is required", http.StatusBadRequest)

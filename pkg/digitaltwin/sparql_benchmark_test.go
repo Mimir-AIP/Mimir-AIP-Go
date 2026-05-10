@@ -61,13 +61,44 @@ func BenchmarkSPARQLEngineExecute_EndToEnd(b *testing.B) {
 	}
 	defer store.Close()
 
+	now := time.Now().UTC()
+	project := &models.Project{
+		ID:          "project-bench",
+		Name:        "Benchmark Project",
+		Description: "SPARQL benchmark project",
+		Status:      models.ProjectStatusActive,
+		Metadata: models.ProjectMetadata{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+	if err := store.SaveProject(project); err != nil {
+		b.Fatalf("failed to save project: %v", err)
+	}
+
+	ontologyRecord := &models.Ontology{
+		ID:          "ontology-bench",
+		ProjectID:   project.ID,
+		Name:        "Benchmark Ontology",
+		Description: "Ontology required by digital twin foreign key",
+		Version:     "1.0.0",
+		Content:     "@prefix : <http://example.com/> . :Machine a :Class .",
+		Status:      "active",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := store.SaveOntology(ontologyRecord); err != nil {
+		b.Fatalf("failed to save ontology: %v", err)
+	}
+
 	twin := &models.DigitalTwin{
-		ID:        "bench-twin",
-		ProjectID: "project-bench",
-		Name:      "Bench Twin",
-		Status:    "active",
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
+		ID:         "bench-twin",
+		ProjectID:  "project-bench",
+		Name:       "Bench Twin",
+		OntologyID: "ontology-bench",
+		Status:     "active",
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	if err := store.SaveDigitalTwin(twin); err != nil {
 		b.Fatalf("failed to save twin: %v", err)

@@ -199,15 +199,9 @@ func normalizeEntityName(name string) string {
 	normalized = strings.ReplaceAll(normalized, ".", "")
 
 	// Remove leading articles (the, a, an) at the beginning only
-	if strings.HasPrefix(normalized, "the ") {
-		normalized = strings.TrimPrefix(normalized, "the ")
-	}
-	if strings.HasPrefix(normalized, "a ") {
-		normalized = strings.TrimPrefix(normalized, "a ")
-	}
-	if strings.HasPrefix(normalized, "an ") {
-		normalized = strings.TrimPrefix(normalized, "an ")
-	}
+	normalized = strings.TrimPrefix(normalized, "the ")
+	normalized = strings.TrimPrefix(normalized, "a ")
+	normalized = strings.TrimPrefix(normalized, "an ")
 
 	// Handle common abbreviations or variations
 	normalized = strings.ReplaceAll(normalized, "&", "and")

@@ -3,7 +3,6 @@ package plugins
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,7 +67,7 @@ func (f *FilesystemPlugin) CreateSchema(ontology *models.OntologyDefinition) err
 		return fmt.Errorf("failed to marshal ontology: %w", err)
 	}
 
-	if err := ioutil.WriteFile(ontologyPath, ontologyData, 0644); err != nil {
+	if err := os.WriteFile(ontologyPath, ontologyData, 0644); err != nil {
 		return fmt.Errorf("failed to write ontology file: %w", err)
 	}
 
@@ -135,13 +134,13 @@ func (f *FilesystemPlugin) storeItem(entityDir string, cir *models.CIR) error {
 	filePath := filepath.Join(entityDir, filename)
 
 	// Marshal CIR to JSON
-	data, err := json.MarshalIndent(cir, "", "  ")
+	data, err := json.Marshal(cir)
 	if err != nil {
 		return fmt.Errorf("failed to marshal CIR: %w", err)
 	}
 
 	// Write to file
-	if err := ioutil.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
@@ -173,7 +172,7 @@ func (f *FilesystemPlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, erro
 	}
 
 	// Read all files in the entity directory
-	files, err := ioutil.ReadDir(entityDir)
+	files, err := os.ReadDir(entityDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read entity directory: %w", err)
 	}
@@ -189,7 +188,7 @@ func (f *FilesystemPlugin) Retrieve(query *models.CIRQuery) ([]*models.CIR, erro
 		}
 
 		filePath := filepath.Join(entityDir, file.Name())
-		data, err := ioutil.ReadFile(filePath)
+		data, err := os.ReadFile(filePath)
 		if err != nil {
 			continue // Skip files that can't be read
 		}
@@ -331,7 +330,7 @@ func (f *FilesystemPlugin) Delete(query *models.CIRQuery) (*models.StorageResult
 	}
 
 	// Read all files in the entity directory
-	files, err := ioutil.ReadDir(entityDir)
+	files, err := os.ReadDir(entityDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read entity directory: %w", err)
 	}
@@ -344,7 +343,7 @@ func (f *FilesystemPlugin) Delete(query *models.CIRQuery) (*models.StorageResult
 		}
 
 		filePath := filepath.Join(entityDir, file.Name())
-		data, err := ioutil.ReadFile(filePath)
+		data, err := os.ReadFile(filePath)
 		if err != nil {
 			continue
 		}
@@ -392,7 +391,7 @@ func (f *FilesystemPlugin) HealthCheck() (bool, error) {
 
 	// Check if base path exists and is writable
 	testFile := filepath.Join(f.basePath, ".healthcheck")
-	if err := ioutil.WriteFile(testFile, []byte("ok"), 0644); err != nil {
+	if err := os.WriteFile(testFile, []byte("ok"), 0644); err != nil {
 		return false, fmt.Errorf("filesystem not writable: %w", err)
 	}
 
